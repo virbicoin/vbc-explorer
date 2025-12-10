@@ -392,7 +392,7 @@ const listenBlocks = function (): void {
 
             if (blockData) {
               // Check if block already exists to avoid duplicates
-              const existingBlock = await Block.findOne({ number: blockNum }).lean();
+              const existingBlock = await Block.findOne({ number: blockNum }).lean().maxTimeMS(30000);
               
               if (!existingBlock) {
                 await writeBlockToDB(blockData, true);
@@ -448,10 +448,10 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
 
   console.log(`🔄 Syncing blocks from ${startBlock} to ${endBlock}...`);
 
-  // Check which blocks already exist in database
+  // Check which blocks already exist in database with timeout
   const existingBlocks = await Block.find({ 
     number: { $gte: startBlock, $lte: endBlock } 
-  }).select('number').lean();
+  }).select('number').lean().maxTimeMS(120000);
   
   const existingBlockNumbers = new Set(existingBlocks.map(b => b.number));
   console.log(`🔍 Found ${existingBlocks.length} existing blocks in range ${startBlock}-${endBlock}`);
@@ -651,7 +651,7 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
 const prepareSync = async (): Promise<void> => {
   try {
     // Find the latest block in database
-    const latestBlockDoc = await Block.findOne({}, { number: 1 }).sort({ number: -1 });
+    const latestBlockDoc = await Block.findOne({}, { number: 1 }).sort({ number: -1 }).maxTimeMS(60000);
 
     if (latestBlockDoc) {
       const dbLatestBlock = latestBlockDoc.number;
@@ -758,6 +758,17 @@ const main = async (): Promise<void> => {
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // Check if it's a timeout error - these are recoverable
+    if (errorMessage.includes('timed out') || errorMessage.includes('timeout')) {
+      console.log(`⌛ Timeout error occurred: ${errorMessage}`);
+      console.log('⌛ Waiting 60 seconds before retry...');
+      await new Promise(resolve => setTimeout(resolve, 60000));
+      // Don't exit - let PM2 restart the process
+      console.log('🔄 Restarting sync process...');
+      return main();
+    }
+    
     console.log(`💥 Fatal error: ${errorMessage}`);
     process.exit(1);
   }

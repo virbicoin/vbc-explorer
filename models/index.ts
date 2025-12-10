@@ -266,22 +266,21 @@ export const connectDB = async (): Promise<void> => {
           console.log('📄 Using default MongoDB URI');
         }
 
-        // Optimized database connection options for performance
+        // Optimized database connection options for low-spec instances
         let dbOptions: mongoose.ConnectOptions = {
-          maxPoolSize: 25, // Increased from 20 to 25 for better concurrency
-          minPoolSize: 5,  // Maintain minimum connections
-          serverSelectionTimeoutMS: 15000, // Reduced from 30000 to 15000
-          socketTimeoutMS: 45000, // Reduced from 60000 to 45000
-          connectTimeoutMS: 15000, // Reduced from 30000 to 15000
+          maxPoolSize: 10,  // Reduced from 25 for low-spec instances
+          minPoolSize: 2,   // Reduced from 5 for low-spec instances
+          serverSelectionTimeoutMS: 60000, // Increased from 15000 for slow connections
+          socketTimeoutMS: 120000, // Increased from 45000 for slow operations
+          connectTimeoutMS: 60000, // Increased from 15000 for slow connections
           retryWrites: true,
           retryReads: true,
-          bufferCommands: false, // Changed to false for better error handling
+          bufferCommands: true, // Changed to true for better queuing
           autoIndex: false,      // Disable auto indexing in production
           autoCreate: false,     // Disable auto creation in production
-          heartbeatFrequencyMS: 5000,  // Reduced from 10000 to 5000
-          maxIdleTimeMS: 20000,  // Reduced from 30000 to 20000
-          compressors: ['zlib' as const], // Enable compression with explicit type
-          readPreference: 'secondaryPreferred' as const, // Use secondary for reads when available
+          heartbeatFrequencyMS: 10000,  // Increased from 5000 to reduce overhead
+          maxIdleTimeMS: 60000,  // Increased from 20000 to keep connections alive
+          waitQueueTimeoutMS: 120000, // Wait longer for connections from pool
         };
 
         try {

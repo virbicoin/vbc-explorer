@@ -74,43 +74,52 @@ const initDB = async (): Promise<void> => {
   }
 };
 
-// Get unique addresses from transactions
-const getTransactionAddresses = async (fromBlock: number, toBlock: number): Promise<Set<string>> => {
+// Get unique addresses from transactions with retry
+const getTransactionAddresses = async (fromBlock: number, toBlock: number, retries = 3): Promise<Set<string>> => {
   const addresses = new Set<string>();
   
-  try {
-    // Get FROM addresses
-    const fromDocs = await Transaction.aggregate([
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      // Get FROM addresses with timeout
+      const fromDocs = await Transaction.aggregate([
+          { $match: { blockNumber: { $lte: toBlock, $gt: fromBlock } } },
+        { $group: { _id: '$from' } }
+      ]).option({ maxTimeMS: 120000 }); // 2 minute timeout
+      
+      // Get TO addresses with timeout
+      const toDocs = await Transaction.aggregate([
         { $match: { blockNumber: { $lte: toBlock, $gt: fromBlock } } },
-      { $group: { _id: '$from' } }
-    ]);
-    
-    // Get TO addresses
-    const toDocs = await Transaction.aggregate([
-      { $match: { blockNumber: { $lte: toBlock, $gt: fromBlock } } },
-      { $group: { _id: '$to' } }
-    ]);
-    
-    // Get miner addresses
-    const minerDocs = await Block.aggregate([
-      { $match: { number: { $lte: toBlock, $gt: fromBlock } } },
-      { $group: { _id: '$miner' } }
-    ]);
-    
-    // Combine all addresses
-    [...fromDocs, ...toDocs, ...minerDocs].forEach(doc => {
-      if (doc._id && doc._id !== '0x0000000000000000000000000000000000000000') {
-        addresses.add(doc._id);
-      }
-    });
-    
-    console.log(`📊 Found ${addresses.size} unique addresses in blocks ${fromBlock}-${toBlock}`);
-    return addresses;
-    
+        { $group: { _id: '$to' } }
+      ]).option({ maxTimeMS: 120000 });
+      
+      // Get miner addresses with timeout
+      const minerDocs = await Block.aggregate([
+        { $match: { number: { $lte: toBlock, $gt: fromBlock } } },
+        { $group: { _id: '$miner' } }
+      ]).option({ maxTimeMS: 120000 });
+      
+      // Combine all addresses
+      [...fromDocs, ...toDocs, ...minerDocs].forEach(doc => {
+        if (doc._id && doc._id !== '0x0000000000000000000000000000000000000000') {
+          addresses.add(doc._id);
+        }
+      });
+      
+      console.log(`📊 Found ${addresses.size} unique addresses in blocks ${fromBlock}-${toBlock}`);
+      return addresses;
+      
     } catch (error) {
-    console.error('❌ Error getting transaction addresses:', error);
-    return new Set();
+      console.error(`❌ Error getting transaction addresses (attempt ${attempt}/${retries}):`, error);
+      if (attempt < retries) {
+        const waitTime = attempt * 10000; // 10s, 20s, 30s
+        console.log(`⏳ Waiting ${waitTime/1000}s before retry...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
   }
+  
+  console.error('❌ All retries failed for getTransactionAddresses');
+  return new Set();
 };
 
 // Get account data with balance and type
