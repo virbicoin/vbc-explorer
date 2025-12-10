@@ -6,7 +6,7 @@ Tool for calculating VirBiCoin richlist - Optimized and simplified
 import mongoose from 'mongoose';
 import Web3 from 'web3';
 import { connectDB, Block, Transaction, Account, IAccount } from '../models/index';
-import { loadConfig, getWeb3ProviderURL } from '../lib/config';
+import { loadConfig, getWeb3ProviderURL, AppConfig } from '../lib/config';
 
 // Simplified interface
 interface AccountData {
@@ -17,7 +17,7 @@ interface AccountData {
 }
 
 // Configuration
-const config = loadConfig();
+const config: AppConfig = loadConfig();
 const web3 = new Web3(new Web3.providers.HttpProvider(getWeb3ProviderURL()));
 
 // Constants
@@ -50,9 +50,23 @@ const checkMemory = (): boolean => {
 const initDB = async (): Promise<void> => {
   try {
     if (mongoose.connection.readyState === 1) {
-      return; // Already connected, no need to log
+      return; // Already connected
     }
     await connectDB();
+    
+    // Wait for connection to be fully established
+    let retries = 0;
+    const maxRetries = 30;
+    while ((mongoose.connection.readyState as number) !== 1 && retries < maxRetries) {
+      console.log('⌛ Waiting for database connection...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      retries++;
+    }
+    
+    if ((mongoose.connection.readyState as number) !== 1) {
+      throw new Error('Database connection timeout');
+    }
+    
     console.log('🔗 Database connection initialized');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);

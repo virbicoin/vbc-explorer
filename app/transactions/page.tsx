@@ -1,6 +1,5 @@
 'use client';
 
-import Header from '../components/Header';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { 
@@ -15,7 +14,7 @@ import {
   CubeIcon
 } from '@heroicons/react/24/outline';
 import SummaryCard from '../components/SummaryCard';
-import { getCurrencySymbol, getCurrencyConfig } from '../../lib/config';
+import { getCurrencySymbol, getCurrencyConfig } from '../../lib/client-config';
 import { initializeCurrency } from '../../lib/bigint-utils';
 
 interface Transaction {
@@ -73,7 +72,7 @@ export default function TransactionsPage() {
     const fetchConfig = async () => {
       try {
         const currencyConfig = await getCurrencyConfig();
-        setGasUnit(currencyConfig.gasUnit || 'Gniku');
+        setGasUnit((currencyConfig as { gasUnit?: string }).gasUnit || 'Gniku');
         
         // Load currency symbol
         const symbol = await getCurrencySymbol();

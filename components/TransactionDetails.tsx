@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import Header from '../app/components/Header';
 import { 
   ArrowUpIcon,
   UserIcon,

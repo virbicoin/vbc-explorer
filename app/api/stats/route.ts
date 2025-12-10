@@ -4,19 +4,38 @@ import { connectDB, Block } from '../../../models/index';
 
 import { getGasUnitServer } from '../../../lib/config';
 
+// 統計データのキャッシュ
+interface StatsCacheData {
+  basic: Record<string, unknown>;
+  enhanced: Record<string, unknown>;
+}
+
+interface StatsCache {
+  data: StatsCacheData;
+  timestamp: number;
+}
+
+let statsCache: StatsCache | null = null;
+const STATS_CACHE_DURATION = 10000; // 10秒キャッシュ
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const enhanced = searchParams.get('enhanced') === 'true';
     
+    const now = Date.now();
+    
+    // キャッシュが有効な場合はキャッシュを返す
+    if (statsCache && now - statsCache.timestamp < STATS_CACHE_DURATION) {
+      if (!enhanced) {
+        return NextResponse.json(statsCache.data.basic);
+      }
+      return NextResponse.json(statsCache.data.enhanced);
+    }
+    
     console.log('[Stats] Starting stats calculation...');
     const stats = await getChainStats();
     console.log('[Stats] Stats calculation completed:', { latestBlock: stats.latestBlock, totalTransactions: stats.totalTransactions });
-    
-    // Return basic stats if enhanced is not requested
-    if (!enhanced) {
-      return NextResponse.json(stats);
-    }
     
     // Calculate active miners from recent blocks for enhanced stats
     let activeMiners = 0;
@@ -58,6 +77,17 @@ export async function GET(request: Request) {
       lastBlockTime: stats.lastBlockTime, // Add this field
       lastBlockTimestamp: stats.lastBlockTimestamp // Add timestamp for frontend calculation
     };
+    
+    // キャッシュを更新
+    statsCache = {
+      data: { basic: stats, enhanced: enhancedStats },
+      timestamp: now
+    };
+    
+    // Return basic stats if enhanced is not requested
+    if (!enhanced) {
+      return NextResponse.json(stats);
+    }
     
     return NextResponse.json(enhancedStats);
   } catch (error) {

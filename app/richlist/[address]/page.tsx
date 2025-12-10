@@ -1,5 +1,4 @@
-import Header from '../../components/Header';
-import { getCurrencySymbol } from '../../../lib/config';
+import { getCurrencySymbol } from '../../../lib/client-config';
 
 export default async function RichlistPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;

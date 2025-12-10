@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Header from '../components/Header';
 import { 
   MagnifyingGlassIcon, 
   ArrowPathIcon,
@@ -12,7 +11,7 @@ import {
   UserIcon,
   CurrencyDollarIcon
 } from '@heroicons/react/24/outline';
-import { getCurrencySymbol } from '../../lib/config';
+import { getCurrencySymbol } from '../../lib/client-config';
 
 interface Config {
   miners: Record<string, string>;

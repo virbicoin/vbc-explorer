@@ -3,11 +3,38 @@ import path from 'path';
 
 export interface DatabaseConfig {
   uri: string;
-  options?: Record<string, any>;
+  options?: Record<string, unknown>;
 }
 
 export interface Web3ProviderConfig {
   url: string;
+}
+
+export interface CurrencyConfig {
+  name: string;
+  symbol: string;
+  unit: string;
+  decimals: number;
+  gasUnit: string;
+  priceApi?: {
+    coingecko?: {
+      enabled: boolean;
+      id: string;
+    };
+    coinpaprika?: {
+      enabled: boolean;
+      id: string;
+    };
+  };
+}
+
+export interface ExplorerConfig {
+  name: string;
+  description: string;
+}
+
+export interface GeneralConfig {
+  quiet: boolean;
 }
 
 export interface AppConfig {
@@ -25,7 +52,12 @@ export interface AppConfig {
   logLevel: string;
   web3Provider: Web3ProviderConfig;
   database: DatabaseConfig;
-  [key: string]: any;
+  currency: CurrencyConfig;
+  miners: Record<string, string>;
+  explorer?: ExplorerConfig;
+  general?: GeneralConfig;
+  priceUpdateInterval?: number;
+  [key: string]: unknown;
 }
 
 let cachedConfig: AppConfig | null = null;
@@ -42,7 +74,7 @@ export const readConfig = (): AppConfig => {
     const configPath = path.join(process.cwd(), 'config.json');
     const exampleConfigPath = path.join(process.cwd(), 'config.example.json');
     
-    let configData: any = {};
+    let configData: Record<string, unknown> = {};
     
     if (fs.existsSync(configPath)) {
       configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -94,26 +126,29 @@ export const readConfig = (): AppConfig => {
     };
     
     // Merge config data with defaults
-    cachedConfig = { ...defaultConfig, ...configData };
+    cachedConfig = { ...defaultConfig, ...configData } as AppConfig;
+    
+    // Type assertion for nested objects
+    const typedConfigData = configData as Partial<AppConfig>;
     
     // Ensure nested objects are properly merged
-    if (configData.web3Provider && cachedConfig) {
-      cachedConfig.web3Provider = { ...defaultConfig.web3Provider, ...configData.web3Provider };
+    if (typedConfigData.web3Provider && cachedConfig) {
+      cachedConfig.web3Provider = { ...defaultConfig.web3Provider, ...typedConfigData.web3Provider };
     }
     
-    if (configData.database && cachedConfig) {
-      cachedConfig.database = { ...defaultConfig.database, ...configData.database };
-      if (configData.database.options) {
-        cachedConfig.database.options = { ...defaultConfig.database.options, ...configData.database.options };
+    if (typedConfigData.database && cachedConfig) {
+      cachedConfig.database = { ...defaultConfig.database, ...typedConfigData.database };
+      if (typedConfigData.database.options) {
+        cachedConfig.database.options = { ...defaultConfig.database.options, ...typedConfigData.database.options };
       }
     }
     
-    if (configData.currency && cachedConfig) {
-      cachedConfig.currency = { ...defaultConfig.currency, ...configData.currency };
+    if (typedConfigData.currency && cachedConfig) {
+      cachedConfig.currency = { ...defaultConfig.currency, ...typedConfigData.currency };
     }
     
-    if (configData.miners && cachedConfig) {
-      cachedConfig.miners = { ...defaultConfig.miners, ...configData.miners };
+    if (typedConfigData.miners && cachedConfig) {
+      cachedConfig.miners = { ...defaultConfig.miners, ...typedConfigData.miners };
     }
     
     // Ensure cachedConfig is not null before returning
@@ -174,7 +209,7 @@ export const getMongoDBURI = (): string => {
 /**
  * Get MongoDB options from config
  */
-export const getMongoDBOptions = (): Record<string, any> => {
+export const getMongoDBOptions = (): Record<string, unknown> => {
   const config = readConfig();
   return config.database.options || {};
 };

@@ -3,14 +3,57 @@ import mongoose from 'mongoose';
 import { weiToVBC } from '../../../lib/bigint-utils';
 import { connectDB } from '../../../models/index';
 
+// トランザクションキャッシュ
+interface CacheEntry {
+  data: TransactionResponse[] | PaginatedResponse;
+  timestamp: number;
+}
+
+interface TransactionResponse {
+  hash: string;
+  from: string;
+  to: string;
+  value: string;
+  timestamp: number;
+  blockNumber: number;
+  gasUsed: number;
+  gasPrice: string;
+  status: number;
+}
+
+interface PaginatedResponse {
+  transactions: TransactionResponse[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
+
+const transactionsCache = new Map<string, CacheEntry>();
+const CACHE_DURATION = 5000; // 5秒キャッシュ
+
 export async function GET(request: Request) {
   try {
-    await connectDB();
-
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '15');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '15'), 100);
     const skip = (page - 1) * limit;
+    
+    // キャッシュキー
+    const cacheKey = `tx_${page}_${limit}`;
+    const now = Date.now();
+    const cached = transactionsCache.get(cacheKey);
+    
+    // キャッシュが有効な場合は返す
+    if (cached && now - cached.timestamp < CACHE_DURATION) {
+      return NextResponse.json(cached.data);
+    }
+
+    await connectDB();
 
     const db = mongoose.connection.db;
 
@@ -29,9 +72,10 @@ export async function GET(request: Request) {
     // Ensure basic indexes exist for performance (only create if not exists)
     try {
       const indexes = await db?.collection('Transaction').indexes();
-      const hasBlockNumberIndex = indexes?.some((idx: any) => 
-        idx.key.blockNumber === -1 || (idx.key.blockNumber === -1 && idx.key.transactionIndex === -1)
-      );
+      const hasBlockNumberIndex = indexes?.some((idx) => {
+        const key = idx.key as Record<string, number>;
+        return key.blockNumber === -1 || (key.blockNumber === -1 && key.transactionIndex === -1);
+      });
       
       if (!hasBlockNumberIndex) {
         console.log('Creating missing Transaction indexes...');
@@ -39,9 +83,9 @@ export async function GET(request: Request) {
         await db?.collection('Transaction').createIndex({ blockNumber: -1, transactionIndex: -1 }, { background: true });
         console.log('Transaction indexes created successfully');
       }
-    } catch (indexError: any) {
+    } catch (indexError) {
       // Indexes may already exist or creation failed, continue anyway
-      console.log('Index setup info:', indexError?.message || indexError);
+      console.log('Index setup info:', indexError instanceof Error ? indexError.message : indexError);
     }
 
     // Optimized query - let MongoDB choose the best index automatically
@@ -77,8 +121,10 @@ export async function GET(request: Request) {
       status: tx.status
     }));
 
+    let responseData: TransactionResponse[] | PaginatedResponse;
+    
     if (hasPageParams) {
-      return NextResponse.json({
+      responseData = {
         transactions: formattedTransactions,
         pagination: {
           page,
@@ -88,13 +134,18 @@ export async function GET(request: Request) {
           hasNext: page < totalPages,
           hasPrev: page > 1
         }
-      });
+      };
     } else {
       // For homepage requests (without pagination), return optimized array format
-      return NextResponse.json(formattedTransactions);
+      responseData = formattedTransactions;
     }
+    
+    // キャッシュに保存
+    transactionsCache.set(cacheKey, { data: responseData, timestamp: now });
+    
+    return NextResponse.json(responseData);
   } catch (error) {
     console.error('Transactions API error:', error);
-    return NextResponse.json({ error: 'Failed to fetch transactions' }, { status: 500 });
+    return NextResponse.json([], { status: 200 }); // エラー時も空配列を返す
   }
 }

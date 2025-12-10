@@ -3,9 +3,8 @@ import type { NextConfig } from 'next';
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 const nextConfig: NextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  // Next.js 16でTurbopackがデフォルトのため、空のturbopack設定を追加
+  turbopack: {},
 
   // 本番環境でのメモリ最適化
   experimental: {

@@ -1,6 +1,5 @@
 'use client';
 
-import Header from '../../components/Header';
 import { useState, useEffect, useCallback } from 'react';
 import { PlayIcon, CodeBracketIcon } from '@heroicons/react/24/outline';
 

@@ -14,11 +14,24 @@ const initDB = async () => {
   try {
     // Check if already connected
     if (mongoose.connection.readyState === 1) {
-      console.log('🔗 Database already connected');
       return;
     }
     
     await connectDB();
+    
+    // Wait for connection to be fully established
+    let retries = 0;
+    const maxRetries = 30;
+    while ((mongoose.connection.readyState as number) !== 1 && retries < maxRetries) {
+      console.log('⌛ Waiting for database connection...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      retries++;
+    }
+    
+    if ((mongoose.connection.readyState as number) !== 1) {
+      throw new Error('Database connection timeout');
+    }
+    
     console.log('🔗 Database connection initialized successfully');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);

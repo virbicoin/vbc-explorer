@@ -1,9 +1,8 @@
 'use client';
-import Header from '../components/Header';
 import Link from 'next/link';
 import { CubeTransparentIcon, CheckCircleIcon, PhotoIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState } from 'react';
-import { getCurrencyName, getCurrencySymbol } from '../../lib/config';
+import { getCurrencyName, getCurrencySymbol } from '../../lib/client-config';
 import { initializeCurrency } from '../../lib/bigint-utils';
 
 type Token = {

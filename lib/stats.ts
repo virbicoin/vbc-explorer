@@ -7,8 +7,8 @@ async function connectDB() {
 }
 
 // Cache configuration
-interface CacheEntry {
-  data: any;
+interface CacheEntry<T = unknown> {
+  data: T;
   timestamp: number;
   expiry: number;
 }
@@ -22,7 +22,7 @@ async function getCachedData<T>(key: string, callback: () => Promise<T>, customT
   const cached = statsCache.get(key);
   
   if (cached && now < cached.expiry) {
-    return cached.data;
+    return cached.data as T;
   }
   
   const data = await callback();

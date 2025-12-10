@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import Header from "../../../components/Header";
 import { ClipboardDocumentIcon, CubeIcon, UsersIcon, ClockIcon, CodeBracketIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 
 interface TokenMetadata {

@@ -310,12 +310,12 @@ export const connectDB = async (): Promise<void> => {
         return;
       }
       console.error('❌ MongoDB connection error:', error);
+      // Clear the promise so retry is possible
+      connectionPromise = null;
       // Don't throw error, just log it and continue
       console.log('⚠️ Continuing without database connection...');
-    } finally {
-      // Clear the promise after connection attempt
-      connectionPromise = null;
     }
+    // Note: Don't clear connectionPromise on success to prevent race conditions
   })();
 
   return connectionPromise;

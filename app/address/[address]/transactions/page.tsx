@@ -2,10 +2,9 @@
 
 import { use } from 'react';
 import { useState, useEffect } from 'react';
-import Header from '../../../components/Header';
 import Link from 'next/link';
 import { ArrowLeftIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
-import { getCurrencySymbol } from '../../../../lib/config';
+import { getCurrencySymbol } from '../../../../lib/client-config';
 import { initializeCurrency } from '../../../../lib/bigint-utils';
 
 interface Transaction {

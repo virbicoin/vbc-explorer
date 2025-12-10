@@ -1,6 +1,5 @@
 'use client';
 
-import Header from '../../components/Header';
 import { useState, useEffect, Suspense } from 'react';
 import { CheckCircleIcon, XCircleIcon, CodeBracketIcon } from '@heroicons/react/24/outline';
 import { useSearchParams } from 'next/navigation';

@@ -14,7 +14,7 @@ const getMongoDBURI = (): string => {
         return config.database.uri;
       }
     }
-  } catch (error) {
+  } catch {
     console.log('📄 Could not read config.json, using environment variable or default');
   }
   
@@ -65,7 +65,7 @@ const getOptimizedOptions = () => {
         console.log('📄 Using database options from config.json');
       }
     }
-  } catch (error) {
+  } catch {
     console.log('📄 Using default database options');
   }
   

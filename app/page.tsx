@@ -9,12 +9,10 @@ import {
   ClockIcon,
   ChartBarIcon,
   GlobeAltIcon,
-  HomeIcon,
   CalendarIcon,
   UserGroupIcon
 } from '@heroicons/react/24/outline';
 import { formatVBC, initializeCurrency } from '../lib/bigint-utils';
-import { getMinersConfig } from '../lib/config';
 import Image from 'next/image';
 
 interface Config {
@@ -306,6 +304,51 @@ const TransactionList = ({ transactions, newTransactionHashes, now }: { transact
   </div>
 );
 
+// タイムアウト付きフェッチ関数
+const fetchWithTimeout = async (url: string, timeout = 10000): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+};
+
+// ローディングスケルトン
+const SkeletonCard = () => (
+  <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 flex items-center gap-4 min-h-[140px] h-full animate-pulse'>
+    <div className='flex-shrink-0 w-8 h-8 bg-gray-700 rounded'></div>
+    <div className='space-y-2 flex-1'>
+      <div className='h-4 bg-gray-700 rounded w-24'></div>
+      <div className='h-6 bg-gray-700 rounded w-32'></div>
+      <div className='h-3 bg-gray-700 rounded w-20'></div>
+    </div>
+  </div>
+);
+
+const SkeletonList = ({ title }: { title: string }) => (
+  <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 h-full flex flex-col'>
+    <div className='flex items-center gap-2 mb-4'>
+      <div className='w-6 h-6 bg-gray-700 rounded animate-pulse'></div>
+      <h3 className='text-xl font-semibold text-gray-100'>{title}</h3>
+    </div>
+    <div className='space-y-2 flex-1'>
+      {[...Array(5)].map((_, i) => (
+        <div key={i} className='flex justify-between items-center p-2.5 bg-gray-700/50 rounded border border-gray-600/50 animate-pulse'>
+          <div className='h-4 bg-gray-600 rounded w-16'></div>
+          <div className='h-4 bg-gray-600 rounded w-48'></div>
+          <div className='h-4 bg-gray-600 rounded w-12'></div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 export default function Page() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
@@ -328,6 +371,7 @@ export default function Page() {
   const [lastTopBlock, setLastTopBlock] = useState<number>(0);
   const [lastTopTransactionHash, setLastTopTransactionHash] = useState<string>('');
   const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [now, setNow] = useState(Date.now());
   const [config, setConfig] = useState<{ miners: Record<string, string> } | null>(null);
 
@@ -354,13 +398,13 @@ export default function Page() {
           const configData = await response.json();
           setConfig({ miners: configData.miners || {} });
         } else {
-          const minersConfig = await getMinersConfig();
-          setConfig({ miners: minersConfig });
+          // API failed, use empty miners config
+          setConfig({ miners: {} });
         }
       } catch (err) {
         console.error('Error loading config:', err);
-        const minersConfig = await getMinersConfig();
-        setConfig({ miners: minersConfig });
+        // Fallback to empty miners config
+        setConfig({ miners: {} });
       }
     };
 
@@ -370,14 +414,20 @@ export default function Page() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch enhanced stats
-        const statsResponse = await fetch('/api/stats?enhanced=true');
-        const statsData = await statsResponse.json();
-        setStats(statsData);
+        // 並列でAPIをフェッチ（タイムアウト付き）
+        const [statsResult, blocksResult, transactionsResult] = await Promise.allSettled([
+          fetchWithTimeout('/api/stats?enhanced=true', 10000).then(r => r.json()),
+          fetchWithTimeout('/api/blocks?limit=25', 10000).then(r => r.json()),
+          fetchWithTimeout('/api/transactions?limit=25', 10000).then(r => r.json())
+        ]);
 
-        // Fetch blocks
-        const blocksResponse = await fetch('/api/blocks');
-        const blocksData = await blocksResponse.json();
+        // Stats処理
+        if (statsResult.status === 'fulfilled') {
+          setStats(statsResult.value);
+        }
+
+        // Blocks処理
+        const blocksData = blocksResult.status === 'fulfilled' ? blocksResult.value : { blocks: [] };
 
         // Check for new blocks to animate (only after initial load)
         const newTopBlock = blocksData.blocks?.[0]?.number;
@@ -416,9 +466,10 @@ export default function Page() {
         const blocksArray = Array.isArray(blocksData.blocks) ? blocksData.blocks.slice(0, 25) : [];
         setBlocks(blocksArray);
 
-        // Fetch transactions
-        const transactionsResponse = await fetch('/api/transactions');
-        const transactionsData = await transactionsResponse.json();
+        // Transactions処理（既に並列フェッチ済み）
+        const transactionsData = transactionsResult.status === 'fulfilled' 
+          ? (Array.isArray(transactionsResult.value) ? transactionsResult.value : transactionsResult.value.transactions || [])
+          : [];
 
         // Check for new transactions to animate (only after initial load)
         const newTopTransactionHash = transactionsData[0]?.hash;
@@ -460,6 +511,8 @@ export default function Page() {
         setTransactions(transactionsArray);
       } catch (error) {
         console.error('Error fetching data:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -550,72 +603,103 @@ export default function Page() {
         </div>
         {/* Summary Cards */}
         <section className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8'>
-          <SummaryCard
-            title='Latest Block'
-            value={stats.latestBlock.toLocaleString()}
-            sub='Live updates'
-            icon={<CubeIcon className='w-8 h-8 text-green-400' />}
-            isLive={stats.isConnected}
-          />
-          <SummaryCard
-            title='Average Block Time'
-            value={`${stats.avgBlockTime}s`}
-            sub='Last 100 blocks'
-            icon={<ClockIcon className='w-8 h-8 text-yellow-400' />}
-          />
-          <SummaryCard
-            title='Network Hashrate'
-            value={stats.networkHashrate || 'N/A'}
-            sub='Current mining power'
-            icon={<GlobeAltIcon className='w-8 h-8 text-orange-400' />}
-          />
-          <SummaryCard
-            title='Last Block Found'
-            value={stats.lastBlockTimestamp && stats.lastBlockTimestamp > 0 ? (() => {
-              const secondsAgo = Math.floor(now / 1000 - stats.lastBlockTimestamp);
-              if (secondsAgo < 0) return '0s ago';
-              if (secondsAgo < 60) return `${secondsAgo}s ago`;
-              if (secondsAgo < 3600) return `${Math.floor(secondsAgo / 60)}m ago`;
-              if (secondsAgo < 86400) return `${Math.floor(secondsAgo / 3600)}h ago`;
-              return `${Math.floor(secondsAgo / 86400)}d ago`;
-            })() : (stats.lastBlockTime || 'Unknown')}
-            sub='Time since last block'
-            icon={<CalendarIcon className='w-8 h-8 text-emerald-400' />}
-          />
+          {isLoading ? (
+            <>
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </>
+          ) : (
+            <>
+              <SummaryCard
+                title='Latest Block'
+                value={stats.latestBlock.toLocaleString()}
+                sub='Live updates'
+                icon={<CubeIcon className='w-8 h-8 text-green-400' />}
+                isLive={stats.isConnected}
+              />
+              <SummaryCard
+                title='Average Block Time'
+                value={`${stats.avgBlockTime}s`}
+                sub='Last 100 blocks'
+                icon={<ClockIcon className='w-8 h-8 text-yellow-400' />}
+              />
+              <SummaryCard
+                title='Network Hashrate'
+                value={stats.networkHashrate || 'N/A'}
+                sub='Current mining power'
+                icon={<GlobeAltIcon className='w-8 h-8 text-orange-400' />}
+              />
+              <SummaryCard
+                title='Last Block Found'
+                value={stats.lastBlockTimestamp && stats.lastBlockTimestamp > 0 ? (() => {
+                  const secondsAgo = Math.floor(now / 1000 - stats.lastBlockTimestamp);
+                  if (secondsAgo < 0) return '0s ago';
+                  if (secondsAgo < 60) return `${secondsAgo}s ago`;
+                  if (secondsAgo < 3600) return `${Math.floor(secondsAgo / 60)}m ago`;
+                  if (secondsAgo < 86400) return `${Math.floor(secondsAgo / 3600)}h ago`;
+                  return `${Math.floor(secondsAgo / 86400)}d ago`;
+                })() : (stats.lastBlockTime || 'Unknown')}
+                sub='Time since last block'
+                icon={<CalendarIcon className='w-8 h-8 text-emerald-400' />}
+              />
+            </>
+          )}
         </section>
 
         {/* Additional Stats Row */}
         <section className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8'>
-          <SummaryCard
-            title='Total Transactions'
-            value={stats.totalTransactions.toLocaleString()}
-            sub='All time'
-            icon={<ArrowPathIcon className='w-8 h-8 text-blue-400' />}
-          />
-          <SummaryCard
-            title='Network Difficulty'
-            value={stats.networkDifficulty || 'N/A'}
-            sub='Current difficulty'
-            icon={<ChartBarIcon className='w-8 h-8 text-orange-400' />}
-          />
-          <SummaryCard
-            title='Active Miners'
-            value={(stats.activeMiners || 0).toString()}
-            sub='Last 100 blocks'
-            icon={<UserGroupIcon className='w-8 h-8 text-cyan-400' />}
-          />
-          <SummaryCard
-            title='Avg Transaction Fee'
-            value={stats.avgTransactionFee || '0 Gwei'}
-            sub='Average gas price for transactions'
-            icon={<ChartBarIcon className='w-8 h-8 text-rose-400' />}
-          />
+          {isLoading ? (
+            <>
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+              <SkeletonCard />
+            </>
+          ) : (
+            <>
+              <SummaryCard
+                title='Total Transactions'
+                value={stats.totalTransactions.toLocaleString()}
+                sub='All time'
+                icon={<ArrowPathIcon className='w-8 h-8 text-blue-400' />}
+              />
+              <SummaryCard
+                title='Network Difficulty'
+                value={stats.networkDifficulty || 'N/A'}
+                sub='Current difficulty'
+                icon={<ChartBarIcon className='w-8 h-8 text-orange-400' />}
+              />
+              <SummaryCard
+                title='Active Miners'
+                value={(stats.activeMiners || 0).toString()}
+                sub='Last 100 blocks'
+                icon={<UserGroupIcon className='w-8 h-8 text-cyan-400' />}
+              />
+              <SummaryCard
+                title='Avg Transaction Fee'
+                value={stats.avgTransactionFee || '0 Gwei'}
+                sub='Average gas price for transactions'
+                icon={<ChartBarIcon className='w-8 h-8 text-rose-400' />}
+              />
+            </>
+          )}
         </section>
 
         {/* Latest Blocks & Transactions */}
         <section className='grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch'>
-          <BlockList blocks={blocks} newBlockNumbers={newBlockNumbers} now={now} config={config} />
-          <TransactionList transactions={transactions} newTransactionHashes={newTransactionHashes} now={now} />
+          {isLoading ? (
+            <>
+              <SkeletonList title='Latest Blocks' />
+              <SkeletonList title='Latest Transactions' />
+            </>
+          ) : (
+            <>
+              <BlockList blocks={blocks} newBlockNumbers={newBlockNumbers} now={now} config={config} />
+              <TransactionList transactions={transactions} newTransactionHashes={newTransactionHashes} now={now} />
+            </>
+          )}
         </section>
       </main>
     </>

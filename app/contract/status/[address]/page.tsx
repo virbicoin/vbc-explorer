@@ -1,6 +1,5 @@
 'use client';
 
-import Header from '../../../components/Header';
 import { useState, useEffect } from 'react';
 import { CheckCircleIcon, XCircleIcon, CodeBracketIcon, ClockIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';

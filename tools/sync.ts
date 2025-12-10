@@ -21,11 +21,24 @@ const initDB = async () => {
   try {
     // Check if already connected
     if (mongoose.connection.readyState === 1) {
-      console.log('🔗 Database already connected');
       return;
     }
     
     await connectDB();
+    
+    // Wait for connection to be fully established
+    let retries = 0;
+    const maxRetries = 30;
+    while ((mongoose.connection.readyState as number) !== 1 && retries < maxRetries) {
+      console.log('⌛ Waiting for database connection...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      retries++;
+    }
+    
+    if ((mongoose.connection.readyState as number) !== 1) {
+      throw new Error('Database connection timeout');
+    }
+    
     console.log('🔗 Database connection initialized successfully');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);
@@ -776,13 +789,42 @@ const runRichlist = async () => {
 };
 
 const runAll = async () => {
-  // 各mainを並列で実行
-  await Promise.all([
-    main(),         // sync
-    statsMain(),    // stats
-    runRichlist(),  // richlist
-    tokensMain()    // tokens
-  ]);
+  // 最初にデータベース接続を確立
+  console.log('🔗 Initializing database connection for all tasks...');
+  await initDB();
+  
+  // 接続が確立されるまで待機
+  let retries = 0;
+  const maxRetries = 10;
+  while (mongoose.connection.readyState !== 1 && retries < maxRetries) {
+    console.log('⌛ Waiting for database connection...');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    retries++;
+  }
+  
+  if (mongoose.connection.readyState !== 1) {
+    console.error('❌ Failed to establish database connection');
+    process.exit(1);
+  }
+  
+  console.log('✅ Database connection established, starting all tasks...');
+  
+  // 各mainを順次実行（データベース接続の競合を防ぐ）
+  try {
+    // まずstatsとrichlistを並行実行
+    await Promise.all([
+      statsMain(),
+      runRichlist()
+    ]);
+    
+    // その後、syncとtokensを実行
+    await Promise.all([
+      main(),
+      tokensMain()
+    ]);
+  } catch (error) {
+    console.error('❌ Error in runAll:', error);
+  }
 };
 
 if (require.main === module) {

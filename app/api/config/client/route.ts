@@ -8,17 +8,17 @@ export async function GET() {
     // Return only the necessary config for client-side
     return NextResponse.json({
       currency: {
-        name: config.currency.name,
-        symbol: config.currency.symbol,
-        unit: config.currency.unit,
-        decimals: config.currency.decimals,
-        gasUnit: config.currency.gasUnit
+        name: config.currency?.name || 'VirBiCoin',
+        symbol: config.currency?.symbol || 'VBC',
+        unit: config.currency?.unit || 'niku',
+        decimals: config.currency?.decimals || 18,
+        gasUnit: config.currency?.gasUnit || 'Gniku'
       },
       explorer: {
-        name: config.explorer.name,
-        description: config.explorer.description
+        name: config.explorer?.name || 'VirBiCoin Explorer',
+        description: config.explorer?.description || 'Real-time blockchain explorer for VirBiCoin network'
       },
-      miners: config.miners
+      miners: config.miners || {}
     });
   } catch (error) {
     console.error('Error loading config for client:', error);

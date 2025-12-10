@@ -6,18 +6,31 @@ Tool for fetching and updating cryptocurrency price data
 import { Market } from '../models/index';
 import mongoose from 'mongoose';
 import { connectDB } from '../models/index';
-import { loadConfig, getCurrencyConfig } from '../lib/config';
+import { loadConfig, getCurrencyConfig, AppConfig, CurrencyConfig } from '../lib/config';
 
 // Initialize database connection
 const initDB = async () => {
   try {
     // Check if already connected
     if (mongoose.connection.readyState === 1) {
-      console.log('🔗 Database already connected');
       return;
     }
 
     await connectDB();
+    
+    // Wait for connection to be fully established
+    let retries = 0;
+    const maxRetries = 30;
+    while ((mongoose.connection.readyState as number) !== 1 && retries < maxRetries) {
+      console.log('⌛ Waiting for database connection...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      retries++;
+    }
+    
+    if ((mongoose.connection.readyState as number) !== 1) {
+      throw new Error('Database connection timeout');
+    }
+    
     console.log('🔗 Database connection initialized successfully');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);
@@ -75,8 +88,8 @@ interface PriceData {
 }
 
 // Configuration
-const config = loadConfig();
-const currencyConfig = getCurrencyConfig();
+const config: AppConfig = loadConfig();
+const currencyConfig: CurrencyConfig = getCurrencyConfig();
 
 // Initialize database connection after config is loaded
 initDB();
@@ -108,19 +121,25 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
       return cached.data;
     }
 
-    const priceSources = [];
+    const priceSources: Array<{
+      name: string;
+      url: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      parser: (data: any) => { quoteBTC: number; quoteUSD: number } | null;
+    }> = [];
 
     // Add CoinGecko API if enabled
     if (currency.priceApi?.coingecko?.enabled) {
       priceSources.push({
         name: 'CoinGecko',
         url: `https://api.coingecko.com/api/v3/simple/price?ids=${currency.priceApi.coingecko.id}&vs_currencies=btc,usd`,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         parser: (data: any) => {
           const coinId = currency.priceApi?.coingecko?.id;
-          if (data[coinId!]) {
+          if (coinId && data[coinId]) {
             return {
-              quoteBTC: data[coinId!].btc || 0,
-              quoteUSD: data[coinId!].usd || 0
+              quoteBTC: data[coinId].btc || 0,
+              quoteUSD: data[coinId].usd || 0
             };
           }
           return null;
@@ -133,6 +152,7 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
       priceSources.push({
         name: 'CoinPaprika',
         url: `https://api.coinpaprika.com/v1/tickers/${currency.priceApi.coinpaprika.id}`,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         parser: (data: any) => ({
           quoteBTC: data.quotes?.BTC?.price || 0,
           quoteUSD: data.quotes?.USD?.price || 0

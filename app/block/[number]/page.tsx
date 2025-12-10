@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { use } from 'react';
-import Header from '../../components/Header';
 import Link from 'next/link';
 import {
   CubeIcon,
@@ -15,7 +14,7 @@ import {
   ClipboardDocumentIcon
 } from '@heroicons/react/24/outline';
 import SummaryCard from '../../components/SummaryCard';
-import { getCurrencySymbol } from '../../../lib/config';
+import { getCurrencySymbol } from '../../../lib/client-config';
 import { initializeCurrency } from '../../../lib/bigint-utils';
 
 interface Config {

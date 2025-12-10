@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Web3 from 'web3';
-import { loadConfig } from '../../../lib/config';
+import { connectDB, Block } from '../../../models/index';
 
-interface Block {
+interface BlockData {
   number: string;
   hash: string;
   miner: string;
@@ -32,139 +31,109 @@ interface PaginationInfo {
 }
 
 interface BlocksResponse {
-  blocks: Block[];
+  blocks: BlockData[];
   pagination: PaginationInfo;
 }
 
-// Utility function to convert all BigInt values to string using JSON replacer
-function bigIntReplacer(key: string, value: unknown) {
-  return typeof value === 'bigint' ? value.toString() : value;
+// キャッシュ設定
+interface CacheEntry {
+  data: BlocksResponse;
+  timestamp: number;
 }
+
+const blocksCache = new Map<string, CacheEntry>();
+const CACHE_DURATION = 5000; // 5秒キャッシュ
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '25'), 100); // 最大100に制限
 
-    // Get config using existing loader
-    const config = loadConfig();
-
-    // Web3 connection using config
-    const web3 = new Web3(config.web3Provider.url);
+    // キャッシュキー
+    const cacheKey = `blocks_${page}_${limit}`;
+    const now = Date.now();
+    const cached = blocksCache.get(cacheKey);
     
-    // Configure Web3 to handle BigInt properly
-    web3.eth.handleRevert = true;
-
-    // Test connection
-    const latestBlockNumber = await web3.eth.getBlockNumber();
-    const blockNumber = typeof latestBlockNumber === 'bigint' ? Number(latestBlockNumber) : Number(latestBlockNumber);
-
-    // Calculate start and end block numbers for pagination
-    const startBlock = Math.max(0, blockNumber - (page - 1) * limit);
-    const endBlock = Math.max(0, startBlock - limit + 1);
-    
-    // Fetch blocks in parallel for better performance
-    const blocks: Block[] = [];
-    const blockNumbers: number[] = [];
-    
-    // Create array of block numbers to fetch
-    for (let i = startBlock; i >= endBlock && i >= 0; i--) {
-      blockNumbers.push(i);
+    // キャッシュが有効な場合は返す
+    if (cached && now - cached.timestamp < CACHE_DURATION) {
+      return NextResponse.json(cached.data);
     }
-    
-    // Fetch blocks in parallel batches to avoid overwhelming the node
-    const batchSize = 10; // Process 10 blocks at a time
-    const batches = [];
-    for (let i = 0; i < blockNumbers.length; i += batchSize) {
-      batches.push(blockNumbers.slice(i, i + batchSize));
-    }
-    
-    for (const batch of batches) {
-      try {
-        // Fetch block data and transaction counts in parallel
-        const blockPromises = batch.map(blockNum => 
-          web3.eth.getBlock(blockNum, false).catch(err => {
-            console.error(`Error fetching block ${blockNum}:`, err);
-            return null;
-          })
-        );
-        
-        const txCountPromises = batch.map(blockNum => 
-          web3.eth.getBlockTransactionCount(blockNum).catch(err => {
-            console.error(`Error fetching tx count for block ${blockNum}:`, err);
-            return 0;
-          })
-        );
-        
-        // Wait for all requests in the batch to complete
-        const [blockResults, txCountResults] = await Promise.all([
-          Promise.all(blockPromises),
-          Promise.all(txCountPromises)
-        ]);
-        
-        // Process the results
-        for (let i = 0; i < blockResults.length; i++) {
-          const block = blockResults[i];
-          const txCount = txCountResults[i];
-          
-          if (block) {
-            // Convert all BigInt values to string using JSON replacer
-            const convertedBlock = JSON.parse(JSON.stringify(block, bigIntReplacer));
-            const txCountString = typeof txCount === 'bigint' ? txCount.toString() : String(txCount);
-            
-            blocks.push({
-              number: String(convertedBlock.number ?? '0'),
-              hash: String(convertedBlock.hash ?? ''),
-              miner: String(convertedBlock.miner ?? ''),
-              timestamp: String(convertedBlock.timestamp ?? '0'),
-              transactions: txCountString,
-              gasUsed: String(convertedBlock.gasUsed ?? '0'),
-              gasLimit: String(convertedBlock.gasLimit ?? '0'),
-              difficulty: String(convertedBlock.difficulty ?? '0'),
-              totalDifficulty: String(convertedBlock.totalDifficulty ?? '0'),
-              size: String(convertedBlock.size ?? '0'),
-              nonce: String(convertedBlock.nonce ?? ''),
-              extraData: String(convertedBlock.extraData ?? ''),
-              parentHash: String(convertedBlock.parentHash ?? ''),
-              stateRoot: String(convertedBlock.stateRoot ?? ''),
-              receiptsRoot: String(convertedBlock.receiptsRoot ?? ''),
-              transactionsRoot: String(convertedBlock.transactionsRoot ?? ''),
-              logsBloom: String(convertedBlock.logsBloom ?? ''),
-              sha3Uncles: String(convertedBlock.sha3Uncles ?? ''),
-              uncles: Array.isArray(convertedBlock.uncles) ? convertedBlock.uncles.map((u: unknown) => String(u ?? '')) : []
-            });
-          }
-        }
-        
-        // Add small delay between batches to avoid overwhelming the node
-        if (batches.indexOf(batch) < batches.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      } catch (err) {
-        console.error(`Error processing batch:`, err);
-        // Continue with next batch
-      }
-    }
-    
-    // Sort blocks by number in descending order (latest first)
-    blocks.sort((a, b) => Number(b.number) - Number(a.number));
 
+    // MongoDBに接続
+    await connectDB();
 
+    const skip = (page - 1) * limit;
 
-    // Calculate pagination info
-    const totalPages = Math.ceil((blockNumber + 1) / limit);
+    // ブロック総数を取得（推定カウントで高速化）
+    const totalBlocks = await Block.estimatedDocumentCount();
+    const totalPages = Math.ceil(totalBlocks / limit);
+
+    // MongoDBからブロックを取得（インデックス済みで高速）
+    const blocks = await Block.find({})
+      .sort({ number: -1 })
+      .skip(skip)
+      .limit(limit)
+      .select({
+        number: 1,
+        hash: 1,
+        miner: 1,
+        timestamp: 1,
+        gasUsed: 1,
+        gasLimit: 1,
+        difficulty: 1,
+        totalDifficulty: 1,
+        size: 1,
+        nonce: 1,
+        extraData: 1,
+        parentHash: 1,
+        stateRoot: 1,
+        transactionsRoot: 1,
+        logsBloom: 1,
+        sha3Uncles: 1,
+        uncles: 1,
+        _id: 0
+      })
+      .lean();
+
+    // ブロックデータを整形
+     
+    const formattedBlocks: BlockData[] = blocks.map((block: Record<string, unknown>) => ({
+      number: String(block.number ?? '0'),
+      hash: String(block.hash ?? ''),
+      miner: String(block.miner ?? ''),
+      timestamp: String(block.timestamp ?? '0'),
+      transactions: '0', // トランザクション数は後で必要に応じて取得
+      gasUsed: String(block.gasUsed ?? '0'),
+      gasLimit: String(block.gasLimit ?? '0'),
+      difficulty: String(block.difficulty ?? '0'),
+      totalDifficulty: String(block.totalDifficulty ?? '0'),
+      size: String(block.size ?? '0'),
+      nonce: String(block.nonce ?? ''),
+      extraData: String(block.extraData ?? ''),
+      parentHash: String(block.parentHash ?? ''),
+      stateRoot: String(block.stateRoot ?? ''),
+      receiptsRoot: '',
+      transactionsRoot: String(block.transactionsRoot ?? ''),
+      logsBloom: String(block.logsBloom ?? ''),
+      sha3Uncles: String(block.sha3Uncles ?? ''),
+      uncles: Array.isArray(block.uncles) ? block.uncles.map((u: unknown) => String(u ?? '')) : []
+    }));
+
     const pagination: PaginationInfo = {
       currentPage: page,
       totalPages,
-      total: blockNumber + 1,
+      total: totalBlocks,
       limit
     };
 
     const response: BlocksResponse = {
-      blocks,
+      blocks: formattedBlocks,
       pagination
     };
+
+    // キャッシュに保存
+    blocksCache.set(cacheKey, { data: response, timestamp: now });
 
     return NextResponse.json(response);
   } catch (error) {
@@ -172,9 +141,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { 
         error: 'Failed to fetch blocks',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        blocks: [],
+        pagination: { currentPage: 1, totalPages: 0, total: 0, limit: 25 }
       },
       { status: 500 }
     );
   }
-} 
+}
