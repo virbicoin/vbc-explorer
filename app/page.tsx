@@ -418,6 +418,12 @@ export default function Page() {
         const response = await fetchWithTimeout('/api/realtime', 5000);
         const realtimeData = await response.json();
         
+        // loading状態やerror状態の場合は既存データを保持
+        if (realtimeData.loading || realtimeData.error) {
+          console.log('[Realtime] API returned loading/error state, keeping existing data');
+          return;
+        }
+        
         // latestBlockとlastBlockTimestampをリアルタイムで更新
         if (realtimeData.latestBlock && realtimeData.latestBlock > 0) {
           const latestBlockTimestamp = realtimeData.blocks?.[0]?.timestamp || 0;
@@ -447,10 +453,13 @@ export default function Page() {
           }
         }
 
+        // 空データの場合は既存データを保持
         const blocksArray = Array.isArray(realtimeData.blocks) ? realtimeData.blocks.slice(0, 25) : [];
-        setBlocks(blocksArray);
+        if (blocksArray.length > 0) {
+          setBlocks(blocksArray);
+        }
 
-        // Transactions処理
+        // Transactions処理（空データの場合は既存データを保持）
         const transactionsData = Array.isArray(realtimeData.transactions) ? realtimeData.transactions : [];
         const newTopTransactionHash = transactionsData[0]?.hash;
 
@@ -465,8 +474,11 @@ export default function Page() {
           setLastTopTransactionHash(newTopTransactionHash);
         }
 
-        const transactionsArray = transactionsData.slice(0, 25);
-        setTransactions(transactionsArray);
+        // 空データの場合は既存データを保持
+        if (transactionsData.length > 0) {
+          const transactionsArray = transactionsData.slice(0, 25);
+          setTransactions(transactionsArray);
+        }
         setIsLoading(false);
       } catch (error) {
         console.error('Error fetching realtime data:', error);
