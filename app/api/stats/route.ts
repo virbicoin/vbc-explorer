@@ -16,7 +16,7 @@ interface StatsCache {
 }
 
 let statsCache: StatsCache | null = null;
-const STATS_CACHE_DURATION = 10000; // 10秒キャッシュ
+const STATS_CACHE_DURATION = 30000; // 30秒キャッシュ (extended for low-spec servers)
 
 export async function GET(request: Request) {
   try {
@@ -42,12 +42,13 @@ export async function GET(request: Request) {
     try {
       await connectDB();
       
-      // Get the last 100 blocks and count unique miners
+      // Get the last 100 blocks and count unique miners with timeout
       const recentBlocks = await Block.find({})
         .sort({ number: -1 })
         .limit(100)
         .select('miner')
-        .lean();
+        .lean()
+        .maxTimeMS(30000);
       
       const uniqueMiners = new Set();
       recentBlocks.forEach(block => {

@@ -14,7 +14,7 @@ interface CacheEntry<T = unknown> {
 }
 
 const statsCache = new Map<string, CacheEntry>();
-const CACHE_DURATION = 30000; // 30 seconds cache
+const CACHE_DURATION = 60000; // 60 seconds cache (extended for low-spec servers)
 
 // Helper function to get cached data or execute callback
 async function getCachedData<T>(key: string, callback: () => Promise<T>, customTTL?: number): Promise<T> {
@@ -51,7 +51,10 @@ export async function getChainStats() {
   // Get latest block information with caching
   const { latestBlockDoc, latestBlock } = await getCachedData('latestBlock', async () => {
     try {
-      const blockDoc = await db.collection('Block').findOne({}, { sort: { number: -1 } });
+      const blockDoc = await db.collection('Block').findOne(
+        {}, 
+        { sort: { number: -1 }, maxTimeMS: 30000 }
+      );
       const blockNum = blockDoc ? blockDoc.number : 0;
       console.log('[Stats] Latest block found:', blockNum);
       return { latestBlockDoc: blockDoc, latestBlock: blockNum };
@@ -59,7 +62,7 @@ export async function getChainStats() {
       console.error('[Stats] Error getting latest block:', error);
       return { latestBlockDoc: null, latestBlock: 0 };
     }
-  }, 30000); // 30 second cache for latest block (extended for low-spec servers)
+  }, 60000); // 60 second cache for latest block (extended for low-spec servers)
   
   // Calculate average block time from last 100 blocks with caching
   const avgBlockTime = await getCachedData('avgBlockTime', async () => {
@@ -68,6 +71,7 @@ export async function getChainStats() {
         .sort({ number: -1 })
         .limit(100)
         .project({ timestamp: 1, number: 1, blockTime: 1 })
+        .maxTimeMS(30000)
         .toArray();
       
       if (recentBlocks && recentBlocks.length >= 2) {

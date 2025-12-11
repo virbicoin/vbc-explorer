@@ -34,7 +34,7 @@ interface PaginatedResponse {
 }
 
 const transactionsCache = new Map<string, CacheEntry>();
-const CACHE_DURATION = 5000; // 5秒キャッシュ
+const CACHE_DURATION = 30000; // 30秒キャッシュ (extended for low-spec servers)
 
 export async function GET(request: Request) {
   try {
@@ -106,6 +106,7 @@ export async function GET(request: Request) {
         status: 1,
         _id: 0 // Exclude _id for smaller payload
       })
+      .maxTimeMS(30000)
       .toArray();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

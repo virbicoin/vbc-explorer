@@ -42,7 +42,7 @@ interface CacheEntry {
 }
 
 const blocksCache = new Map<string, CacheEntry>();
-const CACHE_DURATION = 5000; // 5秒キャッシュ
+const CACHE_DURATION = 30000; // 30秒キャッシュ (extended for low-spec servers)
 
 export async function GET(request: NextRequest) {
   try {
@@ -94,7 +94,8 @@ export async function GET(request: NextRequest) {
         uncles: 1,
         _id: 0
       })
-      .lean();
+      .lean()
+      .maxTimeMS(30000);
 
     // ブロックデータを整形
      

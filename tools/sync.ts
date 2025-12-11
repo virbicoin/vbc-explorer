@@ -391,8 +391,8 @@ const listenBlocks = function (): void {
             const blockData = await web3.eth.getBlock(blockNum, true);
 
             if (blockData) {
-              // Check if block already exists to avoid duplicates
-              const existingBlock = await Block.findOne({ number: blockNum }).lean().maxTimeMS(30000);
+              // Check if block already exists to avoid duplicates with extended timeout
+              const existingBlock = await Block.findOne({ number: blockNum }).lean().maxTimeMS(60000);
               
               if (!existingBlock) {
                 await writeBlockToDB(blockData, true);
@@ -404,7 +404,13 @@ const listenBlocks = function (): void {
             }
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            console.log(`❌ Error processing block ${blockNum}: ${errorMessage}`);
+            // If timeout error, wait and continue - don't fail
+            if (errorMessage.includes('time limit') || errorMessage.includes('timeout')) {
+              console.log(`⏳ Block ${blockNum} query timeout, will retry later`);
+              await new Promise(resolve => setTimeout(resolve, 5000));
+            } else {
+              console.log(`❌ Error processing block ${blockNum}: ${errorMessage}`);
+            }
           }
         }
 
