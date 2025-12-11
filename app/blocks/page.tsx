@@ -58,6 +58,7 @@ export default function BlocksPage() {
     lastBlockTimestamp: 0,
     lastBlockTime: 'Unknown'
   });
+  const [latestBlockTimestamp, setLatestBlockTimestamp] = useState(0);
 
   useEffect(() => {
     // 設定を取得
@@ -99,26 +100,64 @@ export default function BlocksPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // ブロック一覧を取得（ポーリング付き）
   useEffect(() => {
-    const fetchBlocks = async () => {
+    let isMounted = true;
+    
+    const fetchBlocks = async (isInitial: boolean = false) => {
       try {
-        setLoading(true);
+        if (isInitial) {
+          setLoading(true);
+        }
         setError(null);
-        const response = await fetch(`/api/blocks?page=${currentPage}&limit=50`);
+        
+        // キャッシュを無効化してフェッチ
+        const response = await fetch(`/api/blocks?page=${currentPage}&limit=50&_t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
         if (!response.ok) {
           throw new Error('Failed to fetch blocks');
         }
         const data = await response.json();
-        setBlocks(Array.isArray(data.blocks) ? data.blocks : []);
-        setTotalPages(data.pagination?.totalPages || 1);
-        setTotalBlocks(data.pagination?.total || 0);
+        
+        if (isMounted) {
+          const blocksData = Array.isArray(data.blocks) ? data.blocks : [];
+          setBlocks(blocksData);
+          setTotalPages(data.pagination?.totalPages || 1);
+          setTotalBlocks(data.pagination?.total || 0);
+          // 最新ブロックのタイムスタンプをリアルタイムで更新
+          if (blocksData.length > 0 && blocksData[0].timestamp) {
+            setLatestBlockTimestamp(Number(blocksData[0].timestamp));
+          }
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'An error occurred');
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
-    fetchBlocks();
+    
+    // 初回ロード
+    fetchBlocks(true);
+    
+    // ページ1の場合のみポーリング（5秒間隔）
+    let interval: NodeJS.Timeout | null = null;
+    if (currentPage === 1) {
+      interval = setInterval(() => fetchBlocks(false), 5000);
+    }
+    
+    return () => {
+      isMounted = false;
+      if (interval) clearInterval(interval);
+    };
   }, [currentPage]);
 
   const formatTimestamp = (timestamp: string) => {
@@ -183,14 +222,19 @@ export default function BlocksPage() {
     },
     {
       title: 'Last Block Found',
-      value: stats.lastBlockTimestamp && stats.lastBlockTimestamp > 0 ? (() => {
-        const secondsAgo = Math.floor(now / 1000 - stats.lastBlockTimestamp);
-        if (secondsAgo < 0) return '0s ago';
-        if (secondsAgo < 60) return `${secondsAgo}s ago`;
-        if (secondsAgo < 3600) return `${Math.floor(secondsAgo / 60)}m ago`;
-        if (secondsAgo < 86400) return `${Math.floor(secondsAgo / 3600)}h ago`;
-        return `${Math.floor(secondsAgo / 86400)}d ago`;
-      })() : (stats.lastBlockTime || 'Unknown'),
+      value: (() => {
+        // blocksから取得したリアルタイムのタイムスタンプを優先
+        const timestamp = latestBlockTimestamp > 0 ? latestBlockTimestamp : stats.lastBlockTimestamp;
+        if (timestamp && timestamp > 0) {
+          const secondsAgo = Math.floor(now / 1000 - timestamp);
+          if (secondsAgo < 0) return '0s ago';
+          if (secondsAgo < 60) return `${secondsAgo}s ago`;
+          if (secondsAgo < 3600) return `${Math.floor(secondsAgo / 60)}m ago`;
+          if (secondsAgo < 86400) return `${Math.floor(secondsAgo / 3600)}h ago`;
+          return `${Math.floor(secondsAgo / 86400)}d ago`;
+        }
+        return stats.lastBlockTime || 'Unknown';
+      })(),
       sub: 'Time since last block',
       icon: <CalendarIcon className='w-5 h-5 text-emerald-400' />,
       colorClass: 'text-emerald-400'

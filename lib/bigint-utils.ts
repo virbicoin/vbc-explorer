@@ -168,8 +168,19 @@ export function weiToGwei(wei: string | bigint): string {
   return baseToGasUnit(wei);
 }
 
-export function formatVBC(value: string): string {
-  return formatCurrency(value);
+/**
+ * Format wei value to VBC display string
+ * Converts from wei to VBC and formats for display
+ */
+export function formatVBC(weiValue: string | bigint): string {
+  try {
+    // First convert from wei to VBC
+    const vbcValue = baseToCurrency(weiValue);
+    // Then format for display
+    return formatCurrency(vbcValue);
+  } catch {
+    return `0 ${CURRENCY_UNIT}`;
+  }
 }
 
 export function formatGwei(value: string): string {

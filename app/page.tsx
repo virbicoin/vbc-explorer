@@ -411,118 +411,96 @@ export default function Page() {
     fetchConfig();
   }, []);
 
+  // リアルタイムデータ用のポーリング（3秒間隔）
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchRealtimeData = async () => {
       try {
-        // 並列でAPIをフェッチ（タイムアウト付き）
-        const [statsResult, blocksResult, transactionsResult] = await Promise.allSettled([
-          fetchWithTimeout('/api/stats?enhanced=true', 10000).then(r => r.json()),
-          fetchWithTimeout('/api/blocks?limit=25', 10000).then(r => r.json()),
-          fetchWithTimeout('/api/transactions?limit=25', 10000).then(r => r.json())
-        ]);
-
-        // Stats処理
-        if (statsResult.status === 'fulfilled') {
-          setStats(statsResult.value);
+        const response = await fetchWithTimeout('/api/realtime', 5000);
+        const realtimeData = await response.json();
+        
+        // latestBlockとlastBlockTimestampをリアルタイムで更新
+        if (realtimeData.latestBlock && realtimeData.latestBlock > 0) {
+          const latestBlockTimestamp = realtimeData.blocks?.[0]?.timestamp || 0;
+          setStats(prev => ({ 
+            ...prev, 
+            latestBlock: realtimeData.latestBlock,
+            lastBlockTimestamp: latestBlockTimestamp
+          }));
         }
 
-        // Blocks処理
-        const blocksData = blocksResult.status === 'fulfilled' ? blocksResult.value : { blocks: [] };
-
         // Check for new blocks to animate (only after initial load)
-        const newTopBlock = blocksData.blocks?.[0]?.number;
+        const newTopBlock = realtimeData.blocks?.[0]?.number;
 
         if (isInitialLoad) {
-          // On initial load, just set the lastTopBlock without animation
           if (newTopBlock) {
             setLastTopBlock(newTopBlock);
           }
           setIsInitialLoad(false);
         } else {
-          // Only animate blocks discovered after page load
           if (newTopBlock && lastTopBlock > 0 && newTopBlock > lastTopBlock) {
-            // Clear any existing animations first
             setNewBlockNumbers(new Set());
-
-            // Find all new blocks discovered in this update
-            const newBlocks = blocksData.blocks?.filter((block: Block) => block.number > lastTopBlock) || [];
+            const newBlocks = realtimeData.blocks?.filter((block: Block) => block.number > lastTopBlock) || [];
             const newBlockNums = new Set<number>(newBlocks.map((block: Block) => block.number));
-
-            // Start animation for new blocks
-            setTimeout(() => {
-              setNewBlockNumbers(newBlockNums);
-            }, 100);
-
-            // Remove animation after 3 seconds
-            setTimeout(() => {
-              setNewBlockNumbers(new Set());
-            }, 3100);
-
+            setTimeout(() => setNewBlockNumbers(newBlockNums), 100);
+            setTimeout(() => setNewBlockNumbers(new Set()), 3100);
             setLastTopBlock(newTopBlock);
           }
         }
 
-        // Ensure blocksData is an array and limit to 25 items
-        const blocksArray = Array.isArray(blocksData.blocks) ? blocksData.blocks.slice(0, 25) : [];
+        const blocksArray = Array.isArray(realtimeData.blocks) ? realtimeData.blocks.slice(0, 25) : [];
         setBlocks(blocksArray);
 
-        // Transactions処理（既に並列フェッチ済み）
-        const transactionsData = transactionsResult.status === 'fulfilled' 
-          ? (Array.isArray(transactionsResult.value) ? transactionsResult.value : transactionsResult.value.transactions || [])
-          : [];
-
-        // Check for new transactions to animate (only after initial load)
+        // Transactions処理
+        const transactionsData = Array.isArray(realtimeData.transactions) ? realtimeData.transactions : [];
         const newTopTransactionHash = transactionsData[0]?.hash;
 
-        if (isInitialLoad) {
-          // On initial load, just set the lastTopTransactionHash without animation
-          if (newTopTransactionHash) {
-            setLastTopTransactionHash(newTopTransactionHash);
-          }
-        } else {
-          // Only animate transactions discovered after page load
-          if (newTopTransactionHash && lastTopTransactionHash && newTopTransactionHash !== lastTopTransactionHash) {
-            // Clear any existing animations first
-            setNewTransactionHashes(new Set());
-
-            // Find all new transactions discovered in this update
-            // Compare with the last known transaction hash to detect new ones
-            const newTransactions = transactionsData.filter((tx: Transaction) => 
-              tx.hash !== lastTopTransactionHash
-            );
-            const newTransactionHashesSet = new Set<string>(newTransactions.map((tx: Transaction) => tx.hash));
-
-            // Start animation for new transactions
-            setTimeout(() => {
-              setNewTransactionHashes(newTransactionHashesSet);
-            }, 100);
-
-            // Remove animation after 3 seconds
-            setTimeout(() => {
-              setNewTransactionHashes(new Set());
-            }, 3100);
-
-            setLastTopTransactionHash(newTopTransactionHash);
-          }
+        if (!isInitialLoad && newTopTransactionHash && lastTopTransactionHash && newTopTransactionHash !== lastTopTransactionHash) {
+          setNewTransactionHashes(new Set());
+          const newTransactions = transactionsData.filter((tx: Transaction) => tx.hash !== lastTopTransactionHash);
+          const newTransactionHashesSet = new Set<string>(newTransactions.map((tx: Transaction) => tx.hash));
+          setTimeout(() => setNewTransactionHashes(newTransactionHashesSet), 100);
+          setTimeout(() => setNewTransactionHashes(new Set()), 3100);
+        }
+        if (newTopTransactionHash) {
+          setLastTopTransactionHash(newTopTransactionHash);
         }
 
-        // Ensure transactionsData is an array and limit to 25 items
-        const transactionsArray = Array.isArray(transactionsData) ? transactionsData.slice(0, 25) : [];
+        const transactionsArray = transactionsData.slice(0, 25);
         setTransactions(transactionsArray);
+        setIsLoading(false);
       } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
+        console.error('Error fetching realtime data:', error);
         setIsLoading(false);
       }
     };
 
-    fetchData();
+    fetchRealtimeData();
+    const realtimeInterval = setInterval(fetchRealtimeData, 3000); // 3秒間隔
 
-    // Set up polling for real-time updates
-    const interval = setInterval(fetchData, 5000); // Update every 5 seconds
+    return () => clearInterval(realtimeInterval);
+  }, [isInitialLoad, lastTopBlock, lastTopTransactionHash]);
 
-    return () => clearInterval(interval);
-  }, [isInitialLoad, lastTopBlock, lastTopTransactionHash]); // Add dependencies to ensure proper updates
+  // 統計データ用のポーリング（30秒間隔 - 重いので頻度を下げる）
+  useEffect(() => {
+    const fetchStatsData = async () => {
+      try {
+        const response = await fetchWithTimeout('/api/stats?enhanced=true', 10000);
+        const statsData = await response.json();
+        // latestBlockは除外してマージ（リアルタイムAPIを優先）
+        setStats(prev => ({
+          ...statsData,
+          latestBlock: prev.latestBlock > 0 ? prev.latestBlock : statsData.latestBlock
+        }));
+      } catch (error) {
+        console.error('Error fetching stats:', error);
+      }
+    };
+
+    fetchStatsData();
+    const statsInterval = setInterval(fetchStatsData, 30000); // 30秒間隔
+
+    return () => clearInterval(statsInterval);
+  }, []);
 
   useEffect(() => {
     const button = addVbcButtonRef.current;

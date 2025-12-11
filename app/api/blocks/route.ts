@@ -42,7 +42,8 @@ interface CacheEntry {
 }
 
 const blocksCache = new Map<string, CacheEntry>();
-const CACHE_DURATION = 300000; // 5分キャッシュ (for t4g.small)
+const CACHE_DURATION_PAGE1 = 10000; // ページ1: 10秒キャッシュ（リアルタイム性重視）
+const CACHE_DURATION_OTHER = 300000; // その他: 5分キャッシュ
 
 // バックグラウンド更新フラグ
 const updateInProgress = new Set<string>();
@@ -145,21 +146,35 @@ export async function GET(request: NextRequest) {
     const now = Date.now();
     const cached = blocksCache.get(cacheKey);
     
+    // ページ1はリアルタイム性重視で短いキャッシュ
+    const cacheDuration = page === 1 ? CACHE_DURATION_PAGE1 : CACHE_DURATION_OTHER;
+    
     // キャッシュが有効な場合は返す
-    if (cached && now - cached.timestamp < CACHE_DURATION) {
-      console.log(`[Blocks] Cache hit (age: ${now - cached.timestamp}ms)`);
-      return NextResponse.json(cached.data);
+    if (cached && now - cached.timestamp < cacheDuration) {
+      console.log(`[Blocks] Cache hit (page: ${page}, age: ${now - cached.timestamp}ms)`);
+      return NextResponse.json(cached.data, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
     }
     
-    // キャッシュが古いが存在する場合: 古いデータを返しつつバックグラウンドで更新
-    if (cached) {
-      console.log('[Blocks] Returning stale cache, updating in background');
+    // ページ1の場合: キャッシュが古い場合は必ず新しいデータを取得
+    // ページ2以降: 古いキャッシュを返しつつバックグラウンドで更新
+    if (cached && page !== 1) {
+      console.log(`[Blocks] Returning stale cache (page: ${page}), updating in background`);
       updateCacheInBackground(cacheKey, page, limit);
-      return NextResponse.json(cached.data);
+      return NextResponse.json(cached.data, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
     }
 
-    // 初回リクエスト: タイムアウト付きで取得
-    console.log('[Blocks] First request, fetching with timeout...');
+    // 初回リクエストまたはページ1の更新: タイムアウト付きで取得
+    console.log(`[Blocks] Fetching fresh data (page: ${page})...`);
     
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Blocks fetch timeout')), 15000);
@@ -173,10 +188,25 @@ export async function GET(request: NextRequest) {
       
       blocksCache.set(cacheKey, { data, timestamp: now });
       console.log(`[Blocks] Request completed in ${Date.now() - startTime}ms`);
-      return NextResponse.json(data);
+      return NextResponse.json(data, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
       
     } catch (timeoutError) {
-      console.log('[Blocks] Initial fetch timed out, returning empty data');
+      console.log('[Blocks] Fetch timed out, returning cached or empty data');
+      // タイムアウト時は古いキャッシュがあれば返す
+      if (cached) {
+        updateCacheInBackground(cacheKey, page, limit);
+        return NextResponse.json(cached.data, {
+          headers: {
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        });
+      }
       updateCacheInBackground(cacheKey, page, limit);
       return NextResponse.json({
         blocks: [],
