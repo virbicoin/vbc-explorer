@@ -31,122 +31,152 @@ interface PaginatedResponse {
     hasNext: boolean;
     hasPrev: boolean;
   };
+  loading?: boolean;
 }
 
 const transactionsCache = new Map<string, CacheEntry>();
-const CACHE_DURATION = 30000; // 30秒キャッシュ (extended for low-spec servers)
+const CACHE_DURATION = 300000; // 5分キャッシュ (for t4g.small)
+
+// バックグラウンド更新フラグ
+const updateInProgress = new Set<string>();
+
+async function fetchTransactionsData(page: number, limit: number, hasPageParams: boolean): Promise<TransactionResponse[] | PaginatedResponse> {
+  await connectDB();
+  const db = mongoose.connection.db;
+  const skip = (page - 1) * limit;
+
+  let totalCount = 0;
+  let totalPages = 0;
+  
+  if (hasPageParams) {
+    const stats = await db?.collection('Transaction').estimatedDocumentCount();
+    totalCount = stats || 0;
+    totalPages = Math.ceil(totalCount / limit);
+  }
+
+  const transactions = await db?.collection('Transaction')
+    .find({})
+    .sort({ blockNumber: -1, transactionIndex: -1 })
+    .skip(skip)
+    .limit(limit)
+    .project({
+      hash: 1,
+      from: 1,
+      to: 1,
+      value: 1,
+      timestamp: 1,
+      blockNumber: 1,
+      gasUsed: 1,
+      gasPrice: 1,
+      status: 1,
+      _id: 0
+    })
+    .maxTimeMS(30000)
+    .toArray();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const formattedTransactions = (transactions || []).map((tx: any) => ({
+    hash: tx.hash,
+    from: tx.from,
+    to: tx.to,
+    value: tx.value ? weiToVBC(tx.value) : '0',
+    timestamp: tx.timestamp,
+    blockNumber: tx.blockNumber,
+    gasUsed: tx.gasUsed,
+    gasPrice: tx.gasPrice,
+    status: tx.status
+  }));
+
+  if (hasPageParams) {
+    return {
+      transactions: formattedTransactions,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1
+      }
+    };
+  }
+  return formattedTransactions;
+}
+
+// バックグラウンドでキャッシュを更新
+async function updateCacheInBackground(cacheKey: string, page: number, limit: number, hasPageParams: boolean) {
+  if (updateInProgress.has(cacheKey)) return;
+  updateInProgress.add(cacheKey);
+  
+  try {
+    const data = await fetchTransactionsData(page, limit, hasPageParams);
+    transactionsCache.set(cacheKey, { data, timestamp: Date.now() });
+  } catch (error) {
+    console.error('[Transactions] Background update failed:', error);
+  } finally {
+    updateInProgress.delete(cacheKey);
+  }
+}
 
 export async function GET(request: Request) {
+  const startTime = Date.now();
+  
   try {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = Math.min(parseInt(searchParams.get('limit') || '15'), 100);
-    const skip = (page - 1) * limit;
+    const hasPageParams = searchParams.has('page') || searchParams.has('limit');
     
-    // キャッシュキー
     const cacheKey = `tx_${page}_${limit}`;
     const now = Date.now();
     const cached = transactionsCache.get(cacheKey);
     
     // キャッシュが有効な場合は返す
     if (cached && now - cached.timestamp < CACHE_DURATION) {
+      console.log(`[Transactions] Cache hit (age: ${now - cached.timestamp}ms)`);
+      return NextResponse.json(cached.data);
+    }
+    
+    // キャッシュが古いが存在する場合: 古いデータを返しつつバックグラウンドで更新
+    if (cached) {
+      console.log('[Transactions] Returning stale cache, updating in background');
+      updateCacheInBackground(cacheKey, page, limit, hasPageParams);
       return NextResponse.json(cached.data);
     }
 
-    await connectDB();
-
-    const db = mongoose.connection.db;
-
-    // Only get total count when explicitly requested for pagination
-    let totalCount = 0;
-    let totalPages = 0;
+    // 初回リクエスト: タイムアウト付きで取得
+    console.log('[Transactions] First request, fetching with timeout...');
     
-    const hasPageParams = searchParams.has('page') || searchParams.has('limit');
-    if (hasPageParams) {
-      // Use estimated count for better performance with large collections
-      const stats = await db?.collection('Transaction').estimatedDocumentCount();
-      totalCount = stats || 0;
-      totalPages = Math.ceil(totalCount / limit);
-    }
-
-    // Ensure basic indexes exist for performance (only create if not exists)
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Transactions fetch timeout')), 15000);
+    });
+    
     try {
-      const indexes = await db?.collection('Transaction').indexes();
-      const hasBlockNumberIndex = indexes?.some((idx) => {
-        const key = idx.key as Record<string, number>;
-        return key.blockNumber === -1 || (key.blockNumber === -1 && key.transactionIndex === -1);
-      });
+      const data = await Promise.race([
+        fetchTransactionsData(page, limit, hasPageParams),
+        timeoutPromise
+      ]);
       
-      if (!hasBlockNumberIndex) {
-        console.log('Creating missing Transaction indexes...');
-        await db?.collection('Transaction').createIndex({ blockNumber: -1 }, { background: true });
-        await db?.collection('Transaction').createIndex({ blockNumber: -1, transactionIndex: -1 }, { background: true });
-        console.log('Transaction indexes created successfully');
+      transactionsCache.set(cacheKey, { data, timestamp: now });
+      console.log(`[Transactions] Request completed in ${Date.now() - startTime}ms`);
+      return NextResponse.json(data);
+      
+    } catch (timeoutError) {
+      console.log('[Transactions] Initial fetch timed out, returning empty data');
+      updateCacheInBackground(cacheKey, page, limit, hasPageParams);
+      
+      if (hasPageParams) {
+        return NextResponse.json({
+          transactions: [],
+          pagination: { page, limit, total: 0, totalPages: 0, hasNext: false, hasPrev: false },
+          loading: true
+        });
       }
-    } catch (indexError) {
-      // Indexes may already exist or creation failed, continue anyway
-      console.log('Index setup info:', indexError instanceof Error ? indexError.message : indexError);
+      return NextResponse.json([]);
     }
 
-    // Optimized query - let MongoDB choose the best index automatically
-    const transactions = await db?.collection('Transaction')
-      .find({})
-      .sort({ blockNumber: -1, transactionIndex: -1 })
-      .skip(skip)
-      .limit(limit)
-      .project({
-        hash: 1,
-        from: 1,
-        to: 1,
-        value: 1,
-        timestamp: 1,
-        blockNumber: 1,
-        gasUsed: 1,
-        gasPrice: 1,
-        status: 1,
-        _id: 0 // Exclude _id for smaller payload
-      })
-      .maxTimeMS(30000)
-      .toArray();
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const formattedTransactions = (transactions || []).map((tx: any) => ({
-      hash: tx.hash,
-      from: tx.from,
-      to: tx.to,
-      value: tx.value ? weiToVBC(tx.value) : '0',
-      timestamp: tx.timestamp,
-      blockNumber: tx.blockNumber,
-      gasUsed: tx.gasUsed,
-      gasPrice: tx.gasPrice,
-      status: tx.status
-    }));
-
-    let responseData: TransactionResponse[] | PaginatedResponse;
-    
-    if (hasPageParams) {
-      responseData = {
-        transactions: formattedTransactions,
-        pagination: {
-          page,
-          limit,
-          total: totalCount,
-          totalPages,
-          hasNext: page < totalPages,
-          hasPrev: page > 1
-        }
-      };
-    } else {
-      // For homepage requests (without pagination), return optimized array format
-      responseData = formattedTransactions;
-    }
-    
-    // キャッシュに保存
-    transactionsCache.set(cacheKey, { data: responseData, timestamp: now });
-    
-    return NextResponse.json(responseData);
   } catch (error) {
     console.error('Transactions API error:', error);
-    return NextResponse.json([], { status: 200 }); // エラー時も空配列を返す
+    return NextResponse.json([], { status: 200 });
   }
 }

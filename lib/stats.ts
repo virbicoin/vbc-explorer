@@ -14,7 +14,7 @@ interface CacheEntry<T = unknown> {
 }
 
 const statsCache = new Map<string, CacheEntry>();
-const CACHE_DURATION = 60000; // 60 seconds cache (extended for low-spec servers)
+const CACHE_DURATION = 300000; // 5 minutes cache for t4g.small instances
 
 // Helper function to get cached data or execute callback
 async function getCachedData<T>(key: string, callback: () => Promise<T>, customTTL?: number): Promise<T> {
@@ -62,7 +62,7 @@ export async function getChainStats() {
       console.error('[Stats] Error getting latest block:', error);
       return { latestBlockDoc: null, latestBlock: 0 };
     }
-  }, 60000); // 60 second cache for latest block (extended for low-spec servers)
+  }, 300000); // 5 minute cache for latest block (for t4g.small)
   
   // Calculate average block time from last 100 blocks with caching
   const avgBlockTime = await getCachedData('avgBlockTime', async () => {
@@ -108,7 +108,7 @@ export async function getChainStats() {
       console.error('Error calculating average block time:', error);
       return '13.00';
     }
-  }, 60000); // 60 second cache for block time
+  }, 300000); // 5 minute cache for block time (for t4g.small)
 
   // Get network difficulty from latest block
   let networkDifficulty = 'N/A';

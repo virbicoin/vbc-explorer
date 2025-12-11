@@ -266,21 +266,21 @@ export const connectDB = async (): Promise<void> => {
           console.log('📄 Using default MongoDB URI');
         }
 
-        // Optimized database connection options for low-spec instances
+        // Optimized database connection options for t4g.small (2GB RAM)
         let dbOptions: mongoose.ConnectOptions = {
-          maxPoolSize: 10,  // Reduced from 25 for low-spec instances
-          minPoolSize: 2,   // Reduced from 5 for low-spec instances
-          serverSelectionTimeoutMS: 60000, // Increased from 15000 for slow connections
-          socketTimeoutMS: 120000, // Increased from 45000 for slow operations
-          connectTimeoutMS: 60000, // Increased from 15000 for slow connections
+          maxPoolSize: 5,   // Minimal pool for 2GB RAM
+          minPoolSize: 1,   // Single connection minimum
+          serverSelectionTimeoutMS: 120000, // 2 minutes for slow instances
+          socketTimeoutMS: 180000, // 3 minutes for slow operations
+          connectTimeoutMS: 120000, // 2 minutes for slow connections
           retryWrites: true,
           retryReads: true,
-          bufferCommands: true, // Changed to true for better queuing
+          bufferCommands: true, // Queue commands during reconnection
           autoIndex: false,      // Disable auto indexing in production
           autoCreate: false,     // Disable auto creation in production
-          heartbeatFrequencyMS: 10000,  // Increased from 5000 to reduce overhead
-          maxIdleTimeMS: 60000,  // Increased from 20000 to keep connections alive
-          waitQueueTimeoutMS: 120000, // Wait longer for connections from pool
+          heartbeatFrequencyMS: 30000,  // 30 seconds to reduce overhead
+          maxIdleTimeMS: 120000,  // 2 minutes to keep connections alive
+          waitQueueTimeoutMS: 180000, // 3 minutes wait for connections
         };
 
         try {
