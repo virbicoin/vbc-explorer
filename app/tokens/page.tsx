@@ -85,7 +85,10 @@ export default function TokensPage() {
 
   // Filter tokens based on active tab
   const filteredTokens = activeTab === 'nft' 
-    ? tokens.filter(token => token.type === 'VRC-721' || token.type === 'VRC-1155')
+    ? tokens.filter(token => 
+        (token.type === 'VRC-721' || token.type === 'VRC-1155') &&
+        (token.holders > 0 || (token.supply && token.supply !== '0' && token.supply !== ''))
+      )
     : tokens;
 
   return (
@@ -180,8 +183,8 @@ export default function TokensPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredTokens.map((token) => (
-                    <tr key={token.symbol} className='hover:bg-gray-700/50 transition-colors'>
+                  filteredTokens.map((token, index) => (
+                    <tr key={`${token.address}-${index}`} className='hover:bg-gray-700/50 transition-colors'>
                       <td className='py-3 px-4'>
                         <div>
                           <div className='font-bold text-gray-200'>{token.symbol}</div>

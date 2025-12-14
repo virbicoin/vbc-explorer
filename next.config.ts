@@ -4,7 +4,12 @@ const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 const nextConfig: NextConfig = {
   // Next.js 16でTurbopackがデフォルトのため、空のturbopack設定を追加
-  turbopack: {},
+  turbopack: {
+    resolveAlias: {
+      // WalletConnect/pino依存関係を無視
+      'pino': { browser: './node_modules/pino/browser.js' },
+    },
+  },
 
   // 本番環境でのメモリ最適化
   experimental: {
@@ -13,7 +18,7 @@ const nextConfig: NextConfig = {
   },
 
   // 外部パッケージ設定（experimental から移動）
-  serverExternalPackages: ['mongoose', 'web3'],
+  serverExternalPackages: ['mongoose', 'web3', 'pino', 'thread-stream', 'pino-pretty'],
 
   // 軽量化設定
   compiler: {

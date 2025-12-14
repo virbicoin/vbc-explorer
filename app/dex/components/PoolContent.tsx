@@ -1,0 +1,646 @@
+'use client';
+
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useAccount } from 'wagmi';
+import { type Address } from 'viem';
+import { TokenInput, SlippageSettings } from './index';
+import {
+  type Token,
+  VBC_TOKEN,
+  DEFAULT_TOKENS,
+  WVBC_TOKEN,
+  DEFAULT_SLIPPAGE,
+  DEX_CONTRACTS,
+} from '@/lib/dex/config';
+import {
+  useAddLiquidity,
+  useRemoveLiquidity,
+  useApproveToken,
+  useTokenAllowance,
+  usePairAddress,
+  usePairInfo,
+  useUserLPBalance,
+  useReserves,
+  isNativeToken,
+  getTokenAddress,
+  formatTokenAmount,
+  parseTokenAmount,
+} from '@/lib/dex/hooks';
+
+type Tab = 'add' | 'remove';
+
+export function PoolContent() {
+  const { address, isConnected } = useAccount();
+  
+  // State
+  const [activeTab, setActiveTab] = useState<Tab>('add');
+  const [tokenA, setTokenA] = useState<Token>(VBC_TOKEN);
+  const [tokenB, setTokenB] = useState<Token>(DEFAULT_TOKENS[2]); // TEST token
+  const [amountA, setAmountA] = useState('');
+  const [amountB, setAmountB] = useState('');
+  const [lpAmount, setLpAmount] = useState('');
+  const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
+
+  // Get pair address and reserves
+  const tokenAAddress = getTokenAddress(tokenA);
+  const tokenBAddress = getTokenAddress(tokenB);
+  
+  const { data: pairAddress } = usePairAddress(tokenAAddress, tokenBAddress);
+  const { data: reserves, isLoading: isLoadingReserves } = useReserves(tokenAAddress, tokenBAddress);
+  const pairInfo = usePairInfo(pairAddress as Address);
+  const { data: lpBalance } = useUserLPBalance(pairAddress as Address, address);
+
+  // Check if pair exists
+  const pairExists = useMemo(() => {
+    return pairAddress && pairAddress !== '0x0000000000000000000000000000000000000000';
+  }, [pairAddress]);
+
+  // Parse amounts
+  const amountAParsed = useMemo(() => parseTokenAmount(amountA, tokenA.decimals), [amountA, tokenA.decimals]);
+  const amountBParsed = useMemo(() => parseTokenAmount(amountB, tokenB.decimals), [amountB, tokenB.decimals]);
+  const lpAmountParsed = useMemo(() => parseTokenAmount(lpAmount, 18), [lpAmount]);
+
+  // Calculate optimal amount B based on amount A
+  const calculateOptimalAmountB = useCallback((inputAmountA: string) => {
+    if (!reserves || !inputAmountA || reserves[0] === 0n || reserves[1] === 0n) {
+      return '';
+    }
+    const parsedA = parseTokenAmount(inputAmountA, tokenA.decimals);
+    if (parsedA === 0n) return '';
+    
+    // amountB = amountA * reserveB / reserveA
+    const optimalB = (parsedA * reserves[1]) / reserves[0];
+    return formatTokenAmount(optimalB, tokenB.decimals);
+  }, [reserves, tokenA.decimals, tokenB.decimals]);
+
+  // Calculate optimal amount A based on amount B
+  const calculateOptimalAmountA = useCallback((inputAmountB: string) => {
+    if (!reserves || !inputAmountB || reserves[0] === 0n || reserves[1] === 0n) {
+      return '';
+    }
+    const parsedB = parseTokenAmount(inputAmountB, tokenB.decimals);
+    if (parsedB === 0n) return '';
+    
+    // amountA = amountB * reserveA / reserveB
+    const optimalA = (parsedB * reserves[0]) / reserves[1];
+    return formatTokenAmount(optimalA, tokenA.decimals);
+  }, [reserves, tokenA.decimals, tokenB.decimals]);
+
+  // Handle amount A change - calculate optimal B
+  const handleAmountAChange = (value: string) => {
+    setAmountA(value);
+    if (pairExists && value) {
+      const optimalB = calculateOptimalAmountB(value);
+      setAmountB(optimalB);
+    } else {
+      setAmountB('');
+    }
+  };
+
+  // Handle amount B change - calculate optimal A
+  const handleAmountBChange = (value: string) => {
+    setAmountB(value);
+    if (pairExists && value) {
+      const optimalA = calculateOptimalAmountA(value);
+      setAmountA(optimalA);
+    } else {
+      setAmountA('');
+    }
+  };
+
+  // Check allowances
+  const { data: allowanceA } = useTokenAllowance(
+    tokenA.address as Address,
+    address,
+    DEX_CONTRACTS.router
+  );
+  const { data: allowanceB } = useTokenAllowance(
+    tokenB.address as Address,
+    address,
+    DEX_CONTRACTS.router
+  );
+  const { data: lpAllowance } = useTokenAllowance(
+    pairAddress as Address,
+    address,
+    DEX_CONTRACTS.router
+  );
+
+  const needsApprovalA = useMemo(() => {
+    if (isNativeToken(tokenA)) return false;
+    if (!allowanceA) return true;
+    return (allowanceA as bigint) < amountAParsed;
+  }, [tokenA, allowanceA, amountAParsed]);
+
+  const needsApprovalB = useMemo(() => {
+    if (isNativeToken(tokenB)) return false;
+    if (!allowanceB) return true;
+    return (allowanceB as bigint) < amountBParsed;
+  }, [tokenB, allowanceB, amountBParsed]);
+
+  const needsLpApproval = useMemo(() => {
+    if (!lpAllowance) return true;
+    return (lpAllowance as bigint) < lpAmountParsed;
+  }, [lpAllowance, lpAmountParsed]);
+
+  // Approve hook
+  const {
+    approve,
+    isPending: isApproving,
+    isConfirming: isApproveConfirming,
+  } = useApproveToken();
+
+  // Add liquidity hook
+  const {
+    addLiquidity,
+    addLiquidityVBC,
+    isPending: isAdding,
+    isConfirming: isAddConfirming,
+    isSuccess: isAddSuccess,
+    error: addError,
+    hash: addHash,
+  } = useAddLiquidity();
+
+  // Remove liquidity hook
+  const {
+    removeLiquidity,
+    removeLiquidityVBC,
+    isPending: isRemoving,
+    isConfirming: isRemoveConfirming,
+    isSuccess: isRemoveSuccess,
+    error: removeError,
+    hash: removeHash,
+  } = useRemoveLiquidity();
+
+  // Handle approve token A
+  const handleApproveA = useCallback(async () => {
+    if (!address) return;
+    try {
+      await approve(tokenA.address as Address, DEX_CONTRACTS.router, amountAParsed);
+    } catch (error) {
+      console.error('Approve A error:', error);
+    }
+  }, [approve, tokenA.address, address, amountAParsed]);
+
+  // Handle approve token B
+  const handleApproveB = useCallback(async () => {
+    if (!address) return;
+    try {
+      await approve(tokenB.address as Address, DEX_CONTRACTS.router, amountBParsed);
+    } catch (error) {
+      console.error('Approve B error:', error);
+    }
+  }, [approve, tokenB.address, address, amountBParsed]);
+
+  // Handle approve LP
+  const handleApproveLp = useCallback(async () => {
+    if (!address || !pairAddress) return;
+    try {
+      await approve(pairAddress as Address, DEX_CONTRACTS.router, lpAmountParsed);
+    } catch (error) {
+      console.error('Approve LP error:', error);
+    }
+  }, [approve, pairAddress, address, lpAmountParsed]);
+
+  // Handle add liquidity
+  const handleAddLiquidity = useCallback(async () => {
+    if (!address || amountAParsed === 0n || amountBParsed === 0n) return;
+
+    // Calculate minimum amounts with slippage
+    const minAmountA = (amountAParsed * BigInt(Math.floor((100 - slippage) * 100))) / 10000n;
+    const minAmountB = (amountBParsed * BigInt(Math.floor((100 - slippage) * 100))) / 10000n;
+
+    try {
+      if (isNativeToken(tokenA)) {
+        // Add liquidity with VBC
+        await addLiquidityVBC(
+          tokenBAddress,
+          amountBParsed,
+          minAmountB,
+          minAmountA,
+          address,
+          amountAParsed
+        );
+      } else if (isNativeToken(tokenB)) {
+        // Add liquidity with VBC (swapped)
+        await addLiquidityVBC(
+          tokenAAddress,
+          amountAParsed,
+          minAmountA,
+          minAmountB,
+          address,
+          amountBParsed
+        );
+      } else {
+        // Add liquidity tokens only
+        await addLiquidity(
+          tokenAAddress,
+          tokenBAddress,
+          amountAParsed,
+          amountBParsed,
+          minAmountA,
+          minAmountB,
+          address
+        );
+      }
+    } catch (error) {
+      console.error('Add liquidity error:', error);
+    }
+  }, [address, amountAParsed, amountBParsed, slippage, tokenA, tokenB, tokenAAddress, tokenBAddress, addLiquidity, addLiquidityVBC]);
+
+  // Handle remove liquidity
+  const handleRemoveLiquidity = useCallback(async () => {
+    if (!address || lpAmountParsed === 0n) return;
+
+    // Calculate expected amounts from LP
+    // For simplicity, we'll use 0 as minimum (in production, calculate based on reserves and LP share)
+    const minAmountA = 0n;
+    const minAmountB = 0n;
+
+    try {
+      if (isNativeToken(tokenA) || isNativeToken(tokenB)) {
+        const token = isNativeToken(tokenA) ? tokenBAddress : tokenAAddress;
+        await removeLiquidityVBC(
+          token,
+          lpAmountParsed,
+          minAmountB,
+          minAmountA,
+          address
+        );
+      } else {
+        await removeLiquidity(
+          tokenAAddress,
+          tokenBAddress,
+          lpAmountParsed,
+          minAmountA,
+          minAmountB,
+          address
+        );
+      }
+    } catch (error) {
+      console.error('Remove liquidity error:', error);
+    }
+  }, [address, lpAmountParsed, tokenA, tokenB, tokenAAddress, tokenBAddress, removeLiquidity, removeLiquidityVBC]);
+
+  // Clear amounts on success
+  useEffect(() => {
+    if (isAddSuccess) {
+      setAmountA('');
+      setAmountB('');
+    }
+  }, [isAddSuccess]);
+
+  useEffect(() => {
+    if (isRemoveSuccess) {
+      setLpAmount('');
+    }
+  }, [isRemoveSuccess]);
+
+  // Calculate pool share
+  const poolShare = useMemo(() => {
+    if (!reserves || !amountAParsed || reserves[0] === 0n) return '0';
+    const share = (Number(amountAParsed) / Number(reserves[0] + amountAParsed)) * 100;
+    return share.toFixed(4);
+  }, [reserves, amountAParsed]);
+
+  // Button state for add
+  const addButtonState = useMemo(() => {
+    if (!isConnected) return { text: 'Connect Wallet', disabled: true };
+    if (!amountA || amountAParsed === 0n) return { text: 'Enter Amount', disabled: true };
+    if (!amountB || amountBParsed === 0n) return { text: 'Enter Amount', disabled: true };
+    if (needsApprovalA) {
+      if (isApproving || isApproveConfirming) return { text: 'Approving...', disabled: true };
+      return { text: `Approve ${tokenA.symbol}`, disabled: false, action: 'approveA' };
+    }
+    if (needsApprovalB) {
+      if (isApproving || isApproveConfirming) return { text: 'Approving...', disabled: true };
+      return { text: `Approve ${tokenB.symbol}`, disabled: false, action: 'approveB' };
+    }
+    if (isAdding || isAddConfirming) return { text: 'Adding...', disabled: true };
+    return { text: 'Add Liquidity', disabled: false, action: 'add' };
+  }, [isConnected, amountA, amountB, amountAParsed, amountBParsed, needsApprovalA, needsApprovalB, isApproving, isApproveConfirming, isAdding, isAddConfirming, tokenA.symbol, tokenB.symbol]);
+
+  // Button state for remove
+  const removeButtonState = useMemo(() => {
+    if (!isConnected) return { text: 'Connect Wallet', disabled: true };
+    if (!lpAmount || lpAmountParsed === 0n) return { text: 'Enter Amount', disabled: true };
+    if (needsLpApproval) {
+      if (isApproving || isApproveConfirming) return { text: 'Approving...', disabled: true };
+      return { text: 'Approve LP Tokens', disabled: false, action: 'approveLp' };
+    }
+    if (isRemoving || isRemoveConfirming) return { text: 'Removing...', disabled: true };
+    return { text: 'Remove Liquidity', disabled: false, action: 'remove' };
+  }, [isConnected, lpAmount, lpAmountParsed, needsLpApproval, isApproving, isApproveConfirming, isRemoving, isRemoveConfirming]);
+
+  const handleAddButtonClick = () => {
+    if (addButtonState.action === 'approveA') {
+      handleApproveA();
+    } else if (addButtonState.action === 'approveB') {
+      handleApproveB();
+    } else if (addButtonState.action === 'add') {
+      handleAddLiquidity();
+    }
+  };
+
+  const handleRemoveButtonClick = () => {
+    if (removeButtonState.action === 'approveLp') {
+      handleApproveLp();
+    } else if (removeButtonState.action === 'remove') {
+      handleRemoveLiquidity();
+    }
+  };
+
+  return (
+    <div className="max-w-lg mx-auto">
+      {/* Main Pool Card */}
+      <div className="bg-gradient-to-b from-gray-800/90 to-gray-900/90 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-gray-700/50 relative overflow-hidden">
+        {/* Background Glow */}
+        <div className="absolute -top-24 -right-24 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl" />
+        
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6 relative">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Pool</h1>
+            <p className="text-sm text-gray-400 mt-1">Add or remove liquidity</p>
+          </div>
+          <SlippageSettings slippage={slippage} onSlippageChange={setSlippage} />
+        </div>
+
+        {/* Tabs */}
+        <div className="flex mb-6 bg-gray-800/60 rounded-2xl p-1.5 relative">
+          <button
+            onClick={() => setActiveTab('add')}
+            className={`flex-1 py-2.5 rounded-xl font-semibold transition-all ${
+              activeTab === 'add'
+                ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/25'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            Add
+          </button>
+          <button
+            onClick={() => setActiveTab('remove')}
+            className={`flex-1 py-2.5 rounded-xl font-semibold transition-all ${
+              activeTab === 'remove'
+                ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg shadow-red-500/25'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            Remove
+          </button>
+        </div>
+
+        {activeTab === 'add' ? (
+          // Add Liquidity
+          <>
+            <div className="space-y-2 relative">
+              <TokenInput
+                label="Token A"
+                token={tokenA}
+                amount={amountA}
+                onAmountChange={handleAmountAChange}
+                onTokenChange={setTokenA}
+                otherToken={tokenB}
+              />
+
+              {/* Plus Icon */}
+              <div className="flex justify-center -my-4 relative z-10">
+                <div className="bg-gray-700 p-3 rounded-xl border-4 border-gray-900 shadow-lg">
+                  <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                </div>
+              </div>
+
+              <TokenInput
+                label="Token B"
+                token={tokenB}
+                amount={amountB}
+                onAmountChange={handleAmountBChange}
+                onTokenChange={setTokenB}
+                otherToken={tokenA}
+              />
+            </div>
+
+            {/* Pool Info */}
+            {amountA && amountB && (
+              <div className="mt-4 p-4 bg-gray-800/60 border border-gray-700/50 rounded-2xl space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-400 text-sm">Pool Share</span>
+                  <span className="font-semibold text-white">{poolShare}%</span>
+                </div>
+                {reserves && (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400 text-sm">{tokenA.symbol} Pooled</span>
+                      <span className="font-medium text-gray-200">{formatTokenAmount(reserves[0], tokenA.decimals)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400 text-sm">{tokenB.symbol} Pooled</span>
+                      <span className="font-medium text-gray-200">{formatTokenAmount(reserves[1], tokenB.decimals)}</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* First LP Warning */}
+            {!pairExists && amountA && amountB && (
+              <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl flex items-start gap-3">
+                <svg className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div>
+                  <p className="text-yellow-400 font-semibold text-sm">First Liquidity Provider</p>
+                  <p className="text-yellow-500/80 text-xs mt-1">The ratio you set will define the initial price.</p>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={handleAddButtonClick}
+              disabled={addButtonState.disabled}
+              className={`w-full mt-6 py-4 rounded-2xl font-bold text-lg transition-all relative overflow-hidden ${
+                addButtonState.disabled
+                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-[1.02]'
+              }`}
+            >
+              {(isAdding || isAddConfirming || isApproving || isApproveConfirming) && (
+                <span className="absolute inset-0 flex items-center justify-center">
+                  <svg className="animate-spin h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </span>
+              )}
+              <span className={isAdding || isAddConfirming || isApproving || isApproveConfirming ? 'opacity-0' : ''}>
+                {addButtonState.text}
+              </span>
+            </button>
+
+            {/* Transaction Status */}
+            {isAddSuccess && addHash && (
+              <div className="mt-4 p-4 bg-green-500/10 border border-green-500/30 rounded-xl flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-green-400 font-semibold">Liquidity Added!</p>
+                  <a
+                    href={`/tx/${addHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-green-500/80 text-sm hover:text-green-400 flex items-center gap-1 mt-1"
+                  >
+                    View transaction
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {addError && (
+              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-red-400 font-semibold">Transaction Failed</p>
+                  <p className="text-red-500/80 text-sm mt-1">{addError.message}</p>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          // Remove Liquidity
+          <>
+            <div className="space-y-4 relative">
+              {/* LP Balance Info */}
+              <div className="p-4 bg-gray-800/60 border border-gray-700/50 rounded-2xl">
+                <div className="flex justify-between mb-2">
+                  <span className="text-gray-400 text-sm">Your LP Balance</span>
+                  <span className="font-semibold text-white">
+                    {lpBalance ? formatTokenAmount(lpBalance as bigint, 18, 6) : '0'} LP
+                  </span>
+                </div>
+                <div className="text-sm text-gray-500 flex items-center gap-2">
+                  <div className="flex -space-x-1">
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 border-2 border-gray-800" />
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 border-2 border-gray-800" />
+                  </div>
+                  {tokenA.symbol}/{tokenB.symbol} Pool
+                </div>
+              </div>
+
+              {/* LP Amount Input */}
+              <div className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4">
+                <div className="flex justify-between mb-2">
+                  <label className="text-sm text-gray-400">LP Amount to Remove</label>
+                  <button
+                    onClick={() => lpBalance && setLpAmount(formatTokenAmount(lpBalance as bigint, 18, 18))}
+                    className="text-sm font-semibold text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    MAX
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={lpAmount}
+                  onChange={(e) => setLpAmount(e.target.value)}
+                  placeholder="0.0"
+                  className="w-full bg-transparent text-3xl font-bold outline-none text-white placeholder-gray-600"
+                />
+              </div>
+
+              {/* Percentage Buttons */}
+              <div className="flex gap-2">
+                {[25, 50, 75, 100].map((percent) => (
+                  <button
+                    key={percent}
+                    onClick={() => {
+                      if (lpBalance) {
+                        const amount = ((lpBalance as bigint) * BigInt(percent)) / 100n;
+                        setLpAmount(formatTokenAmount(amount, 18, 18));
+                      }
+                    }}
+                    className="flex-1 py-2.5 bg-gray-800/60 hover:bg-gray-700/80 border border-gray-700/50 hover:border-gray-600 rounded-xl text-sm font-semibold transition-all hover:scale-105"
+                  >
+                    {percent}%
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={handleRemoveButtonClick}
+              disabled={removeButtonState.disabled}
+              className={`w-full mt-6 py-4 rounded-2xl font-bold text-lg transition-all relative overflow-hidden ${
+                removeButtonState.disabled
+                  ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg shadow-red-500/25 hover:shadow-red-500/40 hover:scale-[1.02]'
+              }`}
+            >
+              {(isRemoving || isRemoveConfirming || isApproving || isApproveConfirming) && (
+                <span className="absolute inset-0 flex items-center justify-center">
+                  <svg className="animate-spin h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </span>
+              )}
+              <span className={isRemoving || isRemoveConfirming || isApproving || isApproveConfirming ? 'opacity-0' : ''}>
+                {removeButtonState.text}
+              </span>
+            </button>
+
+            {/* Transaction Status */}
+            {isRemoveSuccess && removeHash && (
+              <div className="mt-4 p-4 bg-green-500/10 border border-green-500/30 rounded-xl flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-green-400 font-semibold">Liquidity Removed!</p>
+                  <a
+                    href={`/tx/${removeHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-green-500/80 text-sm hover:text-green-400 flex items-center gap-1 mt-1"
+                  >
+                    View transaction
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {removeError && (
+              <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <p className="text-red-400 font-semibold">Transaction Failed</p>
+                  <p className="text-red-500/80 text-sm mt-1">{removeError.message}</p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

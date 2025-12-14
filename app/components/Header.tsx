@@ -1,10 +1,9 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import {
-  HomeIcon,
   CubeTransparentIcon,
   CubeIcon,
   ArrowPathIcon,
-  GlobeAltIcon,
   CodeBracketIcon,
   TrophyIcon
 } from '@heroicons/react/24/outline';
@@ -13,16 +12,11 @@ export default function Header() {
   return (
     <header className="bg-gray-900 border-b border-gray-800">
       <nav className="container mx-auto px-2 flex items-center justify-between h-14">
-        <Link href='/' className='text-xl font-bold nav-link text-gray-100 hover:text-blue-400 transition-colors'>
+        <Link href='/' className='text-xl font-bold nav-link text-gray-100 hover:text-blue-400 transition-colors flex items-center gap-2'>
+          <Image src='/img/VBC.svg' alt='VBC' width={32} height={32} />
           VirBiCoin Explorer
         </Link>
         <ul className='flex items-center space-x-2 md:space-x-4'>
-          <li>
-            <Link href='/' className='nav-link text-gray-200 flex items-center gap-1'>
-              <HomeIcon className='w-5 h-5' />
-              <span className='hidden sm:inline'>Dashboard</span>
-            </Link>
-          </li>
           <li>
             <Link href='/blocks' className='nav-link text-gray-200 flex items-center gap-1'>
               <CubeIcon className='w-5 h-5' />
@@ -54,20 +48,19 @@ export default function Header() {
             </Link>
           </li>
           <li>
-            <Link href='https://pool.digitalregion.jp/' rel='noopener noreferrer' target='_blank' className='nav-link text-gray-200 flex items-center gap-1'>
+            <Link href='/dex' className='nav-link text-gray-200 flex items-center gap-1'>
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M2 21l6-6" />
-                <path d="M3 8a7 7 0 0 1 9.9 0l3.1 3.1a2 2 0 0 1 0 2.8l-1.4 1.4a2 2 0 0 1-2.8 0L8.7 13.1" />
-                <path d="M14 6l4-4" />
+                <path d="M16 3h5v5" />
+                <path d="M8 3H3v5" />
+                <path d="M21 3l-7 7" />
+                <path d="M3 3l7 7" />
+                <path d="M16 21h5v-5" />
+                <path d="M8 21H3v-5" />
+                <path d="M21 21l-7-7" />
+                <path d="M3 21l7-7" />
               </svg>
-              <span className='hidden sm:inline'>Mining Pool</span>
+              <span className='hidden sm:inline'>DEX</span>
             </Link>
-          </li>
-          <li>
-            <a href='https://stats.digitalregion.jp/' rel='noopener noreferrer' target='_blank' className='nav-link text-gray-200 flex items-center gap-1'>
-              <GlobeAltIcon className='w-5 h-5' />
-              <span className='hidden sm:inline'>Network</span>
-            </a>
           </li>
         </ul>
       </nav>

@@ -190,14 +190,25 @@ const processBatchWithDelay = async (batch: any[], processor: Function, concurre
 async function isErc20Token(contractAddress: string): Promise<boolean> {
     try {
         const contract = new web3.eth.Contract(humanStandardTokenAbi, contractAddress);
-        // Check for mandatory ERC20 functions
+        // Check for mandatory ERC20 functions - name, symbol, decimals are required
+        // totalSupply might fail due to EVM opcode issues (like SELFBALANCE)
         await contract.methods.name().call();
         await contract.methods.symbol().call();
         await contract.methods.decimals().call();
-        await contract.methods.totalSupply().call();
+        
+        // Try totalSupply but don't fail if it throws due to opcode issues
+        try {
+            await contract.methods.totalSupply().call();
+        } catch (supplyError: any) {
+            // Log the error but continue - might be EVM opcode compatibility issue
+            console.log(`⚠️ totalSupply() failed for ${contractAddress}: ${supplyError.message}`);
+            console.log(`  (Continuing anyway - name/symbol/decimals are valid)`);
+        }
+        
         return true;
-    } catch (error) {
-        // If any of the calls fail, it's likely not a standard ERC20 token
+    } catch (error: any) {
+        // If name/symbol/decimals fail, it's likely not a standard ERC20 token
+        console.log(`❌ isErc20Token check failed for ${contractAddress}: ${error.message}`);
         return false;
     }
 }
@@ -564,7 +575,15 @@ async function scanForTokens() {
                       const name = await contract.methods.name().call() as string;
                       const symbol = await contract.methods.symbol().call() as string;
                       const decimals = await contract.methods.decimals().call() as bigint;
-                      const totalSupply = await contract.methods.totalSupply().call() as bigint;
+                      
+                      // totalSupply might fail due to EVM opcode issues, default to 0
+                      let totalSupply: bigint = 0n;
+                      try {
+                          totalSupply = await contract.methods.totalSupply().call() as bigint;
+                      } catch (supplyError: any) {
+                          console.log(`⚠️ Could not get totalSupply for ${name}: ${supplyError.message}`);
+                          console.log(`  (Setting totalSupply to 0)`);
+                      }
 
                       console.log(`🪙 Found ERC20 Token: ${name} (${symbol})`);
 
