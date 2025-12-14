@@ -42,21 +42,58 @@ function isVersionCompatible(requestedVersion: string): boolean {
   return requested === installed;
 }
 
+// Helper function to strip NatSpec comments to avoid DocstringParsingError
+// NatSpec comments (/** ... */) can cause compilation errors if @param doesn't match
+function stripNatSpecComments(sourceCode: string): string {
+  // Replace /** ... */ style comments with empty string
+  // Use non-greedy match to handle multiple comment blocks
+  return sourceCode.replace(/\/\*\*[\s\S]*?\*\//g, '');
+}
+
 // Helper function to modernize old Solidity syntax
 function modernizeSyntax(sourceCode: string): string {
   let modernized = sourceCode;
   
-  // Replace := with = (assignment operator)
-  modernized = modernized.replace(/:=/g, '=');
+  // NOTE: Do NOT replace := with = - := is the correct assignment operator in assembly blocks
   
-  // Replace var with appropriate types where possible
+  // Strip NatSpec comments to avoid DocstringParsingError
+  modernized = stripNatSpecComments(modernized);
+  
+  // Replace var with appropriate types where possible (very old Solidity syntax)
   modernized = modernized.replace(/var\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=/g, 'uint256 $1 =');
   
-  // Replace suicide with selfdestruct
+  // Replace suicide with selfdestruct (deprecated in newer Solidity)
   modernized = modernized.replace(/suicide\(/g, 'selfdestruct(');
   
-  // Replace throw with revert
+  // Replace throw with revert (deprecated in newer Solidity)
   modernized = modernized.replace(/\bthrow\b/g, 'revert()');
+  
+  // Convert strict pragma to flexible pragma for 0.8.x versions
+  // e.g., "pragma solidity 0.8.30;" -> "pragma solidity ^0.8.0;"
+  // This allows the installed solc version to compile it
+  modernized = modernized.replace(
+    /pragma\s+solidity\s+(\d+\.\d+\.\d+)\s*;/g,
+    (match, version) => {
+      const parts = version.split('.');
+      if (parts[0] === '0' && parts[1] === '8') {
+        // For 0.8.x, use ^0.8.0 to be compatible with any 0.8.x compiler
+        return 'pragma solidity ^0.8.0;';
+      }
+      return match;
+    }
+  );
+  
+  // Also handle "pragma solidity =0.8.30;" syntax
+  modernized = modernized.replace(
+    /pragma\s+solidity\s+=\s*(\d+\.\d+\.\d+)\s*;/g,
+    (match, version) => {
+      const parts = version.split('.');
+      if (parts[0] === '0' && parts[1] === '8') {
+        return 'pragma solidity ^0.8.0;';
+      }
+      return match;
+    }
+  );
   
   return modernized;
 }
