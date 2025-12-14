@@ -89,7 +89,9 @@ export default function TokensPage() {
         (token.type === 'VRC-721' || token.type === 'VRC-1155') &&
         (token.holders > 0 || (token.supply && token.supply !== '0' && token.supply !== ''))
       )
-    : tokens;
+    : tokens.filter(token => 
+        token.type === 'Native' || token.type === 'VRC-20'
+      );
 
   return (
     <div className='min-h-screen bg-gray-900 text-white'>
@@ -134,13 +136,14 @@ export default function TokensPage() {
           <div className='flex items-center gap-4 mb-6'>
             <button
               onClick={() => setActiveTab('all')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
                 activeTab === 'all'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
             >
-              All Tokens
+              <CubeTransparentIcon className='w-4 h-4' />
+              VRC-20 Tokens
             </button>
             <button
               onClick={() => setActiveTab('nft')}

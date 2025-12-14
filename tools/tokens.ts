@@ -299,7 +299,7 @@ async function getTokenTransfers(tokenAddress: string, fromBlock: number = 0): P
   }
 }
 
-// Function to calculate token holders from transfers with optimization
+// Function to calculate token holders from transfers with optimization (for NFTs - balance ±1)
 async function calculateTokenHolders(transfers: any[]): Promise<any[]> {
   const holderBalances = new Map<string, number>();
   
@@ -355,6 +355,241 @@ async function calculateTokenHolders(transfers: any[]): Promise<any[]> {
   });
   
   return holders;
+}
+
+// Function to get VRC-20 token transfers from blockchain
+async function getErc20TokenTransfers(tokenAddress: string, fromBlock: number = 0): Promise<any[]> {
+  try {
+    console.log(`🔄 Fetching VRC-20 Transfer events for token ${tokenAddress} from block ${fromBlock}...`);
+    
+    // Transfer event signature (same for ERC20 and ERC721)
+    const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+    
+    const logs = await web3.eth.getPastLogs({
+      address: tokenAddress,
+      topics: [TRANSFER_TOPIC],
+      fromBlock: fromBlock,
+      toBlock: 'latest'
+    });
+
+    console.log(`🔍 Found ${logs.length} Transfer events for VRC-20 token ${tokenAddress}`);
+
+    const transfers = [];
+    const batchSize = 100;
+    
+    for (let i = 0; i < logs.length; i += batchSize) {
+      const batch = logs.slice(i, i + batchSize);
+      
+      const batchTransfers = await processBatchWithDelay(batch, async (log: any) => {
+        try {
+          const block = await web3.eth.getBlock(log.blockNumber);
+          
+          // Decode transfer event (from, to in topics, value in data)
+          const from = '0x' + log.topics[1].slice(26);
+          const to = '0x' + log.topics[2].slice(26);
+          // VRC-20 transfers have value in data field
+          const value = log.data && log.data !== '0x' ? BigInt(log.data).toString() : '0';
+
+          return {
+            transactionHash: log.transactionHash,
+            blockNumber: log.blockNumber,
+            from: from.toLowerCase(),
+            to: to.toLowerCase(),
+            value: value,
+            tokenAddress: tokenAddress.toLowerCase(),
+            timestamp: new Date(Number(block.timestamp) * 1000),
+          };
+        } catch (error) {
+          console.error(`❌ Error processing VRC-20 transfer log:`, error);
+          return null;
+        }
+      });
+      
+      transfers.push(...batchTransfers.filter(t => t !== null));
+      
+      if (!checkMemory()) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    
+    return transfers;
+  } catch (error) {
+    console.error(`❌ Error fetching VRC-20 transfers for ${tokenAddress}:`, error);
+    return [];
+  }
+}
+
+// Function to calculate VRC-20 token holders from transfers (balance from actual values)
+async function calculateErc20TokenHolders(transfers: any[], tokenAddress: string): Promise<any[]> {
+  const holderBalances = new Map<string, bigint>();
+  
+  for (const transfer of transfers) {
+    const { from, to, value } = transfer;
+    const transferValue = BigInt(value || '0');
+    
+    // Subtract from sender (unless mint from zero address)
+    if (from !== '0x0000000000000000000000000000000000000000') {
+      const currentFrom = holderBalances.get(from) || 0n;
+      holderBalances.set(from, currentFrom - transferValue);
+    }
+    
+    // Add to recipient
+    const currentTo = holderBalances.get(to) || 0n;
+    holderBalances.set(to, currentTo + transferValue);
+  }
+  
+  // Filter out zero/negative balances and create holders array
+  const holders = [];
+  let rank = 1;
+  
+  for (const [address, balance] of holderBalances.entries()) {
+    if (balance > 0n) {
+      holders.push({
+        tokenAddress: tokenAddress.toLowerCase(),
+        holderAddress: address,
+        balance: balance.toString(),
+        percentage: 0,
+        rank: rank++
+      });
+    }
+  }
+  
+  // Sort by balance (highest first) and recalculate ranks
+  holders.sort((a, b) => {
+    const balA = BigInt(a.balance);
+    const balB = BigInt(b.balance);
+    if (balB > balA) return 1;
+    if (balB < balA) return -1;
+    return 0;
+  });
+  
+  // Calculate percentages based on total supply
+  const totalSupply = holders.reduce((sum, h) => sum + BigInt(h.balance), 0n);
+  holders.forEach((holder, index) => {
+    holder.rank = index + 1;
+    holder.percentage = totalSupply > 0n ? Number((BigInt(holder.balance) * 10000n) / totalSupply) / 100 : 0;
+  });
+  
+  return holders;
+}
+
+// Function to update VRC-20 token data with real blockchain data
+async function updateErc20TokenWithRealData(tokenAddress: string) {
+  console.log(`🔄 Updating VRC-20 token ${tokenAddress} with real blockchain data...`);
+  
+  try {
+    const transfers = await getErc20TokenTransfers(tokenAddress);
+    console.log(`🔍 Found ${transfers.length} transfers for VRC-20 token ${tokenAddress}`);
+    
+    if (transfers.length === 0) {
+      console.log(`📊 No transfers found for VRC-20 token ${tokenAddress}`);
+      return;
+    }
+    
+    const holders = await calculateErc20TokenHolders(transfers, tokenAddress);
+    console.log(`📈 Calculated ${holders.length} holders for VRC-20 token ${tokenAddress}`);
+    
+    await connectDB();
+    
+    const db = mongoose.connection.db;
+    if (!db) {
+      throw new Error('Database connection not established');
+    }
+    
+    // Upsert transfers in batches
+    const transferBatchSize = 200;
+    for (let i = 0; i < transfers.length; i += transferBatchSize) {
+      const batch = transfers.slice(i, i + transferBatchSize);
+      
+      const bulkOps = batch.map(transfer => ({
+        updateOne: {
+          filter: { transactionHash: transfer.transactionHash, tokenAddress: transfer.tokenAddress },
+          update: { $set: transfer },
+          upsert: true
+        }
+      }));
+      
+      await db.collection('tokentransfers').bulkWrite(bulkOps);
+    }
+    console.log(`✅ Upserted ${transfers.length} VRC-20 transfers`);
+    
+    // Upsert holders in batches
+    const holderBatchSize = 200;
+    for (let i = 0; i < holders.length; i += holderBatchSize) {
+      const batch = holders.slice(i, i + holderBatchSize);
+      
+      const bulkOps = batch.map(holder => ({
+        updateOne: {
+          filter: { tokenAddress: holder.tokenAddress, holderAddress: holder.holderAddress },
+          update: { $set: holder },
+          upsert: true
+        }
+      }));
+      
+      await db.collection('tokenholders').bulkWrite(bulkOps);
+    }
+    console.log(`✅ Upserted ${holders.length} VRC-20 holders`);
+    
+    // Remove old holders not in the latest set
+    const holderAddresses = holders.map(h => h.holderAddress);
+    await db.collection('tokenholders').deleteMany({
+      tokenAddress: tokenAddress.toLowerCase(),
+      holderAddress: { $nin: holderAddresses }
+    });
+    
+    // Calculate total supply from balances
+    const totalSupply = holders.reduce((sum, h) => sum + BigInt(h.balance), 0n);
+    
+    // Update token record
+    await db.collection('tokens').updateOne(
+      { address: tokenAddress.toLowerCase() },
+      { 
+        $set: { 
+          supply: totalSupply.toString(),
+          totalSupply: totalSupply.toString(),
+          holders: holders.length,
+          updatedAt: new Date()
+        }
+      }
+    );
+    
+    console.log(`✅ Updated VRC-20 token ${tokenAddress}: supply=${totalSupply.toString()}, holders=${holders.length}`);
+    
+  } catch (error) {
+    console.error(`❌ Error updating VRC-20 token ${tokenAddress}:`, error);
+  }
+}
+
+// 全VRC-20トークンを一括で更新する関数
+async function updateAllErc20Tokens() {
+  try {
+    if (mongoose.connection.readyState !== 1) {
+      console.log('🔌 Reconnecting to database for VRC-20 update...');
+      await connectDB();
+    }
+    
+    const tokens = await Token.find({ type: { $in: ['VRC-20', 'ERC20'] } });
+    console.log(`💰 Found ${tokens.length} VRC-20 tokens to update`);
+    
+    // Process tokens sequentially to avoid overwhelming the RPC
+    for (const token of tokens) {
+      try {
+        await updateErc20TokenWithRealData(token.address);
+        // Delay between tokens
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } catch (error) {
+        console.error(`❌ Error updating VRC-20 token ${token.address}:`, error);
+      }
+      
+      if (!checkMemory()) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
+    
+    console.log(`✅ Finished updating all VRC-20 tokens`);
+  } catch (error) {
+    console.error('❌ Error in updateAllErc20Tokens:', error);
+  }
 }
 
 // Function to update token data with real blockchain data
@@ -822,11 +1057,22 @@ async function main() {
       return;
     }
     
+    if (args.includes('--update-all-vrc20')) {
+      await updateAllErc20Tokens();
+      await disconnect();
+      return;
+    }
+    
     // Ensure initial DB connection
     await connectDB();
     
-    // Default: 通常のトークンスキャン＋VRC-721トークンの定期自動更新
+    // Default: 通常のトークンスキャン＋VRC-721/VRC-20トークンの定期自動更新
     await scanForTokens(); // Run once on start
+    
+    // Initial update of VRC-20 tokens
+    console.log('🔄 Initial VRC-20 token update...');
+    await updateAllErc20Tokens();
+    
     setInterval(async () => {
       try {
         await scanForTokens();
@@ -835,7 +1081,7 @@ async function main() {
         }
     }, SCAN_INTERVAL_MS);
 
-    // VRC-721トークンの自動更新（scanForTokensと同じ間隔で10分ごと）
+    // VRC-721トークンの自動更新（scanForTokensと同じ間隔で）
     setInterval(async () => {
       try {
         await updateAllVrc721Tokens();
@@ -843,6 +1089,16 @@ async function main() {
           console.error('❌ Error in updateAllVrc721Tokens interval:', error);
         }
     }, SCAN_INTERVAL_MS);
+
+    // VRC-20トークンの自動更新（5分ごと）
+    const VRC20_UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
+    setInterval(async () => {
+      try {
+        await updateAllErc20Tokens();
+      } catch (error) {
+        console.error('❌ Error in updateAllErc20Tokens interval:', error);
+      }
+    }, VRC20_UPDATE_INTERVAL);
 
     // Graceful shutdown
     process.on('SIGINT', async () => {
