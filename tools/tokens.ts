@@ -357,6 +357,32 @@ async function calculateTokenHolders(transfers: any[]): Promise<any[]> {
   return holders;
 }
 
+// Helper function to retry web3 calls with exponential backoff
+async function retryWeb3Call<T>(fn: () => Promise<T>, maxRetries: number = 3, baseDelay: number = 1000): Promise<T> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const isRetryable = error.code === 'ECONNRESET' || 
+                          error.code === 'ETIMEDOUT' ||
+                          error.code === 'ECONNREFUSED' ||
+                          error.message?.includes('socket hang up') ||
+                          error.message?.includes('timeout');
+      
+      if (!isRetryable || attempt === maxRetries - 1) {
+        throw error;
+      }
+      
+      const delay = baseDelay * Math.pow(2, attempt);
+      console.log(`⏳ Retry ${attempt + 1}/${maxRetries} after ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  throw lastError;
+}
+
 // Function to get VRC-20 token transfers from blockchain
 async function getErc20TokenTransfers(tokenAddress: string, fromBlock: number = 0): Promise<any[]> {
   try {
@@ -365,24 +391,26 @@ async function getErc20TokenTransfers(tokenAddress: string, fromBlock: number = 
     // Transfer event signature (same for ERC20 and ERC721)
     const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
     
-    const logs = await web3.eth.getPastLogs({
+    // Use retry logic for getPastLogs
+    const logs = await retryWeb3Call(() => web3.eth.getPastLogs({
       address: tokenAddress,
       topics: [TRANSFER_TOPIC],
       fromBlock: fromBlock,
       toBlock: 'latest'
-    });
+    }));
 
     console.log(`🔍 Found ${logs.length} Transfer events for VRC-20 token ${tokenAddress}`);
 
     const transfers = [];
-    const batchSize = 100;
+    const batchSize = 50; // Reduced batch size to avoid overwhelming RPC
     
     for (let i = 0; i < logs.length; i += batchSize) {
       const batch = logs.slice(i, i + batchSize);
       
       const batchTransfers = await processBatchWithDelay(batch, async (log: any) => {
         try {
-          const block = await web3.eth.getBlock(log.blockNumber);
+          // Use retry logic for getBlock
+          const block = await retryWeb3Call(() => web3.eth.getBlock(log.blockNumber));
           
           // Decode transfer event (from, to in topics, value in data)
           const from = '0x' + log.topics[1].slice(26);
@@ -406,6 +434,9 @@ async function getErc20TokenTransfers(tokenAddress: string, fromBlock: number = 
       });
       
       transfers.push(...batchTransfers.filter(t => t !== null));
+      
+      // Add delay between batches to reduce RPC load
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       if (!checkMemory()) {
         await new Promise(resolve => setTimeout(resolve, 2000));
