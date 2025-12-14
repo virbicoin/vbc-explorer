@@ -128,7 +128,25 @@ function findBestCompilerVersion(requestedVersion: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    await connectDB();
+    // Try to connect to DB with timeout
+    try {
+      await Promise.race([
+        connectDB(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Database connection timeout')), 10000)
+        )
+      ]);
+    } catch (dbError) {
+      console.error('Database connection error:', dbError);
+      return NextResponse.json(
+        { 
+          error: 'Database connection failed',
+          details: 'Unable to connect to the database. Please try again later.',
+          message: dbError instanceof Error ? dbError.message : 'Unknown database error'
+        },
+        { status: 503 }
+      );
+    }
     
     let body;
     try {
