@@ -317,11 +317,41 @@ export const PAIR_ABI = [
   },
   {
     inputs: [
+      { type: 'address', name: 'to' },
+      { type: 'uint256', name: 'amount' },
+    ],
+    name: 'transfer',
+    outputs: [{ type: 'bool' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
       { type: 'address', name: 'spender' },
       { type: 'uint256', name: 'amount' },
     ],
     name: 'approve',
     outputs: [{ type: 'bool' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { type: 'address', name: 'owner' },
+      { type: 'address', name: 'spender' },
+    ],
+    name: 'allowance',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ type: 'address', name: 'to' }],
+    name: 'burn',
+    outputs: [
+      { type: 'uint256', name: 'amount0' },
+      { type: 'uint256', name: 'amount1' },
+    ],
     stateMutability: 'nonpayable',
     type: 'function',
   },

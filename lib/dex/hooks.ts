@@ -326,6 +326,40 @@ export function useAddLiquidity() {
   return { addLiquidityVBC, addLiquidity, hash, isPending, isConfirming, isSuccess, error };
 }
 
+// Transfer LP tokens to pair for burning
+export function useTransferLPToPair() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const transferToPair = async (pairAddress: Address, amount: bigint) => {
+    return writeContract({
+      address: pairAddress,
+      abi: PAIR_ABI,
+      functionName: 'transfer',
+      args: [pairAddress, amount],
+    });
+  };
+
+  return { transferToPair, hash, isPending, isConfirming, isSuccess, error };
+}
+
+// Burn LP tokens from pair to get underlying tokens
+export function useBurnLP() {
+  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+
+  const burn = async (pairAddress: Address, to: Address) => {
+    return writeContract({
+      address: pairAddress,
+      abi: PAIR_ABI,
+      functionName: 'burn',
+      args: [to],
+    });
+  };
+
+  return { burn, hash, isPending, isConfirming, isSuccess, error };
+}
+
 export function useRemoveLiquidity() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
@@ -366,7 +400,7 @@ export function useRemoveLiquidity() {
   return { removeLiquidityVBC, removeLiquidity, hash, isPending, isConfirming, isSuccess, error };
 }
 
-// Approve LP tokens for removal
+// Approve LP tokens for removal (kept for compatibility but may not work with this contract)
 export function useApproveLPToken() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });

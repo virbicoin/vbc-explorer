@@ -15,6 +15,8 @@ import {
 import {
   useAddLiquidity,
   useRemoveLiquidity,
+  useTransferLPToPair,
+  useBurnLP,
   useApproveToken,
   useTokenAllowance,
   usePairAddress,
@@ -119,11 +121,6 @@ export function PoolContent() {
     address,
     DEX_CONTRACTS.router
   );
-  const { data: lpAllowance } = useTokenAllowance(
-    pairAddress as Address,
-    address,
-    DEX_CONTRACTS.router
-  );
 
   const needsApprovalA = useMemo(() => {
     if (isNativeToken(tokenA)) return false;
@@ -136,11 +133,6 @@ export function PoolContent() {
     if (!allowanceB) return true;
     return (allowanceB as bigint) < amountBParsed;
   }, [tokenB, allowanceB, amountBParsed]);
-
-  const needsLpApproval = useMemo(() => {
-    if (!lpAllowance) return true;
-    return (lpAllowance as bigint) < lpAmountParsed;
-  }, [lpAllowance, lpAmountParsed]);
 
   // Approve hook
   const {
@@ -160,16 +152,33 @@ export function PoolContent() {
     hash: addHash,
   } = useAddLiquidity();
 
-  // Remove liquidity hook
+  // Remove liquidity hooks (2-step: transfer to pair, then burn)
   const {
-    removeLiquidity,
-    removeLiquidityVBC,
-    isPending: isRemoving,
-    isConfirming: isRemoveConfirming,
-    isSuccess: isRemoveSuccess,
-    error: removeError,
-    hash: removeHash,
-  } = useRemoveLiquidity();
+    transferToPair,
+    isPending: isTransferring,
+    isConfirming: isTransferConfirming,
+    isSuccess: isTransferSuccess,
+    error: transferError,
+    hash: transferHash,
+  } = useTransferLPToPair();
+
+  const {
+    burn,
+    isPending: isBurning,
+    isConfirming: isBurnConfirming,
+    isSuccess: isBurnSuccess,
+    error: burnError,
+    hash: burnHash,
+  } = useBurnLP();
+
+  // Track remove liquidity state
+  const [removeStep, setRemoveStep] = useState<'idle' | 'transferring' | 'burning' | 'done'>('idle');
+  
+  const isRemoving = isTransferring || isBurning;
+  const isRemoveConfirming = isTransferConfirming || isBurnConfirming;
+  const isRemoveSuccess = isBurnSuccess;
+  const removeError = transferError || burnError;
+  const removeHash = burnHash || transferHash;
 
   // Handle approve token A
   const handleApproveA = useCallback(async () => {
@@ -190,16 +199,6 @@ export function PoolContent() {
       console.error('Approve B error:', error);
     }
   }, [approve, tokenB.address, address, amountBParsed]);
-
-  // Handle approve LP
-  const handleApproveLp = useCallback(async () => {
-    if (!address || !pairAddress) return;
-    try {
-      await approve(pairAddress as Address, DEX_CONTRACTS.router, lpAmountParsed);
-    } catch (error) {
-      console.error('Approve LP error:', error);
-    }
-  }, [approve, pairAddress, address, lpAmountParsed]);
 
   // Handle add liquidity
   const handleAddLiquidity = useCallback(async () => {
@@ -247,39 +246,43 @@ export function PoolContent() {
     }
   }, [address, amountAParsed, amountBParsed, slippage, tokenA, tokenB, tokenAAddress, tokenBAddress, addLiquidity, addLiquidityVBC]);
 
-  // Handle remove liquidity
+  // Handle remove liquidity (2-step: transfer LP to pair, then burn)
   const handleRemoveLiquidity = useCallback(async () => {
-    if (!address || lpAmountParsed === 0n) return;
-
-    // Calculate expected amounts from LP
-    // For simplicity, we'll use 0 as minimum (in production, calculate based on reserves and LP share)
-    const minAmountA = 0n;
-    const minAmountB = 0n;
+    if (!address || lpAmountParsed === 0n || !pairAddress) return;
 
     try {
-      if (isNativeToken(tokenA) || isNativeToken(tokenB)) {
-        const token = isNativeToken(tokenA) ? tokenBAddress : tokenAAddress;
-        await removeLiquidityVBC(
-          token,
-          lpAmountParsed,
-          minAmountB,
-          minAmountA,
-          address
-        );
-      } else {
-        await removeLiquidity(
-          tokenAAddress,
-          tokenBAddress,
-          lpAmountParsed,
-          minAmountA,
-          minAmountB,
-          address
-        );
-      }
+      setRemoveStep('transferring');
+      // Step 1: Transfer LP tokens to the pair contract
+      await transferToPair(pairAddress as Address, lpAmountParsed);
     } catch (error) {
-      console.error('Remove liquidity error:', error);
+      console.error('Remove liquidity error (transfer step):', error);
+      setRemoveStep('idle');
     }
-  }, [address, lpAmountParsed, tokenA, tokenB, tokenAAddress, tokenBAddress, removeLiquidity, removeLiquidityVBC]);
+  }, [address, lpAmountParsed, pairAddress, transferToPair]);
+
+  // Step 2: After transfer succeeds, burn the LP tokens
+  useEffect(() => {
+    const executeBurn = async () => {
+      if (isTransferSuccess && removeStep === 'transferring' && address && pairAddress) {
+        try {
+          setRemoveStep('burning');
+          await burn(pairAddress as Address, address);
+        } catch (error) {
+          console.error('Remove liquidity error (burn step):', error);
+          setRemoveStep('idle');
+        }
+      }
+    };
+    executeBurn();
+  }, [isTransferSuccess, removeStep, address, pairAddress, burn]);
+
+  // Reset remove step on burn success
+  useEffect(() => {
+    if (isBurnSuccess) {
+      setRemoveStep('done');
+      setTimeout(() => setRemoveStep('idle'), 2000);
+    }
+  }, [isBurnSuccess]);
 
   // Clear amounts on success
   useEffect(() => {
@@ -319,17 +322,15 @@ export function PoolContent() {
     return { text: 'Add Liquidity', disabled: false, action: 'add' };
   }, [isConnected, amountA, amountB, amountAParsed, amountBParsed, needsApprovalA, needsApprovalB, isApproving, isApproveConfirming, isAdding, isAddConfirming, tokenA.symbol, tokenB.symbol]);
 
-  // Button state for remove
+  // Button state for remove (no approval needed - direct transfer to pair)
   const removeButtonState = useMemo(() => {
     if (!isConnected) return { text: 'Connect Wallet', disabled: true };
     if (!lpAmount || lpAmountParsed === 0n) return { text: 'Enter Amount', disabled: true };
-    if (needsLpApproval) {
-      if (isApproving || isApproveConfirming) return { text: 'Approving...', disabled: true };
-      return { text: 'Approve LP Tokens', disabled: false, action: 'approveLp' };
-    }
+    if (removeStep === 'transferring') return { text: 'Transferring LP...', disabled: true };
+    if (removeStep === 'burning') return { text: 'Burning LP...', disabled: true };
     if (isRemoving || isRemoveConfirming) return { text: 'Removing...', disabled: true };
     return { text: 'Remove Liquidity', disabled: false, action: 'remove' };
-  }, [isConnected, lpAmount, lpAmountParsed, needsLpApproval, isApproving, isApproveConfirming, isRemoving, isRemoveConfirming]);
+  }, [isConnected, lpAmount, lpAmountParsed, removeStep, isRemoving, isRemoveConfirming]);
 
   const handleAddButtonClick = () => {
     if (addButtonState.action === 'approveA') {
@@ -342,9 +343,7 @@ export function PoolContent() {
   };
 
   const handleRemoveButtonClick = () => {
-    if (removeButtonState.action === 'approveLp') {
-      handleApproveLp();
-    } else if (removeButtonState.action === 'remove') {
+    if (removeButtonState.action === 'remove') {
       handleRemoveLiquidity();
     }
   };
