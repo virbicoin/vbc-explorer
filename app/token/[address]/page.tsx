@@ -452,10 +452,12 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                     </tr>
                   </thead>
                   <tbody>
-                    {tokenData.transfers
-                      .filter(tx => tx.tokenId !== undefined)
-                      .sort((a, b) => Number(b.tokenId) - Number(a.tokenId))
-                      .map((transfer, index) => (
+                    {(isNFT 
+                      ? tokenData.transfers
+                          .filter(tx => tx.tokenId !== undefined)
+                          .sort((a, b) => Number(b.tokenId) - Number(a.tokenId))
+                      : tokenData.transfers
+                    ).map((transfer, index) => (
                       <tr key={index} className='border-b border-gray-700/50'>
                         <td className='py-2'>
                           <Link href={transfer.hash ? `/tx/${transfer.hash}` : '#'} className='text-blue-400 hover:text-blue-300 font-mono text-sm'>
