@@ -219,15 +219,49 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
   }, [address, tokenMetadata, metadataLoading]);
 
   const checkBalance = async () => {
-    if (!balanceAddress || !tokenData) return;
+    if (!balanceAddress || !tokenData || !address) return;
 
     setBalanceLoading(true);
     try {
-      // Find balance for the address in holders data
+      // Fetch balance from API for the specific address
+      const response = await fetch(`/api/tokens/${address}/balance?wallet=${balanceAddress}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setBalanceResult({
+          address: balanceAddress,
+          balance: data.balance || '0',
+          percentage: data.percentage || '0.00',
+          rank: data.rank || null
+        });
+      } else {
+        // Fallback: Find balance for the address in current holders data
+        const holder = tokenData.holders?.find(h =>
+          h.address.toLowerCase() === balanceAddress.toLowerCase()
+        );
+
+        if (holder) {
+          setBalanceResult({
+            address: balanceAddress,
+            balance: holder.balance,
+            percentage: holder.percentage,
+            rank: holder.rank
+          });
+        } else {
+          setBalanceResult({
+            address: balanceAddress,
+            balance: '0',
+            percentage: '0.00',
+            rank: null
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error checking balance:', err);
+      // Fallback to local holders data
       const holder = tokenData.holders?.find(h =>
         h.address.toLowerCase() === balanceAddress.toLowerCase()
       );
-
       if (holder) {
         setBalanceResult({
           address: balanceAddress,
@@ -243,9 +277,6 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
           rank: null
         });
       }
-    } catch (err) {
-      console.error('Error checking balance:', err);
-      setBalanceResult(null);
     } finally {
       setBalanceLoading(false);
     }
