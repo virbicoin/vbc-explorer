@@ -866,7 +866,7 @@ async function scanForTokens() {
                           address: contractAddress.toLowerCase(),
                           decimals: Number(decimals),
                           totalSupply: totalSupply.toString(),
-                          type: 'ERC20',
+                          type: 'VRC-20',
                           holders: 0,
                           supply: totalSupply.toString(),
                       });

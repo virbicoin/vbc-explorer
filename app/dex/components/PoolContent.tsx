@@ -28,24 +28,40 @@ import {
   formatTokenAmount,
   parseTokenAmount,
 } from '@/lib/dex/hooks';
+import { useDexTokens } from '@/hooks/useDexTokens';
 
 type Tab = 'add' | 'remove';
 
 export function PoolContent() {
   const { address, isConnected } = useAccount();
   
+  // Fetch tokens from API
+  const { tokens: availableTokens, isLoading: isTokensLoading } = useDexTokens();
+  
   // State
   const [activeTab, setActiveTab] = useState<Tab>('add');
   const [tokenA, setTokenA] = useState<Token>(VBC_TOKEN);
-  const [tokenB, setTokenB] = useState<Token>(DEFAULT_TOKENS[2]); // TEST token
+  const [tokenB, setTokenB] = useState<Token | null>(null);
   const [amountA, setAmountA] = useState('');
   const [amountB, setAmountB] = useState('');
   const [lpAmount, setLpAmount] = useState('');
   const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
 
+  // Set default tokenB when tokens are loaded
+  useEffect(() => {
+    if (availableTokens.length > 2 && !tokenB) {
+      const defaultB = availableTokens.find(t => 
+        t.symbol !== 'VBC' && t.symbol !== 'WVBC'
+      );
+      setTokenB(defaultB || availableTokens[1]);
+    } else if (availableTokens.length > 0 && !tokenB) {
+      setTokenB(availableTokens.length > 1 ? availableTokens[1] : availableTokens[0]);
+    }
+  }, [availableTokens, tokenB]);
+
   // Get pair address and reserves
   const tokenAAddress = getTokenAddress(tokenA);
-  const tokenBAddress = getTokenAddress(tokenB);
+  const tokenBAddress = tokenB ? getTokenAddress(tokenB) : ('0x0000000000000000000000000000000000000000' as Address);
   
   const { data: pairAddress } = usePairAddress(tokenAAddress, tokenBAddress);
   const { data: reserves, isLoading: isLoadingReserves } = useReserves(tokenAAddress, tokenBAddress);
@@ -59,12 +75,12 @@ export function PoolContent() {
 
   // Parse amounts
   const amountAParsed = useMemo(() => parseTokenAmount(amountA, tokenA.decimals), [amountA, tokenA.decimals]);
-  const amountBParsed = useMemo(() => parseTokenAmount(amountB, tokenB.decimals), [amountB, tokenB.decimals]);
+  const amountBParsed = useMemo(() => parseTokenAmount(amountB, tokenB?.decimals || 18), [amountB, tokenB?.decimals]);
   const lpAmountParsed = useMemo(() => parseTokenAmount(lpAmount, 18), [lpAmount]);
 
   // Calculate optimal amount B based on amount A
   const calculateOptimalAmountB = useCallback((inputAmountA: string) => {
-    if (!reserves || !inputAmountA || reserves[0] === 0n || reserves[1] === 0n) {
+    if (!reserves || !inputAmountA || reserves[0] === 0n || reserves[1] === 0n || !tokenB) {
       return '';
     }
     const parsedA = parseTokenAmount(inputAmountA, tokenA.decimals);
@@ -73,11 +89,11 @@ export function PoolContent() {
     // amountB = amountA * reserveB / reserveA
     const optimalB = (parsedA * reserves[1]) / reserves[0];
     return formatTokenAmount(optimalB, tokenB.decimals);
-  }, [reserves, tokenA.decimals, tokenB.decimals]);
+  }, [reserves, tokenA.decimals, tokenB]);
 
   // Calculate optimal amount A based on amount B
   const calculateOptimalAmountA = useCallback((inputAmountB: string) => {
-    if (!reserves || !inputAmountB || reserves[0] === 0n || reserves[1] === 0n) {
+    if (!reserves || !inputAmountB || reserves[0] === 0n || reserves[1] === 0n || !tokenB) {
       return '';
     }
     const parsedB = parseTokenAmount(inputAmountB, tokenB.decimals);
@@ -86,7 +102,7 @@ export function PoolContent() {
     // amountA = amountB * reserveA / reserveB
     const optimalA = (parsedB * reserves[0]) / reserves[1];
     return formatTokenAmount(optimalA, tokenA.decimals);
-  }, [reserves, tokenA.decimals, tokenB.decimals]);
+  }, [reserves, tokenA.decimals, tokenB]);
 
   // Handle amount A change - calculate optimal B
   const handleAmountAChange = (value: string) => {
@@ -117,7 +133,7 @@ export function PoolContent() {
     DEX_CONTRACTS.router
   );
   const { data: allowanceB } = useTokenAllowance(
-    tokenB.address as Address,
+    tokenB?.address as Address,
     address,
     DEX_CONTRACTS.router
   );
@@ -129,7 +145,7 @@ export function PoolContent() {
   }, [tokenA, allowanceA, amountAParsed]);
 
   const needsApprovalB = useMemo(() => {
-    if (isNativeToken(tokenB)) return false;
+    if (!tokenB || isNativeToken(tokenB)) return false;
     if (!allowanceB) return true;
     return (allowanceB as bigint) < amountBParsed;
   }, [tokenB, allowanceB, amountBParsed]);
@@ -192,17 +208,17 @@ export function PoolContent() {
 
   // Handle approve token B
   const handleApproveB = useCallback(async () => {
-    if (!address) return;
+    if (!address || !tokenB) return;
     try {
       await approve(tokenB.address as Address, DEX_CONTRACTS.router, amountBParsed);
     } catch (error) {
       console.error('Approve B error:', error);
     }
-  }, [approve, tokenB.address, address, amountBParsed]);
+  }, [approve, tokenB, address, amountBParsed]);
 
   // Handle add liquidity
   const handleAddLiquidity = useCallback(async () => {
-    if (!address || amountAParsed === 0n || amountBParsed === 0n) return;
+    if (!address || amountAParsed === 0n || amountBParsed === 0n || !tokenB) return;
 
     // Calculate minimum amounts with slippage
     const minAmountA = (amountAParsed * BigInt(Math.floor((100 - slippage) * 100))) / 10000n;
@@ -308,6 +324,7 @@ export function PoolContent() {
   // Button state for add
   const addButtonState = useMemo(() => {
     if (!isConnected) return { text: 'Connect Wallet', disabled: true };
+    if (!tokenB) return { text: 'Select Token B', disabled: true };
     if (!amountA || amountAParsed === 0n) return { text: 'Enter Amount', disabled: true };
     if (!amountB || amountBParsed === 0n) return { text: 'Enter Amount', disabled: true };
     if (needsApprovalA) {
@@ -320,7 +337,7 @@ export function PoolContent() {
     }
     if (isAdding || isAddConfirming) return { text: 'Adding...', disabled: true };
     return { text: 'Add Liquidity', disabled: false, action: 'add' };
-  }, [isConnected, amountA, amountB, amountAParsed, amountBParsed, needsApprovalA, needsApprovalB, isApproving, isApproveConfirming, isAdding, isAddConfirming, tokenA.symbol, tokenB.symbol]);
+  }, [isConnected, tokenB, amountA, amountB, amountAParsed, amountBParsed, needsApprovalA, needsApprovalB, isApproving, isApproveConfirming, isAdding, isAddConfirming, tokenA.symbol]);
 
   // Button state for remove (no approval needed - direct transfer to pair)
   const removeButtonState = useMemo(() => {
@@ -399,7 +416,8 @@ export function PoolContent() {
                 amount={amountA}
                 onAmountChange={handleAmountAChange}
                 onTokenChange={setTokenA}
-                otherToken={tokenB}
+                otherToken={tokenB || undefined}
+                tokens={availableTokens}
               />
 
               {/* Plus Icon */}
@@ -411,18 +429,21 @@ export function PoolContent() {
                 </div>
               </div>
 
-              <TokenInput
-                label="Token B"
-                token={tokenB}
-                amount={amountB}
-                onAmountChange={handleAmountBChange}
-                onTokenChange={setTokenB}
-                otherToken={tokenA}
-              />
+              {tokenB && (
+                <TokenInput
+                  label="Token B"
+                  token={tokenB}
+                  amount={amountB}
+                  onAmountChange={handleAmountBChange}
+                  onTokenChange={setTokenB}
+                  otherToken={tokenA}
+                  tokens={availableTokens}
+                />
+              )}
             </div>
 
             {/* Pool Info */}
-            {amountA && amountB && (
+            {amountA && amountB && tokenB && (
               <div className="mt-4 p-4 bg-gray-800/60 border border-gray-700/50 rounded-2xl space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="text-gray-400 text-sm">Pool Share</span>
@@ -534,7 +555,7 @@ export function PoolContent() {
                     <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 border-2 border-gray-800" />
                     <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 border-2 border-gray-800" />
                   </div>
-                  {tokenA.symbol}/{tokenB.symbol} Pool
+                  {tokenA.symbol}/{tokenB?.symbol || '???'} Pool
                 </div>
               </div>
 

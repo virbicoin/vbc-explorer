@@ -16,6 +16,7 @@ interface TokenInputProps {
   otherToken?: Token;
   readOnly?: boolean;
   showBalance?: boolean;
+  tokens?: Token[];
 }
 
 export function TokenInput({
@@ -27,6 +28,7 @@ export function TokenInput({
   otherToken,
   readOnly = false,
   showBalance = true,
+  tokens,
 }: TokenInputProps) {
   const { address } = useAccount();
   
@@ -117,6 +119,7 @@ export function TokenInput({
           selectedToken={token}
           onSelect={onTokenChange}
           otherToken={otherToken}
+          tokens={tokens}
         />
       </div>
     </div>

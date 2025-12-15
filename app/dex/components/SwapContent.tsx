@@ -24,18 +24,36 @@ import {
   calculatePriceImpact,
   useReserves,
 } from '@/lib/dex/hooks';
+import { useDexTokens } from '@/hooks/useDexTokens';
 
 export function SwapContent() {
   const { address, isConnected } = useAccount();
   
+  // Fetch tokens from API
+  const { tokens: availableTokens, isLoading: isTokensLoading } = useDexTokens();
+  
   // State
   const [tokenIn, setTokenIn] = useState<Token>(VBC_TOKEN);
-  const [tokenOut, setTokenOut] = useState<Token>(DEFAULT_TOKENS[2]); // TEST token
+  const [tokenOut, setTokenOut] = useState<Token | null>(null);
   const [amountIn, setAmountIn] = useState('');
   const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
   
+  // Set default tokenOut when tokens are loaded
+  useEffect(() => {
+    if (availableTokens.length > 2 && !tokenOut) {
+      // Find a non-VBC/WVBC token for default output
+      const defaultOut = availableTokens.find(t => 
+        t.symbol !== 'VBC' && t.symbol !== 'WVBC'
+      );
+      setTokenOut(defaultOut || availableTokens[1]);
+    } else if (availableTokens.length > 0 && !tokenOut) {
+      setTokenOut(availableTokens.length > 1 ? availableTokens[1] : availableTokens[0]);
+    }
+  }, [availableTokens, tokenOut]);
+  
   // Build swap path
   const swapPath = useMemo((): Address[] => {
+    if (!tokenOut) return [];
     const fromAddress = getTokenAddress(tokenIn);
     const toAddress = getTokenAddress(tokenOut);
     return [fromAddress, toAddress];
@@ -110,7 +128,7 @@ export function SwapContent() {
 
   // Handle swap
   const handleSwap = useCallback(async () => {
-    if (!address || amountInParsed === 0n) return;
+    if (!address || amountInParsed === 0n || !tokenOut) return;
 
     try {
       if (isNativeToken(tokenIn)) {
@@ -140,6 +158,7 @@ export function SwapContent() {
 
   // Swap tokens in/out
   const handleSwapDirection = () => {
+    if (!tokenOut) return;
     const tempToken = tokenIn;
     const tempAmount = amountIn;
     setTokenIn(tokenOut);
@@ -156,12 +175,12 @@ export function SwapContent() {
 
   // Calculate rate
   const rate = useMemo(() => {
-    if (amountInParsed > 0n && amountOut > 0n) {
+    if (amountInParsed > 0n && amountOut > 0n && tokenOut) {
       const rateValue = Number(amountOut) / Number(amountInParsed);
       return `1 ${tokenIn.symbol} = ${rateValue.toFixed(6)} ${tokenOut.symbol}`;
     }
     return undefined;
-  }, [amountInParsed, amountOut, tokenIn.symbol, tokenOut.symbol]);
+  }, [amountInParsed, amountOut, tokenIn.symbol, tokenOut]);
 
   // Button state
   const buttonState = useMemo(() => {
@@ -211,7 +230,8 @@ export function SwapContent() {
             amount={amountIn}
             onAmountChange={setAmountIn}
             onTokenChange={setTokenIn}
-            otherToken={tokenOut}
+            otherToken={tokenOut || undefined}
+            tokens={availableTokens}
           />
 
           {/* Swap Direction Button */}
@@ -219,6 +239,7 @@ export function SwapContent() {
             <button
               onClick={handleSwapDirection}
               className="bg-gray-700 hover:bg-gray-600 p-3 rounded-xl border-4 border-gray-900 transition-all hover:scale-110 hover:rotate-180 duration-300 shadow-lg group"
+              disabled={!tokenOut}
             >
               <svg className="w-5 h-5 text-gray-300 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
@@ -226,19 +247,22 @@ export function SwapContent() {
             </button>
           </div>
 
-          <TokenInput
-            label="You Receive"
-            token={tokenOut}
-            amount={amountOut > 0n ? formatTokenAmount(amountOut, tokenOut.decimals) : ''}
-            onAmountChange={() => {}}
-            onTokenChange={setTokenOut}
-            otherToken={tokenIn}
-            readOnly
-          />
+          {tokenOut && (
+            <TokenInput
+              label="You Receive"
+              token={tokenOut}
+              amount={amountOut > 0n ? formatTokenAmount(amountOut, tokenOut.decimals) : ''}
+              onAmountChange={() => {}}
+              onTokenChange={setTokenOut}
+              otherToken={tokenIn}
+              tokens={availableTokens}
+              readOnly
+            />
+          )}
         </div>
 
         {/* Swap Info */}
-        {amountIn && amountOut > 0n && (
+        {amountIn && amountOut > 0n && tokenOut && (
           <div className="mt-4">
             <SwapInfo
               rate={rate}

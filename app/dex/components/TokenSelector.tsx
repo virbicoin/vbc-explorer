@@ -17,6 +17,7 @@ const getTokenColor = (symbol: string): string => {
     'VBC': 'from-green-500 to-emerald-600',
     'WVBC': 'from-green-400 to-teal-500',
     'TEST': 'from-purple-500 to-pink-500',
+    'VBCG': 'from-yellow-400 to-amber-500',
     'USDT': 'from-green-400 to-green-600',
     'USDC': 'from-blue-400 to-blue-600',
   };
@@ -25,13 +26,16 @@ const getTokenColor = (symbol: string): string => {
 
 // Check if token has custom icon
 const hasCustomIcon = (symbol: string): boolean => {
-  return symbol === 'VBC' || symbol === 'WVBC';
+  return symbol === 'VBC' || symbol === 'WVBC' || symbol === 'VBCG';
 };
 
 // Get custom icon path
 const getTokenIcon = (symbol: string): string | null => {
   if (symbol === 'VBC' || symbol === 'WVBC') {
     return '/img/VBC.svg';
+  }
+  if (symbol === 'VBCG') {
+    return '/img/VBCG.png';
   }
   return null;
 };
