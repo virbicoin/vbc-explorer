@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { type Token, VBC_TOKEN, WVBC_TOKEN } from '@/lib/dex/config';
+import { type Token, VBC_TOKEN } from '@/lib/dex/config';
 
 interface UseDexTokensResult {
   tokens: Token[];
@@ -10,11 +10,12 @@ interface UseDexTokensResult {
   refetch: () => Promise<void>;
 }
 
-// Fallback tokens if API fails
-const FALLBACK_TOKENS: Token[] = [VBC_TOKEN, WVBC_TOKEN];
+// Fallback tokens if API fails (VBC only, other tokens come from API)
+const FALLBACK_TOKENS: Token[] = [VBC_TOKEN];
 
 export function useDexTokens(): UseDexTokensResult {
-  const [tokens, setTokens] = useState<Token[]>(FALLBACK_TOKENS);
+  // Start with empty array to avoid flash of WVBC
+  const [tokens, setTokens] = useState<Token[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

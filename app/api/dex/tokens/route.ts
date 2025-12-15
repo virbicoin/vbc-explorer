@@ -11,6 +11,8 @@ const RPC_URL = config.web3Provider?.url || 'http://localhost:8329';
 // DEX Contract addresses
 const DEX_FACTORY = '0xE85A5BF52711c1eD2e94C8d6c8ba6717e70FE94F';
 const WVBC_ADDRESS = '0x52CB9F0d65D9d4De08CF103153C7A1A97567Bb9b'.toLowerCase();
+// Hidden tokens (not shown in DEX UI)
+const TEST_TOKEN_ADDRESS = '0x7dcd1b201d6f7a77fc39802f33b8662946220377'.toLowerCase();
 
 // Factory ABI for getting pairs
 const FACTORY_ABI = [
@@ -125,10 +127,10 @@ export async function GET() {
     const tokensWithPairs = await getTokensWithPairs();
     
     if (tokensWithPairs.size === 0) {
-      // If no pairs found, return VBC and WVBC as fallback
+      // If no pairs found, return only VBC as fallback
       return NextResponse.json({
-        tokens: [VBC_TOKEN, WVBC_TOKEN],
-        total: 2,
+        tokens: [VBC_TOKEN],
+        total: 1,
         message: 'No pairs found in DEX'
       });
     }
@@ -138,22 +140,22 @@ export async function GET() {
     
     const resultTokens: DexToken[] = [];
     
-    // Always add VBC if WVBC has pairs
+    // Always add VBC if WVBC has pairs (VBC is used instead of WVBC in UI)
     if (tokensWithPairs.has('0x0000000000000000000000000000000000000000') || 
         tokensWithPairs.has(WVBC_ADDRESS)) {
       resultTokens.push(VBC_TOKEN);
     }
     
-    // Always add WVBC if it has pairs
-    if (tokensWithPairs.has(WVBC_ADDRESS)) {
-      resultTokens.push(WVBC_TOKEN);
-    }
+    // Don't show WVBC - users interact with VBC directly and 
+    // the router automatically wraps/unwraps as needed
     
     if (db) {
       // Get token info from database for tokens that have pairs
+      // Exclude WVBC (we show VBC instead) and TEST token (hidden)
       const pairTokenAddresses = Array.from(tokensWithPairs)
         .filter(addr => addr !== '0x0000000000000000000000000000000000000000' && 
-                        addr !== WVBC_ADDRESS);
+                        addr !== WVBC_ADDRESS &&
+                        addr !== TEST_TOKEN_ADDRESS);
       
       if (pairTokenAddresses.length > 0) {
         const dbTokens = await db.collection('tokens').find({
