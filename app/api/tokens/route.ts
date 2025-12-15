@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { getChainStats } from '../../../lib/stats'; // Import the stats function
 import { Contract, connectDB } from '../../../models/index';
@@ -31,7 +31,12 @@ interface IToken {
   verified?: boolean;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50')));
+  const type = searchParams.get('type'); // 'all', 'vrc20', 'nft'
+  
   await connectDB();
   
   // Get verification status for all contracts
@@ -135,7 +140,33 @@ export async function GET() {
   });
 
   // Combine the native token with the database tokens
-  const allTokens = [vbcToken, ...filteredTokens];
+  let allTokens = [vbcToken, ...filteredTokens];
+  
+  // Filter by type if specified
+  if (type === 'vrc20') {
+    allTokens = allTokens.filter(t => t.type === 'Native' || t.type === 'VRC-20');
+  } else if (type === 'nft') {
+    allTokens = allTokens.filter(t => 
+      (t.type === 'VRC-721' || t.type === 'VRC-1155') &&
+      ((t.holders ?? 0) > 0 || (t.supply && t.supply !== '0' && t.supply !== ''))
+    );
+  }
+  
+  // Calculate pagination
+  const total = allTokens.length;
+  const totalPages = Math.ceil(total / limit);
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  const paginatedTokens = allTokens.slice(startIndex, endIndex);
 
-  return NextResponse.json({ tokens: allTokens });
+  return NextResponse.json({ 
+    tokens: paginatedTokens,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasMore: page < totalPages
+    }
+  });
 }

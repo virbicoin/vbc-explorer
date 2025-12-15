@@ -66,6 +66,26 @@ interface TokenData {
     timeAgo: string;
     tokenId?: string;
   }>;
+  pagination?: {
+    holders: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+    transfers: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+    nfts?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  };
 }
 
 interface TokenMetadata {
@@ -109,6 +129,13 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
   const [tokenMetadata, setTokenMetadata] = useState<Record<number, TokenMetadata>>({});
   const [metadataLoading, setMetadataLoading] = useState<Record<number, boolean>>({});
   const [imageLoadState, setImageLoadState] = useState<ImageLoadState>({});
+  
+  // Pagination states
+  const [holdersPage, setHoldersPage] = useState(1);
+  const [transfersPage, setTransfersPage] = useState(1);
+  const [nftsPage, setNftsPage] = useState(1);
+  const ITEMS_PER_PAGE = 50;
+  const NFTS_PER_PAGE = 12;
 
   // getTransactionForTokenId function removed (unused)
 
@@ -129,8 +156,10 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
         setLoading(true);
         setError(null);
         
-        // Use the unified tokens API
-        const response = await fetch(`/api/tokens/${address}`);
+        // Use the unified tokens API with pagination
+        const response = await fetch(
+          `/api/tokens/${address}?holdersPage=${holdersPage}&holdersLimit=${ITEMS_PER_PAGE}&transfersPage=${transfersPage}&transfersLimit=${ITEMS_PER_PAGE}&nftsPage=${nftsPage}&nftsLimit=${NFTS_PER_PAGE}`
+        );
         
           if (!response.ok) {
             throw new Error('Failed to fetch token/NFT data');
@@ -146,7 +175,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
     };
 
     fetchTokenData();
-  }, [address]);
+  }, [address, holdersPage, transfersPage, nftsPage]);
 
   // Copy address to clipboard handler
   const copyAddressToClipboard = async () => {
@@ -258,6 +287,93 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
 
   // NFT固有の情報を表示するかどうかを判定
   const isNFT = tokenData?.token?.isNFT || tokenData?.token?.type === 'VRC-721';
+
+  // Pagination component
+  const PaginationUI = ({ 
+    currentPage, 
+    totalPages, 
+    total,
+    itemsPerPage,
+    onPageChange,
+    itemName = 'items'
+  }: { 
+    currentPage: number; 
+    totalPages: number;
+    total: number;
+    itemsPerPage: number;
+    onPageChange: (page: number) => void;
+    itemName?: string;
+  }) => {
+    if (totalPages <= 1) return null;
+    
+    return (
+      <div className='mt-6'>
+        <div className='flex justify-center items-center gap-4'>
+          <button
+            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className='px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium'
+          >
+            Previous
+          </button>
+          
+          <div className='flex items-center gap-2'>
+            {currentPage > 3 && (
+              <>
+                <button
+                  onClick={() => onPageChange(1)}
+                  className='px-3 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors font-medium'
+                >
+                  1
+                </button>
+                {currentPage > 4 && <span className='text-gray-500'>...</span>}
+              </>
+            )}
+            
+            {Array.from({ length: 5 }, (_, i) => currentPage - 2 + i)
+              .filter(page => page >= 1 && page <= totalPages)
+              .map(page => (
+                <button
+                  key={page}
+                  onClick={() => onPageChange(page)}
+                  className={`px-3 py-2 rounded-lg transition-colors font-medium ${
+                    page === currentPage
+                      ? 'bg-blue-600 text-white shadow-lg'
+                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+            
+            {currentPage < totalPages - 2 && (
+              <>
+                {currentPage < totalPages - 3 && <span className='text-gray-500'>...</span>}
+                <button
+                  onClick={() => onPageChange(totalPages)}
+                  className='px-3 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors font-medium'
+                >
+                  {totalPages}
+                </button>
+              </>
+            )}
+          </div>
+          
+          <button
+            onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            className='px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium'
+          >
+            Next
+          </button>
+        </div>
+        
+        <div className='text-center mt-4 text-gray-400 text-sm'>
+          Showing {itemName} {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, total)} of {total.toLocaleString()} total
+        </div>
+      </div>
+    );
+  };
 
   const tabs = [
     { id: 'holders', label: 'Token Holders', icon: UsersIcon },
@@ -397,6 +513,18 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                 <ArrowPathIcon className='w-12 h-12 text-gray-500 mx-auto mb-4' />
                 <p className='text-gray-400'>No transfers found</p>
               </div>
+            )}
+            
+            {/* Transfers Pagination */}
+            {tokenData?.pagination?.transfers && (
+              <PaginationUI
+                currentPage={transfersPage}
+                totalPages={tokenData.pagination.transfers.totalPages}
+                total={tokenData.pagination.transfers.total}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setTransfersPage}
+                itemName='transfers'
+              />
             )}
           </div>
         );
@@ -715,6 +843,18 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                 </p>
               </div>
             )}
+            
+            {/* NFT Collections Pagination */}
+            {tokenData?.pagination?.nfts && (
+              <PaginationUI
+                currentPage={nftsPage}
+                totalPages={tokenData.pagination.nfts.totalPages}
+                total={tokenData.pagination.nfts.total}
+                itemsPerPage={NFTS_PER_PAGE}
+                onPageChange={setNftsPage}
+                itemName='NFTs'
+              />
+            )}
           </div>
         );
 
@@ -755,6 +895,18 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
               <div className='text-center py-8'>
                 <p className='text-gray-400'>No holders data available</p>
               </div>
+            )}
+            
+            {/* Holders Pagination */}
+            {tokenData?.pagination?.holders && (
+              <PaginationUI
+                currentPage={holdersPage}
+                totalPages={tokenData.pagination.holders.totalPages}
+                total={tokenData.pagination.holders.total}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setHoldersPage}
+                itemName='holders'
+              />
             )}
           </div>
         );

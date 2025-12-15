@@ -23,6 +23,12 @@ export default function TokensPage() {
 
   const [activeTab, setActiveTab] = useState<'all' | 'nft'>('all');
   const [vbcSupply, setVbcSupply] = useState<string>('0');
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalTokens, setTotalTokens] = useState(0);
+  const ITEMS_PER_PAGE = 50;
 
   // Fetch VBC total supply from richlist API
   const fetchVBCSupply = async () => {
@@ -47,6 +53,8 @@ export default function TokensPage() {
   useEffect(() => {
     async function fetchTokens() {
       try {
+        setLoading(true);
+        
         // Initialize currency conversion factors
         await initializeCurrency();
         
@@ -58,19 +66,28 @@ export default function TokensPage() {
         setCurrencyName(name);
         setCurrencySymbol(symbol);
         
-        const res = await fetch('/api/tokens');
+        // Fetch tokens with pagination
+        const typeParam = activeTab === 'nft' ? 'nft' : 'vrc20';
+        const res = await fetch(`/api/tokens?page=${currentPage}&limit=${ITEMS_PER_PAGE}&type=${typeParam}`);
         if (!res.ok) throw new Error('Failed to fetch tokens');
         const data = await res.json();
-        // トークンを新しい順（降順）にソート
+        
+        // Sort tokens (Native first, then by address descending)
         const sortedTokens = (data.tokens || []).sort((a: Token, b: Token) => {
-          // Nativeトークン（VBC）は最も古いので最後に表示
-          if (a.type === 'Native') return 1;
-          if (b.type === 'Native') return -1;
+          // Nativeトークン（VBC）は最初に表示
+          if (a.type === 'Native') return -1;
+          if (b.type === 'Native') return 1;
           
           // その他のトークンはアドレスでソート（新しい順）
           return b.address.localeCompare(a.address);
         });
         setTokens(sortedTokens);
+        
+        // Update pagination info
+        if (data.pagination) {
+          setTotalPages(data.pagination.totalPages || 1);
+          setTotalTokens(data.pagination.total || 0);
+        }
       } catch {
         setTokens([]);
       } finally {
@@ -81,17 +98,16 @@ export default function TokensPage() {
     
     // VBC supplyをリッチリストAPIから取得
     fetchVBCSupply();
-  }, []);
+  }, [activeTab, currentPage]);
+  
+  // Reset to page 1 when tab changes
+  const handleTabChange = (tab: 'all' | 'nft') => {
+    setActiveTab(tab);
+    setCurrentPage(1);
+  };
 
-  // Filter tokens based on active tab
-  const filteredTokens = activeTab === 'nft' 
-    ? tokens.filter(token => 
-        (token.type === 'VRC-721' || token.type === 'VRC-1155') &&
-        (token.holders > 0 || (token.supply && token.supply !== '0' && token.supply !== ''))
-      )
-    : tokens.filter(token => 
-        token.type === 'Native' || token.type === 'VRC-20'
-      );
+  // Use tokens directly since filtering is done server-side
+  const filteredTokens = tokens;
 
   return (
     <div className='min-h-screen bg-gray-900 text-white'>
@@ -135,7 +151,7 @@ export default function TokensPage() {
         <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-6'>
           <div className='flex items-center gap-4 mb-6'>
             <button
-              onClick={() => setActiveTab('all')}
+              onClick={() => handleTabChange('all')}
               className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
                 activeTab === 'all'
                   ? 'bg-blue-600 text-white'
@@ -146,7 +162,7 @@ export default function TokensPage() {
               VRC-20 Tokens
             </button>
             <button
-              onClick={() => setActiveTab('nft')}
+              onClick={() => handleTabChange('nft')}
               className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
                 activeTab === 'nft'
                   ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
@@ -250,6 +266,79 @@ export default function TokensPage() {
             </table>
           </div>
         </div>
+        
+        {/* Pagination UI */}
+        {totalPages > 1 && (
+          <div className='flex justify-center items-center gap-4 mt-8'>
+            <button
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className='px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium'
+            >
+              Previous
+            </button>
+            
+            <div className='flex items-center gap-2'>
+              {/* 最初のページ */}
+              {currentPage > 3 && (
+                <>
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    className='px-3 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors font-medium'
+                  >
+                    1
+                  </button>
+                  {currentPage > 4 && <span className='text-gray-500'>...</span>}
+                </>
+              )}
+              
+              {/* 現在のページ周辺 */}
+              {Array.from({ length: 5 }, (_, i) => currentPage - 2 + i)
+                .filter(page => page >= 1 && page <= totalPages)
+                .map(page => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`px-3 py-2 rounded-lg transition-colors font-medium ${
+                      page === currentPage
+                        ? 'bg-blue-600 text-white shadow-lg'
+                        : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              
+              {/* 最後のページ */}
+              {currentPage < totalPages - 2 && (
+                <>
+                  {currentPage < totalPages - 3 && <span className='text-gray-500'>...</span>}
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    className='px-3 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors font-medium'
+                  >
+                    {totalPages}
+                  </button>
+                </>
+              )}
+            </div>
+            
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className='px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium'
+            >
+              Next
+            </button>
+          </div>
+        )}
+
+        {/* ページ情報 */}
+        {totalTokens > 0 && (
+          <div className='text-center mt-4 text-gray-400 text-sm'>
+            Showing tokens {((currentPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, totalTokens)} of {totalTokens.toLocaleString()} total {activeTab === 'nft' ? 'NFT collections' : 'tokens'}
+          </div>
+        )}
       </main>
     </div>
   );

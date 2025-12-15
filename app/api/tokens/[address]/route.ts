@@ -201,6 +201,14 @@ export async function GET(
     const { address } = await params;
     const { searchParams } = new URL(request.url);
     const tokenId = searchParams.get('tokenId');
+    
+    // Pagination parameters
+    const holdersPage = Math.max(1, parseInt(searchParams.get('holdersPage') || '1'));
+    const holdersLimit = Math.min(100, Math.max(1, parseInt(searchParams.get('holdersLimit') || '50')));
+    const transfersPage = Math.max(1, parseInt(searchParams.get('transfersPage') || '1'));
+    const transfersLimit = Math.min(100, Math.max(1, parseInt(searchParams.get('transfersLimit') || '50')));
+    const nftsPage = Math.max(1, parseInt(searchParams.get('nftsPage') || '1'));
+    const nftsLimit = Math.min(100, Math.max(1, parseInt(searchParams.get('nftsLimit') || '12')));
 
     // If tokenId is provided, return NFT metadata
     if (tokenId) {
@@ -586,11 +594,18 @@ export async function GET(
     if (!db) {
       throw new Error('Database connection not established');
     }
+    
+    // Get total holders count for pagination
+    const totalHolders = await db.collection('tokenholders').countDocuments({
+      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
+    });
+    
     const holders = await db.collection('tokenholders').find({
       tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
     })
       .sort({ rank: 1 })
-      .limit(50)
+      .skip((holdersPage - 1) * holdersLimit)
+      .limit(holdersLimit)
       .toArray();
 
     // 各holderの所有tokenId配列をtokentransfersから集計してセット
@@ -603,11 +618,17 @@ export async function GET(
     }
 
     // Get recent transfers - use case-insensitive match with alternative field names
+    // First get total count for pagination
+    const totalTransfers = await db.collection('tokentransfers').countDocuments({
+      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
+    });
+    
     let transfers = await db.collection('tokentransfers').find({
       tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
     })
       .sort({ timestamp: -1 })
-      .limit(50)
+      .skip((transfersPage - 1) * transfersLimit)
+      .limit(transfersLimit)
       .toArray();
 
     // If no transfers found, try alternative field names
@@ -619,7 +640,8 @@ export async function GET(
         ]
       })
         .sort({ timestamp: -1 })
-        .limit(50)
+        .skip((transfersPage - 1) * transfersLimit)
+        .limit(transfersLimit)
         .toArray();
     }
 
@@ -635,7 +657,8 @@ export async function GET(
         ]
       })
         .sort({ timestamp: -1 })
-        .limit(50)
+        .skip((transfersPage - 1) * transfersLimit)
+        .limit(transfersLimit)
         .toArray();
     }
 
@@ -955,6 +978,11 @@ export async function GET(
         percentage: typeof holder.percentage === 'number' ? holder.percentage.toFixed(2) : '0.00',
         tokenIds: holder.tokenIds as number[] || [] // DB値そのまま返す
       }));
+      
+      // Calculate total NFT items from all holders
+      const allTokenIds = mappedHolders.flatMap(h => h.tokenIds || []);
+      const totalNftItems = allTokenIds.length;
+      
       const nftData = {
         token: {
           address: token.address,
@@ -982,7 +1010,27 @@ export async function GET(
           marketCap: 'N/A' // Will need external API for price data
         },
         holders: mappedHolders,
-        transfers: nftTransfers
+        transfers: nftTransfers,
+        pagination: {
+          holders: {
+            page: holdersPage,
+            limit: holdersLimit,
+            total: totalHolders,
+            totalPages: Math.ceil(totalHolders / holdersLimit)
+          },
+          transfers: {
+            page: transfersPage,
+            limit: transfersLimit,
+            total: totalTransfers,
+            totalPages: Math.ceil(totalTransfers / transfersLimit)
+          },
+          nfts: {
+            page: nftsPage,
+            limit: nftsLimit,
+            total: totalNftItems,
+            totalPages: Math.ceil(totalNftItems / nftsLimit)
+          }
+        }
       };
 
       // console.log('API return (NFT) creator3:', creator);
@@ -1061,7 +1109,21 @@ export async function GET(
         timestamp: transfer.timestamp as Date,
         timeAgo: getTimeAgo(transfer.timestamp as Date),
         tokenId: transfer.tokenId // ← DB値をそのまま返す
-      }))
+      })),
+      pagination: {
+        holders: {
+          page: holdersPage,
+          limit: holdersLimit,
+          total: totalHolders,
+          totalPages: Math.ceil(totalHolders / holdersLimit)
+        },
+        transfers: {
+          page: transfersPage,
+          limit: transfersLimit,
+          total: totalTransfers,
+          totalPages: Math.ceil(totalTransfers / transfersLimit)
+        }
+      }
     };
 
     return NextResponse.json(response);
