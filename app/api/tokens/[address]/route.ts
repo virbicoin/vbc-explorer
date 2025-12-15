@@ -27,45 +27,87 @@ const ERC721_ABI = [
 ] as const;
 
 // Function to fetch NFT metadata from tokenURI
-async function fetchNFTMetadata(tokenAddress: string, tokenId: number) {
+async function fetchNFTMetadata(tokenAddress: string, tokenId: number): Promise<{ metadata: any; tokenURI: string | null }> {
   try {
     // Check if web3 is properly initialized
     if (!web3 || !web3.eth) {
       console.error('Web3 not properly initialized');
-      return null;
+      return { metadata: null, tokenURI: null };
     }
 
     // First try to get tokenURI from blockchain
     const contract = new web3.eth.Contract(ERC721_ABI, tokenAddress);
-    const tokenURI = await contract.methods.tokenURI(tokenId).call();
+    let tokenURI: string | null = null;
+    try {
+      tokenURI = await contract.methods.tokenURI(tokenId).call();
+    } catch (uriError) {
+      console.error('Error calling tokenURI:', uriError);
+    }
     
     if (tokenURI && tokenURI !== '') {
       // If it's an HTTP URL, fetch the metadata
       if (tokenURI.startsWith('http://') || tokenURI.startsWith('https://')) {
         try {
-        const response = await fetch(tokenURI, {
-          headers: {
-            'User-Agent': 'VBC-Explorer/1.0'
+          const response = await fetch(tokenURI, {
+            headers: {
+              'User-Agent': 'VBC-Explorer/1.0'
             },
             // Add timeout to prevent hanging requests
             signal: AbortSignal.timeout(5000) // 5 second timeout
-        });
-        
-        if (response.ok) {
-          const metadata = await response.json();
-          return metadata;
+          });
+          
+          if (response.ok) {
+            const metadata = await response.json();
+            return { metadata, tokenURI };
+          } else {
+            // If the original URI fails, try fallback with tokenId
+            // e.g., https://example.com/metadata/test.json -> https://example.com/metadata/{tokenId}.json
+            const fallbackURI = tokenURI.replace(/\/[^\/]+\.json$/, `/${tokenId}.json`);
+            if (fallbackURI !== tokenURI) {
+              console.log(`Trying fallback URI: ${fallbackURI}`);
+              try {
+                const fallbackResponse = await fetch(fallbackURI, {
+                  headers: { 'User-Agent': 'VBC-Explorer/1.0' },
+                  signal: AbortSignal.timeout(5000)
+                });
+                if (fallbackResponse.ok) {
+                  const metadata = await fallbackResponse.json();
+                  return { metadata, tokenURI: fallbackURI };
+                }
+              } catch (fallbackError) {
+                console.error('Fallback fetch also failed:', fallbackError);
+              }
+            }
           }
         } catch (fetchError) {
           console.error('Error fetching metadata from URL:', fetchError);
-          // Don't throw error, just return null to use fallback
+          // Try fallback URL
+          const fallbackURI = tokenURI.replace(/\/[^\/]+\.json$/, `/${tokenId}.json`);
+          if (fallbackURI !== tokenURI) {
+            console.log(`Trying fallback URI after error: ${fallbackURI}`);
+            try {
+              const fallbackResponse = await fetch(fallbackURI, {
+                headers: { 'User-Agent': 'VBC-Explorer/1.0' },
+                signal: AbortSignal.timeout(5000)
+              });
+              if (fallbackResponse.ok) {
+                const metadata = await fallbackResponse.json();
+                return { metadata, tokenURI: fallbackURI };
+              }
+            } catch (fallbackError) {
+              console.error('Fallback fetch also failed:', fallbackError);
+            }
+          }
         }
       }
+      // Return tokenURI even if it's not an HTTP URL or fetch failed
+      return { metadata: null, tokenURI };
     }
     
-    return null;
+    return { metadata: null, tokenURI };
   } catch (error) {
     console.error('Error fetching NFT metadata:', error);
-    return null;
+    return { metadata: null, tokenURI: null };
   }
 }
 
@@ -173,16 +215,23 @@ export async function GET(
       // contractSource with flexible types
       const contractSource: { verified?: boolean; compiler?: any; language?: string | null; name?: any; sourceCode?: any; bytecode?: any } | null = null;
       try {
-        let metadata = await fetchNFTMetadata(address, tokenIdNum);
-        if (!metadata) {
-          // 失敗時も最低限のダミーmetadataを返す
+        const { metadata: fetchedMetadata, tokenURI } = await fetchNFTMetadata(address, tokenIdNum);
+        let metadata: any;
+        if (!fetchedMetadata) {
+          // 失敗時も最低限のダミーmetadataを返す（tokenURIは取得できていれば設定）
           metadata = {
             name: `Token #${tokenIdNum}`,
             description: '',
             image: '',
             attributes: [],
-            tokenURI: null,
+            tokenURI: tokenURI,
             createdAt: null
+          };
+        } else {
+          // メタデータが取得できた場合、tokenURIを追加
+          metadata = {
+            ...fetchedMetadata,
+            tokenURI: tokenURI
           };
         }
         // コントラクト作成Tx
@@ -385,6 +434,16 @@ export async function GET(
         // Token情報も取得
         const foundTokenArr = await Token.find({ address: { $regex: new RegExp(`^${address}$`, 'i') } }).lean();
         const foundToken = Array.isArray(foundTokenArr) && foundTokenArr.length > 0 ? foundTokenArr[0] : null;
+        
+        // Get contract verification status
+        let isVerified = false;
+        const contractDoc = await db.collection('Contract').findOne({ 
+          address: { $regex: new RegExp(`^${address}$`, 'i') }
+        });
+        if (contractDoc) {
+          isVerified = contractDoc.verified || false;
+        }
+        
         // console.log removed (debug)
         return NextResponse.json({
           tokenId: tokenIdNum,
@@ -395,7 +454,7 @@ export async function GET(
             symbol: foundToken?.symbol ?? null,
             totalSupply: foundToken?.totalSupply ?? foundToken?.supply ?? null,
              
-            verified: (contractSource as any)?.verified ?? null,
+            verified: isVerified,
             contractAddress: foundToken?.address || address || null
           },
           owner: owner,
