@@ -188,6 +188,9 @@ function DexPageContent() {
       {activeTab === 'swap' && <SwapInfo />}
       {activeTab === 'pool' && <PoolInfo />}
       {activeTab === 'farm' && <FarmInfo />}
+
+      {/* Contract Addresses Section */}
+      <ContractAddresses />
     </>
   );
 }
@@ -479,6 +482,107 @@ function FarmInfo() {
         </div>
       </div>
     </>
+  );
+}
+
+function ContractAddresses() {
+  const contracts: { name: string; address: string; description: string; type: 'contract' | 'token' }[] = [
+    { name: 'SimpleFactoryV2', address: '0x663B1b42B79077AaC918515D3f57FED6820Dad63', description: 'Creates LP pairs', type: 'contract' },
+    { name: 'SimpleRouterV2', address: '0xdD1Ae4345252FFEA67fE844296fbd6C973B98c18', description: 'Swap & liquidity routing', type: 'contract' },
+    { name: 'WVBC', address: '0x52CB9F0d65D9d4De08CF103153C7A1A97567Bb9b', description: 'Wrapped VirBiCoin', type: 'token' },
+    { name: 'MasterChefV2', address: '0x12A656c2DeE0EA2685398d52AcF78974fCD67B27', description: 'Staking rewards', type: 'contract' },
+    { name: 'TokenFactory', address: '0x5721a3A9fc168a8Ac1c8A2Cfca9c61C8189d8618', description: 'Token creation', type: 'contract' },
+    { name: 'VBCG', address: '0xac7F60af25C5c4E23d1008C46511e265A8c9B6cF', description: 'VirBiCoin Gold', type: 'token' },
+    { name: 'USDT', address: '0xdf136683B118E95c04A61FEC091c65736d9de059', description: 'Tether USD (VBC)', type: 'token' },
+  ];
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto mt-12 px-4">
+      <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
+        <h3 className="text-lg font-bold text-gray-100 mb-4 flex items-center gap-2">
+          <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Smart Contract Addresses
+        </h3>
+        <p className="text-gray-400 text-sm mb-4">
+          Verified contracts deployed on VirBiCoin Chain (Chain ID: 329)
+        </p>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-400 border-b border-gray-700">
+                <th className="pb-3 font-medium">Contract</th>
+                <th className="pb-3 font-medium">Address</th>
+                <th className="pb-3 font-medium hidden sm:table-cell">Description</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700/50">
+              {contracts.map((contract) => (
+                <tr key={contract.address} className="hover:bg-gray-700/30 transition-colors">
+                  <td className="py-3 font-medium text-gray-200">
+                    <div className="flex items-center gap-2">
+                      {contract.name}
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        contract.type === 'token' 
+                          ? 'bg-purple-500/20 text-purple-300' 
+                          : 'bg-blue-500/20 text-blue-300'
+                      }`}>
+                        {contract.type === 'token' ? 'Token' : 'Contract'}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="py-3">
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={contract.type === 'token' ? `/token/${contract.address}` : `/address/${contract.address}`}
+                        className="text-blue-400 hover:text-blue-300 font-mono text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none"
+                        title={contract.address}
+                      >
+                        {contract.address.slice(0, 10)}...{contract.address.slice(-8)}
+                      </a>
+                      <button
+                        onClick={() => copyToClipboard(contract.address)}
+                        className="text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0"
+                        title="Copy address"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                  <td className="py-3 text-gray-400 hidden sm:table-cell">{contract.description}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-gray-700/50 flex flex-wrap gap-4 text-xs text-gray-500">
+          <a
+            href="https://rpc.digitalregion.jp"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-gray-300 flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            RPC: rpc.digitalregion.jp
+          </a>
+          <span className="text-gray-600">|</span>
+          <span>Chain ID: 329</span>
+          <span className="text-gray-600">|</span>
+          <span>Symbol: VBC</span>
+        </div>
+      </div>
+    </div>
   );
 }
 

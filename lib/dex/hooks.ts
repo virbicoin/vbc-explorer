@@ -33,6 +33,15 @@ export function formatTokenAmount(amount: bigint, decimals: number = 18, display
   });
 }
 
+// Format token amount for input fields (no comma separators)
+export function formatTokenAmountForInput(amount: bigint, decimals: number = 18, displayDecimals: number = 18): string {
+  const formatted = formatUnits(amount, decimals);
+  const num = parseFloat(formatted);
+  if (num === 0) return '0';
+  // Return number without thousands separators for input fields
+  return num.toFixed(displayDecimals).replace(/\.?0+$/, '');
+}
+
 export function parseTokenAmount(amount: string, decimals: number = 18): bigint {
   try {
     return parseUnits(amount, decimals);

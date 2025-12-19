@@ -8,7 +8,7 @@ import mongoose from 'mongoose';
 import Web3 from 'web3';
 import fs from 'fs';
 import path from 'path';
-import { connectDB, Block, Transaction } from '../models/index';
+import { connectDB, Block, Transaction, Contract } from '../models/index';
 import { main as statsMain } from './stats';
 import { makeRichList } from './richlist';
 import { main as tokensMain } from './tokens';
@@ -82,6 +82,204 @@ const toBoolean = (value: any): boolean | null => {
   if (typeof value === 'bigint') return value > 0n;
   if (typeof value === 'string') return value === '1' || value.toLowerCase() === 'true';
   return Boolean(value);
+};
+
+/**
+ * Register a contract in the database
+ * Called when a contract creation transaction is detected
+ */
+const registerContract = async (
+  contractAddress: string,
+  creatorAddress: string,
+  creationTxHash: string,
+  blockNumber: number,
+  web3Instance: Web3
+): Promise<void> => {
+  try {
+    const normalizedAddress = contractAddress.toLowerCase();
+    
+    // Check if contract already exists
+    const existing = await Contract.findOne({ address: normalizedAddress });
+    if (existing) {
+      return; // Already registered
+    }
+
+    // Get bytecode to verify it's a contract
+    const bytecode = await web3Instance.eth.getCode(contractAddress);
+    if (!bytecode || bytecode === '0x' || bytecode === '0x0') {
+      return; // Not a contract
+    }
+
+    // Try to detect if it's an ERC20 token
+    let isERC20 = false;
+    let tokenName = '';
+    let tokenSymbol = '';
+    let tokenDecimals = 0;
+
+    try {
+      const erc20ABI = [
+        { constant: true, inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], type: 'function' },
+        { constant: true, inputs: [], name: 'symbol', outputs: [{ name: '', type: 'string' }], type: 'function' },
+        { constant: true, inputs: [], name: 'decimals', outputs: [{ name: '', type: 'uint8' }], type: 'function' }
+      ];
+      const contract = new web3Instance.eth.Contract(erc20ABI as any, contractAddress);
+      
+      // Try to call ERC20 methods
+      const [name, symbol, decimals] = await Promise.all([
+        contract.methods.name().call().catch(() => null),
+        contract.methods.symbol().call().catch(() => null),
+        contract.methods.decimals().call().catch(() => null)
+      ]);
+
+      if (name && symbol) {
+        isERC20 = true;
+        tokenName = String(name);
+        tokenSymbol = String(symbol);
+        tokenDecimals = decimals ? Number(decimals) : 18;
+      }
+    } catch {
+      // Not an ERC20 token or method call failed
+    }
+
+    // Create contract entry
+    await Contract.create({
+      address: normalizedAddress,
+      blockNumber: blockNumber,
+      ERC: isERC20 ? 2 : 0, // 2 = ERC20, 0 = normal contract
+      creationTransaction: creationTxHash,
+      contractName: isERC20 ? tokenName : 'Contract',
+      tokenName: tokenName || null,
+      symbol: tokenSymbol || null,
+      owner: creatorAddress.toLowerCase(),
+      decimals: tokenDecimals,
+      verified: false
+    });
+
+    console.log(`📝 Contract registered: ${normalizedAddress}${isERC20 ? ` (${tokenSymbol})` : ''}`);
+  } catch (error: any) {
+    // Ignore duplicate key errors
+    if (error.code !== 11000) {
+      console.error(`⚠️ Failed to register contract ${contractAddress}:`, error.message);
+    }
+  }
+};
+
+/**
+ * Register known contracts from config.json
+ */
+const registerKnownContracts = async (web3Instance: Web3): Promise<void> => {
+  const cfg = config as any;
+  const contracts: Array<{
+    address: string;
+    contractName: string;
+    symbol?: string;
+    tokenName?: string;
+    decimals?: number;
+    type: 'contract' | 'token';
+  }> = [];
+
+  // DEX Contracts
+  if (cfg.dex) {
+    if (cfg.dex.factory) {
+      contracts.push({ address: cfg.dex.factory.toLowerCase(), contractName: 'SimpleFactoryV2', type: 'contract' });
+    }
+    if (cfg.dex.router) {
+      contracts.push({ address: cfg.dex.router.toLowerCase(), contractName: 'SimpleRouterV2', type: 'contract' });
+    }
+    if (cfg.dex.masterChef) {
+      contracts.push({ address: cfg.dex.masterChef.toLowerCase(), contractName: 'MasterChef', type: 'contract' });
+    }
+    if (cfg.dex.wrappedNative?.address) {
+      contracts.push({
+        address: cfg.dex.wrappedNative.address.toLowerCase(),
+        contractName: cfg.dex.wrappedNative.name || 'WVBC',
+        symbol: cfg.dex.wrappedNative.symbol,
+        tokenName: cfg.dex.wrappedNative.name,
+        decimals: cfg.dex.wrappedNative.decimals || 18,
+        type: 'token'
+      });
+    }
+    if (cfg.dex.rewardToken?.address) {
+      contracts.push({
+        address: cfg.dex.rewardToken.address.toLowerCase(),
+        contractName: cfg.dex.rewardToken.name || 'Reward Token',
+        symbol: cfg.dex.rewardToken.symbol,
+        tokenName: cfg.dex.rewardToken.name,
+        decimals: cfg.dex.rewardToken.decimals || 18,
+        type: 'token'
+      });
+    }
+    // DEX Tokens
+    if (cfg.dex.tokens) {
+      for (const [, token] of Object.entries(cfg.dex.tokens)) {
+        const t = token as any;
+        if (t.address) {
+          contracts.push({
+            address: t.address.toLowerCase(),
+            contractName: t.name || 'Token',
+            symbol: t.symbol,
+            tokenName: t.name,
+            decimals: t.decimals || 18,
+            type: 'token'
+          });
+        }
+      }
+    }
+    // LP Tokens
+    if (cfg.dex.lpTokens) {
+      for (const [, lp] of Object.entries(cfg.dex.lpTokens)) {
+        const l = lp as any;
+        if (l.address) {
+          contracts.push({
+            address: l.address.toLowerCase(),
+            contractName: l.name || 'LP Token',
+            symbol: l.symbol,
+            tokenName: l.name,
+            type: 'token'
+          });
+        }
+      }
+    }
+  }
+
+  // Launchpad TokenFactory
+  if (cfg.launchpad?.factoryAddress) {
+    contracts.push({
+      address: cfg.launchpad.factoryAddress.toLowerCase(),
+      contractName: 'TokenFactory',
+      type: 'contract'
+    });
+  }
+
+  if (contracts.length === 0) return;
+
+  console.log(`📋 Registering ${contracts.length} known contracts from config.json...`);
+
+  for (const contract of contracts) {
+    try {
+      const existing = await Contract.findOne({ address: contract.address });
+      if (!existing) {
+        // Verify it's actually a contract on-chain
+        const bytecode = await web3Instance.eth.getCode(contract.address);
+        if (bytecode && bytecode !== '0x' && bytecode !== '0x0') {
+          await Contract.create({
+            address: contract.address,
+            contractName: contract.contractName,
+            symbol: contract.symbol,
+            tokenName: contract.tokenName,
+            decimals: contract.decimals,
+            ERC: contract.type === 'token' ? 2 : 0,
+            verified: false
+          });
+          console.log(`  ✅ ${contract.contractName} (${contract.address.slice(0, 10)}...)`);
+        }
+      }
+    } catch (error: any) {
+      if (error.code !== 11000) {
+        console.error(`  ⚠️ Failed to register ${contract.contractName}:`, error.message);
+      }
+    }
+  }
 };
 
 // Interface definitions
@@ -319,6 +517,17 @@ const writeTransactionsToDB: WriteTransactionsToDB = async function (
         const receipt = await web3.eth.getTransactionReceipt(toString(txData.hash));
         const tx = await normalizeTX(txData, receipt, blockData);
         self.bulkOps.push(tx);
+        
+        // Detect contract creation and auto-register
+        if (receipt && receipt.contractAddress) {
+          const contractAddr = toString(receipt.contractAddress);
+          const creatorAddr = toString(txData.from);
+          const txHash = toString(txData.hash);
+          const blockNum = toNumber(blockData.number);
+          
+          // Register contract asynchronously (don't wait)
+          registerContract(contractAddr, creatorAddr, txHash, blockNum, web3).catch(() => {});
+        }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.log(`⚠️ Warning: Failed to get receipt for tx ${toString(txData.hash)}: ${errorMessage}`);
@@ -605,6 +814,17 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
                 yParity: (tx as any).yParity ? toString((tx as any).yParity) : null
               };
               transactionsToInsert.push(txDoc);
+              
+              // Detect contract creation and auto-register
+              if (receipt && receipt.contractAddress) {
+                const contractAddr = toString(receipt.contractAddress);
+                const creatorAddr = toString(tx.from);
+                const txHash = toString(tx.hash);
+                const blockNum = toNumber(blockData.number);
+                
+                // Register contract asynchronously (don't block sync)
+                registerContract(contractAddr, creatorAddr, txHash, blockNum, web3).catch(() => {});
+              }
             }
           }
           processedCount++;
@@ -740,6 +960,9 @@ const main = async (): Promise<void> => {
 
     // Initialize database connection ONCE
     await initDB();
+    
+    // Register known contracts from config.json
+    await registerKnownContracts(web3);
     
     // Test connection by getting latest block number
     try {

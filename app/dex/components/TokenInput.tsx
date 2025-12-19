@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { type Token } from '@/lib/dex/config';
-import { useVBCBalance, useTokenBalance, formatTokenAmount, isNativeToken } from '@/lib/dex/hooks';
+import { useVBCBalance, useTokenBalance, formatTokenAmount, formatTokenAmountForInput, isNativeToken } from '@/lib/dex/hooks';
 import { TokenSelector } from './TokenSelector';
 import type { Address } from 'viem';
 
@@ -48,14 +48,14 @@ export function TokenInput({
       const maxAmount = isNativeToken(token) 
         ? (balance > 100000000000000000n ? balance - 100000000000000000n : 0n) // Leave 0.1 VBC for gas
         : balance;
-      onAmountChange(formatTokenAmount(maxAmount, token.decimals, 18));
+      onAmountChange(formatTokenAmountForInput(maxAmount, token.decimals, 18));
     }
   };
 
   const handleHalf = () => {
     if (balance) {
       const halfAmount = balance / 2n;
-      onAmountChange(formatTokenAmount(halfAmount, token.decimals, 18));
+      onAmountChange(formatTokenAmountForInput(halfAmount, token.decimals, 18));
     }
   };
 

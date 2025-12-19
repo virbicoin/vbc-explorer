@@ -27,6 +27,7 @@ import {
   isNativeToken,
   getTokenAddress,
   formatTokenAmount,
+  formatTokenAmountForInput,
   parseTokenAmount,
 } from '@/lib/dex/hooks';
 import { useDexTokens } from '@/hooks/useDexTokens';
@@ -706,7 +707,7 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
                 <div className="flex justify-between mb-2">
                   <label className="text-sm text-gray-400">LP Amount to Remove</label>
                   <button
-                    onClick={() => lpBalance && setLpAmount(formatTokenAmount(lpBalance as bigint, 18, 18))}
+                    onClick={() => lpBalance && setLpAmount(formatTokenAmountForInput(lpBalance as bigint, 18, 18))}
                     className="text-sm font-semibold text-blue-400 hover:text-blue-300 transition-colors"
                   >
                     MAX
@@ -729,7 +730,7 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
                     onClick={() => {
                       if (lpBalance) {
                         const amount = ((lpBalance as bigint) * BigInt(percent)) / 100n;
-                        setLpAmount(formatTokenAmount(amount, 18, 18));
+                        setLpAmount(formatTokenAmountForInput(amount, 18, 18));
                       }
                     }}
                     className="flex-1 py-2.5 bg-gray-800/60 hover:bg-gray-700/80 border border-gray-700/50 hover:border-gray-600 rounded-xl text-sm font-semibold transition-all hover:scale-105"

@@ -119,6 +119,58 @@ export async function GET(
   // コントラクト情報を取得
   const contract = await Contract.findOne({ address: { $regex: new RegExp(`^${address}$`, 'i') } }).lean();
 
+  // config.jsonから既知のコントラクト名を取得
+  const getKnownContractName = (addr: string): { name: string; type: string } | null => {
+    const lowerAddr = addr.toLowerCase();
+    const cfg = config;
+    
+    // DEXコントラクト
+    if (cfg.dex) {
+      if (cfg.dex.factory?.toLowerCase() === lowerAddr) return { name: 'SimpleFactoryV2', type: 'DEX Factory' };
+      if (cfg.dex.router?.toLowerCase() === lowerAddr) return { name: 'SimpleRouterV2', type: 'DEX Router' };
+      if (cfg.dex.masterChef?.toLowerCase() === lowerAddr) return { name: 'MasterChefV2', type: 'Staking' };
+      if (cfg.dex.wrappedNative?.address?.toLowerCase() === lowerAddr) return { name: cfg.dex.wrappedNative.name || 'WVBC', type: 'Wrapped Token' };
+      if (cfg.dex.rewardToken?.address?.toLowerCase() === lowerAddr) return { name: cfg.dex.rewardToken.name || 'Reward Token', type: 'ERC20' };
+      
+      // DEXトークン
+      if (cfg.dex.tokens) {
+        for (const [, token] of Object.entries(cfg.dex.tokens)) {
+          const t = token as { address?: string; name?: string; symbol?: string };
+          if (t.address?.toLowerCase() === lowerAddr) {
+            return { name: t.name || t.symbol || 'Token', type: 'ERC20' };
+          }
+        }
+      }
+      
+      // LPトークン
+      if (cfg.dex.lpTokens) {
+        for (const [, lp] of Object.entries(cfg.dex.lpTokens)) {
+          const lpToken = lp as { address?: string; name?: string; symbol?: string };
+          if (lpToken.address?.toLowerCase() === lowerAddr) {
+            return { name: lpToken.name || lpToken.symbol || 'LP Token', type: 'LP Token' };
+          }
+        }
+      }
+    }
+    
+    // Launchpad TokenFactory
+    if (cfg.launchpad?.factoryAddress?.toLowerCase() === lowerAddr) {
+      return { name: 'TokenFactory', type: 'Token Factory' };
+    }
+    
+    return null;
+  };
+
+  // Web3でコントラクトコードを確認（DBにない場合でもコントラクトかどうか判定）
+  let isContract = false;
+  let contractCode = '0x';
+  try {
+    contractCode = await web3.eth.getCode(address);
+    isContract = Boolean(contractCode && contractCode !== '0x' && contractCode !== '0x0');
+  } catch {
+    // ignore
+  }
+
   // Web3からリアルタイムバランス取得（表示用のみ）
   let realBalance = '0';
   try {
@@ -469,6 +521,40 @@ export async function GET(
   // contractが配列の場合は最初の要素を使う
   const contractObj = Array.isArray(contract) ? contract[0] : contract;
 
+  // コントラクト情報を構築（DBにある場合はDB情報を使用、ない場合はブロックチェーンから取得した情報を使用）
+  let contractInfo = null;
+  if (contractObj) {
+    contractInfo = {
+      address: contractObj.address,
+      name: contractObj.contractName || contractObj.tokenName || 'Unknown Contract',
+      symbol: contractObj.symbol || '',
+      type: contractObj.ERC === 2 ? 'ERC20' : contractObj.ERC === 3 ? 'ERC223' : 'Contract',
+      decimals: contractObj.decimals || 0,
+      totalSupply: contractObj.totalSupply || 0,
+      verified: contractObj.verified || false,
+      creationTransaction: contractObj.creationTransaction || '',
+      blockNumber: contractObj.blockNumber || 0,
+      isContract: true
+    };
+  } else if (isContract) {
+    // DBにないがコントラクトの場合、config.jsonから既知の名前を取得
+    const knownContract = getKnownContractName(address);
+    contractInfo = {
+      address: address,
+      name: knownContract?.name || 'Unverified Contract',
+      symbol: '',
+      type: knownContract?.type || 'Contract',
+      decimals: 0,
+      totalSupply: 0,
+      verified: false,
+      creationTransaction: '',
+      blockNumber: 0,
+      isContract: true,
+      bytecodeSize: Math.floor((contractCode.length - 2) / 2), // バイトコードサイズ（バイト単位）
+      knownContract: knownContract !== null // config.jsonで既知のコントラクトかどうか
+    };
+  }
+
   return NextResponse.json({
     account: {
       address,
@@ -482,17 +568,7 @@ export async function GET(
       firstSeen: firstActivity ? `${formatDate(firstActivity)} (${getTimeAgo(firstActivity)})` : 'Unknown',
       lastActivity: lastActivity ? `${formatDate(lastActivity)} (${getTimeAgo(lastActivity)})` : 'Unknown'
     },
-    contract: contractObj ? {
-      address: contractObj.address,
-      name: contractObj.contractName || contractObj.tokenName || 'Unknown Contract',
-      symbol: contractObj.symbol || '',
-      type: contractObj.ERC === 2 ? 'ERC20' : contractObj.ERC === 3 ? 'ERC223' : 'Contract',
-      decimals: contractObj.decimals || 0,
-      totalSupply: contractObj.totalSupply || 0,
-      verified: contractObj.verified || false,
-      creationTransaction: contractObj.creationTransaction || '',
-      blockNumber: contractObj.blockNumber || 0
-    } : null,
+    contract: contractInfo,
     transactions: allTxs,
     // 分類情報を追加
     transactionStats: {
