@@ -26,6 +26,67 @@ const ERC721_ABI = [
   }
 ] as const;
 
+// Standard ERC20 ABI for basic token info
+const ERC20_ABI = [
+  {
+    "inputs": [],
+    "name": "name",
+    "outputs": [{"name": "", "type": "string"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "symbol",
+    "outputs": [{"name": "", "type": "string"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "decimals",
+    "outputs": [{"name": "", "type": "uint8"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "totalSupply",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  }
+] as const;
+
+// Function to fetch ERC20 token info from blockchain
+async function fetchERC20Info(tokenAddress: string): Promise<{
+  name: string | null;
+  symbol: string | null;
+  decimals: number | null;
+  totalSupply: string | null;
+}> {
+  try {
+    const contract = new web3.eth.Contract(ERC20_ABI, tokenAddress);
+    
+    const [name, symbol, decimals, totalSupply] = await Promise.all([
+      contract.methods.name().call().catch(() => null),
+      contract.methods.symbol().call().catch(() => null),
+      contract.methods.decimals().call().catch(() => null),
+      contract.methods.totalSupply().call().catch(() => null),
+    ]);
+    
+    return {
+      name: name as string | null,
+      symbol: symbol as string | null,
+      decimals: decimals !== null ? Number(decimals) : null,
+      totalSupply: totalSupply !== null ? String(totalSupply) : null,
+    };
+  } catch (error) {
+    console.error('Error fetching ERC20 info:', error);
+    return { name: null, symbol: null, decimals: null, totalSupply: null };
+  }
+}
+
 // Function to fetch NFT metadata from tokenURI
 async function fetchNFTMetadata(tokenAddress: string, tokenId: number): Promise<{ metadata: any; tokenURI: string | null }> {
   try {
@@ -531,19 +592,38 @@ export async function GET(
       }
     }
 
-    // If token still not found, create dummy data for the requested address
+    // If token still not found, try to fetch from blockchain
     if (!token) {
-      token = {
-        address: address,
-        name: 'Unknown Token',
-        symbol: 'UNKNOWN',
-        decimals: 18,
-        supply: '1000000000000000000000000', // 1M tokens with 18 decimals
-        holders: 0,
-        type: 'Unknown',
-        createdAt: new Date('2023-01-01T00:00:00Z'), // Set a more realistic creation date
-        updatedAt: new Date()
-      };
+      const erc20Info = await fetchERC20Info(address);
+      
+      if (erc20Info.name || erc20Info.symbol) {
+        // Successfully fetched ERC20 info from blockchain
+        token = {
+          address: address,
+          name: erc20Info.name || 'Unknown Token',
+          symbol: erc20Info.symbol || 'UNKNOWN',
+          decimals: erc20Info.decimals ?? 18,
+          supply: erc20Info.totalSupply || '0',
+          totalSupply: erc20Info.totalSupply || '0',
+          holders: 0,
+          type: 'VRC-20',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+      } else {
+        // Fallback to dummy data
+        token = {
+          address: address,
+          name: 'Unknown Token',
+          symbol: 'UNKNOWN',
+          decimals: 18,
+          supply: '1000000000000000000000000', // 1M tokens with 18 decimals
+          holders: 0,
+          type: 'Unknown',
+          createdAt: new Date('2023-01-01T00:00:00Z'), // Set a more realistic creation date
+          updatedAt: new Date()
+        };
+      }
     }
 
     // If token has current date as createdAt, try to find actual creation date from transfers

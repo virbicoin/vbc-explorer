@@ -124,6 +124,7 @@ function DexPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const tabParam = searchParams.get('tab') as Tab | null;
+  const tokenParam = searchParams.get('token');
   const [activeTab, setActiveTab] = useState<Tab>(() => 
     tabParam && ['swap', 'pool', 'farm'].includes(tabParam) ? tabParam : 'swap'
   );
@@ -178,7 +179,7 @@ function DexPageContent() {
             </div>
           )}
           
-          {activeTab === 'pool' && <PoolContent />}
+          {activeTab === 'pool' && <PoolContent initialTokenAddress={tokenParam} />}
           {activeTab === 'farm' && <FarmContent />}
         </DexWrapper>
       </Suspense>

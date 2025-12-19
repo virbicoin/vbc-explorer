@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useReadContract } from 'wagmi';
 import { type Address } from 'viem';
 import Image from 'next/image';
 import { TokenInput, SlippageSettings } from './index';
@@ -31,6 +31,7 @@ import {
 } from '@/lib/dex/hooks';
 import { useDexTokens } from '@/hooks/useDexTokens';
 import { useTokenConfig } from '@/hooks/useTokenConfig';
+import { ERC20ABI } from '@/abi/TokenFactoryABI';
 
 // Default color for unknown tokens
 const DEFAULT_TOKEN_COLOR = 'from-gray-500 to-gray-600';
@@ -73,8 +74,14 @@ function PoolTokenIcon({
 
 type Tab = 'add' | 'remove';
 
-export function PoolContent() {
+interface PoolContentProps {
+  initialTokenAddress?: string | null;
+}
+
+export function PoolContent({ initialTokenAddress }: PoolContentProps) {
   const { address, isConnected } = useAccount();
+  const [initialTokenSet, setInitialTokenSet] = useState(false);
+  const [customToken, setCustomToken] = useState<Token | null>(null);
   
   // Fetch tokens from API
   const { tokens: availableTokens, isLoading: isTokensLoading } = useDexTokens();
@@ -88,6 +95,53 @@ export function PoolContent() {
     isLoading: tokenConfigLoading 
   } = useTokenConfig();
   
+  // Fetch custom token info from blockchain if not in available tokens
+  const shouldFetchCustomToken = initialTokenAddress && 
+    availableTokens.length > 0 && 
+    !availableTokens.find(t => t.address.toLowerCase() === initialTokenAddress.toLowerCase());
+  
+  const { data: tokenName } = useReadContract({
+    address: initialTokenAddress as Address,
+    abi: ERC20ABI,
+    functionName: 'name',
+    query: { enabled: !!shouldFetchCustomToken },
+  });
+  
+  const { data: tokenSymbol } = useReadContract({
+    address: initialTokenAddress as Address,
+    abi: ERC20ABI,
+    functionName: 'symbol',
+    query: { enabled: !!shouldFetchCustomToken },
+  });
+  
+  const { data: tokenDecimals } = useReadContract({
+    address: initialTokenAddress as Address,
+    abi: ERC20ABI,
+    functionName: 'decimals',
+    query: { enabled: !!shouldFetchCustomToken },
+  });
+  
+  // Build custom token when data is available
+  useEffect(() => {
+    if (shouldFetchCustomToken && tokenName && tokenSymbol && tokenDecimals !== undefined && initialTokenAddress) {
+      console.log('Building custom token from blockchain:', { tokenName, tokenSymbol, tokenDecimals });
+      setCustomToken({
+        address: initialTokenAddress as Address,
+        name: tokenName as string,
+        symbol: tokenSymbol as string,
+        decimals: tokenDecimals as number,
+      });
+    }
+  }, [shouldFetchCustomToken, tokenName, tokenSymbol, tokenDecimals, initialTokenAddress]);
+  
+  // Combined token list (available + custom)
+  const allTokens = useMemo(() => {
+    if (customToken && !availableTokens.find(t => t.address.toLowerCase() === customToken.address.toLowerCase())) {
+      return [...availableTokens, customToken];
+    }
+    return availableTokens;
+  }, [availableTokens, customToken]);
+  
   // State - use function to get current native token
   const [activeTab, setActiveTab] = useState<Tab>('add');
   const [tokenA, setTokenA] = useState<Token>(() => getNativeToken());
@@ -99,27 +153,47 @@ export function PoolContent() {
 
   // Update tokenA when available tokens change (config may have loaded)
   useEffect(() => {
-    if (availableTokens.length > 0) {
+    if (allTokens.length > 0) {
       // Find native token from available tokens
-      const nativeToken = availableTokens.find(t => t.address === '0x0000000000000000000000000000000000000000');
+      const nativeToken = allTokens.find(t => t.address === '0x0000000000000000000000000000000000000000');
       if (nativeToken && tokenA.symbol !== nativeToken.symbol) {
         setTokenA(nativeToken);
       }
     }
-  }, [availableTokens, tokenA.symbol]);
+  }, [allTokens, tokenA.symbol]);
 
-  // Set default tokenB when tokens are loaded, using config for token filtering
+  // Set tokenB from URL parameter or default
   useEffect(() => {
-    if (availableTokens.length > 0 && !tokenB && tokenConfig) {
-      // Find a token that's not native or wrapped native
-      const nativeSymbol = tokenConfig.native.symbol;
-      const wrappedSymbol = tokenConfig.wrapped.symbol;
-      const defaultB = availableTokens.find(t => 
-        t.symbol !== nativeSymbol && t.symbol !== wrappedSymbol
-      );
-      setTokenB(defaultB || (availableTokens.length > 1 ? availableTokens[1] : availableTokens[0]));
+    if (allTokens.length > 0 && !initialTokenSet && tokenConfig) {
+      // If initialTokenAddress is provided, find and set that token
+      if (initialTokenAddress) {
+        const targetToken = allTokens.find(t => 
+          t.address.toLowerCase() === initialTokenAddress.toLowerCase()
+        );
+        if (targetToken) {
+          console.log('Setting initial token B from URL:', targetToken.symbol);
+          setTokenB(targetToken);
+          setInitialTokenSet(true);
+          return;
+        }
+        // If custom token is still loading, wait
+        if (shouldFetchCustomToken && !customToken) {
+          return;
+        }
+      }
+      
+      // Default: Find a token that's not native or wrapped native
+      if (!tokenB) {
+        const nativeSymbol = tokenConfig.native.symbol;
+        const wrappedSymbol = tokenConfig.wrapped.symbol;
+        const defaultB = allTokens.find(t => 
+          t.symbol !== nativeSymbol && t.symbol !== wrappedSymbol
+        );
+        setTokenB(defaultB || (allTokens.length > 1 ? allTokens[1] : allTokens[0]));
+      }
+      setInitialTokenSet(true);
     }
-  }, [availableTokens, tokenB, tokenConfig]);
+  }, [allTokens, tokenB, tokenConfig, initialTokenAddress, initialTokenSet, shouldFetchCustomToken, customToken]);
 
   // Get pair address and reserves
   const tokenAAddress = getTokenAddress(tokenA);
@@ -485,7 +559,7 @@ export function PoolContent() {
                 onAmountChange={handleAmountAChange}
                 onTokenChange={setTokenA}
                 otherToken={tokenB || undefined}
-                tokens={availableTokens}
+                tokens={allTokens}
               />
 
               {/* Plus Icon */}
@@ -505,7 +579,7 @@ export function PoolContent() {
                   onAmountChange={handleAmountBChange}
                   onTokenChange={setTokenB}
                   otherToken={tokenA}
-                  tokens={availableTokens}
+                  tokens={allTokens}
                 />
               )}
             </div>

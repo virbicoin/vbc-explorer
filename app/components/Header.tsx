@@ -5,7 +5,8 @@ import {
   CubeIcon,
   ArrowPathIcon,
   CodeBracketIcon,
-  TrophyIcon
+  TrophyIcon,
+  RocketLaunchIcon
 } from '@heroicons/react/24/outline';
 import { loadConfig } from '@/lib/config';
 
@@ -14,6 +15,7 @@ export default function Header() {
   const explorerName = config.explorer?.name || `${config.currency?.name || 'Blockchain'} Explorer`;
   const currencySymbol = config.currency?.symbol || 'ETH';
   const dexEnabled = config.dex?.enabled ?? false;
+  const launchpadEnabled = config.launchpad?.enabled ?? false;
   
   return (
     <header className="bg-gray-900 border-b border-gray-800">
@@ -67,6 +69,14 @@ export default function Header() {
                   <path d="M3 21l7-7" />
                 </svg>
                 <span className='hidden sm:inline'>DEX</span>
+              </Link>
+            </li>
+          )}
+          {launchpadEnabled && (
+            <li>
+              <Link href='/launchpad' className='nav-link text-gray-200 flex items-center gap-1'>
+                <RocketLaunchIcon className='w-5 h-5' />
+                <span className='hidden sm:inline'>Launchpad</span>
               </Link>
             </li>
           )}

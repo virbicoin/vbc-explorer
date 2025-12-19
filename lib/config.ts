@@ -124,6 +124,13 @@ export interface SocialConfig {
   medium?: string;
 }
 
+// Launchpad configuration
+export interface LaunchpadConfig {
+  enabled: boolean;
+  factoryAddress: `0x${string}`;
+  creationFee: string;
+}
+
 export interface AppConfig {
   nodeAddr: string;
   port: number;
@@ -146,6 +153,7 @@ export interface AppConfig {
   priceUpdateInterval?: number;
   network?: NetworkConfig;
   dex?: DexConfig;
+  launchpad?: LaunchpadConfig;
   social?: SocialConfig;
   [key: string]: unknown;
 }

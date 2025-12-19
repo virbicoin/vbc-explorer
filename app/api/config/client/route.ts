@@ -46,6 +46,12 @@ export async function GET() {
         // Farm pool configurations
         farmPools: config.dex.farmPools || []
       } : null,
+      // Launchpad configuration
+      launchpad: config.launchpad ? {
+        enabled: config.launchpad.enabled || false,
+        factoryAddress: config.launchpad.factoryAddress || '',
+        creationFee: config.launchpad.creationFee || '0'
+      } : null,
       // Social links
       social: config.social || null
     });
@@ -67,6 +73,7 @@ export async function GET() {
       miners: {},
       network: null,
       dex: null,
+      launchpad: null,
       social: null
     }, { status: 500 });
   }
