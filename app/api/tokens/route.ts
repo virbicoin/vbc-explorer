@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
+import Web3 from 'web3';
 import { getChainStats } from '../../../lib/stats'; // Import the stats function
 import { Contract, connectDB } from '../../../models/index';
 import { loadConfig } from '../../../lib/config';
+
+// Load configuration for Web3
+const config = loadConfig();
+const RPC_URL = config.web3Provider?.url || 'http://localhost:8545';
+const web3 = new Web3(RPC_URL);
+
+// ERC20 ABI for totalSupply
+const ERC20_ABI = [
+  {
+    "inputs": [],
+    "name": "totalSupply",
+    "outputs": [{"name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  }
+] as const;
 
 // Define Token schema inline since it's not exported from models/index
 const tokenSchema = new mongoose.Schema({
@@ -87,8 +104,36 @@ export async function GET(request: NextRequest) {
     // Get actual holder count and supply for each token
     let actualHolders = token.holders || 0;
     let actualSupply = token.supply || token.totalSupply || '0';
+    const decimals = typeof token.decimals === 'number' ? token.decimals : 18;
 
     try {
+      // For VRC-20 tokens, fetch real-time totalSupply from blockchain
+      if (type === 'VRC-20' && token.address && typeof token.address === 'string') {
+        try {
+          const contract = new web3.eth.Contract(ERC20_ABI, token.address as string);
+          const rawSupply = await contract.methods.totalSupply().call();
+          if (rawSupply) {
+            // Format with decimals
+            const value = BigInt(String(rawSupply));
+            const divisor = BigInt(10 ** decimals);
+            const integerPart = value / divisor;
+            const fractionalPart = value % divisor;
+            
+            if (fractionalPart === BigInt(0)) {
+              actualSupply = Number(integerPart).toLocaleString();
+            } else {
+              const formatted = Number(value) / Number(divisor);
+              const decimalStr = formatted.toFixed(6).replace(/\.?0+$/, '');
+              const parts = decimalStr.split('.');
+              parts[0] = Number(parts[0]).toLocaleString();
+              actualSupply = parts.join('.');
+            }
+          }
+        } catch (err) {
+          console.error(`Error fetching totalSupply for ${token.address}:`, err);
+        }
+      }
+
       // For VRC-721 token, get actual statistics
       if (type === 'VRC-721') {
         // Get holder count from tokenholders collection

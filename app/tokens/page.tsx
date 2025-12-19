@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { CubeTransparentIcon, CheckCircleIcon, PhotoIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState } from 'react';
-import { getCurrencyName, getCurrencySymbol } from '../../lib/client-config';
+import { getCurrencyName, getCurrencySymbol, initializeCurrencyConfig } from '../../lib/client-config';
 import { initializeCurrency } from '../../lib/bigint-utils';
 
 type Token = {
@@ -58,11 +58,12 @@ export default function TokensPage() {
         // Initialize currency conversion factors
         await initializeCurrency();
         
-        // Load config values
-        const [name, symbol] = await Promise.all([
-          getCurrencyName(),
-          getCurrencySymbol()
-        ]);
+        // Initialize currency config cache
+        await initializeCurrencyConfig();
+        
+        // Load config values (now from initialized cache)
+        const name = getCurrencyName();
+        const symbol = getCurrencySymbol();
         setCurrencyName(name);
         setCurrencySymbol(symbol);
         

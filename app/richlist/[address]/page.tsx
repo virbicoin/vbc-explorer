@@ -1,4 +1,4 @@
-import { getCurrencySymbol } from '../../../lib/client-config';
+import { getCurrencySymbol } from '../../../lib/config';
 
 export default async function RichlistPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;

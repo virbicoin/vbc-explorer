@@ -192,16 +192,25 @@ const formatTokenAmount = (amount: string, decimals: number = 18, isNFT: boolean
       return cleanAmount;
     }
 
-    // Try BigInt conversion for large numbers
-    if (cleanAmount.length > 15) {
-      const value = BigInt(cleanAmount);
-      const divisor = BigInt(10 ** decimals);
+    // Apply decimals conversion for all token amounts
+    const value = BigInt(cleanAmount);
+    const divisor = BigInt(10 ** decimals);
+    const integerPart = value / divisor;
+    const fractionalPart = value % divisor;
+    
+    // Format with proper decimal places
+    if (fractionalPart === BigInt(0)) {
+      return Number(integerPart).toLocaleString();
+    } else {
+      // Convert to number for formatting (safe for display purposes)
       const formatted = Number(value) / Number(divisor);
-      return formatted.toLocaleString();
+      // Show up to 6 decimal places, removing trailing zeros
+      const decimalStr = formatted.toFixed(6).replace(/\.?0+$/, '');
+      // Add thousand separators to the integer part
+      const parts = decimalStr.split('.');
+      parts[0] = Number(parts[0]).toLocaleString();
+      return parts.join('.');
     }
-    // For smaller numbers, direct parsing
-    const numValue = parseFloat(cleanAmount);
-    return numValue.toLocaleString();
 
   } catch {
     // Fallback to direct parsing
@@ -763,7 +772,19 @@ export async function GET(
         ]
       });
 
-
+      // For VRC-20 tokens, fetch real-time totalSupply from blockchain
+      if (token.type === 'VRC-20' || token.type === 'ERC20') {
+        try {
+          const erc20Info = await fetchERC20Info(address);
+          if (erc20Info.totalSupply) {
+            realSupply = erc20Info.totalSupply;
+            token.supply = realSupply;
+            token.totalSupply = realSupply;
+          }
+        } catch (err) {
+          console.error('Error fetching real-time totalSupply:', err);
+        }
+      }
 
       // For VRC-721 tokens, update the supply with actual mint count
       if (token.type === 'VRC-721') {

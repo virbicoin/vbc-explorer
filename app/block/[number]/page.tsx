@@ -14,7 +14,7 @@ import {
   ClipboardDocumentIcon
 } from '@heroicons/react/24/outline';
 import SummaryCard from '../../components/SummaryCard';
-import { getCurrencySymbol } from '../../../lib/client-config';
+import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
 import { initializeCurrency } from '../../../lib/bigint-utils';
 
 interface Config {
@@ -76,6 +76,8 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
       try {
         // Initialize currency conversion factors
         await initializeCurrency();
+        // Initialize currency config cache
+        await initializeCurrencyConfig();
         
         const response = await fetch('/api/config');
         if (response.ok) {

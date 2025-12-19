@@ -11,7 +11,7 @@ import {
   UserIcon,
   CurrencyDollarIcon
 } from '@heroicons/react/24/outline';
-import { getCurrencySymbol } from '../../lib/client-config';
+import { getCurrencySymbol, initializeCurrencyConfig } from '../../lib/client-config';
 
 interface Config {
   miners: Record<string, string>;
@@ -49,6 +49,9 @@ export default function SearchPage() {
     // 設定を取得
     const fetchConfig = async () => {
       try {
+        // Initialize currency config cache
+        await initializeCurrencyConfig();
+        
         const response = await fetch('/api/config');
         if (response.ok) {
           const configData = await response.json();
