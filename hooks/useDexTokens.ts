@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { type Token, VBC_TOKEN } from '@/lib/dex/config';
+import { type Token, getNativeToken } from '@/lib/dex/config';
 
 interface UseDexTokensResult {
   tokens: Token[];
@@ -10,8 +10,10 @@ interface UseDexTokensResult {
   refetch: () => Promise<void>;
 }
 
-// Fallback tokens if API fails (VBC only, other tokens come from API)
-const FALLBACK_TOKENS: Token[] = [VBC_TOKEN];
+// Get fallback tokens dynamically (native token only)
+function getFallbackTokens(): Token[] {
+  return [getNativeToken()];
+}
 
 export function useDexTokens(): UseDexTokensResult {
   // Start with empty array to avoid flash of WVBC
@@ -47,7 +49,7 @@ export function useDexTokens(): UseDexTokensResult {
       console.error('Failed to fetch DEX tokens:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch tokens');
       // Keep fallback tokens on error
-      setTokens(FALLBACK_TOKENS);
+      setTokens(getFallbackTokens());
     } finally {
       setIsLoading(false);
     }

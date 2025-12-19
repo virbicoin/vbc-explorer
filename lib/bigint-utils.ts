@@ -6,7 +6,7 @@
 let BASE_TO_CURRENCY = 1000000000000000000n; // 10^18
 let BASE_TO_GAS_UNIT = 1000000000n; // 10^9
 let CURRENCY_UNIT = 'ETH';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 let BASE_UNIT = 'wei';
 let GAS_UNIT = 'Gwei';
 
@@ -169,19 +169,22 @@ export function weiToGwei(wei: string | bigint): string {
 }
 
 /**
- * Format wei value to VBC display string
- * Converts from wei to VBC and formats for display
+ * Format wei value to native currency display string
+ * Converts from wei to native currency and formats for display
  */
-export function formatVBC(weiValue: string | bigint): string {
+export function formatNativeCurrency(weiValue: string | bigint): string {
   try {
-    // First convert from wei to VBC
-    const vbcValue = baseToCurrency(weiValue);
+    // First convert from wei to native currency
+    const nativeValue = baseToCurrency(weiValue);
     // Then format for display
-    return formatCurrency(vbcValue);
+    return formatCurrency(nativeValue);
   } catch {
     return `0 ${CURRENCY_UNIT}`;
   }
 }
+
+// Legacy alias for backward compatibility
+export const formatVBC = formatNativeCurrency;
 
 export function formatGwei(value: string): string {
   return formatGasUnit(value);

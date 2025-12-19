@@ -413,13 +413,13 @@ export async function GET(
     }
   };
 
-  // トランザクション値フォーマット関数
+  // Transaction value format function
   const formatTransactionValue = (value: string) => {
     try {
       const numValue = parseFloat(value);
-      // WeiからVBCに変換
-      const vbcValue = numValue / 1000000000000000000;
-      return vbcValue.toLocaleString(undefined, {
+      // Convert from Wei to native currency
+      const nativeValue = numValue / 1000000000000000000;
+      return nativeValue.toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 8
       });

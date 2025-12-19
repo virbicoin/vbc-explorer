@@ -11,11 +11,17 @@ let currencyCache: {
   gasUnit: string;
 } | null = null;
 
+// Cache for network config
+let networkCache: {
+  name: string;
+  chainId: number;
+} | null = null;
+
 /**
  * Initialize currency config from API (call once on app load)
  */
 export async function initializeCurrencyConfig(): Promise<void> {
-  if (currencyCache) return;
+  if (currencyCache && networkCache) return;
   
   try {
     const response = await fetch('/api/config/client');
@@ -27,6 +33,10 @@ export async function initializeCurrencyConfig(): Promise<void> {
         decimals: config.currency?.decimals || 18,
         gasUnit: config.currency?.gasUnit || 'Gwei',
       };
+      networkCache = {
+        name: config.network?.name || 'Ethereum',
+        chainId: config.network?.chainId || 1,
+      };
     }
   } catch {
     // Use defaults if API fails
@@ -36,33 +46,37 @@ export async function initializeCurrencyConfig(): Promise<void> {
       decimals: 18,
       gasUnit: 'Gwei',
     };
+    networkCache = {
+      name: 'Ethereum',
+      chainId: 1,
+    };
   }
 }
 
 /**
  * Get currency symbol (client-safe)
- * Returns cached value or default
+ * Returns cached value or default (Ethereum-compatible)
  */
 export function getCurrencySymbol(): string {
-  return currencyCache?.symbol || 'VBC';
+  return currencyCache?.symbol || 'ETH';
 }
 
 /**
  * Get currency name (client-safe)
- * Returns cached value or default
+ * Returns cached value or default (Ethereum-compatible)
  */
 export function getCurrencyName(): string {
-  return currencyCache?.name || 'VirBiCoin';
+  return currencyCache?.name || 'Ether';
 }
 
 /**
  * Get currency config (client-safe)
- * Returns cached value or defaults
+ * Returns cached value or defaults (Ethereum-compatible)
  */
 export function getCurrencyConfig() {
   return currencyCache || {
-    symbol: 'VBC',
-    name: 'VirBiCoin',
+    symbol: 'ETH',
+    name: 'Ether',
     decimals: 18,
     gasUnit: 'Gwei',
   };
@@ -73,4 +87,18 @@ export function getCurrencyConfig() {
  */
 export function getGasUnit(): string {
   return currencyCache?.gasUnit || 'Gwei';
+}
+
+/**
+ * Get network name (client-safe)
+ */
+export function getNetworkName(): string {
+  return networkCache?.name || 'Ethereum';
+}
+
+/**
+ * Get chain ID (client-safe)
+ */
+export function getChainId(): number {
+  return networkCache?.chainId || 1;
 }

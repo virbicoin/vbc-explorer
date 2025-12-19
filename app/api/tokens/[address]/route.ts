@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { getChainStats } from '../../../../lib/stats';
@@ -505,16 +505,16 @@ export async function GET(
     }
     let contractSource: ContractSource | null = null;
 
-    // Handle the native VBC token as a special case
+    // Handle the native token as a special case
     if (address.toLowerCase() === '0x0000000000000000000000000000000000000000') {
       // Directly call the library function instead of using fetch
       chainStats = await getChainStats();
       token = {
         address: '0x0000000000000000000000000000000000000000',
-        name: 'VirBiCoin',
-        symbol: 'VBC',
+        name: config.currency?.name || 'Ether',
+        symbol: config.currency?.symbol || 'ETH',
         type: 'Native',
-        decimals: 18,
+        decimals: config.currency?.decimals || 18,
         supply: chainStats.totalSupply || 'N/A',
         holders: chainStats.activeAddresses || 0,
         createdAt: new Date('1970-01-01T00:00:00Z'), // Set a more realistic genesis date
@@ -992,7 +992,7 @@ export async function GET(
           decimals: Number(token.decimals ?? 0),
           totalSupply: token.supply && typeof token.supply === 'string' ? formatTokenAmount(token.supply, Number(token.decimals ?? 0), true) : 'Unknown',
           totalSupplyRaw: token.supply && typeof token.supply === 'string' ? token.supply : '0',
-          description: `Unique digital collectibles on VirBiCoin network. ${token.type} standard NFT collection with verified smart contract.`,
+          description: `Unique digital collectibles on ${config.network?.name || 'blockchain'} network. ${token.type} standard NFT collection with verified smart contract.`,
           floorPrice: floorPrice,
           volume24h: volume24h,
           creator: creator,

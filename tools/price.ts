@@ -124,7 +124,7 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
     const priceSources: Array<{
       name: string;
       url: string;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       parser: (data: any) => { quoteBTC: number; quoteUSD: number } | null;
     }> = [];
 
@@ -133,7 +133,7 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
       priceSources.push({
         name: 'CoinGecko',
         url: `https://api.coingecko.com/api/v3/simple/price?ids=${currency.priceApi.coingecko.id}&vs_currencies=btc,usd`,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         parser: (data: any) => {
           const coinId = currency.priceApi?.coingecko?.id;
           if (coinId && data[coinId]) {
@@ -152,7 +152,7 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
       priceSources.push({
         name: 'CoinPaprika',
         url: `https://api.coinpaprika.com/v1/tickers/${currency.priceApi.coinpaprika.id}`,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         parser: (data: any) => ({
           quoteBTC: data.quotes?.BTC?.price || 0,
           quoteUSD: data.quotes?.USD?.price || 0

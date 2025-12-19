@@ -330,7 +330,7 @@ export const BlockStat = mongoose.models.BlockStat || mongoose.model<IBlockStat>
 export const Market = mongoose.models.Market || mongoose.model<IMarket>('Market', MarketSchema);
 
 // Default export for convenience
-export default {
+const models = {
   connectDB,
   Block,
   Account,
@@ -340,3 +340,5 @@ export default {
   BlockStat,
   Market,
 };
+
+export default models;

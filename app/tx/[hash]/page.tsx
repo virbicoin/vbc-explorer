@@ -14,7 +14,7 @@ import {
   ArrowPathIcon,
   ClipboardDocumentIcon
 } from '@heroicons/react/24/outline';
-import { getCurrencySymbol } from '../../../lib/client-config';
+import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
 import { initializeCurrency, formatGasUnit } from '../../../lib/bigint-utils';
 
 interface Config {
@@ -95,8 +95,9 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
         // Initialize currency conversion factors
         await initializeCurrency();
         
-        // Load config values
-        const symbol = await getCurrencySymbol();
+        // Load config values from API
+        await initializeCurrencyConfig();
+        const symbol = getCurrencySymbol();
         setCurrencySymbol(symbol);
         
         const response = await fetch('/api/config');
@@ -140,14 +141,14 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
 
   const formatValue = (value: string) => {
     try {
-      // WeiからVBCに変換（1 VBC = 10^18 Wei）
+      // Convert from Wei to native currency (1 unit = 10^18 Wei)
       const weiValue = BigInt(value);
-      const vbcValue = Number(weiValue) / 1e18;
+      const nativeValue = Number(weiValue) / 1e18;
       
-      if (vbcValue === 0) return `0 ${currencySymbol}`;
-      if (vbcValue < 0.000001) return `<0.000001 ${currencySymbol}`;
-      // 小数点以下を丸めずに表示
-      return `${vbcValue} ${currencySymbol}`;
+      if (nativeValue === 0) return `0 ${currencySymbol}`;
+      if (nativeValue < 0.000001) return `<0.000001 ${currencySymbol}`;
+      // Display without rounding decimals
+      return `${nativeValue} ${currencySymbol}`;
     } catch {
       return `${value} ${currencySymbol}`;
     }
@@ -290,20 +291,20 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
   }
 
   if (!loading && transaction) {
-    // サマリーカード
+    // Summary cards
     const summaryStats = [
       {
         title: 'Value',
         value: (() => {
           try {
             const weiValue = BigInt(transaction.value);
-            const vbcValue = Number(weiValue) / 1e18;
-            const symbol = currencySymbol || 'VBC';
-            if (vbcValue === 0) return `0 ${symbol}`;
-            if (vbcValue < 0.000001) return `<0.000001 ${symbol}`;
-            return `${vbcValue.toFixed(4)} ${symbol}`;
+            const nativeValue = Number(weiValue) / 1e18;
+            const symbol = currencySymbol || 'ETH';
+            if (nativeValue === 0) return `0 ${symbol}`;
+            if (nativeValue < 0.000001) return `<0.000001 ${symbol}`;
+            return `${nativeValue.toFixed(4)} ${symbol}`;
           } catch {
-            const symbol = currencySymbol || 'VBC';
+            const symbol = currencySymbol || 'ETH';
             return `${transaction.value} ${symbol}`;
           }
         })(),

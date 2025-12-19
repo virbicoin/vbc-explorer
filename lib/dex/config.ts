@@ -1,38 +1,97 @@
-// DEX Configuration for VirBiCoin Network
+// DEX Configuration - Generic EVM Chain Support
+// Uses minimal static config + dynamic loading from blockchain
+// All chain-specific values come from config.json
 
-import { defineChain } from 'viem';
+import { defineChain, type Chain } from 'viem';
+import { getMinimalConfig, type MinimalConfig } from './contract-service';
 
-// VirBiCoin Chain Definition
-export const virBiCoin = defineChain({
-  id: 329,
-  name: 'VirBiCoin',
-  nativeCurrency: {
-    name: 'VBC',
-    symbol: 'VBC',
-    decimals: 18,
-  },
-  rpcUrls: {
-    default: {
-      http: ['https://rpc.digitalregion.jp'],
+// Type for dynamic chain definition
+export interface ChainConfig {
+  chainId: number;
+  name: string;
+  rpcUrl: string;
+  explorer: string;
+  currency: {
+    name: string;
+    symbol: string;
+    decimals: number;
+  };
+}
+
+// Create chain definition dynamically from config
+export function createChain(config: ChainConfig): Chain {
+  return defineChain({
+    id: config.chainId,
+    name: config.name,
+    nativeCurrency: {
+      name: config.currency.name,
+      symbol: config.currency.symbol,
+      decimals: config.currency.decimals,
     },
-    public: {
-      http: ['https://rpc.digitalregion.jp'],
+    rpcUrls: {
+      default: {
+        http: [config.rpcUrl],
+      },
+      public: {
+        http: [config.rpcUrl],
+      },
     },
-  },
-  blockExplorers: {
-    default: {
-      name: 'VBC Explorer',
-      url: 'https://explorer.digitalregion.jp',
+    blockExplorers: {
+      default: {
+        name: `${config.name} Explorer`,
+        url: config.explorer,
+      },
     },
-  },
+  });
+}
+
+// Default chain (Ethereum-compatible fallback)
+// This will be replaced at runtime when config is loaded
+let currentChain: Chain | null = null;
+
+export function getChain(): Chain {
+  if (!currentChain) {
+    const config = getMinimalConfig();
+    currentChain = createChain({
+      chainId: config.chainId,
+      name: config.chainName || 'EVM Network',
+      rpcUrl: config.rpcUrl,
+      explorer: config.explorer,
+      currency: config.currency || { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    });
+  }
+  return currentChain;
+}
+
+// Reset chain when config changes
+export function resetChain(): void {
+  currentChain = null;
+}
+
+// Dynamic chain export (lazily initialized from config)
+export const dynamicChain = new Proxy({} as Chain, {
+  get: (_, prop) => getChain()[prop as keyof Chain],
 });
 
-// Contract Addresses
-export const DEX_CONTRACTS = {
-  factory: '0xE85A5BF52711c1eD2e94C8d6c8ba6717e70FE94F' as `0x${string}`,
-  router: '0x9Ad9B2b3E9C6FFd90d05BC322E01ACb2876AbaA9' as `0x${string}`,
-  wvbc: '0x52CB9F0d65D9d4De08CF103153C7A1A97567Bb9b' as `0x${string}`,
-} as const;
+// Legacy alias for backward compatibility
+export const virBiCoin = dynamicChain;
+
+// Static addresses - only Router and MasterChef need to be configured
+// Factory and wrapped native token are fetched dynamically from Router contract
+export function getDexContracts() {
+  const config = getMinimalConfig();
+  return {
+    router: config.routerV2,
+    masterChef: config.masterChefV2,
+    factory: config.factoryV2,
+    wrappedNative: config.wrappedNative?.address || '0x0000000000000000000000000000000000000000' as `0x${string}`,
+  } as const;
+}
+
+// Legacy export for backward compatibility
+export const DEX_CONTRACTS = new Proxy({} as ReturnType<typeof getDexContracts>, {
+  get: (_, prop) => getDexContracts()[prop as keyof ReturnType<typeof getDexContracts>],
+});
 
 // Token List
 export interface Token {
@@ -43,40 +102,82 @@ export interface Token {
   logoURI?: string;
 }
 
-export const VBC_TOKEN: Token = {
-  address: '0x0000000000000000000000000000000000000000' as `0x${string}`,
-  name: 'VirBiCoin',
-  symbol: 'VBC',
-  decimals: 18,
-};
+// Native token - dynamically generated from config
+export function getNativeToken(): Token {
+  const config = getMinimalConfig();
+  const currency = config.currency || { name: 'Ether', symbol: 'ETH', decimals: 18 };
+  return {
+    address: '0x0000000000000000000000000000000000000000' as `0x${string}`,
+    name: currency.name,
+    symbol: currency.symbol,
+    decimals: currency.decimals,
+  };
+}
 
-export const WVBC_TOKEN: Token = {
-  address: DEX_CONTRACTS.wvbc,
-  name: 'Wrapped VBC',
-  symbol: 'WVBC',
-  decimals: 18,
-};
+// Wrapped native token - dynamically generated from config
+export function getWrappedNativeToken(): Token {
+  const config = getMinimalConfig();
+  const wrappedNative = config.wrappedNative;
+  if (wrappedNative) {
+    return {
+      address: wrappedNative.address,
+      name: wrappedNative.name,
+      symbol: wrappedNative.symbol,
+      decimals: wrappedNative.decimals,
+    };
+  }
+  // Fallback for WETH-compatible
+  const currency = config.currency || { name: 'Ether', symbol: 'ETH', decimals: 18 };
+  return {
+    address: '0x0000000000000000000000000000000000000000' as `0x${string}`,
+    name: `Wrapped ${currency.name}`,
+    symbol: `W${currency.symbol}`,
+    decimals: currency.decimals,
+  };
+}
 
-export const DEFAULT_TOKENS: Token[] = [
-  VBC_TOKEN,
-  WVBC_TOKEN,
-  {
-    address: '0x7Dcd1b201D6F7a77fc39802f33b8662946220377' as `0x${string}`,
-    name: 'Test Token',
-    symbol: 'TEST',
-    decimals: 18,
+// Generic token exports (dynamically loaded from config)
+export const NATIVE_TOKEN = new Proxy({} as Token, {
+  get: (_, prop) => getNativeToken()[prop as keyof Token],
+});
+
+export const WRAPPED_NATIVE_TOKEN = new Proxy({} as Token, {
+  get: (_, prop) => getWrappedNativeToken()[prop as keyof Token],
+});
+
+// Default tokens - native token is always available, others loaded dynamically
+export function getDefaultTokens(): Token[] {
+  return [getNativeToken()];
+}
+
+export const DEFAULT_TOKENS = new Proxy([] as Token[], {
+  get: (_, prop) => {
+    if (prop === 'length') return getDefaultTokens().length;
+    if (typeof prop === 'string' && !isNaN(Number(prop))) {
+      return getDefaultTokens()[Number(prop)];
+    }
+    return getDefaultTokens()[prop as keyof Token[]];
   },
-];
+});
 
 // Default Slippage Settings (in basis points, 100 = 1%)
 export const SLIPPAGE_OPTIONS = [50, 100, 300] as const; // 0.5%, 1%, 3%
 export const DEFAULT_SLIPPAGE = 100; // 1%
 
-// ABIs
+// ABIs - UniswapV2互換ルータ向け
+// Note: チェーン/フォークによって関数名・引数（deadline有無）が異なることがある
+// 例: WETH() ではなく WVBC()、swapExactETHForTokens ではなく swapExactVBCForTokens など
 export const ROUTER_ABI = [
   {
     inputs: [],
     name: 'factory',
+    outputs: [{ type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'WETH',  // Standard Uniswap V2 method name
     outputs: [{ type: 'address' }],
     stateMutability: 'view',
     type: 'function',
@@ -88,6 +189,7 @@ export const ROUTER_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
+  // ---- Liquidity (deadline無し版が存在するRouterがある) ----
   {
     inputs: [
       { type: 'address', name: 'tokenA' },
@@ -105,6 +207,44 @@ export const ROUTER_ABI = [
       { type: 'uint256', name: 'liquidity' },
     ],
     stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { type: 'address', name: 'tokenA' },
+      { type: 'address', name: 'tokenB' },
+      { type: 'uint256', name: 'amountADesired' },
+      { type: 'uint256', name: 'amountBDesired' },
+      { type: 'uint256', name: 'amountAMin' },
+      { type: 'uint256', name: 'amountBMin' },
+      { type: 'address', name: 'to' },
+      { type: 'uint256', name: 'deadline' },
+    ],
+    name: 'addLiquidity',
+    outputs: [
+      { type: 'uint256', name: 'amountA' },
+      { type: 'uint256', name: 'amountB' },
+      { type: 'uint256', name: 'liquidity' },
+    ],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { type: 'address', name: 'token' },
+      { type: 'uint256', name: 'amountTokenDesired' },
+      { type: 'uint256', name: 'amountTokenMin' },
+      { type: 'uint256', name: 'amountETHMin' },
+      { type: 'address', name: 'to' },
+      { type: 'uint256', name: 'deadline' },
+    ],
+    name: 'addLiquidityETH',  // Standard Uniswap V2 method name
+    outputs: [
+      { type: 'uint256', name: 'amountToken' },
+      { type: 'uint256', name: 'amountETH' },
+      { type: 'uint256', name: 'liquidity' },
+    ],
+    stateMutability: 'payable',
     type: 'function',
   },
   {
@@ -143,6 +283,41 @@ export const ROUTER_ABI = [
   },
   {
     inputs: [
+      { type: 'address', name: 'tokenA' },
+      { type: 'address', name: 'tokenB' },
+      { type: 'uint256', name: 'liquidity' },
+      { type: 'uint256', name: 'amountAMin' },
+      { type: 'uint256', name: 'amountBMin' },
+      { type: 'address', name: 'to' },
+      { type: 'uint256', name: 'deadline' },
+    ],
+    name: 'removeLiquidity',
+    outputs: [
+      { type: 'uint256', name: 'amountA' },
+      { type: 'uint256', name: 'amountB' },
+    ],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { type: 'address', name: 'token' },
+      { type: 'uint256', name: 'liquidity' },
+      { type: 'uint256', name: 'amountTokenMin' },
+      { type: 'uint256', name: 'amountETHMin' },
+      { type: 'address', name: 'to' },
+      { type: 'uint256', name: 'deadline' },
+    ],
+    name: 'removeLiquidityETH',  // Standard Uniswap V2 method name
+    outputs: [
+      { type: 'uint256', name: 'amountToken' },
+      { type: 'uint256', name: 'amountETH' },
+    ],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
       { type: 'address', name: 'token' },
       { type: 'uint256', name: 'liquidity' },
       { type: 'uint256', name: 'amountTokenMin' },
@@ -157,12 +332,26 @@ export const ROUTER_ABI = [
     stateMutability: 'nonpayable',
     type: 'function',
   },
+  // ---- Swaps (deadline無し版が存在するRouterがある) ----
   {
     inputs: [
       { type: 'uint256', name: 'amountIn' },
       { type: 'uint256', name: 'amountOutMin' },
       { type: 'address[]', name: 'path' },
       { type: 'address', name: 'to' },
+    ],
+    name: 'swapExactTokensForTokens',
+    outputs: [{ type: 'uint256[]', name: 'amounts' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { type: 'uint256', name: 'amountIn' },
+      { type: 'uint256', name: 'amountOutMin' },
+      { type: 'address[]', name: 'path' },
+      { type: 'address', name: 'to' },
+      { type: 'uint256', name: 'deadline' },
     ],
     name: 'swapExactTokensForTokens',
     outputs: [{ type: 'uint256[]', name: 'amounts' }],
@@ -182,12 +371,37 @@ export const ROUTER_ABI = [
   },
   {
     inputs: [
+      { type: 'uint256', name: 'amountOutMin' },
+      { type: 'address[]', name: 'path' },
+      { type: 'address', name: 'to' },
+      { type: 'uint256', name: 'deadline' },
+    ],
+    name: 'swapExactETHForTokens',  // Standard Uniswap V2 method name
+    outputs: [{ type: 'uint256[]', name: 'amounts' }],
+    stateMutability: 'payable',
+    type: 'function',
+  },
+  {
+    inputs: [
       { type: 'uint256', name: 'amountIn' },
       { type: 'uint256', name: 'amountOutMin' },
       { type: 'address[]', name: 'path' },
       { type: 'address', name: 'to' },
     ],
     name: 'swapExactTokensForVBC',
+    outputs: [{ type: 'uint256[]', name: 'amounts' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { type: 'uint256', name: 'amountIn' },
+      { type: 'uint256', name: 'amountOutMin' },
+      { type: 'address[]', name: 'path' },
+      { type: 'address', name: 'to' },
+      { type: 'uint256', name: 'deadline' },
+    ],
+    name: 'swapExactTokensForETH',  // Standard Uniswap V2 method name
     outputs: [{ type: 'uint256[]', name: 'amounts' }],
     stateMutability: 'nonpayable',
     type: 'function',
@@ -415,7 +629,8 @@ export const ERC20_ABI = [
   },
 ] as const;
 
-export const WVBC_ABI = [
+// Wrapped native token ABI (WETH-compatible)
+export const WRAPPED_NATIVE_ABI = [
   ...ERC20_ABI,
   {
     inputs: [],
@@ -432,3 +647,6 @@ export const WVBC_ABI = [
     type: 'function',
   },
 ] as const;
+
+// Legacy export for backward compatibility
+export const WVBC_ABI = WRAPPED_NATIVE_ABI;

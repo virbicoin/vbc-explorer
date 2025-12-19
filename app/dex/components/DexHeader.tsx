@@ -1,25 +1,43 @@
 'use client';
 
-import Link from 'next/link';
 import Image from 'next/image';
-import { usePathname } from 'next/navigation';
 import { useAccount, useConnect, useDisconnect, useBalance, useSwitchChain } from 'wagmi';
 import { formatUnits } from 'viem';
-import { virBiCoin } from '@/lib/dex/config';
+import { useState, useEffect } from 'react';
+import { getChain, getNativeToken } from '@/lib/dex/config';
 
-// VirBiCoin network configuration for adding to MetaMask
-const VBC_CHAIN_PARAMS = {
-  chainId: '0x149', // 329 in hex
-  chainName: 'VirBiCoin',
+// Chain configuration type
+interface ChainParams {
+  chainId: string;
+  chainName: string;
   nativeCurrency: {
-    name: 'VirBiCoin',
-    symbol: 'VBC',
-    decimals: 18,
-  },
-  rpcUrls: ['https://rpc.digitalregion.jp'],
-  blockExplorerUrls: ['https://explorer.digitalregion.jp'],
-  iconUrls: ['https://vbc.digitalregion.jp/VBC.svg']
-};
+    name: string;
+    symbol: string;
+    decimals: number;
+  };
+  rpcUrls: string[];
+  blockExplorerUrls: string[];
+  iconUrls: string[];
+}
+
+// Get chain params from config dynamically
+function getChainParams(): ChainParams {
+  const chain = getChain();
+  const nativeToken = getNativeToken();
+  
+  return {
+    chainId: `0x${chain.id.toString(16)}`,
+    chainName: chain.name,
+    nativeCurrency: {
+      name: nativeToken.name,
+      symbol: nativeToken.symbol,
+      decimals: nativeToken.decimals,
+    },
+    rpcUrls: [chain.rpcUrls.default.http[0]],
+    blockExplorerUrls: [chain.blockExplorers?.default?.url || ''],
+    iconUrls: []
+  };
+}
 
 function ConnectWalletButton() {
   const { address, isConnected, chainId } = useAccount();
@@ -27,16 +45,30 @@ function ConnectWalletButton() {
   const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
   const { data: balance } = useBalance({ address });
+  
+  const [chainParams, setChainParams] = useState<ChainParams | null>(null);
+  const [expectedChainId, setExpectedChainId] = useState<number | null>(null);
+  
+  useEffect(() => {
+    // Get chain params on client side
+    const params = getChainParams();
+    // Use requestAnimationFrame to avoid synchronous setState in effect
+    requestAnimationFrame(() => {
+      setChainParams(params);
+      setExpectedChainId(parseInt(params.chainId, 16));
+    });
+  }, []);
 
-  const isWrongNetwork = isConnected && chainId !== virBiCoin.id;
+  const isWrongNetwork = isConnected && expectedChainId !== null && chainId !== expectedChainId;
+  const nativeSymbol = chainParams?.nativeCurrency.symbol || 'ETH';
 
-  // Connect with MetaMask and add VBC network
+  // Connect with MetaMask and add network
   const handleConnect = async () => {
     const injectedConnector = connectors.find((c) => c.id === 'injected');
-    if (injectedConnector) {
+    if (injectedConnector && chainParams) {
       connect({ connector: injectedConnector });
       
-      // Try to add VBC network after connecting
+      // Try to add network after connecting
       const ethereum = (window as unknown as { ethereum?: {
         request: (params: { method: string; params?: unknown[] }) => Promise<unknown>;
       } }).ethereum;
@@ -45,17 +77,17 @@ function ConnectWalletButton() {
         try {
           await ethereum.request({
             method: 'wallet_switchEthereumChain',
-            params: [{ chainId: VBC_CHAIN_PARAMS.chainId }],
+            params: [{ chainId: chainParams.chainId }],
           });
         } catch (switchError: unknown) {
           if ((switchError as { code?: number })?.code === 4902) {
             try {
               await ethereum.request({
                 method: 'wallet_addEthereumChain',
-                params: [VBC_CHAIN_PARAMS],
+                params: [chainParams],
               });
             } catch (addError) {
-              console.error('Failed to add VBC network:', addError);
+              console.error('Failed to add network:', addError);
             }
           }
         }
@@ -63,8 +95,10 @@ function ConnectWalletButton() {
     }
   };
 
-  // Switch to VBC network
+  // Switch to correct network
   const handleSwitchNetwork = async () => {
+    if (!chainParams) return;
+    
     const ethereum = (window as unknown as { ethereum?: {
       request: (params: { method: string; params?: unknown[] }) => Promise<unknown>;
     } }).ethereum;
@@ -73,17 +107,17 @@ function ConnectWalletButton() {
       try {
         await ethereum.request({
           method: 'wallet_switchEthereumChain',
-          params: [{ chainId: VBC_CHAIN_PARAMS.chainId }],
+          params: [{ chainId: chainParams.chainId }],
         });
       } catch (switchError: unknown) {
         if ((switchError as { code?: number })?.code === 4902) {
           try {
             await ethereum.request({
               method: 'wallet_addEthereumChain',
-              params: [VBC_CHAIN_PARAMS],
+              params: [chainParams],
             });
           } catch (addError) {
-            console.error('Failed to add VBC network:', addError);
+            console.error('Failed to add network:', addError);
           }
         }
       }
@@ -102,7 +136,7 @@ function ConnectWalletButton() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            Switch to VBC
+            Switch Network
           </button>
         )}
         
@@ -111,7 +145,7 @@ function ConnectWalletButton() {
           <div className="hidden sm:flex items-center gap-2 px-3 py-2 bg-gray-800/80 rounded-xl border border-gray-700">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
             <span className="text-sm font-medium text-gray-300">
-              {parseFloat(formatUnits(balance.value, balance.decimals)).toFixed(4)} VBC
+              {parseFloat(formatUnits(balance.value, balance.decimals)).toFixed(4)} {nativeSymbol}
             </span>
           </div>
         )}
@@ -149,42 +183,9 @@ function ConnectWalletButton() {
 }
 
 export function DexHeader() {
-  const pathname = usePathname();
-
-  const navItems = [
-    { href: '/dex', label: 'Swap', icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-      </svg>
-    )},
-    { href: '/dex/pool', label: 'Pool', icon: (
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-      </svg>
-    )},
-  ];
-
   return (
-    <div className="max-w-lg mx-auto mb-8">
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-        {/* Navigation Tabs */}
-        <nav className="flex items-center gap-1 bg-gray-800/50 backdrop-blur-sm rounded-2xl p-1.5 border border-gray-700/50">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl transition-all text-sm font-semibold ${
-                pathname === item.href
-                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/25'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
-              }`}
-            >
-              {item.icon}
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-        
+    <div className="max-w-lg mx-auto mb-6">
+      <div className="flex justify-end">
         <ConnectWalletButton />
       </div>
     </div>

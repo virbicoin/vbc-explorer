@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
-import { type Token, VBC_TOKEN } from '@/lib/dex/config';
+import { type Token } from '@/lib/dex/config';
 import { useVBCBalance, useTokenBalance, formatTokenAmount, isNativeToken } from '@/lib/dex/hooks';
 import { TokenSelector } from './TokenSelector';
 import type { Address } from 'viem';

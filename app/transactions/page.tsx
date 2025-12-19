@@ -14,7 +14,7 @@ import {
   CubeIcon
 } from '@heroicons/react/24/outline';
 import SummaryCard from '../components/SummaryCard';
-import { getCurrencySymbol, getCurrencyConfig } from '../../lib/client-config';
+import { getCurrencySymbol, getCurrencyConfig, initializeCurrencyConfig, getNetworkName } from '../../lib/client-config';
 import { initializeCurrency } from '../../lib/bigint-utils';
 
 interface Transaction {
@@ -63,20 +63,28 @@ export default function TransactionsPage() {
     lastBlockTime: 'Unknown',
     avgGasPrice: '0'
   });
-  const [gasUnit, setGasUnit] = useState('Gniku'); // ガス単位を状態として管理
+  const [gasUnit, setGasUnit] = useState('Gwei');
   const [currencySymbol, setCurrencySymbol] = useState<string>('');
+  const [networkName, setNetworkName] = useState<string>('');
   const transactionsPerPage = 50;
 
   useEffect(() => {
-    // 設定を取得してガス単位を設定
+    // Fetch config for gas unit and network name
     const fetchConfig = async () => {
       try {
-        const currencyConfig = await getCurrencyConfig();
-        setGasUnit((currencyConfig as { gasUnit?: string }).gasUnit || 'Gniku');
+        // First initialize the currency cache from API
+        await initializeCurrencyConfig();
+        
+        const currencyConfig = getCurrencyConfig();
+        setGasUnit((currencyConfig as { gasUnit?: string }).gasUnit || 'Gwei');
         
         // Load currency symbol
-        const symbol = await getCurrencySymbol();
+        const symbol = getCurrencySymbol();
         setCurrencySymbol(symbol);
+        
+        // Load network name
+        const network = getNetworkName();
+        setNetworkName(network);
       } catch (err) {
         console.error('Error fetching currency config:', err);
       }
@@ -314,7 +322,7 @@ export default function TransactionsPage() {
             )}
           </div>
           <p className='text-gray-400'>
-            Most recent transactions on the Virbicoin network
+            Most recent transactions on the {networkName || 'blockchain'} network
           </p>
         </div>
       </div>

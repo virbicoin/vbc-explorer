@@ -96,10 +96,31 @@
     }
   },
   "explorer": {
-    "name": "VirBiCoin Explorer",
-    "description": "Real-time blockchain explorer for VirBiCoin network",
+    "name": "Blockchain Explorer",
+    "description": "Real-time blockchain explorer",
     "version": "1.0.0",
     "url": "https://explorer.example.com",
-    "apiUrl": "https://explorer.example.com/api"
+    "apiUrl": "https://explorer.example.com/api",
+    "copyright": "Your Company Name",
+    "github": "https://github.com/your-repo/explorer"
+  },
+  "network": {
+    "chainId": 1,
+    "name": "Ethereum Mainnet",
+    "rpcUrl": "http://localhost:8545",
+    "wsUrl": "ws://localhost:8546",
+    "explorer": "https://explorer.example.com",
+    "blockTime": 12
+  },
+  "dex": {
+    "enabled": false,
+    "router": "0x0000000000000000000000000000000000000000",
+    "masterChef": "0x0000000000000000000000000000000000000000",
+    "wrappedNative": {
+      "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "name": "Wrapped Ether",
+      "symbol": "WETH",
+      "decimals": 18
+    }
   }
 }

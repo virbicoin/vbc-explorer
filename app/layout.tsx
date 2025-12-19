@@ -5,12 +5,18 @@ import Header from './components/Header'
 import Footer from './components/Footer'
 import type { ReactNode } from 'react'
 import type { Viewport } from 'next'
+import { loadConfig } from '@/lib/config';
 
 const inter = Inter({ subsets: ['latin'] })
 
+// Load config for metadata generation
+const config = loadConfig();
+const explorerName = config.explorer?.name || `${config.currency?.name || 'Blockchain'} Explorer`;
+const networkName = config.network?.name || config.currency?.name || 'Blockchain';
+
 export const metadata: Metadata = {
-  title: "VirBiCoin Blockchain Explorer",
-  description: "Explore the VirBiCoin blockchain with real-time transaction data, block information, address tracking, and comprehensive token analytics. A modern, user-friendly blockchain explorer for the VirBiCoin ecosystem.",
+  title: explorerName,
+  description: `Explore the ${networkName} blockchain with real-time transaction data, block information, address tracking, and comprehensive token analytics. A modern, user-friendly blockchain explorer.`,
 };
 
 export const viewport: Viewport = {

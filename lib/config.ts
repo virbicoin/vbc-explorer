@@ -16,6 +16,8 @@ export interface CurrencyConfig {
   unit: string;
   decimals: number;
   gasUnit: string;
+  icon?: string;
+  color?: string;
   priceApi?: {
     coingecko?: {
       enabled: boolean;
@@ -31,10 +33,64 @@ export interface CurrencyConfig {
 export interface ExplorerConfig {
   name: string;
   description: string;
+  version?: string;
+  url?: string;
+  apiUrl?: string;
+  copyright?: string;
+  github?: string;
 }
 
 export interface GeneralConfig {
   quiet: boolean;
+}
+
+// Network configuration
+export interface NetworkConfig {
+  chainId: number;
+  name: string;
+  rpcUrl: string;
+  wsUrl?: string;
+  explorer?: string;
+  blockTime?: number;
+}
+
+// Wrapped native token configuration
+export interface WrappedNativeConfig {
+  address: `0x${string}`;
+  name: string;
+  symbol: string;
+  decimals: number;
+  icon?: string;
+  color?: string;
+}
+
+// Reward token configuration
+export interface RewardTokenConfig {
+  symbol: string;
+  name: string;
+  icon?: string;
+  color?: string;
+}
+
+// DEX configuration
+export interface DexConfig {
+  enabled: boolean;
+  router?: `0x${string}`;
+  factory?: `0x${string}`;
+  masterChef?: `0x${string}`;
+  wrappedNative?: WrappedNativeConfig;
+  rewardToken?: RewardTokenConfig;
+}
+
+// Social links configuration
+export interface SocialConfig {
+  x?: string;
+  bitcointalk?: string;
+  discord?: string;
+  telegram?: string;
+  github?: string;
+  reddit?: string;
+  medium?: string;
 }
 
 export interface AppConfig {
@@ -57,6 +113,9 @@ export interface AppConfig {
   explorer?: ExplorerConfig;
   general?: GeneralConfig;
   priceUpdateInterval?: number;
+  network?: NetworkConfig;
+  dex?: DexConfig;
+  social?: SocialConfig;
   [key: string]: unknown;
 }
 
@@ -86,11 +145,11 @@ export const readConfig = (): AppConfig => {
       console.log('📄 No config files found, using defaults');
     }
     
-    // Default configuration
+    // Default configuration (Ethereum fallback)
     const defaultConfig: AppConfig = {
       nodeAddr: 'localhost',
-      port: 8329,
-      wsPort: 8330,
+      port: 8545,
+      wsPort: 8546,
       bulkSize: 100,
       syncAll: true,
       quiet: false,
@@ -101,7 +160,7 @@ export const readConfig = (): AppConfig => {
       retryDelay: 1000,
       logLevel: 'info',
       web3Provider: {
-        url: 'http://localhost:8329'
+        url: 'http://localhost:8545'
       },
       database: {
         uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/explorerDB',
@@ -115,12 +174,22 @@ export const readConfig = (): AppConfig => {
           autoCreate: false
         }
       },
+      // Ethereum-compatible defaults
       currency: {
-        name: 'VirBiCoin',
-        symbol: 'VBC',
-        unit: 'niku',
+        name: 'Ethereum',
+        symbol: 'ETH',
+        unit: 'wei',
         decimals: 18,
-        gasUnit: 'Gniku'
+        gasUnit: 'Gwei'
+      },
+      network: {
+        chainId: 1,
+        name: 'Ethereum Mainnet',
+        rpcUrl: 'http://localhost:8545',
+        blockTime: 12
+      },
+      dex: {
+        enabled: false
       },
       miners: {}
     };
@@ -162,11 +231,11 @@ export const readConfig = (): AppConfig => {
     console.error('Error reading config:', error);
     console.log('📄 Using minimal default configuration');
     
-    // Return minimal config on error
+    // Return minimal config on error (Ethereum-compatible defaults)
     cachedConfig = {
       nodeAddr: 'localhost',
-      port: 8329,
-      wsPort: 8330,
+      port: 8545,
+      wsPort: 8546,
       bulkSize: 100,
       syncAll: true,
       quiet: false,
@@ -177,18 +246,27 @@ export const readConfig = (): AppConfig => {
       retryDelay: 1000,
       logLevel: 'info',
       web3Provider: {
-        url: process.env.WEB3_PROVIDER_URL || 'http://localhost:8329'
+        url: process.env.WEB3_PROVIDER_URL || 'http://localhost:8545'
       },
       database: {
         uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/explorerDB',
         options: {}
       },
       currency: {
-        name: 'VirBiCoin',
-        symbol: 'VBC',
-        unit: 'niku',
+        name: 'Ethereum',
+        symbol: 'ETH',
+        unit: 'wei',
         decimals: 18,
-        gasUnit: 'Gniku'
+        gasUnit: 'Gwei'
+      },
+      network: {
+        chainId: 1,
+        name: 'Ethereum Mainnet',
+        rpcUrl: 'http://localhost:8545',
+        blockTime: 12
+      },
+      dex: {
+        enabled: false
       },
       miners: {}
     };
@@ -227,7 +305,7 @@ export const getWeb3ProviderURL = (): string => {
  */
 export const getCurrencySymbol = (): string => {
   const config = readConfig();
-  return config.currency?.symbol || 'VBC';
+  return config.currency?.symbol || 'ETH';
 };
 
 /**
@@ -235,7 +313,7 @@ export const getCurrencySymbol = (): string => {
  */
 export const getCurrencyName = (): string => {
   const config = readConfig();
-  return config.currency?.name || 'VirBiCoin';
+  return config.currency?.name || 'Ethereum';
 };
 
 /**
@@ -244,11 +322,11 @@ export const getCurrencyName = (): string => {
 export const getCurrencyConfig = () => {
   const config = readConfig();
   return config.currency || {
-    name: 'VirBiCoin',
-    symbol: 'VBC',
-    unit: 'niku',
+    name: 'Ethereum',
+    symbol: 'ETH',
+    unit: 'wei',
     decimals: 18,
-    gasUnit: 'Gniku'
+    gasUnit: 'Gwei'
   };
 };
 
@@ -257,7 +335,7 @@ export const getCurrencyConfig = () => {
  */
 export const getGasUnitServer = (): string => {
   const config = readConfig();
-  return config.currency?.gasUnit || 'Gniku';
+  return config.currency?.gasUnit || 'Gwei';
 };
 
 /**

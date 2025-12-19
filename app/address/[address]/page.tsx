@@ -84,7 +84,8 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
     const fetchConfig = async () => {
       try {
         await initializeCurrency();
-        const symbol = await getCurrencySymbol();
+        await initializeCurrencyConfig();
+        const symbol = getCurrencySymbol();
         setCurrencySymbol(symbol);
         const response = await fetch('/api/config');
         if (response.ok) {
@@ -169,10 +170,10 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
   const formatValue = (value: string) => {
     try {
       const weiValue = BigInt(value);
-      const vbcValue = Number(weiValue) / 1e18;
-      if (vbcValue === 0) return `0 ${currencySymbol}`;
-      if (vbcValue < 0.000001) return `<0.000001 ${currencySymbol}`;
-      return `${vbcValue.toFixed(4)} ${currencySymbol}`;
+      const nativeValue = Number(weiValue) / 1e18;
+      if (nativeValue === 0) return `0 ${currencySymbol}`;
+      if (nativeValue < 0.000001) return `<0.000001 ${currencySymbol}`;
+      return `${nativeValue.toFixed(4)} ${currencySymbol}`;
     } catch {
       return `${value} ${currencySymbol}`;
     }
@@ -298,27 +299,27 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
     );
   }
   
-  // サマリーカード
+  // Summary cards
   console.log('Account data:', account);
   console.log('Currency symbol:', currencySymbol);
   
   const balanceValue = account ? (() => {
     try {
       const weiValue = BigInt(account.balanceRaw);
-      const vbcValue = Number(weiValue) / 1e18;
-      const symbol = currencySymbol || 'VBC';
-      console.log('Balance formatting:', { weiValue: account.balanceRaw, vbcValue, symbol });
-      if (vbcValue === 0) return `0 ${symbol}`;
-      if (vbcValue < 0.000001) return `<0.000001 ${symbol}`;
-      const result = `${vbcValue.toFixed(4)} ${symbol}`;
+      const nativeValue = Number(weiValue) / 1e18;
+      const symbol = currencySymbol || 'ETH';
+      console.log('Balance formatting:', { weiValue: account.balanceRaw, nativeValue, symbol });
+      if (nativeValue === 0) return `0 ${symbol}`;
+      if (nativeValue < 0.000001) return `<0.000001 ${symbol}`;
+      const result = `${nativeValue.toFixed(4)} ${symbol}`;
       console.log('Formatted balance:', result);
       return result;
     } catch (error) {
       console.error('Balance formatting error:', error);
-      const symbol = currencySymbol || 'VBC';
+      const symbol = currencySymbol || 'ETH';
       return `${account.balance} ${symbol}`;
     }
-  })() : `0 ${currencySymbol || 'VBC'}`;
+  })() : `0 ${currencySymbol || 'ETH'}`;
   
   console.log('Final balance value:', balanceValue);
   

@@ -74,7 +74,7 @@ async function fetchTransactionsData(page: number, limit: number, hasPageParams:
     .maxTimeMS(30000)
     .toArray();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const formattedTransactions = (transactions || []).map((tx: any) => ({
     hash: tx.hash,
     from: tx.from,

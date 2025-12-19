@@ -1,8 +1,13 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useAccount, useBalance } from 'wagmi';
 import { parseEther, formatEther, formatUnits, parseUnits, type Address } from 'viem';
-import { DEX_CONTRACTS, ROUTER_ABI, FACTORY_ABI, PAIR_ABI, ERC20_ABI, type Token, VBC_TOKEN, WVBC_TOKEN } from './config';
+import { getDexContracts, ROUTER_ABI, FACTORY_ABI, PAIR_ABI, ERC20_ABI, type Token, getNativeToken, getWrappedNativeToken } from './config';
+
+// Generic token exports (dynamically loaded from config)
+export const NATIVE_TOKEN = getNativeToken();
+export const WRAPPED_NATIVE_TOKEN = getWrappedNativeToken();
 
 // ============================================
 // Utility Functions
@@ -13,7 +18,8 @@ export function isNativeToken(token: Token): boolean {
 }
 
 export function getTokenAddress(token: Token): Address {
-  return isNativeToken(token) ? DEX_CONTRACTS.wvbc : token.address;
+  const contracts = getDexContracts();
+  return isNativeToken(token) ? contracts.wrappedNative : token.address;
 }
 
 export function formatTokenAmount(amount: bigint, decimals: number = 18, displayDecimals: number = 6): string {
@@ -58,12 +64,15 @@ export function calculatePriceImpact(
 // Custom Hooks
 // ============================================
 
-// Get native VBC balance
-export function useVBCBalance(address?: Address) {
+// Get native token balance (ETH, VBC, BNB, etc.)
+export function useNativeBalance(address?: Address) {
   return useBalance({
     address,
   });
 }
+
+// Legacy alias for backward compatibility
+export const useVBCBalance = useNativeBalance;
 
 // Get ERC20 token balance
 export function useTokenBalance(tokenAddress: Address, userAddress?: Address) {
@@ -93,8 +102,9 @@ export function useTokenAllowance(tokenAddress: Address, owner?: Address, spende
 
 // Get pair address
 export function usePairAddress(tokenA: Address, tokenB: Address) {
+  const contracts = getDexContracts();
   return useReadContract({
-    address: DEX_CONTRACTS.factory,
+    address: contracts.factory,
     abi: FACTORY_ABI,
     functionName: 'getPair',
     args: [tokenA, tokenB],
@@ -104,23 +114,48 @@ export function usePairAddress(tokenA: Address, tokenB: Address) {
   });
 }
 
-// Get reserves from router
+// Get reserves from pair (in the same order as tokenA/tokenB)
 export function useReserves(tokenA: Address, tokenB: Address) {
-  return useReadContract({
-    address: DEX_CONTRACTS.router,
-    abi: ROUTER_ABI,
-    functionName: 'getReserves',
-    args: [tokenA, tokenB],
-    query: {
-      enabled: tokenA !== tokenB,
-    },
+  const { data: pairAddress } = usePairAddress(tokenA, tokenB);
+  const pair = pairAddress as Address | undefined;
+  const enabled =
+    tokenA !== tokenB &&
+    !!pair &&
+    pair !== '0x0000000000000000000000000000000000000000';
+
+  const { data: token0 } = useReadContract({
+    address: pair,
+    abi: PAIR_ABI,
+    functionName: 'token0',
+    query: { enabled },
   });
+
+  const { data: rawReserves, ...rest } = useReadContract({
+    address: pair,
+    abi: PAIR_ABI,
+    functionName: 'getReserves',
+    query: { enabled },
+  });
+
+  const data = useMemo(() => {
+    if (!rawReserves || !token0) return undefined;
+    const [reserve0, reserve1] = rawReserves as unknown as readonly [bigint, bigint];
+    const token0Addr = (token0 as string).toLowerCase();
+    const tokenAAddr = tokenA.toLowerCase();
+
+    return tokenAAddr === token0Addr
+      ? ([reserve0, reserve1] as const)
+      : ([reserve1, reserve0] as const);
+  }, [rawReserves, token0, tokenA]);
+
+  return { data, ...rest };
 }
 
 // Get swap quote
 export function useSwapQuote(amountIn: bigint, path: Address[]) {
+  const contracts = getDexContracts();
   return useReadContract({
-    address: DEX_CONTRACTS.router,
+    address: contracts.router,
     abi: ROUTER_ABI,
     functionName: 'getAmountsOut',
     args: [amountIn, path],
@@ -184,8 +219,9 @@ export function useUserLPBalance(pairAddress?: Address, userAddress?: Address) {
 
 // Get all pairs count
 export function useAllPairsLength() {
+  const contracts = getDexContracts();
   return useReadContract({
-    address: DEX_CONTRACTS.factory,
+    address: contracts.factory,
     abi: FACTORY_ABI,
     functionName: 'allPairsLength',
   });
@@ -193,8 +229,9 @@ export function useAllPairsLength() {
 
 // Get pair by index
 export function usePairByIndex(index: bigint) {
+  const contracts = getDexContracts();
   return useReadContract({
-    address: DEX_CONTRACTS.factory,
+    address: contracts.factory,
     abi: FACTORY_ABI,
     functionName: 'allPairs',
     args: [index],
@@ -224,36 +261,62 @@ export function useApproveToken() {
 export function useSwap() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const contracts = getDexContracts();
 
-  // VBC -> Token
-  const swapVBCForTokens = async (
+  const deadline = () => BigInt(Math.floor(Date.now() / 1000) + 60 * 20); // 20 minutes
+
+  // Native -> Token (ETH/VBC/BNB -> Token)
+  const swapNativeForTokens = async (
     amountIn: bigint,
     amountOutMin: bigint,
     path: Address[],
     to: Address
   ) => {
-    return writeContract({
-      address: DEX_CONTRACTS.router,
-      abi: ROUTER_ABI,
-      functionName: 'swapExactVBCForTokens',
-      args: [amountOutMin, path, to],
-      value: amountIn,
-    });
+    try {
+      // VirBiCoin系Router
+      return await writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'swapExactVBCForTokens',
+        args: [amountOutMin, path, to],
+        value: amountIn,
+      });
+    } catch {
+      // 標準UniswapV2 (deadline有り)
+      return writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'swapExactETHForTokens',
+        args: [amountOutMin, path, to, deadline()],
+        value: amountIn,
+      });
+    }
   };
 
-  // Token -> VBC
-  const swapTokensForVBC = async (
+  // Token -> Native (Token -> ETH/VBC/BNB)
+  const swapTokensForNative = async (
     amountIn: bigint,
     amountOutMin: bigint,
     path: Address[],
     to: Address
   ) => {
-    return writeContract({
-      address: DEX_CONTRACTS.router,
-      abi: ROUTER_ABI,
-      functionName: 'swapExactTokensForVBC',
-      args: [amountIn, amountOutMin, path, to],
-    });
+    try {
+      // VirBiCoin系Router
+      return await writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'swapExactTokensForVBC',
+        args: [amountIn, amountOutMin, path, to],
+      });
+    } catch {
+      // 標準UniswapV2 (deadline有り)
+      return writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'swapExactTokensForETH',
+        args: [amountIn, amountOutMin, path, to, deadline()],
+      });
+    }
   };
 
   // Token -> Token
@@ -263,18 +326,36 @@ export function useSwap() {
     path: Address[],
     to: Address
   ) => {
-    return writeContract({
-      address: DEX_CONTRACTS.router,
-      abi: ROUTER_ABI,
-      functionName: 'swapExactTokensForTokens',
-      args: [amountIn, amountOutMin, path, to],
-    });
+    try {
+      // deadline無し版
+      return await writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'swapExactTokensForTokens',
+        args: [amountIn, amountOutMin, path, to],
+      });
+    } catch {
+      // 標準UniswapV2 (deadline有り)
+      return writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'swapExactTokensForTokens',
+        args: [amountIn, amountOutMin, path, to, deadline()],
+      });
+    }
   };
 
+  // Legacy aliases for backward compatibility
+  const swapVBCForTokens = swapNativeForTokens;
+  const swapTokensForVBC = swapTokensForNative;
+
   return {
+    swapNativeForTokens,
+    swapTokensForNative,
+    swapTokensForTokens,
+    // Legacy exports
     swapVBCForTokens,
     swapTokensForVBC,
-    swapTokensForTokens,
     hash,
     isPending,
     isConfirming,
@@ -286,23 +367,38 @@ export function useSwap() {
 export function useAddLiquidity() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const contracts = getDexContracts();
 
-  // Add liquidity for VBC + Token pair
-  const addLiquidityVBC = async (
+  const deadline = () => BigInt(Math.floor(Date.now() / 1000) + 60 * 20); // 20 minutes
+
+  // Add liquidity for Native + Token pair (ETH/VBC/BNB + Token)
+  const addLiquidityNative = async (
     token: Address,
     amountTokenDesired: bigint,
     amountTokenMin: bigint,
-    amountVBCMin: bigint,
+    amountNativeMin: bigint,
     to: Address,
-    amountVBC: bigint
+    amountNative: bigint
   ) => {
-    return writeContract({
-      address: DEX_CONTRACTS.router,
-      abi: ROUTER_ABI,
-      functionName: 'addLiquidityVBC',
-      args: [token, amountTokenDesired, amountTokenMin, amountVBCMin, to],
-      value: amountVBC,
-    });
+    try {
+      // VirBiCoin系Router
+      return await writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'addLiquidityVBC',
+        args: [token, amountTokenDesired, amountTokenMin, amountNativeMin, to],
+        value: amountNative,
+      });
+    } catch {
+      // 標準UniswapV2 (deadline有り)
+      return writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'addLiquidityETH',
+        args: [token, amountTokenDesired, amountTokenMin, amountNativeMin, to, deadline()],
+        value: amountNative,
+      });
+    }
   };
 
   // Add liquidity for Token + Token pair
@@ -315,15 +411,29 @@ export function useAddLiquidity() {
     amountBMin: bigint,
     to: Address
   ) => {
-    return writeContract({
-      address: DEX_CONTRACTS.router,
-      abi: ROUTER_ABI,
-      functionName: 'addLiquidity',
-      args: [tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin, to],
-    });
+    try {
+      // deadline無し版
+      return await writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'addLiquidity',
+        args: [tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin, to],
+      });
+    } catch {
+      // 標準UniswapV2 (deadline有り)
+      return writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'addLiquidity',
+        args: [tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin, to, deadline()],
+      });
+    }
   };
 
-  return { addLiquidityVBC, addLiquidity, hash, isPending, isConfirming, isSuccess, error };
+  // Legacy alias for backward compatibility
+  const addLiquidityVBC = addLiquidityNative;
+
+  return { addLiquidityNative, addLiquidityVBC, addLiquidity, hash, isPending, isConfirming, isSuccess, error };
 }
 
 // Transfer LP tokens to pair for burning
@@ -363,21 +473,35 @@ export function useBurnLP() {
 export function useRemoveLiquidity() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const contracts = getDexContracts();
 
-  // Remove liquidity for VBC + Token pair
-  const removeLiquidityVBC = async (
+  const deadline = () => BigInt(Math.floor(Date.now() / 1000) + 60 * 20); // 20 minutes
+
+  // Remove liquidity for Native + Token pair (ETH/VBC/BNB + Token)
+  const removeLiquidityNative = async (
     token: Address,
     liquidity: bigint,
     amountTokenMin: bigint,
-    amountVBCMin: bigint,
+    amountNativeMin: bigint,
     to: Address
   ) => {
-    return writeContract({
-      address: DEX_CONTRACTS.router,
-      abi: ROUTER_ABI,
-      functionName: 'removeLiquidityVBC',
-      args: [token, liquidity, amountTokenMin, amountVBCMin, to],
-    });
+    try {
+      // VirBiCoin系Router
+      return await writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'removeLiquidityVBC',
+        args: [token, liquidity, amountTokenMin, amountNativeMin, to],
+      });
+    } catch {
+      // 標準UniswapV2 (deadline有り)
+      return writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'removeLiquidityETH',
+        args: [token, liquidity, amountTokenMin, amountNativeMin, to, deadline()],
+      });
+    }
   };
 
   // Remove liquidity for Token + Token pair
@@ -389,28 +513,43 @@ export function useRemoveLiquidity() {
     amountBMin: bigint,
     to: Address
   ) => {
-    return writeContract({
-      address: DEX_CONTRACTS.router,
-      abi: ROUTER_ABI,
-      functionName: 'removeLiquidity',
-      args: [tokenA, tokenB, liquidity, amountAMin, amountBMin, to],
-    });
+    try {
+      // deadline無し版
+      return await writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'removeLiquidity',
+        args: [tokenA, tokenB, liquidity, amountAMin, amountBMin, to],
+      });
+    } catch {
+      // 標準UniswapV2 (deadline有り)
+      return writeContract({
+        address: contracts.router,
+        abi: ROUTER_ABI,
+        functionName: 'removeLiquidity',
+        args: [tokenA, tokenB, liquidity, amountAMin, amountBMin, to, deadline()],
+      });
+    }
   };
 
-  return { removeLiquidityVBC, removeLiquidity, hash, isPending, isConfirming, isSuccess, error };
+  // Legacy alias for backward compatibility
+  const removeLiquidityVBC = removeLiquidityNative;
+
+  return { removeLiquidityNative, removeLiquidityVBC, removeLiquidity, hash, isPending, isConfirming, isSuccess, error };
 }
 
 // Approve LP tokens for removal (kept for compatibility but may not work with this contract)
 export function useApproveLPToken() {
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const contracts = getDexContracts();
 
   const approve = async (pairAddress: Address, amount: bigint) => {
     return writeContract({
       address: pairAddress,
       abi: PAIR_ABI,
       functionName: 'approve',
-      args: [DEX_CONTRACTS.router, amount],
+      args: [contracts.router, amount],
     });
   };
 

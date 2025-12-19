@@ -31,6 +31,43 @@ A modern, real-time blockchain explorer for the VirBiCoin network built with Nex
 - **⚡ Real-time Sync** - Live blockchain synchronization with WebSocket support
 - **📱 Responsive Design** - Mobile-first design optimized for all devices
 - **🔗 EIP-3091 Support** - Direct URI redirection for ethereum: links
+- **🔄 DEX (Swap)** - Decentralized token exchange with Uniswap V2 style AMM
+- **💧 Liquidity Pools** - Provide liquidity and earn trading fees
+- **🌾 Yield Farming** - Stake LP tokens to earn VBCG rewards
+
+## 💱 DEX Features
+
+The explorer includes a built-in decentralized exchange (DEX) with the following features:
+
+### Swap
+- Token swapping with automatic price calculation
+- Slippage tolerance configuration
+- Price impact warnings
+- Multi-hop routing support
+
+### Liquidity Pools
+- Add/remove liquidity for token pairs
+- LP token management
+- Real-time pool statistics
+- Trading fee earnings (0.3%)
+
+### Yield Farming
+- Stake LP tokens to earn VBCG rewards
+- Real-time APR calculation
+- No lock-up period - withdraw anytime
+- Harvest rewards at any time
+
+### Contract Addresses (V2 - Active)
+
+| Contract | Address |
+|----------|---------|
+| Factory V2 | `0x663B1b42B79077AaC918515D3f57FED6820Dad63` |
+| Router V2 | `0xdD1Ae4345252FFEA67fE844296fbd6C973B98c18` |
+| MasterChef V2 | `0x12A656c2DeE0EA2685398d52AcF78974fCD67B27` |
+| VBCG (Reward) | `0xac7F60af25C5c4E23d1008C46511e265A8c9B6cF` |
+| WVBC | `0x52CB9F0d65D9d4De08CF103153C7A1A97567Bb9b` |
+
+> For complete contract documentation, see [docs/DEX_CONTRACTS.md](docs/DEX_CONTRACTS.md)
 
 ## 🚀 Multi-Chain Compatibility
 

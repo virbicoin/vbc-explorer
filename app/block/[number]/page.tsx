@@ -166,15 +166,15 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
   const formatValue = (value: string) => {
     try {
       const currencySymbol = getCurrencySymbol();
-      // WeiからVBCに変換（1 VBC = 10^18 Wei）
+      // Convert from Wei to native currency (1 unit = 10^18 Wei)
       const weiValue = BigInt(value);
-      const vbcValue = Number(weiValue) / 1e18;
+      const nativeValue = Number(weiValue) / 1e18;
       
-      if (vbcValue === 0) return `0 ${currencySymbol}`;
-      if (vbcValue < 0.000001) return `<0.000001 ${currencySymbol}`;
-      if (vbcValue < 1) return `${vbcValue.toFixed(6)} ${currencySymbol}`;
-      if (vbcValue < 1000) return `${vbcValue.toFixed(4)} ${currencySymbol}`;
-      return `${vbcValue.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${currencySymbol}`;
+      if (nativeValue === 0) return `0 ${currencySymbol}`;
+      if (nativeValue < 0.000001) return `<0.000001 ${currencySymbol}`;
+      if (nativeValue < 1) return `${nativeValue.toFixed(6)} ${currencySymbol}`;
+      if (nativeValue < 1000) return `${nativeValue.toFixed(4)} ${currencySymbol}`;
+      return `${nativeValue.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${currencySymbol}`;
     } catch {
       const currencySymbol = getCurrencySymbol();
       return `${value} ${currencySymbol}`;

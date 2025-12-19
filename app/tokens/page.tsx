@@ -22,7 +22,7 @@ export default function TokensPage() {
   const [currencySymbol, setCurrencySymbol] = useState<string>('');
 
   const [activeTab, setActiveTab] = useState<'all' | 'nft'>('all');
-  const [vbcSupply, setVbcSupply] = useState<string>('0');
+  const [nativeSupply, setNativeSupply] = useState<string>('0');
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -30,23 +30,23 @@ export default function TokensPage() {
   const [totalTokens, setTotalTokens] = useState(0);
   const ITEMS_PER_PAGE = 50;
 
-  // Fetch VBC total supply from richlist API
-  const fetchVBCSupply = async () => {
+  // Fetch native token total supply from richlist API
+  const fetchNativeSupply = async () => {
     try {
       const res = await fetch('/api/richlist?page=1&limit=1');
       if (res.ok) {
         const data = await res.json();
         const totalSupply = data.statistics?.totalSupply || 0;
-        // Convert from Wei to VBC and format
-        const vbcSupply = (totalSupply / 1e18).toLocaleString(undefined, {
+        // Convert from Wei to native currency and format
+        const supply = (totalSupply / 1e18).toLocaleString(undefined, {
           minimumFractionDigits: 0,
           maximumFractionDigits: 0
         });
-        setVbcSupply(vbcSupply);
+        setNativeSupply(supply);
       }
     } catch (error) {
-      console.error('Error fetching VBC supply:', error);
-      setVbcSupply('0');
+      console.error('Error fetching native supply:', error);
+      setNativeSupply('0');
     }
   };
 
@@ -96,8 +96,8 @@ export default function TokensPage() {
     }
     fetchTokens();
     
-    // VBC supplyをリッチリストAPIから取得
-    fetchVBCSupply();
+    // Fetch native token supply from richlist API
+    fetchNativeSupply();
   }, [activeTab, currentPage]);
   
   // Reset to page 1 when tab changes
@@ -256,7 +256,7 @@ export default function TokensPage() {
                       </td>
                       <td className='py-3 px-4'>
                         <span className='text-green-400 text-lg font-bold'>
-                          {token.type === 'Native' ? `${vbcSupply} ${currencySymbol}` : (token.supply ? `${token.supply} ${token.symbol}` : '-')}
+                          {token.type === 'Native' ? `${nativeSupply} ${currencySymbol}` : (token.supply ? `${token.supply} ${token.symbol}` : '-')}
                         </span>
                       </td>
                     </tr>

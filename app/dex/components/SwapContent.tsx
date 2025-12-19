@@ -6,7 +6,7 @@ import { type Address, parseUnits } from 'viem';
 import { TokenInput, SlippageSettings, SwapInfo } from './index';
 import {
   type Token,
-  VBC_TOKEN,
+  getNativeToken,
   DEFAULT_TOKENS,
   DEFAULT_SLIPPAGE,
   DEX_CONTRACTS,
@@ -25,6 +25,7 @@ import {
   useReserves,
 } from '@/lib/dex/hooks';
 import { useDexTokens } from '@/hooks/useDexTokens';
+import { useTokenConfig } from '@/hooks/useTokenConfig';
 
 export function SwapContent() {
   const { address, isConnected } = useAccount();
@@ -32,24 +33,50 @@ export function SwapContent() {
   // Fetch tokens from API
   const { tokens: availableTokens, isLoading: isTokensLoading } = useDexTokens();
   
-  // State
-  const [tokenIn, setTokenIn] = useState<Token>(VBC_TOKEN);
+  // Token configuration from config.json
+  const { config: tokenConfig } = useTokenConfig();
+  
+  // State - use function to get current native token
+  const [tokenIn, setTokenIn] = useState<Token>(() => getNativeToken());
   const [tokenOut, setTokenOut] = useState<Token | null>(null);
   const [amountIn, setAmountIn] = useState('');
   const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
   
-  // Set default tokenOut when tokens are loaded
+  // Update tokenIn only when tokenIn is still the native token.
+  // (Prevents swap-direction toggle from being overwritten back to native.)
   useEffect(() => {
-    if (availableTokens.length > 2 && !tokenOut) {
-      // Find a non-VBC/WVBC token for default output
-      const defaultOut = availableTokens.find(t => 
-        t.symbol !== 'VBC' && t.symbol !== 'WVBC'
-      );
-      setTokenOut(defaultOut || availableTokens[1]);
-    } else if (availableTokens.length > 0 && !tokenOut) {
-      setTokenOut(availableTokens.length > 1 ? availableTokens[1] : availableTokens[0]);
+    if (availableTokens.length === 0) return;
+    if (!isNativeToken(tokenIn)) return;
+
+    const nativeToken = availableTokens.find(
+      (t) => t.address === '0x0000000000000000000000000000000000000000'
+    );
+    if (!nativeToken) return;
+
+    if (
+      tokenIn.symbol !== nativeToken.symbol ||
+      tokenIn.decimals !== nativeToken.decimals
+    ) {
+      setTokenIn(nativeToken);
     }
-  }, [availableTokens, tokenOut]);
+  }, [availableTokens, tokenIn, tokenIn.symbol, tokenIn.decimals]);
+  
+  // Track if user has manually set tokenOut
+  const [tokenOutInitialized, setTokenOutInitialized] = useState(false);
+  
+  // Set default tokenOut when tokens are loaded, using config for token filtering
+  useEffect(() => {
+    if (availableTokens.length > 0 && !tokenOutInitialized && tokenConfig) {
+      // Find a non-native/wrapped token for default output
+      const nativeSymbol = tokenConfig.native.symbol;
+      const wrappedSymbol = tokenConfig.wrapped.symbol;
+      const defaultOut = availableTokens.find(t => 
+        t.symbol !== nativeSymbol && t.symbol !== wrappedSymbol
+      );
+      setTokenOut(defaultOut || (availableTokens.length > 1 ? availableTokens[1] : availableTokens[0]));
+      setTokenOutInitialized(true);
+    }
+  }, [availableTokens, tokenOutInitialized, tokenConfig]);
   
   // Build swap path
   const swapPath = useMemo((): Address[] => {
@@ -157,14 +184,28 @@ export function SwapContent() {
   }, [approve, tokenIn.address, address, amountInParsed]);
 
   // Swap tokens in/out
-  const handleSwapDirection = () => {
+  const handleSwapDirection = useCallback(() => {
     if (!tokenOut) return;
-    const tempToken = tokenIn;
-    const tempAmount = amountIn;
-    setTokenIn(tokenOut);
-    setTokenOut(tempToken);
-    setAmountIn(amountOut > 0n ? formatTokenAmount(amountOut, tokenOut.decimals, 18) : '');
-  };
+    
+    // Store current values before swapping
+    const prevTokenIn = tokenIn;
+    const prevTokenOut = tokenOut;
+    const prevAmountOut = amountOut;
+    
+    // Swap tokens
+    setTokenIn(prevTokenOut);
+    setTokenOut(prevTokenIn);
+
+    // Ensure defaults never overwrite user-chosen direction
+    setTokenOutInitialized(true);
+    
+    // Set the output amount as the new input amount
+    if (prevAmountOut > 0n) {
+      setAmountIn(formatTokenAmount(prevAmountOut, prevTokenOut.decimals, 18));
+    } else {
+      setAmountIn('');
+    }
+  }, [tokenIn, tokenOut, amountOut]);
 
   // Clear amounts on success
   useEffect(() => {

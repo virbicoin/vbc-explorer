@@ -41,9 +41,9 @@ let currencyConfig = {
 export function updateCurrencyConfig(config: CurrencyConfig) {
   if (config.currency) {
     currencyConfig = {
-      name: config.currency.name || 'VirBiCoin',
-      symbol: config.currency.symbol || 'VBC',
-      unit: config.currency.unit || 'niku',
+      name: config.currency.name || 'Ether',
+      symbol: config.currency.symbol || 'ETH',
+      unit: config.currency.unit || 'wei',
       decimals: config.currency.decimals || 18
     };
   }

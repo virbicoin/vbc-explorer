@@ -1,5 +1,5 @@
 import currencyUnits, { updateCurrencyConfig, updateCurrencyUnits } from './etherUnits';
-// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unused-vars
+ 
 const RLP = require('rlp');
 
 interface Transaction {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { getChainStats } from '../../../lib/stats'; // Import the stats function
 import { Contract, connectDB } from '../../../models/index';
+import { loadConfig } from '../../../lib/config';
 
 // Define Token schema inline since it's not exported from models/index
 const tokenSchema = new mongoose.Schema({
@@ -39,6 +40,11 @@ export async function GET(request: NextRequest) {
   
   await connectDB();
   
+  // Load config for native token info
+  const config = loadConfig();
+  const nativeTokenName = config.currency?.name || 'Ether';
+  const nativeTokenSymbol = config.currency?.symbol || 'ETH';
+  
   // Get verification status for all contracts
   const contracts = await Contract.find({}).lean();
   const verificationMap = new Map();
@@ -50,14 +56,14 @@ export async function GET(request: NextRequest) {
   // Fetch all tokens from the database
   const dbTokens = await Token.find({}).lean() as Record<string, unknown>[];
 
-  // Get actual chain statistics for VBC
+  // Get actual chain statistics for native token
   const chainStats = await getChainStats();
 
-  // Manually create and add the native VBC token with real stats
-  const vbcToken: IToken = {
+  // Manually create and add the native token with real stats
+  const nativeToken: IToken = {
     address: 'N/A', // Native token has no contract address
-    name: 'VirBiCoin',
-    symbol: 'VBC',
+    name: nativeTokenName,
+    symbol: nativeTokenSymbol,
     type: 'Native',
     holders: chainStats.activeAddresses || 0, // Real wallet count
     supply: chainStats.totalSupply || 'unlimited', // Real total supply
@@ -140,7 +146,7 @@ export async function GET(request: NextRequest) {
   });
 
   // Combine the native token with the database tokens
-  let allTokens = [vbcToken, ...filteredTokens];
+  let allTokens = [nativeToken, ...filteredTokens];
   
   // Filter by type if specified
   if (type === 'vrc20') {

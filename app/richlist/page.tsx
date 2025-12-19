@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { TrophyIcon } from '@heroicons/react/24/outline';
-import { getCurrencySymbol } from '../../lib/client-config';
+import { getCurrencySymbol, initializeCurrencyConfig } from '../../lib/client-config';
 import { initializeCurrency } from '../../lib/bigint-utils';
 
 interface RichlistAccount {
@@ -62,8 +62,9 @@ export default function RichlistPage() {
         // Initialize currency conversion factors
         await initializeCurrency();
         
-        // Load config values
-        const symbol = await getCurrencySymbol();
+        // Load config values from API
+        await initializeCurrencyConfig();
+        const symbol = getCurrencySymbol();
         setCurrencySymbol(symbol);
         
         setLoading(true);

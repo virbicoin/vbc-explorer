@@ -3,12 +3,13 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { type Address } from 'viem';
+import Image from 'next/image';
 import { TokenInput, SlippageSettings } from './index';
 import {
   type Token,
-  VBC_TOKEN,
+  getNativeToken,
   DEFAULT_TOKENS,
-  WVBC_TOKEN,
+  getWrappedNativeToken,
   DEFAULT_SLIPPAGE,
   DEX_CONTRACTS,
 } from '@/lib/dex/config';
@@ -29,6 +30,46 @@ import {
   parseTokenAmount,
 } from '@/lib/dex/hooks';
 import { useDexTokens } from '@/hooks/useDexTokens';
+import { useTokenConfig } from '@/hooks/useTokenConfig';
+
+// Default color for unknown tokens
+const DEFAULT_TOKEN_COLOR = 'from-gray-500 to-gray-600';
+
+// Token Icon Component for Pool - uses config for icons/colors
+function PoolTokenIcon({ 
+  symbol, 
+  size = 20,
+  getIcon,
+  getColor 
+}: { 
+  symbol: string; 
+  size?: number;
+  getIcon: (symbol: string) => string | null;
+  getColor: (symbol: string) => string;
+}) {
+  const iconPath = getIcon(symbol);
+  const color = getColor(symbol);
+  
+  if (iconPath) {
+    return (
+      <div className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center border-2 border-gray-800 overflow-hidden`} style={{ width: size, height: size }}>
+        <Image 
+          src={iconPath} 
+          alt={symbol} 
+          width={size - 4} 
+          height={size - 4}
+          className="object-contain"
+        />
+      </div>
+    );
+  }
+  
+  return (
+    <div className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center border-2 border-gray-800`} style={{ width: size, height: size }}>
+      <span className="font-bold text-white" style={{ fontSize: size * 0.4 }}>{symbol.charAt(0)}</span>
+    </div>
+  );
+}
 
 type Tab = 'add' | 'remove';
 
@@ -38,26 +79,47 @@ export function PoolContent() {
   // Fetch tokens from API
   const { tokens: availableTokens, isLoading: isTokensLoading } = useDexTokens();
   
-  // State
+  // Token configuration from config.json
+  const { 
+    config: tokenConfig,
+    getTokenIcon, 
+    getTokenColor, 
+    displaySymbol,
+    isLoading: tokenConfigLoading 
+  } = useTokenConfig();
+  
+  // State - use function to get current native token
   const [activeTab, setActiveTab] = useState<Tab>('add');
-  const [tokenA, setTokenA] = useState<Token>(VBC_TOKEN);
+  const [tokenA, setTokenA] = useState<Token>(() => getNativeToken());
   const [tokenB, setTokenB] = useState<Token | null>(null);
   const [amountA, setAmountA] = useState('');
   const [amountB, setAmountB] = useState('');
   const [lpAmount, setLpAmount] = useState('');
   const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
 
-  // Set default tokenB when tokens are loaded
+  // Update tokenA when available tokens change (config may have loaded)
   useEffect(() => {
-    if (availableTokens.length > 2 && !tokenB) {
-      const defaultB = availableTokens.find(t => 
-        t.symbol !== 'VBC' && t.symbol !== 'WVBC'
-      );
-      setTokenB(defaultB || availableTokens[1]);
-    } else if (availableTokens.length > 0 && !tokenB) {
-      setTokenB(availableTokens.length > 1 ? availableTokens[1] : availableTokens[0]);
+    if (availableTokens.length > 0) {
+      // Find native token from available tokens
+      const nativeToken = availableTokens.find(t => t.address === '0x0000000000000000000000000000000000000000');
+      if (nativeToken && tokenA.symbol !== nativeToken.symbol) {
+        setTokenA(nativeToken);
+      }
     }
-  }, [availableTokens, tokenB]);
+  }, [availableTokens, tokenA.symbol]);
+
+  // Set default tokenB when tokens are loaded, using config for token filtering
+  useEffect(() => {
+    if (availableTokens.length > 0 && !tokenB && tokenConfig) {
+      // Find a token that's not native or wrapped native
+      const nativeSymbol = tokenConfig.native.symbol;
+      const wrappedSymbol = tokenConfig.wrapped.symbol;
+      const defaultB = availableTokens.find(t => 
+        t.symbol !== nativeSymbol && t.symbol !== wrappedSymbol
+      );
+      setTokenB(defaultB || (availableTokens.length > 1 ? availableTokens[1] : availableTokens[0]));
+    }
+  }, [availableTokens, tokenB, tokenConfig]);
 
   // Get pair address and reserves
   const tokenAAddress = getTokenAddress(tokenA);
@@ -72,6 +134,12 @@ export function PoolContent() {
   const pairExists = useMemo(() => {
     return pairAddress && pairAddress !== '0x0000000000000000000000000000000000000000';
   }, [pairAddress]);
+
+  // Check if this is first liquidity (no reserves yet)
+  const isFirstLiquidity = useMemo(() => {
+    if (!reserves) return true;
+    return reserves[0] === 0n && reserves[1] === 0n;
+  }, [reserves]);
 
   // Parse amounts
   const amountAParsed = useMemo(() => parseTokenAmount(amountA, tokenA.decimals), [amountA, tokenA.decimals]);
@@ -107,23 +175,23 @@ export function PoolContent() {
   // Handle amount A change - calculate optimal B
   const handleAmountAChange = (value: string) => {
     setAmountA(value);
-    if (pairExists && value) {
+    // Only auto-calculate if pair has liquidity (not first liquidity)
+    if (pairExists && !isFirstLiquidity && value) {
       const optimalB = calculateOptimalAmountB(value);
       setAmountB(optimalB);
-    } else {
-      setAmountB('');
     }
+    // For first liquidity, let user set both amounts freely
   };
 
   // Handle amount B change - calculate optimal A
   const handleAmountBChange = (value: string) => {
     setAmountB(value);
-    if (pairExists && value) {
+    // Only auto-calculate if pair has liquidity (not first liquidity)
+    if (pairExists && !isFirstLiquidity && value) {
       const optimalA = calculateOptimalAmountA(value);
       setAmountA(optimalA);
-    } else {
-      setAmountA('');
     }
+    // For first liquidity, let user set both amounts freely
   };
 
   // Check allowances
@@ -465,14 +533,14 @@ export function PoolContent() {
             )}
 
             {/* First LP Warning */}
-            {!pairExists && amountA && amountB && (
+            {isFirstLiquidity && amountA && amountB && (
               <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl flex items-start gap-3">
                 <svg className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
                 <div>
                   <p className="text-yellow-400 font-semibold text-sm">First Liquidity Provider</p>
-                  <p className="text-yellow-500/80 text-xs mt-1">The ratio you set will define the initial price.</p>
+                  <p className="text-yellow-500/80 text-xs mt-1">The ratio you set will define the initial price. Enter amounts for both tokens.</p>
                 </div>
               </div>
             )}
@@ -552,10 +620,10 @@ export function PoolContent() {
                 </div>
                 <div className="text-sm text-gray-500 flex items-center gap-2">
                   <div className="flex -space-x-1">
-                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 border-2 border-gray-800" />
-                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 border-2 border-gray-800" />
+                    <PoolTokenIcon symbol={tokenA.symbol} size={20} getIcon={getTokenIcon} getColor={getTokenColor} />
+                    <PoolTokenIcon symbol={tokenB?.symbol || '?'} size={20} getIcon={getTokenIcon} getColor={getTokenColor} />
                   </div>
-                  {tokenA.symbol}/{tokenB?.symbol || '???'} Pool
+                  {displaySymbol(tokenA.symbol)}/{tokenB ? displaySymbol(tokenB.symbol) : '???'} Pool
                 </div>
               </div>
 

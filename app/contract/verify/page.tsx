@@ -259,7 +259,7 @@ function ContractVerifyPageInner() {
             <CodeBracketIcon className="w-8 h-8 text-purple-400" />
             <h1 className="text-3xl font-bold text-gray-100">Verify Contract Source Code</h1>
           </div>
-          <p className="text-gray-400">Verify and publish your smart contract source code on the VirBiCoin blockchain explorer.</p>
+          <p className="text-gray-400">Verify and publish your smart contract source code on the blockchain explorer.</p>
         </div>
       </div>
       {/* カード部分は中央寄せ */}

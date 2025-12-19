@@ -81,17 +81,24 @@ export default function TokenIdDetailPage() {
 
   useEffect(() => {
     if (!address || !id) return;
-    setLoading(true);
-    fetch(`/api/tokens/${address}?tokenId=${id}`)
-      .then(res => res.json())
-      .then(data => {
-        setTokenDetail(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        setError("Failed to fetch data");
-        setLoading(false);
-      });
+    let cancelled = false;
+    const fetchData = async () => {
+      try {
+        const res = await fetch(`/api/tokens/${address}?tokenId=${id}`);
+        const data = await res.json();
+        if (!cancelled) {
+          setTokenDetail(data);
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setError("Failed to fetch data");
+          setLoading(false);
+        }
+      }
+    };
+    fetchData();
+    return () => { cancelled = true; };
   }, [address, id]);
 
   if (loading) {

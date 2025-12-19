@@ -4,7 +4,7 @@ import { use } from 'react';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { ArrowLeftIcon, CubeIcon } from '@heroicons/react/24/outline';
-import { getCurrencySymbol } from '../../../../lib/client-config';
+import { getCurrencySymbol, initializeCurrencyConfig } from '../../../../lib/client-config';
 import { initializeCurrency } from '../../../../lib/bigint-utils';
 
 interface Transaction {
@@ -33,7 +33,8 @@ export default function AddressMiningPage({ params }: { params: Promise<{ addres
   useEffect(() => {
     const fetchSymbol = async () => {
       await initializeCurrency();
-      const symbol = await getCurrencySymbol();
+      await initializeCurrencyConfig();
+      const symbol = getCurrencySymbol();
       setCurrencySymbol(symbol);
     };
     fetchSymbol();
@@ -79,12 +80,12 @@ export default function AddressMiningPage({ params }: { params: Promise<{ addres
   const formatValue = (value: string) => {
     try {
       const weiValue = BigInt(value);
-      const vbcValue = Number(weiValue) / 1e18;
-      if (vbcValue === 0) return `0 ${currencySymbol}`;
-      if (vbcValue < 0.000001) return `<0.000001 ${currencySymbol}`;
-      if (vbcValue < 1) return `${vbcValue.toFixed(6)} ${currencySymbol}`;
-      if (vbcValue < 1000) return `${vbcValue.toFixed(4)} ${currencySymbol}`;
-      return `${vbcValue.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${currencySymbol}`;
+      const nativeValue = Number(weiValue) / 1e18;
+      if (nativeValue === 0) return `0 ${currencySymbol}`;
+      if (nativeValue < 0.000001) return `<0.000001 ${currencySymbol}`;
+      if (nativeValue < 1) return `${nativeValue.toFixed(6)} ${currencySymbol}`;
+      if (nativeValue < 1000) return `${nativeValue.toFixed(4)} ${currencySymbol}`;
+      return `${nativeValue.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${currencySymbol}`;
     } catch {
       return `${value} ${currencySymbol}`;
     }

@@ -214,7 +214,7 @@ export async function getChainStats() {
       const uniqueAddresses = new Set();
       
       if (transactions) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         transactions.forEach((tx: any) => {
           if (tx.from) uniqueAddresses.add(tx.from.toLowerCase());
           if (tx.to) uniqueAddresses.add(tx.to.toLowerCase());

@@ -372,7 +372,7 @@ export default function Page() {
   const [lastTopTransactionHash, setLastTopTransactionHash] = useState<string>('');
   const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
   const [config, setConfig] = useState<{ miners: Record<string, string> } | null>(null);
 
   // Ref for the add network button
@@ -585,7 +585,7 @@ export default function Page() {
           <button
             id='add-vbc-button'
             ref={addVbcButtonRef}
-            className='w-full sm:w-auto mt-4 sm:mt-0 px-5 py-2 bg-gray-900 border border-blue-600 hover:bg-blue-600 text-white font-bold rounded-lg shadow transition-all duration-200 flex items-center justify-center gap-2 text-base h-[44px] sm:h-[48px] whitespace-nowrap'
+            className='w-full sm:w-auto mt-4 sm:mt-0 flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40'
           >
             <Image src='/img/MetaMask.svg' alt='MetaMask' width={24} height={24} className='w-6 h-6' />
             Add VirBiCoin

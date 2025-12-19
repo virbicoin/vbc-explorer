@@ -275,7 +275,7 @@ export default function BlocksPage() {
             <CubeIcon className='w-8 h-8 text-green-400' />
             <h1 className='text-3xl font-bold text-gray-100'>Latest Blocks</h1>
           </div>
-          <p className='text-gray-400'>Most recent blocks on the Virbicoin network</p>
+          <p className='text-gray-400'>Most recent blocks on the network</p>
         </div>
       </div>
       <main className='container mx-auto px-4 py-8'>

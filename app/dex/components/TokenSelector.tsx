@@ -80,18 +80,27 @@ export function TokenSelector({
     setSearchQuery('');
   }, [onSelect]);
 
-  // Check if VBC or WVBC (they are equivalent and can't be swapped with each other)
-  const isVBCOrWVBC = (symbol: string): boolean => {
-    return symbol === 'VBC' || symbol === 'WVBC';
+  // Check if native token (VBC) - uses zero address
+  const isNativeTokenAddress = (address: string): boolean => {
+    return address === '0x0000000000000000000000000000000000000000';
   };
 
   const availableTokens = tokens.filter(t => {
-    // Exclude the same token
+    // Exclude the exact same token (by address)
     if (t.address === otherToken?.address) return false;
     
-    // If other token is VBC or WVBC, exclude both VBC and WVBC
-    if (otherToken && isVBCOrWVBC(otherToken.symbol) && isVBCOrWVBC(t.symbol)) {
-      return false;
+    // If other token is native (VBC), exclude wrapped native (WVBC) - they represent the same value
+    // Native token has zero address, wrapped native has a real address but symbol starts with 'W'
+    if (otherToken && isNativeTokenAddress(otherToken.address)) {
+      // Get wrapped native symbol (assuming it's 'W' + native symbol)
+      const wrappedSymbol = 'W' + otherToken.symbol;
+      if (t.symbol === wrappedSymbol) return false;
+    }
+    
+    // If other token is wrapped native (WVBC), exclude native (VBC)
+    if (otherToken && otherToken.symbol.startsWith('W') && isNativeTokenAddress(t.address)) {
+      const nativeSymbol = otherToken.symbol.substring(1);
+      if (t.symbol === nativeSymbol) return false;
     }
     
     // Search filter
