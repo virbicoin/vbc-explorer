@@ -254,6 +254,7 @@ export function TradingChart() {
           top: 0.1,
           bottom: 0.1,
         },
+        autoScale: true,
       },
       timeScale: {
         borderColor: 'rgba(75, 85, 99, 0.5)',
@@ -268,6 +269,16 @@ export function TradingChart() {
         mouseWheel: true,
         pinch: true,
       },
+      localization: {
+        priceFormatter: (price: number) => {
+          if (price === 0) return '0';
+          if (price < 0.0001) return price.toExponential(4);
+          if (price < 0.01) return price.toFixed(6);
+          if (price < 1) return price.toFixed(4);
+          if (price < 100) return price.toFixed(2);
+          return price.toFixed(0);
+        },
+      },
     });
 
     const candlestickSeries = chart.addSeries(
@@ -279,6 +290,11 @@ export function TradingChart() {
         borderDownColor: '#ef4444',
         wickUpColor: '#22c55e',
         wickDownColor: '#ef4444',
+        priceFormat: {
+          type: 'price',
+          precision: 6,
+          minMove: 0.000001,
+        },
       }
     );
 
