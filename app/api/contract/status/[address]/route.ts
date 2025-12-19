@@ -16,9 +16,9 @@ export async function GET(
       );
     }
 
-    // Find contract in database
+    // Find contract in database (case-insensitive search)
     const contract = await Contract.findOne({ 
-      address: address.toLowerCase() 
+      address: { $regex: new RegExp(`^${address}$`, 'i') }
     }).lean();
 
     const contractDoc = Array.isArray(contract) ? contract[0] : contract;
@@ -40,6 +40,9 @@ export async function GET(
       hasSourceCode: !!contractDoc.sourceCode,
       hasABI: !!contractDoc.abi,
       address: contractDoc.address,
+      sourceCode: contractDoc.sourceCode || null,
+      abi: contractDoc.abi || null,
+      byteCode: contractDoc.byteCode || null,
       message: contractDoc.verified ? 'Contract is verified' : 'Contract is not verified'
     });
 

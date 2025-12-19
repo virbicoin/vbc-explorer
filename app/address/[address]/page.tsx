@@ -9,7 +9,10 @@ import {
   CurrencyDollarIcon,
   CubeIcon,
   ArrowPathIcon,
-  ClipboardDocumentIcon
+  ClipboardDocumentIcon,
+  CheckCircleIcon,
+  CodeBracketIcon,
+  PlayIcon
 } from '@heroicons/react/24/outline';
 import SummaryCard from '../../components/SummaryCard';
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
@@ -38,6 +41,13 @@ interface Contract {
   verified: boolean;
   creationTransaction: string;
   blockNumber: number;
+  isContract?: boolean;
+  bytecodeSize?: number;
+  sourceCode?: string;
+  abi?: string;
+  byteCode?: string;
+  compilerVersion?: string;
+  optimization?: boolean;
 }
 
 interface Config {
@@ -72,13 +82,20 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
 
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
   const [config, setConfig] = useState<Config | null>(null);
-  const [activeTab, setActiveTab] = useState<'transactions' | 'mining'>('transactions');
+  const [activeTab, setActiveTab] = useState<'transactions' | 'mining' | 'source'>('transactions');
   const [transactionStats, setTransactionStats] = useState<{
     regularCount: number;
     miningCount: number;
     totalCount: number;
   } | null>(null);
   const [currencySymbol, setCurrencySymbol] = useState<string>('');
+  const [contractDetails, setContractDetails] = useState<{
+    sourceCode?: string;
+    abi?: string;
+    byteCode?: string;
+    compilerVersion?: string;
+    optimization?: boolean;
+  } | null>(null);
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -113,6 +130,25 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
         setContract(data.contract);
         setTransactions(data.transactions || []);
         setTransactionStats(data.transactionStats || null);
+        
+        // If it's a contract, fetch additional details
+        if (data.contract?.isContract) {
+          try {
+            const contractRes = await fetch(`/api/contract/status/${resolvedParams.address}`);
+            if (contractRes.ok) {
+              const contractData = await contractRes.json();
+              setContractDetails({
+                sourceCode: contractData.sourceCode,
+                abi: contractData.abi,
+                byteCode: contractData.byteCode,
+                compilerVersion: contractData.compilerVersion,
+                optimization: contractData.optimization
+              });
+            }
+          } catch {
+            // Contract details not available
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch address data');
       } finally {
@@ -206,19 +242,6 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
     return isNaN(date.getTime()) ? null : date;
   };
 
-  // Filter transactions by type
-  const regularTransactions = transactions.filter(tx => 
-    tx.type === 'native' || tx.type === 'token'
-  );
-  
-  const miningRewards = transactions.filter(tx => 
-    tx.type === 'mining_reward'
-  );
-
-  // 統計情報を使用して件数を表示（APIから取得した正確な件数）
-  const regularCount = transactionStats?.regularCount || regularTransactions.length;
-  const miningCount = transactionStats?.miningCount || miningRewards.length;
-
   const getMinerDisplayInfo = (miner: string) => {
     if (!miner || !config?.miners) return { name: 'Unknown', isPool: false, address: null };
 
@@ -242,14 +265,18 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
   };
 
   const getAddressType = () => {
-    if (contract) return 'Contract Address';
+    if (contract?.isContract) {
+      if (contract.type === 'ERC20' || contract.type === 'VRC-20') return 'Token Contract';
+      if (contract.type === 'VRC-721' || contract.type === 'ERC721') return 'NFT Contract';
+      return 'Smart Contract';
+    }
     if (resolvedParams.address === '0x0000000000000000000000000000000000000000') return 'System Address';
     return 'Wallet Address';
   };
 
   const getAddressName = () => {
     // コントラクトの場合
-    if (contract) {
+    if (contract?.name && contract.name !== 'Unknown Contract' && contract.name !== 'Unverified Contract') {
       return contract.name;
     }
     
@@ -295,6 +322,443 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
               Back to Explorer
             </Link>
       </div>
+      </div>
+    );
+  }
+
+  // Filter transactions by type (needed for both contract and wallet views)
+  const regularTransactions = transactions.filter(tx => 
+    tx.type === 'native' || tx.type === 'token'
+  );
+  
+  const miningRewards = transactions.filter(tx => 
+    tx.type === 'mining_reward'
+  );
+
+  // 統計情報を使用して件数を表示（APIから取得した正確な件数）
+  const regularCount = transactionStats?.regularCount || regularTransactions.length;
+  const miningCount = transactionStats?.miningCount || miningRewards.length;
+  
+  // Check if this is a contract address
+  const isContractAddress = contract?.isContract === true;
+
+  // Contract Page (Token-like design)
+  if (isContractAddress) {
+    const tabs = [
+      { id: 'transactions', label: 'Transactions', icon: ArrowPathIcon },
+      ...(miningCount > 0 ? [{ id: 'mining', label: 'Mining Rewards', icon: CubeIcon }] : []),
+      { id: 'source', label: 'Contract Source', icon: CodeBracketIcon },
+    ];
+
+    return (
+      <div className='min-h-screen bg-gray-900 text-white'>
+        {/* Page Header */}
+        <div className='bg-gray-800 border-b border-gray-700'>
+          <div className='container mx-auto px-4 py-8'>
+            <div className='flex items-center gap-3 mb-2'>
+              <CodeBracketIcon className='w-8 h-8 text-purple-400' />
+              <h1 className='text-3xl font-bold text-gray-100'>Contract Details</h1>
+            </div>
+            <p className='text-gray-400'>
+              {contract?.name || 'Smart Contract'} {contract?.symbol ? `(${contract.symbol})` : ''} - {formatAddress(resolvedParams.address)}
+            </p>
+          </div>
+        </div>
+
+        <main className='container mx-auto px-4 py-8'>
+          {/* Stats Cards */}
+          <div className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-8'>
+            <div className='bg-gray-700/50 rounded-lg p-4 border border-gray-600/50'>
+              <h3 className='text-sm font-medium text-gray-300 mb-2'>Balance</h3>
+              <p className='text-2xl font-bold text-green-400'>
+                {account ? (() => {
+                  try {
+                    const weiValue = BigInt(account.balanceRaw);
+                    const nativeValue = Number(weiValue) / 1e18;
+                    if (nativeValue === 0) return '0';
+                    if (nativeValue < 0.0001) return '<0.0001';
+                    return nativeValue.toFixed(4);
+                  } catch {
+                    return account.balance;
+                  }
+                })() : '0'} {currencySymbol}
+              </p>
+              <p className='text-xs text-gray-400'>Contract balance</p>
+            </div>
+
+            <div className='bg-gray-700/50 rounded-lg p-4 border border-gray-600/50'>
+              <h3 className='text-sm font-medium text-gray-300 mb-2'>Transactions</h3>
+              <p className='text-2xl font-bold text-blue-400'>{(account?.transactionCount || 0).toLocaleString()}</p>
+              <p className='text-xs text-gray-400'>Total interactions</p>
+            </div>
+
+            <div className='bg-gray-700/50 rounded-lg p-4 border border-gray-600/50'>
+              <h3 className='text-sm font-medium text-gray-300 mb-2'>Token Transfers</h3>
+              <p className='text-2xl font-bold text-purple-400'>{(account?.tokenTransferCount || 0).toLocaleString()}</p>
+              <p className='text-xs text-gray-400'>ERC20/721 transfers</p>
+            </div>
+
+            <div className='bg-gray-700/50 rounded-lg p-4 border border-gray-600/50'>
+              <h3 className='text-sm font-medium text-gray-300 mb-2'>Verification</h3>
+              <p className='text-2xl font-bold'>
+                {contract?.verified ? (
+                  <span className='text-green-400 flex items-center gap-2'>
+                    <CheckCircleIcon className='w-6 h-6' />
+                    Verified
+                  </span>
+                ) : (
+                  <span className='text-yellow-400'>Unverified</span>
+                )}
+              </p>
+              <p className='text-xs text-gray-400'>Source code status</p>
+            </div>
+          </div>
+
+          {/* Contract Info Card */}
+          <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8'>
+            <div className='flex items-center justify-between mb-6'>
+              <h2 className='text-xl font-semibold text-gray-100'>Contract Information</h2>
+              <div className='flex gap-2'>
+                <Link
+                  href={`/contract/interact?address=${resolvedParams.address}`}
+                  className='inline-flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors text-sm'
+                >
+                  <PlayIcon className='w-4 h-4' />
+                  Interact
+                </Link>
+                {!contract?.verified && (
+                  <Link
+                    href={`/contract/verify?address=${resolvedParams.address}&contractName=${contract?.name?.replace(/\s+/g, '') || 'Contract'}`}
+                    className='inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm'
+                  >
+                    <CodeBracketIcon className='w-4 h-4' />
+                    Verify
+                  </Link>
+                )}
+              </div>
+            </div>
+            
+            <div className='grid grid-cols-1 md:grid-cols-4 gap-6'>
+              <div className='md:col-span-2'>
+                <div className='text-sm font-medium text-gray-300 mb-2'>Contract Address</div>
+                <div className='flex items-center gap-2 font-mono text-blue-400 text-sm break-all bg-white/10 rounded px-3 py-2'>
+                  <span>{resolvedParams.address}</span>
+                  <button
+                    onClick={() => copyToClipboard(resolvedParams.address)}
+                    className='p-1 text-gray-400 hover:text-blue-400 transition-colors'
+                    title='Copy address'
+                  >
+                    <ClipboardDocumentIcon className='w-4 h-4' />
+                  </button>
+                  {copiedItem === resolvedParams.address && (
+                    <span className='text-green-400 text-xs'>Copied!</span>
+                  )}
+                </div>
+              </div>
+              
+              <div>
+                <div className='text-sm font-medium text-gray-300 mb-2'>Contract Name</div>
+                <div className='text-orange-400 text-lg font-semibold'>{contract?.name || 'Unknown'}</div>
+              </div>
+              
+              <div>
+                <div className='text-sm font-medium text-gray-300 mb-2'>Type</div>
+                <span className={`px-3 py-1 rounded text-sm font-medium ${
+                  contract?.type === 'ERC20' || contract?.type === 'VRC-20' ? 'bg-blue-500/20 text-blue-400' :
+                  contract?.type === 'VRC-721' || contract?.type === 'ERC721' ? 'bg-purple-500/20 text-purple-400' :
+                  'bg-gray-500/20 text-gray-400'
+                }`}>
+                  {contract?.type || 'Contract'}
+                </span>
+              </div>
+              
+              {contract?.symbol && (
+                <div>
+                  <div className='text-sm font-medium text-gray-300 mb-2'>Symbol</div>
+                  <div className='text-green-400 text-lg font-bold'>{contract.symbol}</div>
+                </div>
+              )}
+              
+              {contract?.decimals !== undefined && contract.decimals > 0 && (
+                <div>
+                  <div className='text-sm font-medium text-gray-300 mb-2'>Decimals</div>
+                  <div className='text-gray-200 text-lg font-bold'>{contract.decimals}</div>
+                </div>
+              )}
+              
+              {contract?.blockNumber && contract.blockNumber > 0 && (
+                <div>
+                  <div className='text-sm font-medium text-gray-300 mb-2'>Created at Block</div>
+                  <Link
+                    href={`/block/${contract.blockNumber}`}
+                    className='text-blue-400 hover:text-blue-300 text-lg font-bold'
+                  >
+                    #{contract.blockNumber.toLocaleString()}
+                  </Link>
+                </div>
+              )}
+              
+              {contract?.creationTransaction && (
+                <div>
+                  <div className='text-sm font-medium text-gray-300 mb-2'>Creation Tx</div>
+                  <Link
+                    href={`/tx/${contract.creationTransaction}`}
+                    className='text-blue-400 hover:text-blue-300 font-mono text-sm'
+                  >
+                    {formatAddress(contract.creationTransaction)}
+                  </Link>
+                </div>
+              )}
+
+              {contract?.verified && (
+                <div>
+                  <div className='text-sm font-medium text-gray-300 mb-2'>Verification</div>
+                  <div className='flex items-center gap-1 px-3 py-1 bg-green-500/20 text-green-400 rounded text-sm font-medium w-fit'>
+                    <CheckCircleIcon className='w-4 h-4' />
+                    <span>Verified</span>
+                  </div>
+                </div>
+              )}
+
+              {contractDetails?.compilerVersion && (
+                <div>
+                  <div className='text-sm font-medium text-gray-300 mb-2'>Compiler</div>
+                  <div className='text-gray-200'>Solidity {contractDetails.compilerVersion}</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className='bg-gray-800 rounded-lg border border-gray-700 overflow-hidden'>
+            <div className='border-b border-gray-700'>
+              <div className='flex flex-wrap'>
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id as 'transactions' | 'mining' | 'source')}
+                      className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors ${
+                        activeTab === tab.id
+                          ? 'bg-gray-700/50 text-blue-400 border-b-2 border-blue-400'
+                          : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/30'
+                      }`}
+                    >
+                      <Icon className='w-5 h-5' />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className='p-6'>
+              {/* Transactions Tab */}
+              {activeTab === 'transactions' && (
+                <div className='space-y-4'>
+                  {regularTransactions.length === 0 ? (
+                    <p className='text-gray-400 text-center py-8'>No transactions found for this contract.</p>
+                  ) : (
+                    <>
+                      <div className='overflow-x-auto'>
+                        <table className='w-full'>
+                          <thead>
+                            <tr className='border-b border-gray-600'>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Tx Hash</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>From</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>To</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Value</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Age</th>
+                            </tr>
+                          </thead>
+                          <tbody className='divide-y divide-gray-600'>
+                            {regularTransactions.slice(0, 10).map((tx) => (
+                              <tr key={tx.hash} className='hover:bg-gray-700/50 transition-colors'>
+                                <td className='py-3 px-4'>
+                                  <Link href={`/tx/${tx.hash}`} className='text-blue-400 hover:text-blue-300 font-mono text-sm'>
+                                    {formatAddress(tx.hash)}
+                                  </Link>
+                                </td>
+                                <td className='py-3 px-4'>
+                                  <Link href={`/address/${tx.from}`} className='text-green-400 hover:text-green-300 font-mono text-sm'>
+                                    {formatAddress(tx.from)}
+                                  </Link>
+                                </td>
+                                <td className='py-3 px-4'>
+                                  <Link href={`/address/${tx.to}`} className='text-red-400 hover:text-red-300 font-mono text-sm'>
+                                    {formatAddress(tx.to)}
+                                  </Link>
+                                </td>
+                                <td className='py-3 px-4 text-yellow-400'>{formatValue(tx.value)}</td>
+                                <td className='py-3 px-4 text-gray-300 text-sm'>{getTimeAgo(tx.timestamp)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className='text-center'>
+                        <Link
+                          href={`/address/${resolvedParams.address}/transactions`}
+                          className='text-blue-400 hover:text-blue-300 text-sm'
+                        >
+                          View all {regularCount} transactions →
+                        </Link>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Mining Tab */}
+              {activeTab === 'mining' && (
+                <div className='space-y-4'>
+                  {miningRewards.length === 0 ? (
+                    <p className='text-gray-400 text-center py-8'>No mining rewards for this address.</p>
+                  ) : (
+                    <>
+                      <div className='overflow-x-auto'>
+                        <table className='w-full'>
+                          <thead>
+                            <tr className='border-b border-gray-600'>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Block Hash</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Reward</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Age</th>
+                            </tr>
+                          </thead>
+                          <tbody className='divide-y divide-gray-600'>
+                            {miningRewards.slice(0, 10).map((tx) => (
+                              <tr key={tx.hash} className='hover:bg-gray-700/50 transition-colors'>
+                                <td className='py-3 px-4'>
+                                  <Link href={`/tx/${tx.hash}`} className='text-blue-400 hover:text-blue-300 font-mono text-sm'>
+                                    {formatAddress(tx.hash)}
+                                  </Link>
+                                </td>
+                                <td className='py-3 px-4 text-yellow-400'>{formatValue(tx.value)}</td>
+                                <td className='py-3 px-4 text-gray-300 text-sm'>{getTimeAgo(tx.timestamp)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className='text-center'>
+                        <Link
+                          href={`/address/${resolvedParams.address}/mining`}
+                          className='text-blue-400 hover:text-blue-300 text-sm'
+                        >
+                          View all {miningCount} mining rewards →
+                        </Link>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Source Code Tab */}
+              {activeTab === 'source' && (
+                <div className='space-y-4'>
+                  {contract?.verified && contractDetails?.sourceCode ? (
+                    <div className='space-y-4'>
+                      <div className='flex items-center gap-2 mb-4'>
+                        <div className='w-2 h-2 bg-green-400 rounded-full'></div>
+                        <span className='text-green-400 font-medium'>Contract Verified</span>
+                      </div>
+
+                      <div className='grid grid-cols-3 gap-4 mb-4'>
+                        <div className='bg-gray-700/50 rounded p-3'>
+                          <div className='text-gray-400 text-sm'>Contract Name</div>
+                          <div className='text-gray-200 font-medium'>{contract.name}</div>
+                        </div>
+                        <div className='bg-gray-700/50 rounded p-3'>
+                          <div className='text-gray-400 text-sm'>Compiler</div>
+                          <div className='text-gray-200 font-medium'>Solidity {contractDetails.compilerVersion || 'Unknown'}</div>
+                        </div>
+                        <div className='bg-gray-700/50 rounded p-3'>
+                          <div className='text-gray-400 text-sm'>Optimization</div>
+                          <div className='text-gray-200 font-medium'>{contractDetails.optimization ? 'Enabled' : 'Disabled'}</div>
+                        </div>
+                      </div>
+
+                      {/* Source Code */}
+                      <div className='bg-gray-950 rounded border border-gray-700 overflow-hidden'>
+                        <div className='bg-gray-800 px-4 py-2 border-b border-gray-700'>
+                          <span className='text-sm font-medium text-gray-300'>Contract Source Code</span>
+                        </div>
+                        <pre className='p-4 overflow-x-auto text-sm text-gray-300 max-h-96 overflow-y-auto'>
+                          <code className='whitespace-pre-wrap break-all'>
+                            {contractDetails.sourceCode}
+                          </code>
+                        </pre>
+                      </div>
+
+                      {/* ABI */}
+                      {contractDetails.abi && (
+                        <div className='bg-gray-950 rounded border border-gray-700 overflow-hidden'>
+                          <div className='bg-gray-800 px-4 py-2 border-b border-gray-700'>
+                            <span className='text-sm font-medium text-gray-300'>Contract ABI</span>
+                          </div>
+                          <pre className='p-4 overflow-x-auto text-sm text-gray-300 max-h-48 overflow-y-auto'>
+                            <code className='whitespace-pre-wrap break-all'>
+                              {contractDetails.abi}
+                            </code>
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className='space-y-4'>
+                      <div className='flex items-center gap-2 mb-4'>
+                        <div className='w-2 h-2 bg-red-400 rounded-full'></div>
+                        <span className='text-red-400 font-medium'>Contract Not Verified</span>
+                      </div>
+
+                      {/* Bytecode */}
+                      <div className='bg-gray-950 rounded border border-gray-700 overflow-hidden'>
+                        <div className='bg-gray-800 px-4 py-2 border-b border-gray-700'>
+                          <span className='text-sm font-medium text-gray-300'>Contract Bytecode</span>
+                        </div>
+                        <pre className='p-4 overflow-x-auto text-sm text-gray-300 max-h-48 overflow-y-auto'>
+                          <code className='whitespace-pre-wrap break-all'>
+                            {contractDetails?.byteCode || contract?.byteCode || '0x'}
+                          </code>
+                        </pre>
+                      </div>
+
+                      {/* Verify Button */}
+                      <div className='bg-gray-700/50 rounded-lg p-6 border border-gray-600'>
+                        <div className='text-center'>
+                          <CodeBracketIcon className='w-12 h-12 text-gray-500 mx-auto mb-4' />
+                          <h3 className='text-lg font-semibold text-gray-100 mb-2'>Verify Contract Source Code</h3>
+                          <p className='text-gray-400 text-sm mb-6'>
+                            Verify and publish the source code for this contract to make it readable and auditable.
+                          </p>
+                          
+                          <div className='flex flex-col sm:flex-row gap-3 justify-center'>
+                            <Link 
+                              href={`/contract/verify?address=${resolvedParams.address}&contractName=${contract?.name?.replace(/\s+/g, '') || 'Contract'}`}
+                              className='inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors'
+                            >
+                              <CodeBracketIcon className='w-5 h-5' />
+                              Verify & Push
+                            </Link>
+                            
+                            <Link 
+                              href={`/contract/interact?address=${resolvedParams.address}`}
+                              className='inline-flex items-center gap-2 px-6 py-3 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors'
+                            >
+                              <PlayIcon className='w-5 h-5' />
+                              Interact
+                            </Link>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
       </div>
     );
   }
@@ -563,67 +1027,6 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
             </div>
           </div>
         </div>
-
-        {/* Contract Information (if applicable) */}
-        {contract && (
-          <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8'>
-            <h2 className='text-xl font-semibold text-gray-100 mb-4'>Contract Information</h2>
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Name</label>
-                <div className='text-white'>{contract.name}</div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Symbol</label>
-                <div className='text-white'>{contract.symbol}</div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Type</label>
-                <div className='text-white'>{contract.type}</div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Decimals</label>
-                <div className='text-white'>{contract.decimals}</div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Total Supply</label>
-                <div className='text-white'>{contract.totalSupply}</div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Verified</label>
-                <div className={contract.verified ? 'text-green-400' : 'text-red-400'}>
-                  {contract.verified ? 'Yes' : 'No'}
-                </div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Creation Block</label>
-                <div className='text-blue-400'>
-                  {contract.blockNumber ? (
-                    <Link
-                      href={`/block/${contract.blockNumber}`}
-                      className='hover:text-blue-300 transition-colors hover:underline'
-                    >
-                      {contract.blockNumber.toLocaleString()}
-                    </Link>
-                  ) : 'Unknown'}
-                </div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Creation Transaction</label>
-                <div className='text-blue-400'>
-                  {contract.creationTransaction ? (
-                    <Link
-                      href={`/tx/${contract.creationTransaction}`}
-                      className='hover:text-blue-300 transition-colors hover:underline'
-                    >
-                      {formatAddress(contract.creationTransaction)}
-                    </Link>
-                  ) : 'Unknown'}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Transactions */}
         <div className='bg-gray-800 rounded-lg border border-gray-700 p-6'>
