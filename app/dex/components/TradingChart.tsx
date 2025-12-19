@@ -54,6 +54,9 @@ const getTokenIcon = (symbol: string): string | null => {
   if (symbol === 'VBCG') {
     return '/img/VBCG.png';
   }
+  if (symbol === 'USDT') {
+    return '/img/USDT.svg';
+  }
   return null;
 };
 

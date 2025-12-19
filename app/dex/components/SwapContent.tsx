@@ -7,9 +7,11 @@ import { TokenInput, SlippageSettings, SwapInfo } from './index';
 import {
   type Token,
   getNativeToken,
+  getWrappedNativeToken,
   DEFAULT_TOKENS,
   DEFAULT_SLIPPAGE,
   DEX_CONTRACTS,
+  getDexContracts,
 } from '@/lib/dex/config';
 import {
   useSwapQuote,
@@ -26,6 +28,30 @@ import {
 } from '@/lib/dex/hooks';
 import { useDexTokens } from '@/hooks/useDexTokens';
 import { useTokenConfig } from '@/hooks/useTokenConfig';
+
+// Check if token is wrapped native (WVBC, WETH, etc.)
+function isWrappedNativeToken(token: Token): boolean {
+  const contracts = getDexContracts();
+  return token.address.toLowerCase() === contracts.wrappedNative.toLowerCase();
+}
+
+// Build optimal swap path - for Token↔Token swaps, go through WVBC
+function buildSwapPath(tokenIn: Token, tokenOut: Token): Address[] {
+  const contracts = getDexContracts();
+  const wrappedNative = contracts.wrappedNative;
+  
+  const fromAddress = getTokenAddress(tokenIn);
+  const toAddress = getTokenAddress(tokenOut);
+  
+  // If either token is native or wrapped native, direct path
+  if (isNativeToken(tokenIn) || isNativeToken(tokenOut) || 
+      isWrappedNativeToken(tokenIn) || isWrappedNativeToken(tokenOut)) {
+    return [fromAddress, toAddress];
+  }
+  
+  // For Token → Token (e.g., USDT → VBCG), route through WVBC
+  return [fromAddress, wrappedNative, toAddress];
+}
 
 export function SwapContent() {
   const { address, isConnected } = useAccount();
@@ -78,13 +104,16 @@ export function SwapContent() {
     }
   }, [availableTokens, tokenOutInitialized, tokenConfig]);
   
-  // Build swap path
+  // Build swap path - use multi-hop for Token↔Token swaps
   const swapPath = useMemo((): Address[] => {
     if (!tokenOut) return [];
-    const fromAddress = getTokenAddress(tokenIn);
-    const toAddress = getTokenAddress(tokenOut);
-    return [fromAddress, toAddress];
+    return buildSwapPath(tokenIn, tokenOut);
   }, [tokenIn, tokenOut]);
+
+  // Check if this is a multi-hop swap (Token → WVBC → Token)
+  const isMultiHopSwap = useMemo(() => {
+    return swapPath.length > 2;
+  }, [swapPath]);
 
   // Get quote
   const amountInParsed = useMemo(() => {
@@ -310,7 +339,9 @@ export function SwapContent() {
               priceImpact={priceImpact}
               minimumReceived={minAmountOut}
               tokenSymbol={tokenOut.symbol}
+              tokenDecimals={tokenOut.decimals}
               fee="0.3%"
+              route={isMultiHopSwap ? [tokenIn.symbol, 'WVBC', tokenOut.symbol] : undefined}
             />
           </div>
         )}

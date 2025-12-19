@@ -18,15 +18,17 @@ const getTokenColor = (symbol: string): string => {
     'WVBC': 'from-green-400 to-teal-500',
     'TEST': 'from-purple-500 to-pink-500',
     'VBCG': 'from-yellow-400 to-amber-500',
-    'USDT': 'from-green-400 to-green-600',
+    'USDT': 'from-green-400 to-emerald-500',
     'USDC': 'from-blue-400 to-blue-600',
+    'ETH': 'from-blue-400 to-purple-500',
+    'WETH': 'from-blue-400 to-purple-500',
   };
   return colors[symbol] || 'from-gray-500 to-gray-600';
 };
 
 // Check if token has custom icon
 const hasCustomIcon = (symbol: string): boolean => {
-  return symbol === 'VBC' || symbol === 'WVBC' || symbol === 'VBCG';
+  return ['VBC', 'WVBC', 'VBCG', 'USDT'].includes(symbol);
 };
 
 // Get custom icon path
@@ -36,6 +38,9 @@ const getTokenIcon = (symbol: string): string | null => {
   }
   if (symbol === 'VBCG') {
     return '/img/VBCG.png';
+  }
+  if (symbol === 'USDT') {
+    return '/img/USDT.svg';
   }
   return null;
 };

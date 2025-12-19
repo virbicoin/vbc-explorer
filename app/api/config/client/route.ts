@@ -31,13 +31,20 @@ export async function GET() {
         explorer: config.network?.explorer || '',
         blockTime: config.network?.blockTime || 12
       },
-      // DEX configuration
+      // DEX configuration with full token info
       dex: config.dex ? {
         enabled: config.dex.enabled || false,
+        factory: config.dex.factory || '',
         router: config.dex.router || '',
         masterChef: config.dex.masterChef || '',
         wrappedNative: config.dex.wrappedNative || null,
-        rewardToken: config.dex.rewardToken || null
+        rewardToken: config.dex.rewardToken || null,
+        // Additional token definitions (USDT, VBCG, etc.)
+        tokens: config.dex.tokens || {},
+        // LP token addresses
+        lpTokens: config.dex.lpTokens || {},
+        // Farm pool configurations
+        farmPools: config.dex.farmPools || []
       } : null,
       // Social links
       social: config.social || null

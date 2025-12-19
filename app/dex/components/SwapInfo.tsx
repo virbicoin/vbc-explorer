@@ -8,7 +8,9 @@ interface SwapInfoProps {
   priceImpact?: number;
   minimumReceived?: bigint;
   tokenSymbol?: string;
+  tokenDecimals?: number;
   fee?: string;
+  route?: string[];  // e.g., ['VBC', 'WVBC', 'USDT']
 }
 
 export function SwapInfo({
@@ -16,13 +18,18 @@ export function SwapInfo({
   priceImpact,
   minimumReceived,
   tokenSymbol,
+  tokenDecimals = 18,
   fee,
+  route,
 }: SwapInfoProps) {
   const [isExpanded, setIsExpanded] = useState(true);
 
   if (!rate && priceImpact === undefined && !minimumReceived) {
     return null;
   }
+
+  // Determine if this is a multi-hop swap
+  const isMultiHop = route && route.length > 2;
 
   return (
     <div className="bg-gray-800/30 backdrop-blur-sm rounded-xl border border-gray-700/50 overflow-hidden">
@@ -53,6 +60,35 @@ export function SwapInfo({
       {/* Details */}
       {isExpanded && (
         <div className="px-4 pb-4 space-y-3 border-t border-gray-700/50 pt-3">
+          {/* Route Display for Multi-hop Swaps */}
+          {isMultiHop && route && (
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-400">Route</span>
+                <div className="group relative">
+                  <svg className="w-4 h-4 text-gray-500 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 rounded-lg text-xs text-gray-300 w-48 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all shadow-xl border border-gray-700">
+                    This swap routes through multiple pools for the best rate.
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                {route.map((symbol, index) => (
+                  <span key={index} className="flex items-center">
+                    <span className="text-sm font-medium text-blue-400">{symbol}</span>
+                    {index < route.length - 1 && (
+                      <svg className="w-4 h-4 text-gray-500 mx-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {priceImpact !== undefined && (
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
@@ -89,7 +125,7 @@ export function SwapInfo({
                   </div>
                 </div>
               </div>
-              <span className="text-sm font-semibold text-white">{formatTokenAmount(minimumReceived)} {tokenSymbol}</span>
+              <span className="text-sm font-semibold text-white">{formatTokenAmount(minimumReceived, tokenDecimals)} {tokenSymbol}</span>
             </div>
           )}
 
@@ -102,11 +138,11 @@ export function SwapInfo({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 rounded-lg text-xs text-gray-300 w-48 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all shadow-xl border border-gray-700">
-                    Fee paid to liquidity providers for each trade.
+                    Fee paid to liquidity providers for each trade.{isMultiHop && ' Multi-hop swaps incur fees on each hop.'}
                   </div>
                 </div>
               </div>
-              <span className="text-sm font-semibold text-white">{fee}</span>
+              <span className="text-sm font-semibold text-white">{isMultiHop ? `${fee} × ${route!.length - 1}` : fee}</span>
             </div>
           )}
         </div>

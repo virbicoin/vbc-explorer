@@ -72,6 +72,34 @@ export interface RewardTokenConfig {
   color?: string;
 }
 
+// Token configuration for DEX
+export interface TokenConfig {
+  address: `0x${string}`;
+  name: string;
+  symbol: string;
+  decimals: number;
+  icon?: string;
+  color?: string;
+}
+
+// LP Token configuration
+export interface LPTokenConfig {
+  address: `0x${string}`;
+  name: string;
+  symbol: string;
+  token0: string;
+  token1: string;
+}
+
+// Farm pool configuration
+export interface FarmPoolConfig {
+  pid: number;
+  name: string;
+  lpToken: `0x${string}`;
+  token0Symbol: string;
+  token1Symbol: string;
+}
+
 // DEX configuration
 export interface DexConfig {
   enabled: boolean;
@@ -79,7 +107,10 @@ export interface DexConfig {
   factory?: `0x${string}`;
   masterChef?: `0x${string}`;
   wrappedNative?: WrappedNativeConfig;
-  rewardToken?: RewardTokenConfig;
+  rewardToken?: RewardTokenConfig & { address?: `0x${string}`; decimals?: number };
+  tokens?: Record<string, TokenConfig>;
+  lpTokens?: Record<string, LPTokenConfig>;
+  farmPools?: FarmPoolConfig[];
 }
 
 // Social links configuration
