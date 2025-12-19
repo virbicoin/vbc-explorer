@@ -77,6 +77,9 @@ export function calculatePriceImpact(
 export function useNativeBalance(address?: Address) {
   return useBalance({
     address,
+    query: {
+      refetchInterval: 5000, // Refetch every 5 seconds for live updates
+    },
   });
 }
 
@@ -92,6 +95,7 @@ export function useTokenBalance(tokenAddress: Address, userAddress?: Address) {
     args: userAddress ? [userAddress] : undefined,
     query: {
       enabled: !!userAddress && tokenAddress !== '0x0000000000000000000000000000000000000000',
+      refetchInterval: 5000, // Refetch every 5 seconds for live updates
     },
   });
 }
@@ -143,7 +147,10 @@ export function useReserves(tokenA: Address, tokenB: Address) {
     address: pair,
     abi: PAIR_ABI,
     functionName: 'getReserves',
-    query: { enabled },
+    query: { 
+      enabled,
+      refetchInterval: 5000, // Refetch every 5 seconds for live updates
+    },
   });
 
   const data = useMemo(() => {
@@ -176,32 +183,40 @@ export function useSwapQuote(amountIn: bigint, path: Address[]) {
 
 // Get pair info
 export function usePairInfo(pairAddress?: Address) {
+  const isEnabled = !!pairAddress && pairAddress !== '0x0000000000000000000000000000000000000000';
+  
   const { data: token0 } = useReadContract({
     address: pairAddress,
     abi: PAIR_ABI,
     functionName: 'token0',
-    query: { enabled: !!pairAddress && pairAddress !== '0x0000000000000000000000000000000000000000' },
+    query: { enabled: isEnabled },
   });
 
   const { data: token1 } = useReadContract({
     address: pairAddress,
     abi: PAIR_ABI,
     functionName: 'token1',
-    query: { enabled: !!pairAddress && pairAddress !== '0x0000000000000000000000000000000000000000' },
+    query: { enabled: isEnabled },
   });
 
   const { data: reserves } = useReadContract({
     address: pairAddress,
     abi: PAIR_ABI,
     functionName: 'getReserves',
-    query: { enabled: !!pairAddress && pairAddress !== '0x0000000000000000000000000000000000000000' },
+    query: { 
+      enabled: isEnabled,
+      refetchInterval: 5000, // Refetch every 5 seconds for live updates
+    },
   });
 
   const { data: totalSupply } = useReadContract({
     address: pairAddress,
     abi: PAIR_ABI,
     functionName: 'totalSupply',
-    query: { enabled: !!pairAddress && pairAddress !== '0x0000000000000000000000000000000000000000' },
+    query: { 
+      enabled: isEnabled,
+      refetchInterval: 5000, // Refetch every 5 seconds for live updates
+    },
   });
 
   return {
@@ -222,6 +237,7 @@ export function useUserLPBalance(pairAddress?: Address, userAddress?: Address) {
     args: userAddress ? [userAddress] : undefined,
     query: {
       enabled: !!pairAddress && !!userAddress && pairAddress !== '0x0000000000000000000000000000000000000000',
+      refetchInterval: 5000, // Refetch every 5 seconds for live updates
     },
   });
 }

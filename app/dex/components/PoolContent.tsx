@@ -363,9 +363,9 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
   const handleAddLiquidity = useCallback(async () => {
     if (!address || amountAParsed === 0n || amountBParsed === 0n || !tokenB) return;
 
-    // Calculate minimum amounts with slippage
-    const minAmountA = (amountAParsed * BigInt(Math.floor((100 - slippage) * 100))) / 10000n;
-    const minAmountB = (amountBParsed * BigInt(Math.floor((100 - slippage) * 100))) / 10000n;
+    // Calculate minimum amounts with slippage (slippage is in basis points: 100 = 1%, 300 = 3%)
+    const minAmountA = (amountAParsed * BigInt(10000 - slippage)) / 10000n;
+    const minAmountB = (amountBParsed * BigInt(10000 - slippage)) / 10000n;
 
     try {
       if (isNativeToken(tokenA)) {
