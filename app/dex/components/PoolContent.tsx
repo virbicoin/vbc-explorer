@@ -231,7 +231,7 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
     
     // amountB = amountA * reserveB / reserveA
     const optimalB = (parsedA * reserves[1]) / reserves[0];
-    return formatTokenAmount(optimalB, tokenB.decimals);
+    return formatTokenAmountForInput(optimalB, tokenB.decimals, 18);
   }, [reserves, tokenA.decimals, tokenB]);
 
   // Calculate optimal amount A based on amount B
@@ -244,7 +244,7 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
     
     // amountA = amountB * reserveA / reserveB
     const optimalA = (parsedB * reserves[0]) / reserves[1];
-    return formatTokenAmount(optimalA, tokenA.decimals);
+    return formatTokenAmountForInput(optimalA, tokenA.decimals, 18);
   }, [reserves, tokenA.decimals, tokenB]);
 
   // Handle amount A change - calculate optimal B
