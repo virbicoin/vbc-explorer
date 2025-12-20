@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useAccount, useReadContract } from 'wagmi';
+import { useAccount, useReadContract, useReadContracts } from 'wagmi';
 import { type Address } from 'viem';
 import Image from 'next/image';
 import { TokenInput, SlippageSettings } from './index';
@@ -12,6 +12,7 @@ import {
   getWrappedNativeToken,
   DEFAULT_SLIPPAGE,
   DEX_CONTRACTS,
+  PAIR_ABI,
 } from '@/lib/dex/config';
 import {
   useAddLiquidity,
@@ -32,6 +33,7 @@ import {
 } from '@/lib/dex/hooks';
 import { useDexTokens } from '@/hooks/useDexTokens';
 import { useTokenConfig } from '@/hooks/useTokenConfig';
+import { useDexConfig } from '@/hooks/useDexConfig';
 import { ERC20ABI } from '@/abi/TokenFactoryABI';
 
 // Default color for unknown tokens
@@ -87,6 +89,9 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
   // Fetch tokens from API
   const { tokens: availableTokens, isLoading: isTokensLoading } = useDexTokens();
   
+  // Fetch DEX config for farming pools
+  const { config: dexConfig } = useDexConfig();
+  
   // Token configuration from config.json
   const { 
     config: tokenConfig,
@@ -95,6 +100,36 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
     displaySymbol,
     isLoading: tokenConfigLoading 
   } = useTokenConfig();
+  
+  // Fetch LP balances for all farming pools
+  const poolContracts = useMemo(() => {
+    if (!dexConfig?.farming?.pools || !address) return [];
+    return dexConfig.farming.pools.map(pool => ({
+      address: pool.lpToken as Address,
+      abi: PAIR_ABI,
+      functionName: 'balanceOf' as const,
+      args: [address] as const,
+    }));
+  }, [dexConfig?.farming?.pools, address]);
+  
+  const { data: lpBalances } = useReadContracts({
+    contracts: poolContracts,
+    query: {
+      enabled: poolContracts.length > 0 && !!address,
+      refetchInterval: 5000,
+    },
+  });
+  
+  // Filter pools where user has LP balance
+  const userPositions = useMemo(() => {
+    if (!dexConfig?.farming?.pools || !lpBalances) return [];
+    return dexConfig.farming.pools
+      .map((pool, index) => ({
+        ...pool,
+        balance: lpBalances[index]?.result as bigint | undefined,
+      }))
+      .filter(pool => pool.balance && pool.balance > 0n);
+  }, [dexConfig?.farming?.pools, lpBalances]);
   
   // Fetch custom token info from blockchain if not in available tokens
   const shouldFetchCustomToken = initialTokenAddress && 
@@ -804,6 +839,67 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
           </>
         )}
       </div>
+      
+      {/* Your Positions Section */}
+      {isConnected && userPositions.length > 0 && (
+        <div className="mt-6 bg-gradient-to-b from-gray-800/90 to-gray-900/90 backdrop-blur-xl rounded-3xl p-6 shadow-2xl border border-gray-700/50">
+          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+            Your Positions
+          </h2>
+          <div className="space-y-3">
+            {userPositions.map((position) => (
+              <div
+                key={position.lpToken}
+                className="bg-gray-800/60 border border-gray-700/50 rounded-2xl p-4 hover:border-gray-600 transition-colors cursor-pointer"
+                onClick={() => {
+                  // Find and set tokenB to the non-wrapped token
+                  const targetToken = allTokens.find(t => 
+                    t.address.toLowerCase() === position.token1.address.toLowerCase()
+                  );
+                  if (targetToken) {
+                    setTokenB(targetToken);
+                    setActiveTab('remove');
+                  }
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex -space-x-2">
+                      <PoolTokenIcon 
+                        symbol={position.token0.symbol} 
+                        size={32} 
+                        getIcon={getTokenIcon} 
+                        getColor={getTokenColor} 
+                      />
+                      <PoolTokenIcon 
+                        symbol={position.token1.symbol} 
+                        size={32} 
+                        getIcon={getTokenIcon} 
+                        getColor={getTokenColor} 
+                      />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-white">
+                        {displaySymbol(position.token0.symbol)}/{displaySymbol(position.token1.symbol)}
+                      </div>
+                      <div className="text-sm text-gray-400">Liquidity Pool</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold text-green-400">
+                      {formatTokenAmount(position.balance!, 18, 6)} LP
+                    </div>
+                    <div className="text-xs text-gray-500">Click to manage</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
