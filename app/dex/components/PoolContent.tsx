@@ -81,6 +81,23 @@ interface PoolContentProps {
   initialTokenAddress?: string | null;
 }
 
+// Minimal MasterChef ABI for userInfo
+const MASTERCHEF_USERINFO_ABI = [
+  {
+    inputs: [
+      { type: 'uint256', name: '' },
+      { type: 'address', name: '' }
+    ],
+    name: 'userInfo',
+    outputs: [
+      { type: 'uint256', name: 'amount' },
+      { type: 'uint256', name: 'rewardDebt' }
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
+
 export function PoolContent({ initialTokenAddress }: PoolContentProps) {
   const { address, isConnected } = useAccount();
   const [initialTokenSet, setInitialTokenSet] = useState(false);
@@ -101,8 +118,8 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
     isLoading: tokenConfigLoading 
   } = useTokenConfig();
   
-  // Fetch LP balances for all farming pools
-  const poolContracts = useMemo(() => {
+  // Fetch LP balances for all farming pools (wallet balance)
+  const lpBalanceContracts = useMemo(() => {
     if (!dexConfig?.farming?.pools || !address) return [];
     return dexConfig.farming.pools.map(pool => ({
       address: pool.lpToken as Address,
@@ -113,23 +130,49 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
   }, [dexConfig?.farming?.pools, address]);
   
   const { data: lpBalances } = useReadContracts({
-    contracts: poolContracts,
+    contracts: lpBalanceContracts,
     query: {
-      enabled: poolContracts.length > 0 && !!address,
+      enabled: lpBalanceContracts.length > 0 && !!address,
       refetchInterval: 5000,
     },
   });
   
-  // Filter pools where user has LP balance
+  // Fetch staked amounts from MasterChef for all pools
+  const stakedContracts = useMemo(() => {
+    if (!dexConfig?.farming?.pools || !address || !dexConfig?.contracts?.masterChef) return [];
+    return dexConfig.farming.pools.map(pool => ({
+      address: dexConfig.contracts.masterChef as Address,
+      abi: MASTERCHEF_USERINFO_ABI,
+      functionName: 'userInfo' as const,
+      args: [BigInt(pool.pid), address] as const,
+    }));
+  }, [dexConfig?.farming?.pools, dexConfig?.contracts?.masterChef, address]);
+  
+  const { data: stakedAmounts } = useReadContracts({
+    contracts: stakedContracts,
+    query: {
+      enabled: stakedContracts.length > 0 && !!address,
+      refetchInterval: 5000,
+    },
+  });
+  
+  // Filter pools where user has LP balance OR staked amount
   const userPositions = useMemo(() => {
-    if (!dexConfig?.farming?.pools || !lpBalances) return [];
+    if (!dexConfig?.farming?.pools) return [];
     return dexConfig.farming.pools
-      .map((pool, index) => ({
-        ...pool,
-        balance: lpBalances[index]?.result as bigint | undefined,
-      }))
-      .filter(pool => pool.balance && pool.balance > 0n);
-  }, [dexConfig?.farming?.pools, lpBalances]);
+      .map((pool, index) => {
+        const walletBalance = (lpBalances?.[index]?.result as bigint | undefined) || 0n;
+        const stakedResult = stakedAmounts?.[index]?.result as readonly [bigint, bigint] | undefined;
+        const stakedBalance = stakedResult?.[0] || 0n;
+        return {
+          ...pool,
+          walletBalance,
+          stakedBalance,
+          totalBalance: walletBalance + stakedBalance,
+        };
+      })
+      .filter(pool => pool.totalBalance > 0n);
+  }, [dexConfig?.farming?.pools, lpBalances, stakedAmounts]);
   
   // Fetch custom token info from blockchain if not in available tokens
   const shouldFetchCustomToken = initialTokenAddress && 
@@ -890,9 +933,16 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
                   </div>
                   <div className="text-right">
                     <div className="font-bold text-green-400">
-                      {formatTokenAmount(position.balance!, 18, 6)} LP
+                      {formatTokenAmount(position.totalBalance, 18, 6)} LP
                     </div>
-                    <div className="text-xs text-gray-500">Click to manage</div>
+                    <div className="text-xs text-gray-500 space-x-2">
+                      {position.walletBalance > 0n && (
+                        <span className="text-blue-400">Wallet: {formatTokenAmount(position.walletBalance, 18, 4)}</span>
+                      )}
+                      {position.stakedBalance > 0n && (
+                        <span className="text-purple-400">Staked: {formatTokenAmount(position.stakedBalance, 18, 4)}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
