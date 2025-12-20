@@ -8,6 +8,8 @@ import { useTokenConfig } from '@/hooks/useTokenConfig';
 
 // V1 Contract Addresses
 const V1_PAIR_ADDRESS = '0x254a28924660FcB4f49F0A1Ffdb4378ea33A1863' as Address;
+const V1_MASTERCHEF_ADDRESS = '0x0ec423a5C9471E3308690427366D795098f5f914' as Address;
+const V1_POOL_ID = 0n; // V1 LP is in pool 0
 
 // V2 Contract Addresses  
 const V2_ROUTER_ADDRESS = '0xdD1Ae4345252FFEA67fE844296fbd6C973B98c18' as Address;
@@ -122,7 +124,32 @@ const ERC20_ABI = [
   },
 ] as const;
 
-type MigrationStep = 'idle' | 'transfer' | 'burn' | 'approve-wvbc' | 'approve-vbcg' | 'add-liquidity' | 'complete';
+// V1 MasterChef ABI
+const V1_MASTERCHEF_ABI = [
+  {
+    inputs: [{ type: 'uint256', name: 'pid' }, { type: 'address', name: 'user' }],
+    name: 'userInfo',
+    outputs: [{ type: 'uint256', name: 'amount' }, { type: 'uint256', name: 'rewardDebt' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ type: 'uint256', name: 'pid' }, { type: 'address', name: 'user' }],
+    name: 'pendingReward',
+    outputs: [{ type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ type: 'uint256', name: 'pid' }, { type: 'uint256', name: 'amount' }],
+    name: 'withdraw',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+] as const;
+
+type MigrationStep = 'idle' | 'unstake' | 'transfer' | 'burn' | 'approve-wvbc' | 'approve-vbcg' | 'add-liquidity' | 'complete';
 
 interface MigrationState {
   step: MigrationStep;
@@ -151,6 +178,35 @@ export function MigrationContent() {
     args: address ? [address] : undefined,
     query: { enabled: !!address, refetchInterval: 5000 },
   });
+
+  // Read V1 MasterChef staked balance
+  const { data: v1StakedInfo, refetch: refetchV1Staked } = useReadContract({
+    address: V1_MASTERCHEF_ADDRESS,
+    abi: V1_MASTERCHEF_ABI,
+    functionName: 'userInfo',
+    args: address ? [V1_POOL_ID, address] : undefined,
+    query: { enabled: !!address, refetchInterval: 5000 },
+  });
+
+  // Read V1 MasterChef pending rewards
+  const { data: v1PendingReward, refetch: refetchV1Pending } = useReadContract({
+    address: V1_MASTERCHEF_ADDRESS,
+    abi: V1_MASTERCHEF_ABI,
+    functionName: 'pendingReward',
+    args: address ? [V1_POOL_ID, address] : undefined,
+    query: { enabled: !!address, refetchInterval: 5000 },
+  });
+
+  // Extract staked amount from userInfo
+  const v1StakedAmount = useMemo(() => {
+    if (!v1StakedInfo) return 0n;
+    return (v1StakedInfo as [bigint, bigint])[0];
+  }, [v1StakedInfo]);
+
+  // Total V1 LP (wallet + staked)
+  const totalV1Lp = useMemo(() => {
+    return (v1LpBalance || 0n) + v1StakedAmount;
+  }, [v1LpBalance, v1StakedAmount]);
 
   // Read V1 total supply
   const { data: v1TotalSupply } = useReadContract({
@@ -216,18 +272,18 @@ export function MigrationContent() {
   const { writeContract, data: txHash, isPending, error: writeError, reset: resetWrite } = useWriteContract();
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({ hash: txHash });
 
-  // Calculate expected withdrawal from V1
+  // Calculate expected withdrawal from V1 (using total V1 LP)
   const expectedWithdrawal = useMemo(() => {
-    if (!v1LpBalance || !v1TotalSupply || !v1Reserves || v1TotalSupply === 0n) {
+    if (!totalV1Lp || !v1TotalSupply || !v1Reserves || v1TotalSupply === 0n) {
       return { wvbc: 0n, vbcg: 0n };
     }
     const [reserve0, reserve1] = v1Reserves as [bigint, bigint];
-    const userShare = (v1LpBalance * BigInt(1e18)) / v1TotalSupply;
+    const userShare = (totalV1Lp * BigInt(1e18)) / v1TotalSupply;
     return {
       wvbc: (reserve0 * userShare) / BigInt(1e18),
       vbcg: (reserve1 * userShare) / BigInt(1e18),
     };
-  }, [v1LpBalance, v1TotalSupply, v1Reserves]);
+  }, [totalV1Lp, v1TotalSupply, v1Reserves]);
 
   // Calculate V2 addition amounts based on V2 ratio
   const v2AdditionAmounts = useMemo(() => {
@@ -272,6 +328,12 @@ export function MigrationContent() {
     if (isConfirmed && isStarted) {
       const handleConfirmation = async () => {
         switch (migrationState.step) {
+          case 'unstake':
+            // Refetch V1 LP balance after unstake
+            await Promise.all([refetchV1Balance(), refetchV1Staked(), refetchV1Pending()]);
+            setMigrationState(prev => ({ ...prev, step: 'transfer', error: null }));
+            resetWrite();
+            break;
           case 'transfer':
             // Move to burn step
             setMigrationState(prev => ({ ...prev, step: 'burn', error: null }));
@@ -312,7 +374,7 @@ export function MigrationContent() {
       };
       handleConfirmation();
     }
-  }, [isConfirmed, isStarted, migrationState.step, resetWrite, refetchWvbc, refetchVbcg, refetchWvbcAllowance, refetchVbcgAllowance, refetchV1Balance, wvbcBalance, vbcgBalance]);
+  }, [isConfirmed, isStarted, migrationState.step, resetWrite, refetchWvbc, refetchVbcg, refetchWvbcAllowance, refetchVbcgAllowance, refetchV1Balance, refetchV1Staked, refetchV1Pending, wvbcBalance, vbcgBalance]);
 
   // Auto-execute next step
   useEffect(() => {
@@ -321,6 +383,19 @@ export function MigrationContent() {
     const executeStep = async () => {
       try {
         switch (migrationState.step) {
+          case 'unstake':
+            if (v1StakedAmount > 0n) {
+              writeContract({
+                address: V1_MASTERCHEF_ADDRESS,
+                abi: V1_MASTERCHEF_ABI,
+                functionName: 'withdraw',
+                args: [V1_POOL_ID, v1StakedAmount],
+              });
+            } else {
+              // Skip to transfer if nothing staked
+              setMigrationState(prev => ({ ...prev, step: 'transfer', error: null }));
+            }
+            break;
           case 'transfer':
             if (v1LpBalance && v1LpBalance > 0n) {
               writeContract({
@@ -389,7 +464,7 @@ export function MigrationContent() {
     if (migrationState.step !== 'idle' && migrationState.step !== 'complete') {
       executeStep();
     }
-  }, [migrationState.step, isStarted, isPending, isConfirming, migrationState.error, v1LpBalance, address, v2AdditionAmounts, writeContract]);
+  }, [migrationState.step, isStarted, isPending, isConfirming, migrationState.error, v1LpBalance, v1StakedAmount, address, v2AdditionAmounts, writeContract]);
 
   // Handle write errors
   useEffect(() => {
@@ -403,13 +478,15 @@ export function MigrationContent() {
 
   const startMigration = useCallback(() => {
     setIsStarted(true);
+    // Start with unstake if user has staked LP, otherwise start with transfer
+    const firstStep = v1StakedAmount > 0n ? 'unstake' : 'transfer';
     setMigrationState({
-      step: 'transfer',
+      step: firstStep,
       error: null,
       withdrawnWvbc: 0n,
       withdrawnVbcg: 0n,
     });
-  }, []);
+  }, [v1StakedAmount]);
 
   const retryStep = useCallback(() => {
     setMigrationState(prev => ({ ...prev, error: null }));
@@ -427,18 +504,31 @@ export function MigrationContent() {
     resetWrite();
   }, [resetWrite]);
 
-  const hasV1Lp = v1LpBalance && v1LpBalance > 0n;
+  const hasV1Lp = totalV1Lp > 0n;
+  const hasStakedLp = v1StakedAmount > 0n;
 
-  const steps = [
-    { id: 'transfer', label: 'Transfer LP to V1 Pair', description: 'Send LP tokens to pair contract' },
-    { id: 'burn', label: 'Burn V1 LP', description: 'Receive WVBC and VBCG' },
-    { id: 'approve-wvbc', label: 'Approve WVBC', description: 'Allow V2 Router to use WVBC' },
-    { id: 'approve-vbcg', label: 'Approve VBCG', description: 'Allow V2 Router to use VBCG' },
-    { id: 'add-liquidity', label: 'Add V2 Liquidity', description: 'Create new LP in V2' },
-  ];
+  // Build steps based on whether user has staked LP
+  const steps = useMemo(() => {
+    const baseSteps = [
+      { id: 'transfer', label: 'Transfer LP to V1 Pair', description: 'Send LP tokens to pair contract' },
+      { id: 'burn', label: 'Burn V1 LP', description: 'Receive WVBC and VBCG' },
+      { id: 'approve-wvbc', label: 'Approve WVBC', description: 'Allow V2 Router to use WVBC' },
+      { id: 'approve-vbcg', label: 'Approve VBCG', description: 'Allow V2 Router to use VBCG' },
+      { id: 'add-liquidity', label: 'Add V2 Liquidity', description: 'Create new LP in V2' },
+    ];
+    if (hasStakedLp) {
+      return [
+        { id: 'unstake', label: 'Unstake from V1 Farm', description: 'Withdraw LP + harvest rewards' },
+        ...baseSteps,
+      ];
+    }
+    return baseSteps;
+  }, [hasStakedLp]);
 
   const getStepStatus = (stepId: string) => {
-    const stepOrder = ['transfer', 'burn', 'approve-wvbc', 'approve-vbcg', 'add-liquidity'];
+    const stepOrder = hasStakedLp 
+      ? ['unstake', 'transfer', 'burn', 'approve-wvbc', 'approve-vbcg', 'add-liquidity']
+      : ['transfer', 'burn', 'approve-wvbc', 'approve-vbcg', 'add-liquidity'];
     const currentIndex = stepOrder.indexOf(migrationState.step);
     const stepIndex = stepOrder.indexOf(stepId);
     
@@ -491,15 +581,47 @@ export function MigrationContent() {
           </div>
         </div>
 
-        {/* V1 LP Balance */}
-        <div className="bg-gray-800/60 rounded-xl p-4 mb-4">
+        {/* V1 LP Balance - Wallet */}
+        <div className="bg-gray-800/60 rounded-xl p-4 mb-3">
           <div className="flex justify-between items-center">
-            <span className="text-gray-400">Your V1 LP Balance</span>
-            <span className="text-xl font-bold text-white">
+            <span className="text-gray-400">V1 LP in Wallet</span>
+            <span className="text-lg font-bold text-white">
               {formatTokenAmount(v1LpBalance || 0n, 18, 6)} LP
             </span>
           </div>
         </div>
+
+        {/* V1 LP Balance - Staked */}
+        {hasStakedLp && (
+          <div className="bg-green-900/30 rounded-xl p-4 mb-3 border border-green-500/30">
+            <div className="flex justify-between items-center">
+              <span className="text-green-400">V1 LP Staked in Farm</span>
+              <span className="text-lg font-bold text-green-300">
+                {formatTokenAmount(v1StakedAmount, 18, 6)} LP
+              </span>
+            </div>
+            {v1PendingReward && v1PendingReward > 0n && (
+              <div className="flex justify-between items-center mt-2 pt-2 border-t border-green-500/20">
+                <span className="text-green-400 text-sm">Pending Rewards</span>
+                <span className="text-yellow-400 font-semibold">
+                  {formatTokenAmount(v1PendingReward as bigint, 18, 4)} tokens
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Total V1 LP */}
+        {hasStakedLp && (
+          <div className="bg-gray-800/60 rounded-xl p-4 mb-4">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-400 font-semibold">Total V1 LP</span>
+              <span className="text-xl font-bold text-white">
+                {formatTokenAmount(totalV1Lp, 18, 6)} LP
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Expected Withdrawal */}
         <div className="bg-gray-800/60 rounded-xl p-4 space-y-2">
