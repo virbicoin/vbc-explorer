@@ -60,15 +60,20 @@ const FarmContent = dynamic(
   { ssr: false, loading: () => <LoadingSkeleton /> }
 );
 
+const MigrationContent = dynamic(
+  () => import('./components/MigrationContent').then((mod) => mod.MigrationContent),
+  { ssr: false, loading: () => <LoadingSkeleton /> }
+);
+
 const TradingChart = dynamic(
   () => import('./components/TradingChart'),
   { ssr: false, loading: () => <ChartLoadingSkeleton /> }
 );
 
-type Tab = 'swap' | 'pool' | 'farm';
+type Tab = 'swap' | 'pool' | 'farm' | 'migrate';
 
 function TabNavigation({ activeTab, onTabChange }: { activeTab: Tab; onTabChange: (tab: Tab) => void }) {
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  const tabs: { id: Tab; label: string; icon: React.ReactNode; highlight?: boolean }[] = [
     {
       id: 'swap',
       label: 'Swap',
@@ -96,6 +101,16 @@ function TabNavigation({ activeTab, onTabChange }: { activeTab: Tab; onTabChange
         </svg>
       ),
     },
+    {
+      id: 'migrate',
+      label: 'Migrate',
+      highlight: true,
+      icon: (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      ),
+    },
   ];
 
   return (
@@ -107,8 +122,12 @@ function TabNavigation({ activeTab, onTabChange }: { activeTab: Tab; onTabChange
             onClick={() => onTabChange(tab.id)}
             className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold transition-all ${
               activeTab === tab.id
-                ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg'
-                : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
+                ? tab.highlight 
+                  ? 'bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-lg'
+                  : 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg'
+                : tab.highlight
+                  ? 'text-orange-400 hover:text-orange-300 hover:bg-orange-900/30'
+                  : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
             }`}
           >
             {tab.icon}
@@ -126,12 +145,12 @@ function DexPageContent() {
   const tabParam = searchParams.get('tab') as Tab | null;
   const tokenParam = searchParams.get('token');
   const [activeTab, setActiveTab] = useState<Tab>(() => 
-    tabParam && ['swap', 'pool', 'farm'].includes(tabParam) ? tabParam : 'swap'
+    tabParam && ['swap', 'pool', 'farm', 'migrate'].includes(tabParam) ? tabParam : 'swap'
   );
   const [showChart, setShowChart] = useState(true);
 
   useEffect(() => {
-    if (tabParam && ['swap', 'pool', 'farm'].includes(tabParam) && tabParam !== activeTab) {
+    if (tabParam && ['swap', 'pool', 'farm', 'migrate'].includes(tabParam) && tabParam !== activeTab) {
       requestAnimationFrame(() => setActiveTab(tabParam));
     }
   }, [tabParam, activeTab]);
@@ -181,6 +200,7 @@ function DexPageContent() {
           
           {activeTab === 'pool' && <PoolContent initialTokenAddress={tokenParam} />}
           {activeTab === 'farm' && <FarmContent />}
+          {activeTab === 'migrate' && <MigrationContent />}
         </DexWrapper>
       </Suspense>
 
@@ -188,6 +208,7 @@ function DexPageContent() {
       {activeTab === 'swap' && <SwapInfo />}
       {activeTab === 'pool' && <PoolInfo />}
       {activeTab === 'farm' && <FarmInfo />}
+      {activeTab === 'migrate' && <MigrateInfo />}
 
       {/* Contract Addresses Section */}
       <ContractAddresses />
@@ -479,6 +500,131 @@ function FarmInfo() {
               <span><strong>Double Earnings:</strong> You earn both trading fees (from Pool) AND VBCG rewards (from Farm).</span>
             </li>
           </ul>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function MigrateInfo() {
+  return (
+    <>
+      {/* Why Migrate */}
+      <div className="max-w-lg mx-auto mt-12">
+        <div className="bg-gradient-to-b from-gray-800/90 to-gray-900/90 backdrop-blur-xl rounded-3xl p-6 border border-gray-700/50">
+          <h3 className="font-bold text-xl text-white mb-4 flex items-center gap-2">
+            <svg className="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Why Migrate to V2?
+          </h3>
+          <div className="space-y-4">
+            <div className="flex gap-3">
+              <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center flex-shrink-0 text-orange-400 font-bold">1</div>
+              <div>
+                <p className="font-semibold text-white">Improved Security</p>
+                <p className="text-gray-400 text-sm">V2 contracts have been audited and include enhanced security features.</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center flex-shrink-0 text-orange-400 font-bold">2</div>
+              <div>
+                <p className="font-semibold text-white">Farming Rewards</p>
+                <p className="text-gray-400 text-sm">Only V2 LP tokens can be staked in the Farm to earn VBCG rewards.</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <div className="w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center flex-shrink-0 text-orange-400 font-bold">3</div>
+              <div>
+                <p className="font-semibold text-white">Active Liquidity</p>
+                <p className="text-gray-400 text-sm">V2 pools have more active trading volume and tighter spreads.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Migration Process */}
+      <div className="max-w-lg mx-auto mt-6">
+        <div className="bg-gradient-to-b from-gray-800/90 to-gray-900/90 backdrop-blur-xl rounded-3xl p-6 border border-gray-700/50">
+          <h3 className="font-bold text-xl text-white mb-4 flex items-center gap-2">
+            <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+            How Migration Works
+          </h3>
+          <p className="text-gray-300 mb-4 leading-relaxed">
+            The migration tool automatically handles the entire process in <span className="text-blue-400 font-semibold">5 transactions</span>:
+          </p>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center gap-2 text-gray-300">
+              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold">1</span>
+              <span>Transfer V1 LP tokens to the V1 pair contract</span>
+            </div>
+            <div className="flex items-center gap-2 text-gray-300">
+              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold">2</span>
+              <span>Burn V1 LP to receive WVBC and VBCG</span>
+            </div>
+            <div className="flex items-center gap-2 text-gray-300">
+              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold">3</span>
+              <span>Approve WVBC for V2 Router</span>
+            </div>
+            <div className="flex items-center gap-2 text-gray-300">
+              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold">4</span>
+              <span>Approve VBCG for V2 Router</span>
+            </div>
+            <div className="flex items-center gap-2 text-gray-300">
+              <span className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold">5</span>
+              <span>Add liquidity to V2 pool</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Important Notice */}
+      <div className="max-w-lg mx-auto mt-6">
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-5">
+          <h3 className="font-bold text-yellow-300 mb-3 flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            ⚠️ Important Notes
+          </h3>
+          <ul className="text-yellow-200/80 space-y-2 text-sm">
+            <li className="flex items-start gap-2">
+              <span className="text-yellow-400">•</span>
+              <span><strong>Price Ratio Difference:</strong> V1 and V2 pools may have different price ratios. Any excess tokens will remain in your wallet.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-yellow-400">•</span>
+              <span><strong>V1 Limitation:</strong> The V1 contract doesn&apos;t support approve/transferFrom, which is why direct transfer + burn is required.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-yellow-400">•</span>
+              <span><strong>Gas Fees:</strong> You&apos;ll need VBC for gas fees for each of the 5 transactions.</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      {/* V1 Contract Info */}
+      <div className="max-w-lg mx-auto mt-6">
+        <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4">
+          <h4 className="font-semibold text-gray-300 mb-2 text-sm">V1 Contracts (Deprecated)</h4>
+          <div className="space-y-2 text-xs font-mono">
+            <div className="flex justify-between">
+              <span className="text-gray-500">V1 Factory:</span>
+              <span className="text-gray-400">0xE85A5...e94F</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">V1 Router:</span>
+              <span className="text-gray-400">0x9Ad9B...baA9</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">V1 WVBC/VBCG Pair:</span>
+              <span className="text-gray-400">0x254a2...1863</span>
+            </div>
+          </div>
         </div>
       </div>
     </>
