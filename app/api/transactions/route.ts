@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { weiToVBC } from '../../../lib/bigint-utils';
 import { connectDB } from '../../../models/index';
+import { getTransactionTypeGlobal, TransactionTypeResult } from '../../../lib/transaction-utils';
 
 // トランザクションキャッシュ
 interface CacheEntry {
@@ -19,6 +20,8 @@ interface TransactionResponse {
   gasUsed: number;
   gasPrice: string;
   status: number;
+  type: string;
+  action: string;
 }
 
 interface PaginatedResponse {
@@ -69,23 +72,36 @@ async function fetchTransactionsData(page: number, limit: number, hasPageParams:
       gasUsed: 1,
       gasPrice: 1,
       status: 1,
+      input: 1,
       _id: 0
     })
     .maxTimeMS(30000)
     .toArray();
 
    
-  const formattedTransactions = (transactions || []).map((tx: any) => ({
-    hash: tx.hash,
-    from: tx.from,
-    to: tx.to,
-    value: tx.value ? weiToVBC(tx.value) : '0',
-    timestamp: tx.timestamp,
-    blockNumber: tx.blockNumber,
-    gasUsed: tx.gasUsed,
-    gasPrice: tx.gasPrice,
-    status: tx.status
-  }));
+  const formattedTransactions = (transactions || []).map((tx: any) => {
+    const typeInfo = getTransactionTypeGlobal({
+      from: tx.from,
+      to: tx.to,
+      value: tx.value || '0',
+      input: tx.input,
+      status: tx.status
+    });
+    
+    return {
+      hash: tx.hash,
+      from: tx.from,
+      to: tx.to,
+      value: tx.value ? weiToVBC(tx.value) : '0',
+      timestamp: tx.timestamp,
+      blockNumber: tx.blockNumber,
+      gasUsed: tx.gasUsed,
+      gasPrice: tx.gasPrice,
+      status: tx.status,
+      type: typeInfo.type,
+      action: typeInfo.action
+    };
+  });
 
   if (hasPageParams) {
     return {

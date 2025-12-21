@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
 
       // For VRC-721 token, get actual statistics
       if (type === 'VRC-721') {
-        // Get holder count from tokenholders collection
+        // Get holder count from tokenholders collection (exclude zero address)
         const TokenHolder = mongoose.models.TokenHolder || mongoose.model('TokenHolder', new mongoose.Schema({
           tokenAddress: String,
           holderAddress: String,
@@ -144,7 +144,8 @@ export async function GET(request: NextRequest) {
         }, { collection: 'tokenholders' }));
 
         actualHolders = await TokenHolder.countDocuments({
-          tokenAddress: { $regex: new RegExp(`^${token.address}$`, 'i') }
+          tokenAddress: { $regex: new RegExp(`^${token.address}$`, 'i') },
+          holderAddress: { $ne: '0x0000000000000000000000000000000000000000' }
         });
 
         // Use database totalSupply if available, otherwise calculate from transfers

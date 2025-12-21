@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Transaction, Block, connectDB } from '../../../../models/index';
+import { getTransactionTypeGlobal } from '../../../../lib/transaction-utils';
 // import { loadConfig } from '../../../../lib/config';
 
 // Load configuration (unused but kept for future use)
@@ -83,6 +84,8 @@ export async function GET(
           r: '0x0',
           s: '0x0',
           isMiningReward: true,
+          txType: 'mining_reward',
+          txAction: 'Mining Reward',
           block: {
             number: block.number,
             hash: block.hash,
@@ -102,6 +105,15 @@ export async function GET(
     // Find the block that contains this transaction
     const block = await Block.findOne({ number: actualTransaction.blockNumber }).lean() as BlockDocument | null;
 
+    // Determine transaction type
+    const typeInfo = getTransactionTypeGlobal({
+      from: actualTransaction.from,
+      to: actualTransaction.to,
+      value: actualTransaction.value || '0',
+      input: actualTransaction.input,
+      status: actualTransaction.status
+    });
+
     // Transform the transaction data for frontend
     const transformedTransaction = {
       ...actualTransaction,
@@ -113,6 +125,9 @@ export async function GET(
       inputData: actualTransaction.input || '0x',
       logs: [], // Empty array for now, can be populated later if needed
       internalTransactions: [], // Empty array for now, can be populated later if needed
+      // MetaMask compliant type info
+      txType: typeInfo.type,
+      txAction: typeInfo.action,
       block: block ? {
         number: block.number,
         hash: block.hash,

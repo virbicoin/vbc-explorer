@@ -58,6 +58,8 @@ interface Transaction {
   blockNumber: number;
   gasUsed?: number;
   status?: number | string;
+  type?: string;
+  action?: string;
 }
 
 export default function BlockDetailPage({ params }: { params: Promise<{ number: string }> }) {
@@ -186,6 +188,37 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
   const formatAddress = (address: string) => {
     if (!address) return 'N/A';
     return `${address.slice(0, 8)}...${address.slice(-6)}`;
+  };
+
+  // MetaMask準拠のトランザクションタイプバッジを生成
+  const getTransactionTypeBadge = (type?: string, action?: string) => {
+    const typeConfig: Record<string, { bg: string; text: string; icon: string }> = {
+      send: { bg: 'bg-red-100', text: 'text-red-700', icon: '↑' },
+      receive: { bg: 'bg-green-100', text: 'text-green-700', icon: '↓' },
+      token_transfer: { bg: 'bg-purple-100', text: 'text-purple-700', icon: '⇆' },
+      nft_transfer: { bg: 'bg-pink-100', text: 'text-pink-700', icon: '🖼' },
+      approve: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '✓' },
+      swap: { bg: 'bg-blue-100', text: 'text-blue-700', icon: '⇋' },
+      liquidity: { bg: 'bg-cyan-100', text: 'text-cyan-700', icon: '💧' },
+      stake: { bg: 'bg-orange-100', text: 'text-orange-700', icon: '📌' },
+      unstake: { bg: 'bg-amber-100', text: 'text-amber-700', icon: '📤' },
+      harvest: { bg: 'bg-lime-100', text: 'text-lime-700', icon: '🌾' },
+      mint: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: '✨' },
+      burn: { bg: 'bg-red-200', text: 'text-red-800', icon: '🔥' },
+      contract_creation: { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: '📄' },
+      contract_interaction: { bg: 'bg-violet-100', text: 'text-violet-700', icon: '📝' },
+      mining_reward: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '⛏️' },
+    };
+    
+    const config = typeConfig[type || 'contract_interaction'] || typeConfig.contract_interaction;
+    const displayAction = action || type || 'Transaction';
+    
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
+        <span>{config.icon}</span>
+        <span>{displayAction}</span>
+      </span>
+    );
   };
 
   const getMinerDisplayInfo = (miner: string) => {
@@ -522,6 +555,7 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
                 <thead>
                   <tr className='border-b border-gray-600'>
                     <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Transaction Hash</th>
+                    <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Type</th>
                     <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>From</th>
                     <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>To</th>
                     <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Value</th>
@@ -539,6 +573,9 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
                         >
                           {formatAddress(tx.hash)}
                         </Link>
+                      </td>
+                      <td className='py-3 px-4'>
+                        {getTransactionTypeBadge(tx.type, tx.action)}
                       </td>
                       <td className='py-3 px-4'>
                         <Link

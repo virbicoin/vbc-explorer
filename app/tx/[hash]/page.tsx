@@ -66,6 +66,8 @@ interface Transaction {
     miner: string;
   };
   isMiningReward?: boolean; // Added for mining reward
+  txType?: string; // MetaMask compliant type
+  txAction?: string; // MetaMask compliant action
   // Additional fields for mining reward transactions
   cumulativeGasUsed?: number;
   effectiveGasPrice?: string;
@@ -209,6 +211,37 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
       isPool: false,
       address: miner
     };
+  };
+
+  // MetaMask準拠のトランザクションタイプバッジを生成
+  const getTransactionTypeBadge = (type?: string, action?: string) => {
+    const typeConfig: Record<string, { bg: string; text: string; icon: string }> = {
+      send: { bg: 'bg-red-100', text: 'text-red-700', icon: '↑' },
+      receive: { bg: 'bg-green-100', text: 'text-green-700', icon: '↓' },
+      token_transfer: { bg: 'bg-purple-100', text: 'text-purple-700', icon: '⇆' },
+      nft_transfer: { bg: 'bg-pink-100', text: 'text-pink-700', icon: '🖼' },
+      approve: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '✓' },
+      swap: { bg: 'bg-blue-100', text: 'text-blue-700', icon: '⇋' },
+      liquidity: { bg: 'bg-cyan-100', text: 'text-cyan-700', icon: '💧' },
+      stake: { bg: 'bg-orange-100', text: 'text-orange-700', icon: '📌' },
+      unstake: { bg: 'bg-amber-100', text: 'text-amber-700', icon: '📤' },
+      harvest: { bg: 'bg-lime-100', text: 'text-lime-700', icon: '🌾' },
+      mint: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: '✨' },
+      burn: { bg: 'bg-red-200', text: 'text-red-800', icon: '🔥' },
+      contract_creation: { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: '📄' },
+      contract_interaction: { bg: 'bg-violet-100', text: 'text-violet-700', icon: '📝' },
+      mining_reward: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '⛏️' },
+    };
+    
+    const config = typeConfig[type || 'contract_interaction'] || typeConfig.contract_interaction;
+    const displayAction = action || type || 'Transaction';
+    
+    return (
+      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${config.bg} ${config.text}`}>
+        <span>{config.icon}</span>
+        <span>{displayAction}</span>
+      </span>
+    );
   };
 
   const copyToClipboard = async (text: string) => {
@@ -466,6 +499,7 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
             <div className='flex items-center gap-3 mb-4'>
               <ArrowPathIcon className='w-8 h-8 text-blue-400' />
               <h1 className='text-3xl font-bold text-gray-100'>Transaction Details</h1>
+              {getTransactionTypeBadge(transaction.txType, transaction.txAction)}
             </div>
             <p className='text-gray-400'>
               Transaction {formatAddress(transaction.hash)} details and information.

@@ -49,6 +49,8 @@ interface Transaction {
   to: string;
   value: string;
   timestamp: number;
+  type?: string;
+  action?: string;
 }
 
 const SummaryCard = ({ title, value, sub, icon, isLive, trend }: {
@@ -214,7 +216,39 @@ const BlockList = ({ blocks, newBlockNumbers, now, config }: { blocks: Block[], 
   </div>
 );
  
-const TransactionList = ({ transactions, newTransactionHashes, now }: { transactions: Transaction[], newTransactionHashes: Set<string>, now: number }) => (
+const TransactionList = ({ transactions, newTransactionHashes, now }: { transactions: Transaction[], newTransactionHashes: Set<string>, now: number }) => {
+  // MetaMask準拠のトランザクションタイプバッジを生成
+  const getTransactionTypeBadge = (type?: string, action?: string) => {
+    const typeConfig: Record<string, { bg: string; text: string; icon: string }> = {
+      send: { bg: 'bg-red-100', text: 'text-red-700', icon: '↑' },
+      receive: { bg: 'bg-green-100', text: 'text-green-700', icon: '↓' },
+      token_transfer: { bg: 'bg-purple-100', text: 'text-purple-700', icon: '⇆' },
+      nft_transfer: { bg: 'bg-pink-100', text: 'text-pink-700', icon: '🖼' },
+      approve: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '✓' },
+      swap: { bg: 'bg-blue-100', text: 'text-blue-700', icon: '⇋' },
+      liquidity: { bg: 'bg-cyan-100', text: 'text-cyan-700', icon: '💧' },
+      stake: { bg: 'bg-orange-100', text: 'text-orange-700', icon: '📌' },
+      unstake: { bg: 'bg-amber-100', text: 'text-amber-700', icon: '📤' },
+      harvest: { bg: 'bg-lime-100', text: 'text-lime-700', icon: '🌾' },
+      mint: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: '✨' },
+      burn: { bg: 'bg-red-200', text: 'text-red-800', icon: '🔥' },
+      contract_creation: { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: '📄' },
+      contract_interaction: { bg: 'bg-violet-100', text: 'text-violet-700', icon: '📝' },
+      mining_reward: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '⛏️' },
+    };
+    
+    const config = typeConfig[type || 'contract_interaction'] || typeConfig.contract_interaction;
+    const displayAction = action || type || 'Tx';
+    
+    return (
+      <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium ${config.bg} ${config.text}`}>
+        <span>{config.icon}</span>
+        <span className='hidden sm:inline'>{displayAction}</span>
+      </span>
+    );
+  };
+
+  return (
   <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 h-full flex flex-col'>
     <div className='flex items-center justify-between mb-4'>
       <div className='flex items-center gap-2'>
@@ -236,13 +270,14 @@ const TransactionList = ({ transactions, newTransactionHashes, now }: { transact
               ''
           }`}
         >
-          <div className='flex items-center gap-3'>
+          <div className='flex items-center gap-2'>
+            {getTransactionTypeBadge(tx.type, tx.action)}
             <Link
               href={`/tx/${tx.hash}`}
               className='font-mono font-bold text-sm text-blue-400 hover:text-blue-300 hover:underline transition-colors'
               title={tx.hash}
             >
-              {tx.hash.slice(0, 16)}...{tx.hash.slice(-16)}
+              {tx.hash.slice(0, 10)}...{tx.hash.slice(-8)}
             </Link>
             <span className='text-sm text-green-400 font-bold'>
               {tx.value ? formatVBC(tx.value) : '0 VBC'}
@@ -303,6 +338,7 @@ const TransactionList = ({ transactions, newTransactionHashes, now }: { transact
     </div>
   </div>
 );
+};
 
 // タイムアウト付きフェッチ関数
 const fetchWithTimeout = async (url: string, timeout = 10000): Promise<Response> => {

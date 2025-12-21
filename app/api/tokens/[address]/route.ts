@@ -684,13 +684,15 @@ export async function GET(
       throw new Error('Database connection not established');
     }
     
-    // Get total holders count for pagination
+    // Get total holders count for pagination (exclude zero address)
     const totalHolders = await db.collection('tokenholders').countDocuments({
-      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
+      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+      holderAddress: { $ne: ZERO_ADDR }
     });
     
     const holders = await db.collection('tokenholders').find({
-      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
+      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+      holderAddress: { $ne: ZERO_ADDR }
     })
       .sort({ rank: 1 })
       .skip((holdersPage - 1) * holdersLimit)
@@ -698,12 +700,35 @@ export async function GET(
       .toArray();
 
     // 各holderの所有tokenId配列をtokentransfersから集計してセット
+    // トークンの現在の所有者を正確に計算するため、全転送履歴から最終所有者を特定
+    const allTransfers = await db.collection('tokentransfers').find({
+      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+      tokenId: { $exists: true, $ne: null }
+    }).sort({ timestamp: 1 }).toArray();
+    
+    // tokenIdごとの現在の所有者をマップで管理
+    const tokenOwnership = new Map<number, string>();
+    for (const transfer of allTransfers) {
+      if (transfer.tokenId !== undefined && transfer.tokenId !== null) {
+        const tokenId = Number(transfer.tokenId);
+        // バーンの場合は所有者をnullに（ゼロアドレス宛）
+        if (transfer.to === ZERO_ADDR) {
+          tokenOwnership.delete(tokenId); // バーンされたトークンは削除
+        } else {
+          tokenOwnership.set(tokenId, transfer.to);
+        }
+      }
+    }
+    
+    // 各ホルダーの所有tokenIdを設定
     for (const holder of holders) {
-      const tokens = await db.collection('tokentransfers').find({
-        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
-        to: holder.holderAddress
-      }).toArray();
-      holder.tokenIds = tokens.map(t => t.tokenId).filter((v, i, a) => v !== undefined && a.indexOf(v) === i);
+      const ownedTokenIds: number[] = [];
+      for (const [tokenId, owner] of tokenOwnership.entries()) {
+        if (owner.toLowerCase() === holder.holderAddress.toLowerCase()) {
+          ownedTokenIds.push(tokenId);
+        }
+      }
+      holder.tokenIds = ownedTokenIds.sort((a, b) => a - b);
     }
 
     // Get recent transfers - use case-insensitive match with alternative field names
@@ -758,9 +783,10 @@ export async function GET(
     let mintCount = 0;
 
     if (token.type !== 'Native') {
-      // Get actual holder count
+      // Get actual holder count (exclude zero address)
       realHolders = await db.collection('tokenholders').countDocuments({
-        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
+        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+        holderAddress: { $ne: ZERO_ADDR }
       });
       // Get actual transfer count with alternative field names
       realTransfers = await db.collection('tokentransfers').countDocuments({
@@ -813,30 +839,20 @@ export async function GET(
 
     // Calculate age in days using the timestamp of the first TokenTransfer only
     let ageInDays: string | number = 'N/A';
+    console.log(`[Age Debug] Token type: ${token.type}, address: ${address}`);
     if (token.type !== 'Native') {
-      // For VRC-721 tokens, use the earliest transfer timestamp for age calculation
-      if (token.type === 'VRC-721') {
-        // Get the earliest transfer (usually Token ID 0 mint)
-        const earliestTransfer = await db.collection('tokentransfers').findOne({
-          tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
-        }, { sort: { timestamp: 1 } });
+      // For all token types, use db.collection directly for reliable query
+      const earliestTransfer = await db.collection('tokentransfers').findOne({
+        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
+      }, { sort: { timestamp: 1 } });
+      
+      console.log(`[Age Debug] Earliest transfer found:`, earliestTransfer ? 'YES' : 'NO', earliestTransfer?.timestamp);
 
-        if (earliestTransfer && earliestTransfer.timestamp) {
-          const earliestTime = new Date(earliestTransfer.timestamp).getTime();
-          const now = Date.now();
-          ageInDays = Math.floor((now - earliestTime) / (1000 * 60 * 60 * 24));
-        }
-      } else {
-        // For other tokens, use the earliest TokenTransfer timestamp
-        const earliestTransfer = await TokenTransfer.findOne({
-          tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
-        }).sort({ timestamp: 1 });
-
-        if (earliestTransfer && earliestTransfer.timestamp) {
-          const earliestTime = new Date(earliestTransfer.timestamp).getTime();
-          const now = Date.now();
-          ageInDays = Math.floor((now - earliestTime) / (1000 * 60 * 60 * 24));
-        }
+      if (earliestTransfer && earliestTransfer.timestamp) {
+        const earliestTime = new Date(earliestTransfer.timestamp).getTime();
+        const now = Date.now();
+        ageInDays = Math.floor((now - earliestTime) / (1000 * 60 * 60 * 24));
+        console.log(`[Age Debug] Calculated age: ${ageInDays} days`);
       }
     }
 
@@ -1067,18 +1083,37 @@ export async function GET(
         ];
       }
       const isNFT = token.type === 'VRC-721' || token.type === 'VRC-1155';
-      const mappedHolders = holders.map((holder: Record<string, unknown>) => ({
-        rank: holder.rank as number,
-        address: holder.holderAddress as string,
-        balance: formatTokenAmount(
-          holder.balance as string,
-          Number(token.decimals ?? (isNFT ? 0 : 18)),
-          isNFT
-        ),
-        balanceRaw: holder.balance as string,
-        percentage: typeof holder.percentage === 'number' ? holder.percentage.toFixed(2) : '0.00',
-        tokenIds: holder.tokenIds as number[] || [] // DB値そのまま返す
-      }));
+      // For NFTs, get realSupply from token (already set above)
+      const nftRealSupply = String(token.totalSupply || token.supply || '0');
+      const mappedHolders = holders.map((holder: Record<string, unknown>) => {
+        const balanceRaw = holder.balance as string;
+        // Calculate percentage based on nftRealSupply
+        let percentage = '0.00';
+        if (nftRealSupply && nftRealSupply !== '0') {
+          try {
+            const balance = BigInt(balanceRaw);
+            const supply = BigInt(nftRealSupply);
+            if (supply > 0n) {
+              const pct = Number((balance * 10000n) / supply) / 100;
+              percentage = pct.toFixed(2);
+            }
+          } catch (_e) {
+            percentage = '0.00';
+          }
+        }
+        return {
+          rank: holder.rank as number,
+          address: holder.holderAddress as string,
+          balance: formatTokenAmount(
+            balanceRaw,
+            Number(token.decimals ?? (isNFT ? 0 : 18)),
+            isNFT
+          ),
+          balanceRaw: balanceRaw,
+          percentage: percentage,
+          tokenIds: holder.tokenIds as number[] || [] // DB値そのまま返す
+        };
+      });
       
       // Calculate total NFT items from all holders
       const allTokenIds = mappedHolders.flatMap(h => h.tokenIds || []);
@@ -1192,14 +1227,33 @@ export async function GET(
         age: ageInDays,
         marketCap: 'N/A' // Will need external API for price data
       },
-      holders: token.type === 'Native' ? [] : holders.map((holder: Record<string, unknown>) => ({
-        rank: holder.rank as number,
-        address: holder.holderAddress as string,
-        balance: formatTokenAmount(holder.balance as string, Number(token.decimals) || (isNFT ? 0 : 18), isNFT),
-        balanceRaw: holder.balance as string,
-        percentage: typeof holder.percentage === 'number' ? holder.percentage.toFixed(2) : '0.00',
-        tokenIds: holder.tokenIds as number[] || [] // DB値そのまま返す
-      })),
+      holders: token.type === 'Native' ? [] : holders.map((holder: Record<string, unknown>) => {
+        const balanceRaw = holder.balance as string;
+        // Calculate percentage based on realSupply (from blockchain)
+        let percentage = '0.00';
+        const supplyStr = String(realSupply || '0');
+        if (supplyStr && supplyStr !== '0') {
+          try {
+            const balance = BigInt(balanceRaw);
+            const supply = BigInt(supplyStr);
+            if (supply > 0n) {
+              // Calculate percentage with 4 decimal precision then round to 2
+              const pct = Number((balance * 10000n) / supply) / 100;
+              percentage = pct.toFixed(2);
+            }
+          } catch (_e) {
+            percentage = '0.00';
+          }
+        }
+        return {
+          rank: holder.rank as number,
+          address: holder.holderAddress as string,
+          balance: formatTokenAmount(balanceRaw, Number(token.decimals) || (isNFT ? 0 : 18), isNFT),
+          balanceRaw: balanceRaw,
+          percentage: percentage,
+          tokenIds: holder.tokenIds as number[] || [] // DB値そのまま返す
+        };
+      }),
       transfers: token.type === 'Native' ? [] : transfers.map((transfer: Record<string, unknown>) => ({
         hash: transfer.transactionHash as string,
         // If from is zero address, show as 'System' for frontend display

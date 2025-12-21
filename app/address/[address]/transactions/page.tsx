@@ -7,6 +7,16 @@ import { ArrowLeftIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../../../lib/client-config';
 import { initializeCurrency } from '../../../../lib/bigint-utils';
 
+interface TokenInfo {
+  address: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  type: string;
+  value: string;
+  tokenId?: number;
+}
+
 interface Transaction {
   hash: string;
   from: string;
@@ -15,8 +25,15 @@ interface Transaction {
   timestamp: number;
   blockNumber: number;
   gasUsed?: number;
-  status?: number;
+  status?: number | string;
   type?: string;
+  action?: string;
+  direction?: 'in' | 'out' | 'self';
+  tokenInfo?: TokenInfo;
+  nftInfo?: {
+    tokenId: number;
+    tokenAddress: string;
+  };
 }
 
 export default function AddressTransactionsPage({ params }: { params: Promise<{ address: string }> }) {
@@ -111,6 +128,71 @@ export default function AddressTransactionsPage({ params }: { params: Promise<{ 
     return `${Math.floor(diff / 86400)}d ago`;
   };
 
+  // MetaMask準拠のトランザクションタイプバッジを返す
+  const getTransactionTypeBadge = (tx: Transaction) => {
+    const type = tx.type || 'unknown';
+    const action = tx.action || type;
+    const direction = tx.direction || 'out';
+    
+    const styles: Record<string, { bg: string; text: string; icon: string }> = {
+      'send': { bg: 'bg-red-500/20', text: 'text-red-400', icon: '↑' },
+      'receive': { bg: 'bg-green-500/20', text: 'text-green-400', icon: '↓' },
+      'token_transfer': { bg: 'bg-purple-500/20', text: 'text-purple-400', icon: '⇄' },
+      'nft_transfer': { bg: 'bg-pink-500/20', text: 'text-pink-400', icon: '🎨' },
+      'approve': { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: '✓' },
+      'swap': { bg: 'bg-blue-500/20', text: 'text-blue-400', icon: '⟲' },
+      'liquidity': { bg: 'bg-cyan-500/20', text: 'text-cyan-400', icon: '💧' },
+      'stake': { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: '📥' },
+      'unstake': { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: '📤' },
+      'harvest': { bg: 'bg-lime-500/20', text: 'text-lime-400', icon: '🌾' },
+      'mint': { bg: 'bg-emerald-500/20', text: 'text-emerald-400', icon: '✨' },
+      'burn': { bg: 'bg-red-600/20', text: 'text-red-500', icon: '🔥' },
+      'contract_creation': { bg: 'bg-indigo-500/20', text: 'text-indigo-400', icon: '📄' },
+      'contract_interaction': { bg: 'bg-violet-500/20', text: 'text-violet-400', icon: '⚡' },
+      'mining_reward': { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: '⛏️' },
+      'unknown': { bg: 'bg-gray-500/20', text: 'text-gray-400', icon: '?' }
+    };
+    
+    const style = styles[type] || styles['unknown'];
+    
+    let directionIcon = '';
+    if (type !== 'send' && type !== 'receive' && type !== 'mining_reward') {
+      if (direction === 'in') directionIcon = ' ↓';
+      else if (direction === 'out') directionIcon = ' ↑';
+    }
+    
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${style.bg} ${style.text}`}>
+        <span>{style.icon}</span>
+        <span>{action}{directionIcon}</span>
+      </span>
+    );
+  };
+
+  // トークン転送値をフォーマット
+  const formatTokenValue = (tx: Transaction) => {
+    if (!tx.tokenInfo) return null;
+    
+    const { value, decimals, symbol, tokenId, type } = tx.tokenInfo;
+    
+    if (type === 'VRC-721' || type === 'ERC721' || tokenId !== undefined) {
+      return <span className='text-pink-400'>Token ID: #{tokenId}</span>;
+    }
+    
+    try {
+      const numValue = BigInt(value);
+      const divisor = BigInt(10 ** decimals);
+      const intPart = numValue / divisor;
+      const fracPart = numValue % divisor;
+      const formatted = fracPart > 0n 
+        ? `${intPart}.${fracPart.toString().padStart(decimals, '0').slice(0, 4)}`
+        : intPart.toString();
+      return <span className='text-purple-400'>{formatted} {symbol}</span>;
+    } catch {
+      return <span className='text-purple-400'>{value} {symbol}</span>;
+    }
+  };
+
   if (loading) {
     return (
       <div className='min-h-screen bg-gray-900 text-white'>
@@ -168,88 +250,96 @@ export default function AddressTransactionsPage({ params }: { params: Promise<{ 
             </div>
             
             {transactions.length === 0 ? (
-            <p className='text-gray-400 text-center py-8'>No regular transactions found for this address.</p>
+            <p className='text-gray-400 text-center py-8'>No transactions found for this address.</p>
             ) : (
               <>
                 <div className='overflow-x-auto'>
                   <table className='w-full'>
                     <thead>
                       <tr className='border-b border-gray-600'>
-                          <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Transaction Hash</th>
+                          <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Tx Hash</th>
+                          <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Type</th>
                           <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Block</th>
                         <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>From</th>
                         <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>To</th>
                           <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Value</th>
-                          <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Status</th>
                           <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Age</th>
                       </tr>
                     </thead>
                     <tbody className='divide-y divide-gray-600'>
-                                            {transactions.map((tx) => (
-                          <tr key={tx.hash} className='hover:bg-gray-700/50 transition-colors'>
+                      {transactions.map((tx) => (
+                        <tr key={tx.hash} className='hover:bg-gray-700/50 transition-colors'>
                           <td className='py-3 px-4'>
                             <Link
                               href={`/tx/${tx.hash}`}
                               className='text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors'
                               title={tx.hash}
                             >
-                                {formatAddress(tx.hash)}
-                              </Link>
-                            </td>
-                            <td className='py-3 px-4'>
-                              <Link
-                                href={`/block/${tx.blockNumber}`}
-                                className='text-blue-400 hover:text-blue-300 font-medium transition-colors'
-                              >
-                                {tx.blockNumber.toLocaleString()}
+                              {formatAddress(tx.hash)}
                             </Link>
+                          </td>
+                          <td className='py-3 px-4'>
+                            {getTransactionTypeBadge(tx)}
                           </td>
                           <td className='py-3 px-4'>
                             <Link
-                              href={`/address/${tx.from}`}
-                                className='text-green-400 hover:text-green-300 font-mono text-sm transition-colors'
-                              title={tx.from}
+                              href={`/block/${tx.blockNumber}`}
+                              className='text-blue-400 hover:text-blue-300 font-medium transition-colors'
                             >
-                              {formatAddress(tx.from)}
+                              {tx.blockNumber.toLocaleString()}
                             </Link>
                           </td>
                           <td className='py-3 px-4'>
-                            {tx.to ? (
+                            {tx.from === '0x0000000000000000000000000000000000000000' ? (
+                              <span className='text-yellow-400 text-sm'>System</span>
+                            ) : tx.from.toLowerCase() === resolvedParams.address.toLowerCase() ? (
+                              <span className='text-gray-400 font-mono text-sm'>You</span>
+                            ) : (
+                              <Link
+                                href={`/address/${tx.from}`}
+                                className='text-green-400 hover:text-green-300 font-mono text-sm transition-colors'
+                                title={tx.from}
+                              >
+                                {formatAddress(tx.from)}
+                              </Link>
+                            )}
+                          </td>
+                          <td className='py-3 px-4'>
+                            {!tx.to || tx.to === '0x0000000000000000000000000000000000000000' ? (
+                              <span className='text-indigo-400 text-sm'>Contract Created</span>
+                            ) : tx.to.toLowerCase() === resolvedParams.address.toLowerCase() ? (
+                              <span className='text-gray-400 font-mono text-sm'>You</span>
+                            ) : (
                               <Link
                                 href={`/address/${tx.to}`}
-                                  className='text-red-400 hover:text-red-300 font-mono text-sm transition-colors'
+                                className='text-red-400 hover:text-red-300 font-mono text-sm transition-colors'
                                 title={tx.to}
                               >
                                 {formatAddress(tx.to)}
                               </Link>
-                            ) : (
-                                <span className='text-gray-500 text-sm'>Contract Creation</span>
                             )}
                           </td>
-                            <td className='py-3 px-4'>
-                              <span className='text-green-400'>{formatValue(tx.value)}</span>
-                            </td>
-                            <td className='py-3 px-4'>
-                              {(() => {
-                                const statusStr = String(tx.status || '');
-                                const isSuccess = 
-                                  tx.status === 1 || 
-                                  statusStr === '1' || 
-                                  statusStr === 'true' ||
-                                  statusStr === 'success' ||
-                                  statusStr === 'Success' ||
-                                  tx.status === 0x1 ||
-                                  statusStr === '0x1';
-                                
-                                return isSuccess ? 
-                                  <span className='text-green-400'>Success</span> : 
-                                  <span className='text-red-400'>Failed</span>;
-                              })()}
+                          <td className='py-3 px-4'>
+                            <div className='flex flex-col'>
+                              {parseFloat(tx.value) > 0 && (
+                                <span className={tx.direction === 'in' ? 'text-green-400' : 'text-red-400'}>
+                                  {tx.direction === 'in' ? '+' : '-'}{formatValue(tx.value)}
+                                </span>
+                              )}
+                              {tx.tokenInfo && (
+                                <div className='text-sm'>
+                                  {formatTokenValue(tx)}
+                                </div>
+                              )}
+                              {parseFloat(tx.value) === 0 && !tx.tokenInfo && (
+                                <span className='text-gray-500'>-</span>
+                              )}
+                            </div>
                           </td>
-                            <td className='py-3 px-4'>
-                              <div className='text-sm'>
-                                <div className='text-gray-300'>{getTimeAgo(tx.timestamp)}</div>
-                                <div className='text-gray-500 text-xs'>{formatTimestamp(tx.timestamp)}</div>
+                          <td className='py-3 px-4'>
+                            <div className='text-sm'>
+                              <div className='text-gray-300'>{getTimeAgo(tx.timestamp)}</div>
+                              <div className='text-gray-500 text-xs'>{formatTimestamp(tx.timestamp)}</div>
                             </div>
                           </td>
                         </tr>

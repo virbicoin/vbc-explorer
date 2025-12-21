@@ -43,7 +43,7 @@ interface TokenData {
   statistics?: {
     holders: number;
     transfers: number;
-    age: number;
+    age: number | string;
     marketCap: string;
     totalTransfers?: number;
     transfers24h?: number;
@@ -465,74 +465,122 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
         );
 
       case 'transfers':
+        // MetaMask準拠のトランザクションタイプバッジを生成
+        const getTransferTypeBadge = (from: string, to: string) => {
+          const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
+          
+          // Mint (from zero address)
+          if (from === ZERO_ADDR || from === 'System') {
+            return (
+              <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 shadow-sm'>
+                <span className='text-sm'>✨</span>
+                <span>Mint</span>
+              </span>
+            );
+          }
+          
+          // Burn (to zero address)
+          if (to === ZERO_ADDR || to === 'System') {
+            return (
+              <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 shadow-sm'>
+                <span className='text-sm'>🔥</span>
+                <span>Burn</span>
+              </span>
+            );
+          }
+          
+          // Regular transfer
+          return (
+            <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 shadow-sm'>
+              <span className='text-sm'>⇆</span>
+              <span>Transfer</span>
+            </span>
+          );
+        };
+
+        const transfersList = isNFT 
+          ? (tokenData?.transfers || [])
+              .filter(tx => tx.tokenId !== undefined)
+              .sort((a, b) => Number(b.tokenId) - Number(a.tokenId))
+          : (tokenData?.transfers || []);
+
         return (
           <div className='space-y-4'>
-            {tokenData?.transfers && tokenData.transfers.length > 0 ? (
+            {transfersList.length > 0 ? (
               <div className='overflow-x-auto'>
                 <table className='w-full'>
                   <thead>
                     <tr className='border-b border-gray-600'>
-                      <th className='text-left py-2 text-gray-400'>Tx Hash</th>
-                      <th className='text-left py-2 text-gray-400'>From</th>
-                      <th className='text-left py-2 text-gray-400'>To</th>
-                      <th className='text-left py-2 text-gray-400'>Value</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Tx Hash</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Type</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>From</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>To</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Value</th>
                       {isNFT && (
-                        <th className='text-left py-2 text-gray-400'>Token ID</th>
+                        <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Token ID</th>
                       )}
-                      <th className='text-left py-2 text-gray-400'>Time</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Age</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {(isNFT 
-                      ? tokenData.transfers
-                          .filter(tx => tx.tokenId !== undefined)
-                          .sort((a, b) => Number(b.tokenId) - Number(a.tokenId))
-                      : tokenData.transfers
-                    ).map((transfer, index) => (
-                      <tr key={index} className='border-b border-gray-700/50'>
-                        <td className='py-2'>
-                          <Link href={transfer.hash ? `/tx/${transfer.hash}` : '#'} className='text-blue-400 hover:text-blue-300 font-mono text-sm'>
-                            {transfer.hash ? `${transfer.hash.slice(0, 8)}...${transfer.hash.slice(-8)}` : 'N/A'}
+                  <tbody className='divide-y divide-gray-700'>
+                    {transfersList.map((transfer, index) => (
+                      <tr key={index} className='hover:bg-gray-700/50 transition-colors'>
+                        <td className='py-3 px-4'>
+                          <Link 
+                            href={transfer.hash ? `/tx/${transfer.hash}` : '#'} 
+                            className='text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors'
+                          >
+                            {transfer.hash ? `${transfer.hash.slice(0, 10)}...${transfer.hash.slice(-6)}` : 'N/A'}
                           </Link>
                         </td>
-                        <td className='py-2'>
-                          {transfer.from === 'System' ? (
-                            <span className="text-gray-400 font-mono text-sm">System</span>
+                        <td className='py-3 px-4'>
+                          {getTransferTypeBadge(transfer.from, transfer.to)}
+                        </td>
+                        <td className='py-3 px-4'>
+                          {transfer.from === 'System' || transfer.from === '0x0000000000000000000000000000000000000000' ? (
+                            <span className="text-emerald-400 text-sm">System (Mint)</span>
                           ) : (
                             <Link
                               href={`/address/${transfer.from}`}
-                              className="text-blue-400 hover:text-blue-300 font-mono text-sm"
+                              className="text-green-400 hover:text-green-300 font-mono text-sm transition-colors"
                             >
                               {formatAddress(transfer.from)}
                             </Link>
                           )}
                         </td>
-                        <td className='py-2'>
-                          {transfer.to === 'System' ? (
-                            <span className="text-gray-400 font-mono text-sm">System</span>
+                        <td className='py-3 px-4'>
+                          {transfer.to === 'System' || transfer.to === '0x0000000000000000000000000000000000000000' ? (
+                            <span className="text-red-400 text-sm">Burn Address</span>
                           ) : (
                             <Link
                               href={`/address/${transfer.to}`}
-                              className="text-blue-400 hover:text-blue-300 font-mono text-sm"
+                              className="text-purple-400 hover:text-purple-300 font-mono text-sm transition-colors"
                             >
                               {formatAddress(transfer.to)}
                             </Link>
                           )}
                         </td>
-                        <td className='py-2 text-green-400 font-bold'>{transfer.value}</td>
+                        <td className='py-3 px-4'>
+                          <span className='text-green-400 font-medium'>{transfer.value} {tokenData?.token?.symbol || ''}</span>
+                        </td>
                         {isNFT && (
-                          <td className='py-2 text-gray-300'>
-                            <Link href={transfer.hash ? `/tx/${transfer.hash}` : '#'} className='text-blue-400 hover:text-blue-300 font-mono text-sm'>
-                              {transfer.tokenId === undefined || transfer.tokenId === null ? '0' : transfer.tokenId}
+                          <td className='py-3 px-4'>
+                            <Link 
+                              href={`/token/${address}/${transfer.tokenId}`} 
+                              className='text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors'
+                            >
+                              #{transfer.tokenId === undefined || transfer.tokenId === null ? '0' : transfer.tokenId}
                             </Link>
                           </td>
                         )}
-                        <td className='py-2 text-gray-400 text-sm'>
-                          <div className='flex items-center'>
-                            <ClockIcon className='w-4 h-4 text-yellow-400 mr-2' />
+                        <td className='py-3 px-4'>
+                          <div className='flex items-center gap-2'>
+                            <ClockIcon className='w-4 h-4 text-gray-500' />
                             <div>
                               <div className='text-sm text-gray-300'>{transfer.timeAgo}</div>
-                              <div className='text-xs text-gray-500'>{new Date(transfer.timestamp).toLocaleString(undefined, { timeZoneName: 'short' })}</div>
+                              <div className='text-xs text-gray-500'>
+                                {new Date(transfer.timestamp).toLocaleString(undefined, { timeZoneName: 'short' })}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -898,27 +946,33 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
               <div className='overflow-x-auto'>
                 <table className='w-full'>
                   <thead>
-                    <tr className='border-b border-gray-700'>
-                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Rank</th>
-                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Address</th>
-                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Balance</th>
-                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Percentage</th>
+                    <tr className='border-b border-gray-600'>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Rank</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Address</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Balance</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Percentage</th>
                     </tr>
                   </thead>
                   <tbody className='divide-y divide-gray-700'>
                     {tokenData.holders.map((holder) => (
                       <tr key={`${holder.address}-${holder.rank}`} className='hover:bg-gray-700/50 transition-colors'>
-                        <td className='py-3 px-4 text-yellow-400 font-bold'>#{holder.rank}</td>
+                        <td className='py-3 px-4'>
+                          <span className='text-yellow-400 font-bold'>#{holder.rank}</span>
+                        </td>
                         <td className='py-3 px-4'>
                           <Link
                             href={`/address/${holder.address}`}
-                            className='font-mono text-blue-400 hover:text-blue-300 transition-colors break-all'
+                            className='text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors'
                           >
                             {formatAddress(holder.address)}
                           </Link>
                         </td>
-                        <td className='py-3 px-4 text-green-400 font-bold'>{holder.balance}</td>
-                        <td className='py-3 px-4 text-yellow-400 font-medium'>{holder.percentage}%</td>
+                        <td className='py-3 px-4'>
+                          <span className='text-green-400 font-medium'>{holder.balance} {tokenData?.token?.symbol || ''}</span>
+                        </td>
+                        <td className='py-3 px-4'>
+                          <span className='text-gray-300'>{holder.percentage}%</span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -926,7 +980,8 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
               </div>
             ) : (
               <div className='text-center py-8'>
-                <p className='text-gray-400'>No holders data available</p>
+                <UsersIcon className='w-12 h-12 text-gray-500 mx-auto mb-4' />
+                <p className='text-gray-400'>No holders found</p>
               </div>
             )}
             
@@ -1026,7 +1081,11 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
 
           <div className='bg-gray-700/50 rounded-lg p-4 border border-gray-600/50'>
             <h3 className='text-sm font-medium text-gray-300 mb-2'>Age</h3>
-            <p className='text-2xl font-bold text-yellow-400'>{tokenData?.statistics?.age || 0} days</p>
+            <p className='text-2xl font-bold text-yellow-400'>
+              {tokenData?.statistics?.age !== undefined && tokenData?.statistics?.age !== 'N/A' && typeof tokenData?.statistics?.age === 'number'
+                ? `${tokenData.statistics.age} days`
+                : 'N/A'}
+            </p>
             <p className='text-xs text-gray-400'>Since creation</p>
           </div>
         </div>

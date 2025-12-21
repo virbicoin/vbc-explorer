@@ -27,6 +27,8 @@ interface Transaction {
   gasUsed?: number;
   gasPrice?: number;
   status?: number;
+  type?: string;
+  action?: string;
 }
 
 interface Block {
@@ -195,6 +197,37 @@ export default function TransactionsPage() {
     return `${address.slice(0, 8)}...${address.slice(-6)}`;
   };
 
+  // MetaMask準拠のトランザクションタイプバッジを生成
+  const getTransactionTypeBadge = (type?: string, action?: string) => {
+    const typeConfig: Record<string, { bg: string; text: string; icon: string }> = {
+      send: { bg: 'bg-red-100', text: 'text-red-700', icon: '↑' },
+      receive: { bg: 'bg-green-100', text: 'text-green-700', icon: '↓' },
+      token_transfer: { bg: 'bg-purple-100', text: 'text-purple-700', icon: '⇆' },
+      nft_transfer: { bg: 'bg-pink-100', text: 'text-pink-700', icon: '🖼' },
+      approve: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '✓' },
+      swap: { bg: 'bg-blue-100', text: 'text-blue-700', icon: '⇋' },
+      liquidity: { bg: 'bg-cyan-100', text: 'text-cyan-700', icon: '💧' },
+      stake: { bg: 'bg-orange-100', text: 'text-orange-700', icon: '📌' },
+      unstake: { bg: 'bg-amber-100', text: 'text-amber-700', icon: '📤' },
+      harvest: { bg: 'bg-lime-100', text: 'text-lime-700', icon: '🌾' },
+      mint: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: '✨' },
+      burn: { bg: 'bg-red-200', text: 'text-red-800', icon: '🔥' },
+      contract_creation: { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: '📄' },
+      contract_interaction: { bg: 'bg-violet-100', text: 'text-violet-700', icon: '📝' },
+      mining_reward: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '⛏️' },
+    };
+    
+    const config = typeConfig[type || 'contract_interaction'] || typeConfig.contract_interaction;
+    const displayAction = action || type || 'Transaction';
+    
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
+        <span>{config.icon}</span>
+        <span>{displayAction}</span>
+      </span>
+    );
+  };
+
   const formatTransactionFee = (gasPrice?: number, gasUsed?: number) => {
     if (!gasPrice || !gasUsed) return 'N/A';
     try {
@@ -229,7 +262,7 @@ export default function TransactionsPage() {
     },
     {
       title: 'Latest Block',
-      value: blocks.length > 0 ? blocks[0].number : '-',
+      value: blocks.length > 0 ? Number(blocks[0].number).toLocaleString() : '-',
       sub: 'Most recent block number',
       icon: <CubeIcon className='w-5 h-5 text-green-400' />,
       colorClass: 'text-green-400'
@@ -351,6 +384,9 @@ export default function TransactionsPage() {
                     Transaction Hash
                   </th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>
+                    Type
+                  </th>
+                  <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>
                     Block
                   </th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>
@@ -364,9 +400,6 @@ export default function TransactionsPage() {
                   </th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>
                     Value
-                  </th>
-                  <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>
-                    Avg Transaction Fee
                   </th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>
                     Status
@@ -384,6 +417,9 @@ export default function TransactionsPage() {
                       >
                         {formatAddress(tx.hash)}
                       </Link>
+                    </td>
+                    <td className='py-3 px-4'>
+                      {getTransactionTypeBadge(tx.type, tx.action)}
                     </td>
                     <td className='py-3 px-4'>
                       <div className='flex items-center'>
@@ -430,11 +466,6 @@ export default function TransactionsPage() {
                     <td className='py-3 px-4'>
                       <span className='text-green-400 font-medium text-sm'>
                         {formatValue(tx.value)}
-                      </span>
-                    </td>
-                    <td className='py-3 px-4'>
-                      <span className='text-yellow-400 font-medium text-sm'>
-                        {formatTransactionFee(tx.gasPrice, tx.gasUsed)}
                       </span>
                     </td>
                     <td className='py-3 px-4'>

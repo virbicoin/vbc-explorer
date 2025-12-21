@@ -43,9 +43,14 @@ const transactionSchema = new mongoose.Schema({
   from: String,
   to: String,
   value: String,
-  timestamp: Date,
-  blockNumber: Number
-}, { collection: 'transactions' });
+  timestamp: Number,
+  blockNumber: Number,
+  input: String,
+  gasUsed: Number,
+  gasPrice: String,
+  status: Number,
+  nonce: Number
+}, { collection: 'Transaction' });
 
 // TokenTransferスキーマも定義
 const tokenTransferSchema = new mongoose.Schema({
@@ -99,6 +104,114 @@ const Block = mongoose.models.Block || mongoose.model('Block', blockSchema);
 const config = readConfig();
 const web3 = new Web3(new Web3.providers.HttpProvider(`http://${config.nodeAddr}:${config.port}`));
 
+// MetaMask準拠のトランザクションタイプを判定
+const METHOD_IDS: Record<string, { type: string; action: string }> = {
+  // ERC20
+  '0xa9059cbb': { type: 'token_transfer', action: 'Transfer' },
+  '0x23b872dd': { type: 'token_transfer', action: 'Transfer From' },
+  '0x095ea7b3': { type: 'approve', action: 'Approve' },
+  '0x39509351': { type: 'approve', action: 'Increase Allowance' },
+  '0xa457c2d7': { type: 'approve', action: 'Decrease Allowance' },
+  // ERC721/1155
+  '0x42842e0e': { type: 'nft_transfer', action: 'Safe Transfer' },
+  '0xb88d4fde': { type: 'nft_transfer', action: 'Safe Transfer' },
+  '0xf242432a': { type: 'nft_transfer', action: 'Safe Transfer (ERC1155)' },
+  '0x2eb2c2d6': { type: 'nft_transfer', action: 'Batch Transfer (ERC1155)' },
+  '0xa22cb465': { type: 'approve', action: 'Set Approval For All' },
+  '0xeacabe14': { type: 'mint', action: 'Mint NFT' },
+  '0x40c10f19': { type: 'mint', action: 'Mint' },
+  '0x6a627842': { type: 'mint', action: 'Mint' },
+  // DEX
+  '0x7ff36ab5': { type: 'swap', action: 'Swap ETH for Tokens' },
+  '0x18cbafe5': { type: 'swap', action: 'Swap Tokens for ETH' },
+  '0x38ed1739': { type: 'swap', action: 'Swap Tokens for Tokens' },
+  '0xfb3bdb41': { type: 'swap', action: 'Swap ETH for Exact Tokens' },
+  '0x4a25d94a': { type: 'swap', action: 'Swap Tokens for Exact ETH' },
+  '0x8803dbee': { type: 'swap', action: 'Swap Tokens for Exact Tokens' },
+  '0x5c11d795': { type: 'swap', action: 'Swap Exact Tokens' },
+  '0xe8e33700': { type: 'liquidity', action: 'Add Liquidity' },
+  '0xf305d719': { type: 'liquidity', action: 'Add Liquidity ETH' },
+  '0xbaa2abde': { type: 'liquidity', action: 'Remove Liquidity' },
+  '0x02751cec': { type: 'liquidity', action: 'Remove Liquidity ETH' },
+  '0xaf2979eb': { type: 'liquidity', action: 'Remove Liquidity ETH Permit' },
+  // MasterChef / Staking
+  '0xe2bbb158': { type: 'stake', action: 'Deposit (Stake)' },
+  '0x441a3e70': { type: 'unstake', action: 'Withdraw (Unstake)' },
+  '0x1058d281': { type: 'harvest', action: 'Harvest' },
+  '0xddc63262': { type: 'harvest', action: 'Harvest All' },
+  '0xfb12a6f5': { type: 'harvest', action: 'Harvest (Enter Staking)' },
+  '0x8dbdbe6d': { type: 'harvest', action: 'Deposit' },
+  '0x5312ea8e': { type: 'unstake', action: 'Emergency Withdraw' },
+  // Burn
+  '0x42966c68': { type: 'burn', action: 'Burn' },
+  '0x79cc6790': { type: 'burn', action: 'Burn From' },
+  '0x9dc29fac': { type: 'burn', action: 'Burn' },
+  // Contract Creation
+  '0x60806040': { type: 'contract_creation', action: 'Contract Deploy' },
+};
+
+// トランザクションタイプを判定する関数
+function getTransactionType(
+  tx: { 
+    from: string; 
+    to: string | null; 
+    value: string; 
+    input?: string;
+    status?: number;
+  },
+  address: string,
+  tokenTransferHashes: Set<string>,
+  txHash?: string
+): { type: string; action: string; direction?: 'in' | 'out' | 'self' } {
+  const input = tx.input || '0x';
+  const methodId = input.slice(0, 10).toLowerCase();
+  const isFromAddress = tx.from.toLowerCase() === address.toLowerCase();
+  const isToAddress = tx.to?.toLowerCase() === address.toLowerCase();
+  
+  // Direction
+  let direction: 'in' | 'out' | 'self' = 'out';
+  if (isFromAddress && isToAddress) direction = 'self';
+  else if (isToAddress) direction = 'in';
+  else direction = 'out';
+  
+  // Contract creation (no to address)
+  if (!tx.to || tx.to === '0x0000000000000000000000000000000000000000') {
+    if (tx.from.toLowerCase() === address.toLowerCase()) {
+      return { type: 'contract_creation', action: 'Contract Deploy', direction: 'out' };
+    }
+  }
+  
+  // Check if this tx is a token transfer
+  if (txHash && tokenTransferHashes.has(txHash.toLowerCase())) {
+    const method = METHOD_IDS[methodId];
+    if (method) {
+      return { ...method, direction };
+    }
+    return { type: 'token_transfer', action: 'Token Transfer', direction };
+  }
+  
+  // Check method ID
+  const method = METHOD_IDS[methodId];
+  if (method) {
+    return { ...method, direction };
+  }
+  
+  // Contract interaction (has input data)
+  if (input && input !== '0x' && input.length > 2) {
+    return { type: 'contract_interaction', action: 'Contract Interaction', direction };
+  }
+  
+  // Native transfer
+  const value = BigInt(tx.value || '0');
+  if (value > 0n) {
+    if (direction === 'in') {
+      return { type: 'receive', action: 'Receive', direction };
+    }
+    return { type: 'send', action: 'Send', direction };
+  }
+  
+  return { type: 'unknown', action: 'Unknown', direction };
+}
 
 export async function GET(
   request: NextRequest,
@@ -427,21 +540,46 @@ export async function GET(
     }
   }
 
-  // TokenTransferも取得
-  const tokenTransfers = await TokenTransfer.find({
+  // TokenTransferも取得（直接DBアクセス）
+  const db = mongoose.connection.db;
+  const tokenTransfers = db ? await db.collection('tokentransfers').find({
     $or: [
       { from: { $regex: new RegExp(`^${address}$`, 'i') } },
       { to: { $regex: new RegExp(`^${address}$`, 'i') } }
     ]
-  }).sort({ timestamp: -1 }).limit(10);
+  }).sort({ timestamp: -1 }).limit(50).toArray() : [];
 
   // トークン転送数を取得
-  const tokenTransferCount = await TokenTransfer.countDocuments({
+  const tokenTransferCount = db ? await db.collection('tokentransfers').countDocuments({
     $or: [
       { from: { $regex: new RegExp(`^${address}$`, 'i') } },
       { to: { $regex: new RegExp(`^${address}$`, 'i') } }
     ]
-  });
+  }) : 0;
+
+  // トークン情報のマップを作成（高速化のため）
+  const tokenAddresses = [...new Set(tokenTransfers.map((t) => (t as Record<string, unknown>).tokenAddress as string))].filter(Boolean);
+  const tokenInfoMap = new Map<string, { name: string; symbol: string; decimals: number; type: string }>();
+  
+  if (db && tokenAddresses.length > 0) {
+    // addressフィールドで検索（tokensコレクションの構造に合わせる）
+    const tokens = await db.collection('tokens').find({
+      address: { $in: tokenAddresses.map(a => new RegExp(`^${a}$`, 'i')) }
+    }).toArray();
+    
+    for (const token of tokens) {
+      const t = token as Record<string, unknown>;
+      const addr = (t.address as string || '').toLowerCase();
+      if (addr) {
+        tokenInfoMap.set(addr, {
+          name: t.name as string || 'Unknown Token',
+          symbol: t.symbol as string || '???',
+          decimals: t.decimals as number || 18,
+          type: t.type as string || 'VRC-20'
+        });
+      }
+    }
+  }
 
 
 
@@ -480,43 +618,206 @@ export async function GET(
     }
   };
 
-  // Transaction、TokenTransfer、MiningRewardsをマージ
-  const allTxs = [
-    ...displayTransactions.map(tx => ({
-      hash: tx.hash,
-      from: tx.from,
-      to: tx.to,
-      value: formatTransactionValue(tx.value),
-      timestamp: tx.timestamp,
-      timeAgo: getTimeAgo(tx.timestamp),
-      blockNumber: tx.blockNumber,
-      type: 'native',
-      status: 'success'
-    })),
-    ...tokenTransfers.map(tx => ({
-      hash: tx.transactionHash,
-      from: tx.from,
-      to: tx.to,
-      value: tx.value, // トークンの場合はそのまま
-      timestamp: tx.timestamp,
-      timeAgo: getTimeAgo(tx.timestamp),
-      blockNumber: tx.blockNumber,
-      type: 'token',
-      tokenAddress: tx.tokenAddress,
-      status: 'success'
-    })),
-    ...miningRewards.slice(0, 10).map(tx => ({
+  // トークン転送のトランザクションハッシュを収集（タイプ判定用）
+  const tokenTxHashes = new Set(tokenTransfers.map((tx) => String((tx as Record<string, unknown>).transactionHash || '').toLowerCase()));
+  
+  // トークントランスファー情報をハッシュでマップ化
+  const tokenTransferMap = new Map<string, Array<Record<string, unknown>>>();
+  for (const tt of tokenTransfers) {
+    const t = tt as Record<string, unknown>;
+    const hash = String(t.transactionHash || '').toLowerCase();
+    if (!tokenTransferMap.has(hash)) {
+      tokenTransferMap.set(hash, []);
+    }
+    tokenTransferMap.get(hash)!.push(t);
+  }
+
+  // MetaMask準拠のトランザクションリストを構築
+  interface FormattedTransaction {
+    hash: string;
+    from: string;
+    to: string;
+    value: string;
+    valueRaw: string;
+    timestamp: number | Date;
+    timeAgo: string;
+    blockNumber: number;
+    type: string;
+    action: string;
+    direction: 'in' | 'out' | 'self';
+    status: string;
+    gasUsed?: number;
+    gasPrice?: string;
+    input?: string;
+    tokenInfo?: {
+      address: string;
+      name: string;
+      symbol: string;
+      decimals: number;
+      type: string;
+      value: string;
+      tokenId?: number;
+    };
+    nftInfo?: {
+      tokenId: number;
+      tokenAddress: string;
+    };
+  }
+  
+  const allTxs: FormattedTransaction[] = [];
+  const processedHashes = new Set<string>();
+  
+  // 1. 全トランザクションを処理（通常トランザクション）
+  for (const tx of displayTransactions) {
+    const txData = tx as Record<string, unknown>;
+    const hash = String(txData.hash || '').toLowerCase();
+    if (processedHashes.has(hash)) continue;
+    processedHashes.add(hash);
+    
+    const txType = getTransactionType(
+      {
+        from: txData.from as string,
+        to: txData.to as string | null,
+        value: txData.value as string,
+        input: txData.input as string | undefined,
+        status: txData.status as number | undefined
+      },
+      address,
+      tokenTxHashes,
+      hash
+    );
+    
+    const formatted: FormattedTransaction = {
+      hash: txData.hash as string,
+      from: txData.from as string,
+      to: txData.to as string,
+      value: formatTransactionValue(txData.value as string),
+      valueRaw: txData.value as string,
+      timestamp: txData.timestamp as number,
+      timeAgo: getTimeAgo(txData.timestamp as number),
+      blockNumber: txData.blockNumber as number,
+      type: txType.type,
+      action: txType.action,
+      direction: txType.direction || 'out',
+      status: (txData.status as number) === 1 ? 'success' : 'failed',
+      gasUsed: txData.gasUsed as number | undefined,
+      gasPrice: txData.gasPrice as string | undefined,
+      input: txData.input as string | undefined
+    };
+    
+    // トークン転送情報があれば追加
+    const tokenTransfersForTx = tokenTransferMap.get(hash);
+    if (tokenTransfersForTx && tokenTransfersForTx.length > 0) {
+      const tt = tokenTransfersForTx[0];
+      const tokenAddr = (tt.tokenAddress as string).toLowerCase();
+      const tokenInfo = tokenInfoMap.get(tokenAddr);
+      
+      formatted.tokenInfo = {
+        address: tt.tokenAddress as string,
+        name: tokenInfo?.name || 'Unknown Token',
+        symbol: tokenInfo?.symbol || '???',
+        decimals: tokenInfo?.decimals || 18,
+        type: tokenInfo?.type || 'VRC-20',
+        value: tt.value as string,
+        tokenId: tt.tokenId as number | undefined
+      };
+      
+      // NFTの場合
+      if (tt.tokenId !== undefined && tt.tokenId !== null) {
+        formatted.nftInfo = {
+          tokenId: tt.tokenId as number,
+          tokenAddress: tt.tokenAddress as string
+        };
+        formatted.type = 'nft_transfer';
+        formatted.action = txType.action === 'Transfer' ? 'NFT Transfer' : txType.action;
+      }
+    }
+    
+    allTxs.push(formatted);
+  }
+  
+  // 2. トークントランスファーで、まだ処理されていないものを追加
+  for (const tt of tokenTransfers) {
+    const t = tt as Record<string, unknown>;
+    const hash = String(t.transactionHash || '').toLowerCase();
+    if (processedHashes.has(hash)) continue;
+    processedHashes.add(hash);
+    
+    const isFromAddress = (t.from as string).toLowerCase() === address.toLowerCase();
+    const isToAddress = (t.to as string).toLowerCase() === address.toLowerCase();
+    let direction: 'in' | 'out' | 'self' = 'out';
+    if (isFromAddress && isToAddress) direction = 'self';
+    else if (isToAddress) direction = 'in';
+    
+    const tokenAddr = (t.tokenAddress as string).toLowerCase();
+    const tokenInfo = tokenInfoMap.get(tokenAddr);
+    
+    const isNFT = t.tokenId !== undefined && t.tokenId !== null;
+    const type = isNFT ? 'nft_transfer' : 'token_transfer';
+    const action = isNFT ? 'NFT Transfer' : 'Token Transfer';
+    
+    const formatted: FormattedTransaction = {
+      hash: t.transactionHash as string,
+      from: t.from as string,
+      to: t.to as string,
+      value: '0',
+      valueRaw: '0',
+      timestamp: t.timestamp as Date,
+      timeAgo: getTimeAgo(t.timestamp as Date),
+      blockNumber: t.blockNumber as number,
+      type,
+      action,
+      direction,
+      status: 'success',
+      tokenInfo: {
+        address: t.tokenAddress as string,
+        name: tokenInfo?.name || 'Unknown Token',
+        symbol: tokenInfo?.symbol || '???',
+        decimals: tokenInfo?.decimals || 18,
+        type: tokenInfo?.type || 'VRC-20',
+        value: t.value as string,
+        tokenId: t.tokenId as number | undefined
+      }
+    };
+    
+    if (isNFT) {
+      formatted.nftInfo = {
+        tokenId: t.tokenId as number,
+        tokenAddress: t.tokenAddress as string
+      };
+    }
+    
+    allTxs.push(formatted);
+  }
+  
+  // 3. マイニング報酬を追加
+  for (const tx of miningRewards.slice(0, 10)) {
+    const hash = tx.hash?.toLowerCase();
+    if (hash && processedHashes.has(hash)) continue;
+    if (hash) processedHashes.add(hash);
+    
+    allTxs.push({
       hash: tx.hash,
       from: tx.from,
       to: tx.to,
       value: tx.value,
+      valueRaw: '0',
       timestamp: tx.timestamp,
       timeAgo: tx.timeAgo,
       blockNumber: tx.blockNumber,
       type: 'mining_reward',
+      action: 'Block Reward',
+      direction: 'in',
       status: tx.status || 'success'
-    }))
-  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    });
+  }
+  
+  // タイムスタンプでソート
+  allTxs.sort((a, b) => {
+    const timeA = typeof a.timestamp === 'number' ? a.timestamp * 1000 : new Date(a.timestamp).getTime();
+    const timeB = typeof b.timestamp === 'number' ? b.timestamp * 1000 : new Date(b.timestamp).getTime();
+    return timeB - timeA;
+  });
 
   // contractが配列の場合は最初の要素を使う
   const contractObj = Array.isArray(contract) ? contract[0] : contract;
@@ -534,6 +835,7 @@ export async function GET(
       verified: contractObj.verified || false,
       creationTransaction: contractObj.creationTransaction || '',
       blockNumber: contractObj.blockNumber || 0,
+      creator: contractObj.owner || '',
       isContract: true
     };
   } else if (isContract) {
@@ -549,6 +851,7 @@ export async function GET(
       verified: false,
       creationTransaction: '',
       blockNumber: 0,
+      creator: '',
       isContract: true,
       bytecodeSize: Math.floor((contractCode.length - 2) / 2), // バイトコードサイズ（バイト単位）
       knownContract: knownContract !== null // config.jsonで既知のコントラクトかどうか

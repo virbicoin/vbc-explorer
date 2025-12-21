@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadConfig } from '../../../../lib/config';
+import { getTransactionTypeGlobal } from '../../../../lib/transaction-utils';
 import Web3 from 'web3';
 
 // Utility: recursively converts BigInt values inside unknown structures to string while preserving shape
@@ -36,6 +37,7 @@ interface EthTransaction {
   gas: number | string | bigint;
   gasPrice: bigint | string | number;
   nonce: number;
+  input?: string;
 }
 
 export async function GET(
@@ -96,6 +98,15 @@ export async function GET(
         status = 1; // Default to success if receipt fetch fails
       }
       
+      // Determine transaction type
+      const typeInfo = getTransactionTypeGlobal({
+        from: tx.from,
+        to: tx.to,
+        value: tx.value ? tx.value.toString() : '0',
+        input: tx.input,
+        status: status
+      });
+      
       return {
       hash: tx.hash,
       from: tx.from,
@@ -108,7 +119,9 @@ export async function GET(
       blockNumber: Number(block.number),
       blockHash: block.hash,
         timestamp: Number(block.timestamp),
-        status: status
+        status: status,
+        type: typeInfo.type,
+        action: typeInfo.action
       };
     }));
     

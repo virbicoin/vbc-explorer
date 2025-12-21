@@ -58,12 +58,36 @@ export function CreateTokenForm() {
     hash: txHash,
   });
 
+  // Register token to database
+  const registerToken = async (tokenAddress: string, creatorAddress: string) => {
+    try {
+      const response = await fetch('/api/launchpad/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tokenAddress,
+          creator: creatorAddress,
+        }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        console.log('Token registered to database:', data);
+      } else {
+        console.error('Failed to register token:', data.error);
+      }
+    } catch (error) {
+      console.error('Error registering token:', error);
+    }
+  };
+
   // Handle transaction confirmation
   useEffect(() => {
     if (isConfirmed && receipt) {
       console.log('Transaction receipt:', JSON.stringify(receipt, (key, value) =>
         typeof value === 'bigint' ? value.toString() : value
       , 2));
+      
+      let foundTokenAddress: string | null = null;
       
       // Use viem's parseEventLogs to decode the TokenCreated event
       try {
@@ -76,9 +100,8 @@ export function CreateTokenForm() {
         console.log('Parsed TokenCreated events:', parsedLogs);
         
         if (parsedLogs.length > 0) {
-          const tokenAddress = parsedLogs[0].args.token;
-          console.log('Extracted token address:', tokenAddress);
-          setDeployedAddress(tokenAddress);
+          foundTokenAddress = parsedLogs[0].args.token;
+          console.log('Extracted token address:', foundTokenAddress);
         } else {
           // Fallback: Find any log from a new contract (not factory)
           console.log('No TokenCreated event found, trying fallback...');
@@ -87,7 +110,7 @@ export function CreateTokenForm() {
                 log.address.toLowerCase() !== config?.factoryAddress?.toLowerCase() &&
                 log.address !== '0x0000000000000000000000000000000000000000') {
               console.log('Using log address as fallback:', log.address);
-              setDeployedAddress(log.address);
+              foundTokenAddress = log.address;
               break;
             }
           }
@@ -100,15 +123,24 @@ export function CreateTokenForm() {
               log.address.toLowerCase() !== config?.factoryAddress?.toLowerCase() &&
               log.address !== '0x0000000000000000000000000000000000000000') {
             console.log('Using log address as fallback:', log.address);
-            setDeployedAddress(log.address);
+            foundTokenAddress = log.address;
             break;
           }
         }
       }
       
+      // Set deployed address and register to database
+      if (foundTokenAddress) {
+        setDeployedAddress(foundTokenAddress);
+        // Register token to database for /tokens page
+        if (address) {
+          registerToken(foundTokenAddress, address);
+        }
+      }
+      
       setShowSuccess(true);
     }
-  }, [isConfirmed, receipt, config?.factoryAddress]);
+  }, [isConfirmed, receipt, config?.factoryAddress, address]);
 
   // Validation
   const isValidForm = tokenName.trim().length > 0 && 

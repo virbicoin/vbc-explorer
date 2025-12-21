@@ -299,6 +299,9 @@ async function getTokenTransfers(tokenAddress: string, fromBlock: number = 0): P
   }
 }
 
+// Zero address constant for burn detection
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
 // Function to calculate token holders from transfers with optimization (for NFTs - balance ±1)
 async function calculateTokenHolders(transfers: any[]): Promise<any[]> {
   const holderBalances = new Map<string, number>();
@@ -312,14 +315,16 @@ async function calculateTokenHolders(transfers: any[]): Promise<any[]> {
       const { from, to } = transfer;
       
       // If from is zero address, it's a mint
-      if (from !== '0x0000000000000000000000000000000000000000') {
+      if (from !== ZERO_ADDRESS) {
         const currentFrom = holderBalances.get(from) || 0;
         holderBalances.set(from, currentFrom - 1);
       }
       
-      // Add to recipient
-      const currentTo = holderBalances.get(to) || 0;
-      holderBalances.set(to, currentTo + 1);
+      // Add to recipient (skip if burn to zero address)
+      if (to !== ZERO_ADDRESS) {
+        const currentTo = holderBalances.get(to) || 0;
+        holderBalances.set(to, currentTo + 1);
+      }
     }
     
     // Memory check between batches
@@ -459,14 +464,16 @@ async function calculateErc20TokenHolders(transfers: any[], tokenAddress: string
     const transferValue = BigInt(value || '0');
     
     // Subtract from sender (unless mint from zero address)
-    if (from !== '0x0000000000000000000000000000000000000000') {
+    if (from !== ZERO_ADDRESS) {
       const currentFrom = holderBalances.get(from) || 0n;
       holderBalances.set(from, currentFrom - transferValue);
     }
     
-    // Add to recipient
-    const currentTo = holderBalances.get(to) || 0n;
-    holderBalances.set(to, currentTo + transferValue);
+    // Add to recipient (skip if burn to zero address)
+    if (to !== ZERO_ADDRESS) {
+      const currentTo = holderBalances.get(to) || 0n;
+      holderBalances.set(to, currentTo + transferValue);
+    }
   }
   
   // Filter out zero/negative balances and create holders array
