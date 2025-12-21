@@ -62,16 +62,126 @@ export async function GET(request: NextRequest) {
   const nativeTokenName = config.currency?.name || 'Ether';
   const nativeTokenSymbol = config.currency?.symbol || 'ETH';
   
-  // Get verification status for all contracts
+  // Get all contracts (for verification status and ERC20 discovery)
   const contracts = await Contract.find({}).lean();
   const verificationMap = new Map();
+  const contractMap = new Map();
   contracts.forEach(contract => {
-    verificationMap.set(contract.address.toLowerCase(), contract.verified || false);
+    const addr = contract.address?.toLowerCase();
+    if (addr) {
+      verificationMap.set(addr, contract.verified || false);
+      contractMap.set(addr, contract);
+    }
   });
 
-
   // Fetch all tokens from the database
-  const dbTokens = await Token.find({}).lean() as Record<string, unknown>[];
+  let dbTokens = await Token.find({}).lean() as Record<string, unknown>[];
+  
+  // Get addresses already in tokens collection
+  const existingTokenAddresses = new Set(
+    dbTokens.map(t => (t.address as string)?.toLowerCase()).filter(Boolean)
+  );
+  
+  // Add important tokens from config.json (DEX tokens) if not in database
+  const configTokens: { address: string; name: string; symbol: string; decimals: number }[] = [];
+  
+  // Add wrapped native token (WVBC)
+  if (config.dex?.wrappedNative) {
+    const wn = config.dex.wrappedNative;
+    if (wn.address && !existingTokenAddresses.has(wn.address.toLowerCase())) {
+      configTokens.push({
+        address: wn.address.toLowerCase(),
+        name: wn.name || 'Wrapped Native',
+        symbol: wn.symbol || 'WNATIVE',
+        decimals: wn.decimals || 18,
+      });
+    }
+  }
+  
+  // Add reward token (VBCG)
+  if (config.dex?.rewardToken) {
+    const rt = config.dex.rewardToken;
+    if (rt.address && !existingTokenAddresses.has(rt.address.toLowerCase())) {
+      configTokens.push({
+        address: rt.address.toLowerCase(),
+        name: rt.name || 'Reward Token',
+        symbol: rt.symbol || 'REWARD',
+        decimals: rt.decimals || 18,
+      });
+    }
+  }
+  
+  // Add other DEX tokens (USDT, etc.)
+  if (config.dex?.tokens) {
+    for (const [, token] of Object.entries(config.dex.tokens)) {
+      const t = token as { address?: string; name?: string; symbol?: string; decimals?: number };
+      if (t.address && !existingTokenAddresses.has(t.address.toLowerCase())) {
+        configTokens.push({
+          address: t.address.toLowerCase(),
+          name: t.name || 'Unknown',
+          symbol: t.symbol || 'UNKNOWN',
+          decimals: t.decimals || 18,
+        });
+      }
+    }
+  }
+  
+  // Add config tokens to the list
+  for (const ct of configTokens) {
+    // Try to get real-time supply from blockchain
+    let actualSupply = '0';
+    try {
+      const contract = new web3.eth.Contract(ERC20_ABI, ct.address);
+      const rawSupply = await contract.methods.totalSupply().call();
+      if (rawSupply) {
+        const value = BigInt(String(rawSupply));
+        const divisor = BigInt(10 ** ct.decimals);
+        const integerPart = value / divisor;
+        actualSupply = Number(integerPart).toLocaleString();
+      }
+    } catch {
+      // Ignore errors, keep default supply
+    }
+    
+    const tokenEntry = {
+      address: ct.address,
+      name: ct.name,
+      symbol: ct.symbol,
+      decimals: ct.decimals,
+      totalSupply: actualSupply,
+      holders: 0,
+      type: 'VRC-20',
+      supply: actualSupply,
+      verified: verificationMap.get(ct.address) || false,
+    };
+    dbTokens.push(tokenEntry as Record<string, unknown>);
+    existingTokenAddresses.add(ct.address);
+  }
+  
+  // Find ERC20 contracts not in tokens collection and add them
+  // ERC: 2 = ERC20 in Contract collection
+  const missingErc20Contracts = contracts.filter(c => {
+    const addr = c.address?.toLowerCase();
+    return addr && 
+           (c.ERC === 2 || c.symbol) &&  // ERC20 or has symbol (likely token)
+           !existingTokenAddresses.has(addr);
+  });
+  
+  // Add missing ERC20 contracts to the token list dynamically
+  for (const contract of missingErc20Contracts) {
+    const tokenEntry = {
+      address: contract.address?.toLowerCase(),
+      name: contract.tokenName || contract.contractName || 'Unknown',
+      symbol: contract.symbol || 'UNKNOWN',
+      decimals: contract.decimals || 18,
+      totalSupply: contract.totalSupply?.toString() || '0',
+      holders: 0,
+      type: 'VRC-20',
+      supply: contract.totalSupply?.toString() || '0',
+      verified: contract.verified || false,
+    };
+    dbTokens.push(tokenEntry as Record<string, unknown>);
+  }
 
   // Get actual chain statistics for native token
   const chainStats = await getChainStats();

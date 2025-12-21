@@ -1089,6 +1089,34 @@ async function main() {
     // Check command line arguments
     const args = process.argv.slice(2);
     
+    if (args.includes('--help')) {
+      console.log(`
+Token Scanner - VBC Explorer
+
+Usage:
+  npx ts-node tools/tokens.ts [options]
+
+Options:
+  --help              Show this help message
+  --rescan            Reset scan progress and rescan from block 0
+  --update-all-vrc721 Update all VRC-721 token metadata
+  --update-all-vrc20  Update all VRC-20 token supply data
+  
+Without options, the scanner runs continuously and:
+  - Scans for new tokens every 15 minutes
+  - Updates VRC-20 token data every 5 minutes
+  - Updates VRC-721 token metadata every 15 minutes
+`);
+      await disconnect();
+      return;
+    }
+    
+    if (args.includes('--rescan')) {
+      console.log('🔄 Resetting scan progress to rescan from block 0...');
+      await ScanProgress.deleteMany({});
+      console.log('✅ Scan progress reset. Starting fresh scan...');
+    }
+    
     if (args.includes('--update-all-vrc721')) {
       await updateAllVrc721Tokens();
       await disconnect();
