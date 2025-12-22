@@ -468,9 +468,10 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
         // MetaMask準拠のトランザクションタイプバッジを生成
         const getTransferTypeBadge = (from: string, to: string) => {
           const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
+          const DEAD_ADDR = '0x000000000000000000000000000000000000dead';
           
           // Mint (from zero address)
-          if (from === ZERO_ADDR || from === 'System') {
+          if (from === ZERO_ADDR || from === 'System' || from.toLowerCase() === ZERO_ADDR) {
             return (
               <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 shadow-sm'>
                 <span className='text-sm'>✨</span>
@@ -479,8 +480,9 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
             );
           }
           
-          // Burn (to zero address)
-          if (to === ZERO_ADDR || to === 'System') {
+          // Burn (to zero address or dead address)
+          const toLower = to.toLowerCase();
+          if (to === ZERO_ADDR || to === 'System' || toLower === ZERO_ADDR || toLower === DEAD_ADDR) {
             return (
               <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 shadow-sm'>
                 <span className='text-sm'>🔥</span>
@@ -549,16 +551,23 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                           )}
                         </td>
                         <td className='py-3 px-4'>
-                          {transfer.to === 'System' || transfer.to === '0x0000000000000000000000000000000000000000' ? (
-                            <span className="text-red-400 text-sm">Burn Address</span>
-                          ) : (
-                            <Link
-                              href={`/address/${transfer.to}`}
-                              className="text-purple-400 hover:text-purple-300 font-mono text-sm transition-colors"
-                            >
-                              {formatAddress(transfer.to)}
-                            </Link>
-                          )}
+                          {(() => {
+                            const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
+                            const DEAD_ADDR = '0x000000000000000000000000000000000000dead';
+                            const toLower = transfer.to?.toLowerCase() || '';
+                            const isBurn = transfer.to === 'System' || toLower === ZERO_ADDR || toLower === DEAD_ADDR;
+                            
+                            return isBurn ? (
+                              <span className="text-red-400 text-sm">Burn Address</span>
+                            ) : (
+                              <Link
+                                href={`/address/${transfer.to}`}
+                                className="text-purple-400 hover:text-purple-300 font-mono text-sm transition-colors"
+                              >
+                                {formatAddress(transfer.to)}
+                              </Link>
+                            );
+                          })()}
                         </td>
                         <td className='py-3 px-4'>
                           <span className='text-green-400 font-medium'>{transfer.value} {tokenData?.token?.symbol || ''}</span>

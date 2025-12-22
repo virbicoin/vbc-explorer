@@ -1027,7 +1027,7 @@ export async function GET(
       // Transfer履歴の先頭にコントラクト作成Txを追加
       let nftTransfers = transfers.length > 0 ? transfers.map((transfer: Record<string, unknown>) => {
         return {
-          hash: transfer.hash as string,
+          hash: (transfer.hash || transfer.transactionHash || transfer.txHash) as string,
           from: (transfer.from as string) === ZERO_ADDR ? 'System' : transfer.from as string,
           to: transfer.to as string,
           value: '1',
@@ -1255,7 +1255,7 @@ export async function GET(
         };
       }),
       transfers: token.type === 'Native' ? [] : transfers.map((transfer: Record<string, unknown>) => ({
-        hash: transfer.transactionHash as string,
+        hash: (transfer.transactionHash || transfer.hash || transfer.txHash) as string,
         // If from is zero address, show as 'System' for frontend display
         from: (transfer.from as string) === '0x0000000000000000000000000000000000000000' ? 'System' : transfer.from as string,
         to: transfer.to as string,
