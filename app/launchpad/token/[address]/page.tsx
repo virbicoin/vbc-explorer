@@ -9,6 +9,7 @@ import { ERC20ABI } from '@/abi/TokenFactoryABI';
 import { useLaunchpadConfig } from '@/hooks/useLaunchpadConfig';
 import { Web3Provider } from '@/lib/dex/providers';
 import Link from 'next/link';
+import ListOnDexModal from './components/ListOnDexModal';
 
 type ActionModalType = 'transfer' | 'approve' | 'burn' | null;
 
@@ -78,6 +79,7 @@ function TokenDetailContent() {
   const [actionRecipient, setActionRecipient] = useState('');
   const [actionSpender, setActionSpender] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showDexModal, setShowDexModal] = useState(false);
 
   // Check if contract is verified
   useEffect(() => {
@@ -410,6 +412,37 @@ function TokenDetailContent() {
                 <div className="bg-gray-800/50 rounded-xl p-4"><div className="text-xs text-gray-500 mb-2">Owner</div><div className="flex items-center justify-between"><Link href={`/address/${token.owner}`} className="text-purple-400 hover:text-purple-300 font-mono text-sm">{token.owner.slice(0, 14)}...{token.owner.slice(-10)}</Link>{isOwner && <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded-lg">You</span>}</div></div>
               </div>
 
+              {/* DEX Listing Section - Available for everyone with balance */}
+              {isConnected && userBalance && (userBalance as bigint) > 0n && (
+                <div className="bg-gradient-to-r from-cyan-500/10 to-blue-500/10 rounded-xl p-6 border border-cyan-500/30 mb-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                      <span className="text-xl">💧</span>
+                      DEX Trading
+                    </h3>
+                  </div>
+                  <p className="text-gray-400 text-sm mb-4">
+                    List this token on DEX to enable trading. Provide liquidity to earn LP tokens.
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowDexModal(true)}
+                      className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 rounded-xl text-white font-medium transition-colors flex items-center gap-2"
+                    >
+                      <span>💧</span>
+                      Add Liquidity
+                    </button>
+                    <Link
+                      href={`/dex?outputToken=${tokenAddress}`}
+                      className="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-xl text-white font-medium transition-colors flex items-center gap-2"
+                    >
+                      <span>📈</span>
+                      Trade on DEX
+                    </Link>
+                  </div>
+                </div>
+              )}
+
               {isOwner && (
                 <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-xl p-6 border border-purple-500/30 mb-6">
                   <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2"><svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>Owner Controls</h3>
@@ -705,6 +738,18 @@ function TokenDetailContent() {
             )}
           </div>
         </div>
+      )}
+
+      {/* List on DEX Modal */}
+      {token && (
+        <ListOnDexModal
+          isOpen={showDexModal}
+          onClose={() => setShowDexModal(false)}
+          tokenAddress={tokenAddress}
+          tokenSymbol={token.symbol}
+          tokenDecimals={token.decimals}
+          tokenBalance={(userBalance as bigint) || 0n}
+        />
       )}
     </div>
   );

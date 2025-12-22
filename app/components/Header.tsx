@@ -6,7 +6,8 @@ import {
   ArrowPathIcon,
   CodeBracketIcon,
   TrophyIcon,
-  RocketLaunchIcon
+  RocketLaunchIcon,
+  DocumentTextIcon
 } from '@heroicons/react/24/outline';
 import { loadConfig } from '@/lib/config';
 
@@ -80,6 +81,12 @@ export default function Header() {
               </Link>
             </li>
           )}
+          <li>
+            <Link href='/api-docs' className='nav-link text-gray-200 flex items-center gap-1'>
+              <DocumentTextIcon className='w-5 h-5' />
+              <span className='hidden sm:inline'>API</span>
+            </Link>
+          </li>
         </ul>
       </nav>
     </header>

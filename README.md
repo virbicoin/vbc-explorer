@@ -978,6 +978,268 @@ docker-compose down
 
 ## API Endpoints
 
+### Blockscout/Etherscan Compatible API
+
+The explorer provides a Blockscout/Etherscan compatible API endpoint at `/api`. All requests use query parameters in the format `?module=<module>&action=<action>&...params`.
+
+**Base URL:** `https://your-explorer.com/api`
+
+**Response Format:**
+```json
+{
+  "status": "1",       // "1" for success, "0" for error
+  "message": "OK",     // Status message
+  "result": "..."      // Response data
+}
+```
+
+#### Account Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `balance` | Get address balance (wei) | `address` |
+| `balancemulti` | Get multiple balances (max 20) | `address` (comma separated) |
+| `txlist` | Get transaction list | `address`, `page`, `offset`, `sort` |
+| `txlistinternal` | Get internal transactions | `address` or `txhash`, `page`, `offset` |
+| `tokentx` | Get token transfers | `address`, `contractaddress`, `page`, `offset` |
+| `tokenbalance` | Get specific token balance | `address`, `contractaddress` |
+| `getminedblocks` | Get blocks mined by address | `address`, `page`, `offset` |
+
+**Examples:**
+```bash
+# Get balance
+curl "https://explorer.example.com/api?module=account&action=balance&address=0x950302976387b43e042aea242ae8dab8e5c204d1"
+
+# Get multiple balances
+curl "https://explorer.example.com/api?module=account&action=balancemulti&address=0xaddr1,0xaddr2,0xaddr3"
+
+# Get transaction list
+curl "https://explorer.example.com/api?module=account&action=txlist&address=0x...&page=1&offset=10&sort=desc"
+
+# Get token balance for specific token
+curl "https://explorer.example.com/api?module=account&action=tokenbalance&address=0x...&contractaddress=0x..."
+
+# Get mined blocks
+curl "https://explorer.example.com/api?module=account&action=getminedblocks&address=0x..."
+```
+
+#### Block Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `getblockreward` | Get block reward info | `blockno` |
+| `getblocknobytime` | Get block by timestamp | `timestamp`, `closest` (before/after) |
+
+**Examples:**
+```bash
+# Get block reward
+curl "https://explorer.example.com/api?module=block&action=getblockreward&blockno=1234567"
+
+# Get block by timestamp
+curl "https://explorer.example.com/api?module=block&action=getblocknobytime&timestamp=1609459200&closest=before"
+```
+
+#### Transaction Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `gettxinfo` | Get transaction details | `txhash` |
+| `gettxreceiptstatus` | Get transaction status | `txhash` |
+
+**Examples:**
+```bash
+# Get transaction info
+curl "https://explorer.example.com/api?module=transaction&action=gettxinfo&txhash=0x..."
+
+# Get transaction status
+curl "https://explorer.example.com/api?module=transaction&action=gettxreceiptstatus&txhash=0x..."
+```
+
+#### Token Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `gettoken` / `tokeninfo` | Get token information | `contractaddress` |
+| `gettokenholders` | Get token holders list | `contractaddress`, `page`, `offset` |
+| `tokenlist` | Get all tokens list | `page`, `offset` |
+
+**Examples:**
+```bash
+# Get token info
+curl "https://explorer.example.com/api?module=token&action=gettoken&contractaddress=0x..."
+
+# Get token holders
+curl "https://explorer.example.com/api?module=token&action=gettokenholders&contractaddress=0x...&page=1&offset=10"
+
+# Get all tokens
+curl "https://explorer.example.com/api?module=token&action=tokenlist&page=1&offset=100"
+```
+
+#### Stats Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `ethsupply` / `coinsupply` | Get total coin supply (wei) | - |
+| `tokensupply` | Get token total supply | `contractaddress` |
+| `ethprice` / `coinprice` | Get coin price (placeholder) | - |
+| `chainsize` | Get chain size statistics | - |
+| `dailytx` | Get daily transaction count | `startdate`, `enddate`, `sort` |
+
+**Examples:**
+```bash
+# Get native coin supply
+curl "https://explorer.example.com/api?module=stats&action=ethsupply"
+
+# Get token supply
+curl "https://explorer.example.com/api?module=stats&action=tokensupply&contractaddress=0x..."
+
+# Get chain size
+curl "https://explorer.example.com/api?module=stats&action=chainsize"
+
+# Get daily transactions (last 30 days)
+curl "https://explorer.example.com/api?module=stats&action=dailytx&startdate=2025-01-01&enddate=2025-01-31"
+```
+
+#### Contract Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `getabi` | Get contract ABI | `address` |
+| `getsourcecode` | Get contract source code | `address` |
+| `getcontractcreation` | Get contract creation info | `contractaddresses` (max 5, comma separated) |
+
+**Examples:**
+```bash
+# Get contract ABI (verified contracts only)
+curl "https://explorer.example.com/api?module=contract&action=getabi&address=0x..."
+
+# Get contract source code
+curl "https://explorer.example.com/api?module=contract&action=getsourcecode&address=0x..."
+
+# Get contract creation info
+curl "https://explorer.example.com/api?module=contract&action=getcontractcreation&contractaddresses=0x...,0x..."
+```
+
+#### Logs Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `getLogs` | Get event logs | `address`, `fromBlock`, `toBlock`, `topic0-3`, `page`, `offset` |
+
+**Examples:**
+```bash
+# Get logs for contract
+curl "https://explorer.example.com/api?module=logs&action=getLogs&address=0x...&fromBlock=0&toBlock=latest"
+
+# Get logs with topic filter
+curl "https://explorer.example.com/api?module=logs&action=getLogs&address=0x...&topic0=0xddf252..."
+```
+
+#### Proxy Module (JSON-RPC)
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `eth_blockNumber` | Get current block number (hex) | - |
+| `eth_getBlockByNumber` | Get block by number | `tag`, `boolean` |
+| `eth_getTransactionByHash` | Get transaction by hash | `txhash` |
+| `eth_getTransactionReceipt` | Get transaction receipt | `txhash` |
+| `eth_call` | Execute contract call | `to`, `data`, `tag` |
+| `eth_getCode` | Get contract bytecode | `address`, `tag` |
+| `eth_gasPrice` | Get current gas price (hex) | - |
+| `eth_estimateGas` | Estimate gas for transaction | `to`, `data`, `value`, `from` |
+
+**Examples:**
+```bash
+# Get current block number
+curl "https://explorer.example.com/api?module=proxy&action=eth_blockNumber"
+
+# Get block by number
+curl "https://explorer.example.com/api?module=proxy&action=eth_getBlockByNumber&tag=latest&boolean=true"
+
+# Get transaction by hash
+curl "https://explorer.example.com/api?module=proxy&action=eth_getTransactionByHash&txhash=0x..."
+
+# Get transaction receipt
+curl "https://explorer.example.com/api?module=proxy&action=eth_getTransactionReceipt&txhash=0x..."
+
+# Execute contract call
+curl "https://explorer.example.com/api?module=proxy&action=eth_call&to=0x...&data=0x..."
+
+# Get contract code
+curl "https://explorer.example.com/api?module=proxy&action=eth_getCode&address=0x..."
+
+# Get gas price
+curl "https://explorer.example.com/api?module=proxy&action=eth_gasPrice"
+
+# Estimate gas
+curl "https://explorer.example.com/api?module=proxy&action=eth_estimateGas&to=0x...&value=0x0"
+```
+
+### Supply APIs (CoinGecko / CoinMarketCap Compatible)
+
+These endpoints return plain text numbers only, as required by CoinGecko and CoinMarketCap.
+
+#### Total Supply
+```
+GET /api/total_supply
+```
+Returns the total supply of VBC as a plain text number.
+
+**Response:** `354921680` (plain text, no JSON)
+
+**Calculation:** `(Block Height × Block Reward) + Pre-mine Amount`
+
+**Debug Mode:** Add `?debug=true` to get detailed JSON response:
+```json
+{
+  "blockNumber": "3115210",
+  "blockReward": 8,
+  "premineAmount": 330000000,
+  "totalSupply": 354921680,
+  "circulatingSupply": 354921679.5,
+  "excludedAddresses": [
+    {
+      "address": "0x0000000000000000000000000000000000000000",
+      "label": "Burn Address",
+      "balance": "0.5"
+    }
+  ]
+}
+```
+
+#### Circulating Supply
+```
+GET /api/circulating_supply
+```
+Returns the circulating supply of VBC as a plain text number.
+
+**Response:** `354921679` (plain text, no JSON)
+
+**Calculation:** `Total Supply - (Sum of Excluded Wallet Balances)`
+
+**Excluded Addresses:** Configured in `config.json` under `supply.excludedAddresses`
+
+#### Configuration (config.json)
+```json
+{
+  "supply": {
+    "blockReward": 8,
+    "premineAmount": 330000000,
+    "excludedAddresses": [
+      {
+        "address": "0x0000000000000000000000000000000000000000",
+        "label": "Burn Address"
+      },
+      {
+        "address": "0x12A656c2DeE0EA2685398d52AcF78974fCD67B27",
+        "label": "MasterChef Contract"
+      }
+    ],
+    "cacheDuration": 60
+  }
+}
+```
+
 ### Core Statistics APIs
 - `GET /api/stats` - Basic network statistics (blocks, transactions, difficulty)
 - `GET /api/stats-enhanced` - Extended statistics with network hashrate and mining data
