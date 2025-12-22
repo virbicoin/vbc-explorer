@@ -1,6 +1,7 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
 // Loading component
@@ -98,11 +99,27 @@ function TabNavigation({ activeTab, onTabChange }: { activeTab: Tab; onTabChange
 }
 
 function LaunchpadPageContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<Tab>('create');
+
+  // Sync tab state with URL parameter
+  useEffect(() => {
+    if (tabParam === 'create' || tabParam === 'tokens' || tabParam === 'my-tokens') {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
+
+  // Update URL when tab changes
+  const handleTabChange = (tab: Tab) => {
+    setActiveTab(tab);
+    router.push(`/launchpad?tab=${tab}`, { scroll: false });
+  };
 
   return (
     <>
-      <TabNavigation activeTab={activeTab} onTabChange={setActiveTab} />
+      <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
 
       <Suspense fallback={<LoadingSkeleton />}>
         <LaunchpadWrapper>
@@ -222,5 +239,9 @@ function InfoSection() {
 }
 
 export default function LaunchpadPage() {
-  return <LaunchpadPageContent />;
+  return (
+    <Suspense fallback={<LoadingSkeleton />}>
+      <LaunchpadPageContent />
+    </Suspense>
+  );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { formatUnits, type Address } from 'viem';
 import { useReadContract, useReadContracts } from 'wagmi';
 import { TokenFactoryV2ABI } from '@/abi/TokenFactoryV2ABI';
@@ -239,14 +239,9 @@ export function TokenList() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
             All Tokens
-            {isV2 && (
-              <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs font-semibold rounded-lg">
-                V2
-              </span>
-            )}
           </h2>
           <div className="text-gray-400 text-sm">
-            {tokenCount ? Number(tokenCount).toString() : '0'} tokens created
+            {tokens.length} tokens created
           </div>
         </div>
 
@@ -322,8 +317,35 @@ export function TokenList() {
 }
 
 function TokenCard({ token, isV2 }: { token: TokenInfo; isV2: boolean }) {
+  const [isVerified, setIsVerified] = useState(false);
   const formattedSupply = formatUnits(token.totalSupply, token.decimals);
-  const createdDate = new Date(token.createdAt * 1000).toLocaleDateString();
+  const dateObj = new Date(token.createdAt * 1000);
+  const createdDate = dateObj.toLocaleDateString();
+  const createdTime = dateObj.toLocaleTimeString() + ' ' + dateObj.toLocaleTimeString(undefined, { timeZoneName: 'short' }).split(' ').pop();
+
+  // Check if contract is verified
+  useEffect(() => {
+    fetch(`/api/contract/status/${token.address}`)
+      .then(res => res.json())
+      .then(data => setIsVerified(data.verified === true))
+      .catch(() => setIsVerified(false));
+  }, [token.address]);
+
+  const addToMetaMask = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof window === 'undefined' || !window.ethereum) return;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (window.ethereum as any).request({
+        method: 'wallet_watchAsset',
+        params: { type: 'ERC20', options: { address: token.address, symbol: token.symbol.slice(0, 11), decimals: token.decimals, image: token.logoUrl || undefined } },
+      });
+    } catch (err) { console.error('Failed to add token to MetaMask:', err); }
+  };
+
+  // Suppress unused variable warning
+  void isV2;
 
   return (
     <Link 
@@ -355,6 +377,11 @@ function TokenCard({ token, isV2 }: { token: TokenInfo; isV2: boolean }) {
             <div className="flex items-center gap-2">
               <span className="text-white font-semibold group-hover:text-purple-300 transition-colors">{token.name}</span>
               <span className="text-gray-400 text-sm">({token.symbol})</span>
+              {isVerified && (
+                <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 text-xs font-semibold rounded flex items-center gap-1" title="Verified Contract">
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                </span>
+              )}
             </div>
             {token.description && (
               <p className="text-gray-500 text-xs mt-0.5 line-clamp-1 max-w-md">{token.description}</p>
@@ -375,6 +402,13 @@ function TokenCard({ token, isV2 }: { token: TokenInfo; isV2: boolean }) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
               </button>
+              <button
+                onClick={addToMetaMask}
+                className="p-1 hover:bg-gray-600 rounded transition-colors"
+                title="Add to MetaMask"
+              >
+                <span className="text-sm">🦊</span>
+              </button>
             </div>
           </div>
         </div>
@@ -384,6 +418,7 @@ function TokenCard({ token, isV2 }: { token: TokenInfo; isV2: boolean }) {
             {Number(formattedSupply).toLocaleString(undefined, { maximumFractionDigits: 2 })}
           </div>
           <div className="text-xs text-gray-500">{createdDate}</div>
+          <div className="text-xs text-gray-500">{createdTime}</div>
         </div>
       </div>
     </Link>

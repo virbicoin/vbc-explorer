@@ -13,6 +13,31 @@ type Token = {
   supply: string;
   type: string;
   verified?: boolean;
+  decimals?: number;
+  logoUrl?: string;
+};
+
+// MetaMask追加関数
+const addToMetaMask = async (token: Token) => {
+  if (typeof window === 'undefined' || !window.ethereum) return;
+  if (token.type === 'Native' || token.address === 'N/A') return;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (window.ethereum as any).request({
+      method: 'wallet_watchAsset',
+      params: {
+        type: 'ERC20',
+        options: {
+          address: token.address,
+          symbol: token.symbol.slice(0, 11),
+          decimals: token.decimals ?? 18,
+          image: token.logoUrl || undefined,
+        },
+      },
+    });
+  } catch (err) {
+    console.error('Failed to add token to MetaMask:', err);
+  }
 };
 
 export default function TokensPage() {
@@ -182,6 +207,7 @@ export default function TokensPage() {
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Token</th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Type</th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Contract Address</th>
+                  <th className='text-left py-3 px-4 text-sm font-medium text-gray-300 w-24'>Actions</th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-300 w-32'>Verify</th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Holders</th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Total Supply</th>
@@ -190,7 +216,7 @@ export default function TokensPage() {
               <tbody className='divide-y divide-gray-700'>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className='py-12'>
+                    <td colSpan={7} className='py-12'>
                       <div className='flex justify-center items-center'>
                         <div className='animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500'></div>
                       </div>
@@ -198,7 +224,7 @@ export default function TokensPage() {
                   </tr>
                 ) : filteredTokens.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className='py-6 text-center text-gray-400'>
+                    <td colSpan={7} className='py-6 text-center text-gray-400'>
                       {activeTab === 'nft' ? 'No NFT collections found' : 'No tokens found'}
                     </td>
                   </tr>
@@ -241,6 +267,17 @@ export default function TokensPage() {
                             </Link>
                           )}
                         </div>
+                      </td>
+                      <td className='py-3 px-4 w-24'>
+                        {token.type !== 'Native' && token.address !== 'N/A' && token.type === 'VRC-20' && (
+                          <button
+                            onClick={() => addToMetaMask(token)}
+                            className='p-2 hover:bg-gray-600 rounded-lg transition-colors'
+                            title='Add to MetaMask'
+                          >
+                            🦊
+                          </button>
+                        )}
                       </td>
                       <td className='py-3 px-4 w-32'>
                         {token.type !== 'Native' && token.verified ? (

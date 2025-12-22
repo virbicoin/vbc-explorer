@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -411,8 +411,28 @@ export default function Page() {
   const [now, setNow] = useState(() => Date.now());
   const [config, setConfig] = useState<{ miners: Record<string, string> } | null>(null);
 
-  // Ref for the add network button
-  const addVbcButtonRef = useRef<HTMLButtonElement | null>(null);
+  // Add VirBiCoin network to MetaMask
+  const handleAddVBC = async () => {
+    try {
+      await (window as unknown as { ethereum?: { request: (params: { method: string; params: unknown[] }) => Promise<unknown> } }).ethereum?.request({
+        method: 'wallet_addEthereumChain',
+        params: [{
+          chainId: '0x149',
+          chainName: 'VirBiCoin',
+          nativeCurrency: {
+            name: 'VirBiCoin',
+            symbol: 'VBC',
+            decimals: 18,
+          },
+          rpcUrls: ['https://rpc.digitalregion.jp'],
+          blockExplorerUrls: ['https://explorer.digitalregion.jp'],
+          iconUrls: ['https://vbc.digitalregion.jp/VBC.svg']
+        }],
+      });
+    } catch (addError) {
+      console.error('Failed to add VirBiCoin network:', addError);
+    }
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -551,35 +571,6 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
-    const button = addVbcButtonRef.current;
-    const handleClick = async () => {
-      try {
-        await (window as unknown as { ethereum?: { request: (params: { method: string; params: unknown[] }) => Promise<unknown> } }).ethereum?.request({
-          method: 'wallet_addEthereumChain',
-          params: [{
-            chainId: '0x149',
-            chainName: 'VirBiCoin',
-            nativeCurrency: {
-              name: 'VirBiCoin',
-              symbol: 'VBC',
-              decimals: 18,
-            },
-            rpcUrls: ['https://rpc.digitalregion.jp'],
-            blockExplorerUrls: ['https://explorer.digitalregion.jp'],
-            iconUrls: ['https://vbc.digitalregion.jp/VBC.svg']
-          }],
-        });
-      } catch (addError) {
-        console.error('Failed to add VirBiCoin network:', addError);
-      }
-    };
-    button?.addEventListener('click', handleClick);
-    return () => {
-      button?.removeEventListener('click', handleClick);
-    };
-  }, []);
-
-  useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -619,8 +610,7 @@ export default function Page() {
           </div>
           {/* Right: Add VirBiCoin Button */}
           <button
-            id='add-vbc-button'
-            ref={addVbcButtonRef}
+            onClick={handleAddVBC}
             className='w-full sm:w-auto mt-4 sm:mt-0 flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40'
           >
             <Image src='/img/MetaMask.svg' alt='MetaMask' width={24} height={24} className='w-6 h-6' />

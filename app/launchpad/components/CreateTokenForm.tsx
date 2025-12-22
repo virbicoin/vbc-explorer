@@ -73,6 +73,7 @@ export function CreateTokenForm() {
 
   // Register token to database
   const registerToken = async (tokenAddress: string, creatorAddress: string) => {
+    console.log('[RegisterToken] Starting registration for:', tokenAddress, 'by:', creatorAddress);
     try {
       const response = await fetch('/api/launchpad/register', {
         method: 'POST',
@@ -85,12 +86,12 @@ export function CreateTokenForm() {
       });
       const data = await response.json();
       if (data.success) {
-        console.log('Token registered to database:', data);
+        console.log('[RegisterToken] Token registered to database successfully:', data);
       } else {
-        console.error('Failed to register token:', data.error);
+        console.error('[RegisterToken] Failed to register token:', data.error);
       }
     } catch (error) {
-      console.error('Error registering token:', error);
+      console.error('[RegisterToken] Error registering token:', error);
     }
   };
 
@@ -167,11 +168,17 @@ export function CreateTokenForm() {
       
       // Set deployed address and register to database
       if (foundTokenAddress) {
+        console.log('[CreateToken] Token address found:', foundTokenAddress);
         setDeployedAddress(foundTokenAddress);
         // Register token to database for /tokens page
         if (address) {
+          console.log('[CreateToken] Registering token to database...');
           registerToken(foundTokenAddress, address);
+        } else {
+          console.warn('[CreateToken] No wallet address available, skipping registration');
         }
+      } else {
+        console.error('[CreateToken] Failed to extract token address from receipt');
       }
       
       setShowSuccess(true);
@@ -211,10 +218,34 @@ export function CreateTokenForm() {
 
   // Handle create token
   const handleCreateToken = async () => {
-    if (!isConnected || !activeFactoryAddress || !isValidForm || !isMetadataValid) return;
+    console.log('[CreateToken] Attempting to create token:', {
+      isConnected,
+      activeFactoryAddress,
+      isValidForm,
+      isMetadataValid,
+      creationFee: creationFee?.toString(),
+    });
+    
+    if (!isConnected) {
+      console.error('[CreateToken] Wallet not connected');
+      return;
+    }
+    if (!activeFactoryAddress) {
+      console.error('[CreateToken] Factory address not available');
+      return;
+    }
+    if (!isValidForm) {
+      console.error('[CreateToken] Form validation failed');
+      return;
+    }
+    if (!isMetadataValid) {
+      console.error('[CreateToken] Metadata validation failed');
+      return;
+    }
 
     try {
       const supplyWithDecimals = parseUnits(totalSupply, parseInt(decimals));
+      console.log('[CreateToken] Creating token with supply:', supplyWithDecimals.toString());
       
       if (isV2 && hasMetadata) {
         // Use createTokenWithMetadata for V2 with metadata
@@ -394,6 +425,17 @@ export function CreateTokenForm() {
               Add to MetaMask
             </button>
 
+            {/* Verify Contract Button */}
+            <a
+              href={`/contract/verify?address=${deployedAddress}&contractName=${encodeURIComponent(tokenName)}&isLaunchpadToken=true`}
+              className="w-full py-3 px-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl transition-colors mb-4 flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              Verify Contract
+            </a>
+
             <div className="flex gap-4">
               <button
                 onClick={handleReset}
@@ -424,11 +466,6 @@ export function CreateTokenForm() {
             </svg>
             Create New Token
           </h2>
-          {isV2 && (
-            <span className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs font-semibold rounded-lg">
-              V2
-            </span>
-          )}
         </div>
 
         <div className="space-y-4">
@@ -594,20 +631,6 @@ export function CreateTokenForm() {
             </div>
           )}
 
-          {/* V2 Features Notice */}
-          {isV2 && (
-            <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
-              <p className="text-purple-300 text-sm flex items-center gap-2">
-                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                <span>
-                  V2 tokens include: <strong>Burn</strong>, <strong>Pause</strong>, and <strong>Ownership</strong> features
-                </span>
-              </p>
-            </div>
-          )}
-
           {/* Error Display */}
           {writeError && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
@@ -617,6 +640,21 @@ export function CreateTokenForm() {
                   : writeError.message.includes('insufficient funds')
                   ? 'Insufficient balance for creation fee'
                   : 'Failed to create token. Please try again.'}
+              </p>
+            </div>
+          )}
+
+          {/* Validation Hints */}
+          {isConnected && isCorrectChain && !isValidForm && (
+            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+              <p className="text-yellow-400 text-sm">
+                {!tokenName.trim() ? 'Please enter a token name' :
+                 tokenName.trim().length > 50 ? 'Token name must be 50 characters or less' :
+                 !tokenSymbol.trim() ? 'Please enter a token symbol' :
+                 tokenSymbol.trim().length > 11 ? 'Token symbol must be 11 characters or less' :
+                 parseInt(decimals) < 0 || parseInt(decimals) > 18 ? 'Decimals must be between 0 and 18' :
+                 parseFloat(totalSupply) <= 0 || !totalSupply ? 'Please enter a valid total supply' :
+                 'Please fill in all required fields'}
               </p>
             </div>
           )}

@@ -188,6 +188,29 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
     }
   };
 
+  // Add token to MetaMask
+  const addToMetaMask = async () => {
+    if (typeof window === 'undefined' || !window.ethereum) return;
+    if (!tokenData?.token || tokenData.token.isNFT || tokenData.token.type === 'Native') return;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (window.ethereum as any).request({
+        method: 'wallet_watchAsset',
+        params: {
+          type: 'ERC20',
+          options: {
+            address: tokenData.token.address,
+            symbol: tokenData.token.symbol.slice(0, 11),
+            decimals: tokenData.token.decimals ?? 18,
+            image: undefined, // Token logo URL if available
+          },
+        },
+      });
+    } catch (err) {
+      console.error('Failed to add token to MetaMask:', err);
+    }
+  };
+
   const fetchTokenMetadata = useCallback(async (tokenId: number) => {
     if (tokenMetadata[tokenId] || metadataLoading[tokenId]) return;
 
@@ -1103,6 +1126,16 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
         <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8'>
           <div className='flex items-center justify-between mb-6'>
             <h2 className='text-xl font-semibold text-gray-100'>Token Information</h2>
+            {/* Add to MetaMask button for VRC-20 tokens only */}
+            {tokenData?.token?.type === 'VRC-20' && !tokenData?.token?.isNFT && (
+              <button
+                onClick={addToMetaMask}
+                className='flex items-center gap-2 px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors text-sm font-medium'
+                title='Add to MetaMask'
+              >
+                🦊 Add to MetaMask
+              </button>
+            )}
           </div>
           <div className='grid grid-cols-1 md:grid-cols-4 gap-6'>
             <div className='md:col-span-2'>

@@ -1249,7 +1249,7 @@ export async function GET(
         return {
           rank: holder.rank as number,
           address: holder.holderAddress as string,
-          balance: formatTokenAmount(balanceRaw, Number(token.decimals) || (isNFT ? 0 : 18), isNFT),
+          balance: formatTokenAmount(balanceRaw, token.decimals != null ? Number(token.decimals) : (isNFT ? 0 : 18), isNFT),
           balanceRaw: balanceRaw,
           percentage: percentage,
           tokenIds: holder.tokenIds as number[] || [] // DB値そのまま返す
@@ -1260,7 +1260,7 @@ export async function GET(
         // If from is zero address, show as 'System' for frontend display
         from: (transfer.from as string) === '0x0000000000000000000000000000000000000000' ? 'System' : transfer.from as string,
         to: transfer.to as string,
-        value: formatTokenAmount(transfer.value as string, Number(token.decimals) || (isNFT ? 0 : 18), isNFT),
+        value: formatTokenAmount(transfer.value as string, token.decimals != null ? Number(token.decimals) : (isNFT ? 0 : 18), isNFT),
         valueRaw: transfer.value as string,
         timestamp: transfer.timestamp as Date,
         timeAgo: getTimeAgo(transfer.timestamp as Date),
