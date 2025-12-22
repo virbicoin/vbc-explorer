@@ -6,6 +6,7 @@ import { formatUnits, type Address } from 'viem';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { TokenFactoryV2ABI, LaunchpadTokenV2ABI } from '@/abi/TokenFactoryV2ABI';
 import { useLaunchpadConfig } from '@/hooks/useLaunchpadConfig';
+import { Web3Provider } from '@/lib/dex/providers';
 import Link from 'next/link';
 
 interface TokenDetails {
@@ -39,7 +40,16 @@ interface Transfer {
 
 type TabType = 'overview' | 'holders' | 'transfers';
 
+// Main page component wrapped with Web3Provider
 export default function TokenDetailPage() {
+  return (
+    <Web3Provider>
+      <TokenDetailContent />
+    </Web3Provider>
+  );
+}
+
+function TokenDetailContent() {
   const params = useParams();
   const tokenAddress = params.address as string;
   const { address, isConnected } = useAccount();
