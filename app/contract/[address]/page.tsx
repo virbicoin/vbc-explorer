@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect, useCallback, use } from 'react';
 import { 
   CheckCircleIcon, 
   XCircleIcon, 
@@ -60,11 +60,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
   const [activeTab, setActiveTab] = useState<'overview' | 'code' | 'transactions'>('overview');
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchContractData();
-  }, [address]);
-
-  const fetchContractData = async () => {
+  const fetchContractData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -109,7 +105,11 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
     } finally {
       setLoading(false);
     }
-  };
+  }, [address]);
+
+  useEffect(() => {
+    fetchContractData();
+  }, [fetchContractData]);
 
   const copyToClipboard = async (text: string, label: string) => {
     try {

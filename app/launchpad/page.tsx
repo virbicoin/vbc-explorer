@@ -102,14 +102,10 @@ function LaunchpadPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const tabParam = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<Tab>('create');
-
-  // Sync tab state with URL parameter
-  useEffect(() => {
-    if (tabParam === 'create' || tabParam === 'tokens' || tabParam === 'my-tokens') {
-      setActiveTab(tabParam);
-    }
-  }, [tabParam]);
+  
+  // Initialize tab from URL parameter
+  const initialTab = (tabParam === 'create' || tabParam === 'tokens' || tabParam === 'my-tokens') ? tabParam : 'create';
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
   // Update URL when tab changes
   const handleTabChange = (tab: Tab) => {

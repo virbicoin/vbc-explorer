@@ -22,7 +22,22 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createPublicClient, http, formatEther, formatUnits, type Address } from 'viem';
 import mongoose from 'mongoose';
 import { connectDB, Block, Transaction, TokenTransfer, Account, Contract } from '@/models/index';
-import configJson from '@/config.json';
+import configJsonRaw from '@/config.json';
+
+// Type for config with supply
+interface ConfigWithSupply {
+  network?: { rpcUrl?: string };
+  web3Provider?: { url?: string };
+  supply?: {
+    blockReward?: number;
+    premineAmount?: number;
+    excludedAddresses?: Array<{ address: string; label: string }>;
+    cacheDuration?: number;
+  };
+  [key: string]: unknown;
+}
+
+const configJson = configJsonRaw as ConfigWithSupply;
 
 // Define Token schema inline since it's not exported from models/index
 const tokenSchema = new mongoose.Schema({
@@ -986,16 +1001,16 @@ async function getSourceCode(address: string) {
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const module = searchParams.get('module')?.toLowerCase();
+  const apiModule = searchParams.get('module')?.toLowerCase();
   const action = searchParams.get('action')?.toLowerCase();
 
-  if (!module || !action) {
+  if (!apiModule || !action) {
     return errorResponse('Missing required parameters: module and action');
   }
 
   try {
     // Account module
-    if (module === 'account') {
+    if (apiModule === 'account') {
       if (action === 'balance') {
         const address = searchParams.get('address');
         if (!address) return errorResponse('Missing address parameter');
@@ -1046,7 +1061,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Block module
-    if (module === 'block') {
+    if (apiModule === 'block') {
       if (action === 'getblockreward') {
         const blockno = searchParams.get('blockno');
         if (!blockno) return errorResponse('Missing blockno parameter');
@@ -1061,7 +1076,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Transaction module
-    if (module === 'transaction') {
+    if (apiModule === 'transaction') {
       if (action === 'gettxinfo' || action === 'getstatus') {
         const txhash = searchParams.get('txhash');
         if (!txhash) return errorResponse('Missing txhash parameter');
@@ -1075,7 +1090,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Token module
-    if (module === 'token') {
+    if (apiModule === 'token') {
       if (action === 'gettoken' || action === 'tokeninfo') {
         const contractaddress = searchParams.get('contractaddress');
         if (!contractaddress) return errorResponse('Missing contractaddress parameter');
@@ -1096,7 +1111,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Stats module
-    if (module === 'stats') {
+    if (apiModule === 'stats') {
       if (action === 'ethsupply' || action === 'coinsupply') {
         return getEthSupply();
       }
@@ -1120,7 +1135,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Contract module
-    if (module === 'contract') {
+    if (apiModule === 'contract') {
       if (action === 'getabi') {
         const address = searchParams.get('address');
         if (!address) return errorResponse('Missing address parameter');
@@ -1139,7 +1154,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Logs module
-    if (module === 'logs') {
+    if (apiModule === 'logs') {
       if (action === 'getlogs') {
         const address = searchParams.get('address') || undefined;
         const fromBlock = searchParams.get('fromBlock') || undefined;
@@ -1155,7 +1170,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Proxy module (JSON-RPC)
-    if (module === 'proxy') {
+    if (apiModule === 'proxy') {
       if (action === 'eth_blocknumber') {
         return proxyEthBlockNumber();
       }
@@ -1201,7 +1216,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return errorResponse(`Unknown module/action: ${module}/${action}`);
+    return errorResponse(`Unknown module/action: ${apiModule}/${action}`);
   } catch (error) {
     console.error('[Blockscout API] Error:', error);
     return errorResponse('Internal server error');

@@ -336,7 +336,7 @@ function TokenCard({ token, isV2 }: { token: TokenInfo; isV2: boolean }) {
     e.stopPropagation();
     if (typeof window === 'undefined' || !window.ethereum) return;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       
       await (window.ethereum as any).request({
         method: 'wallet_watchAsset',
         params: { type: 'ERC20', options: { address: token.address, symbol: token.symbol.slice(0, 11), decimals: token.decimals, image: token.logoUrl || undefined } },
