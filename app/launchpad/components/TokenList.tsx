@@ -129,12 +129,15 @@ export function TokenList() {
           };
         }
         
+        // Skip tokens with zero total supply (fully burned via burn())
+        if (tokenData.totalSupply <= BigInt(0)) continue;
+        
         const deadBalance = deadBalanceResult?.status === 'success' ? deadBalanceResult.result as bigint : BigInt(0);
         
-        // Calculate circulating supply (totalSupply - burned)
+        // Calculate circulating supply (totalSupply - burned to dead address)
         const circulatingSupply = tokenData.totalSupply - deadBalance;
         
-        // Skip fully burned tokens (circulating supply === 0)
+        // Skip tokens fully sent to dead address
         if (circulatingSupply <= BigInt(0)) continue;
         
         processedTokens.push({
