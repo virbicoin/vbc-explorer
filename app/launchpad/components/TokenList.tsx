@@ -6,6 +6,9 @@ import { useReadContract, useReadContracts } from 'wagmi';
 import { TokenFactoryABI, ERC20ABI } from '@/abi/TokenFactoryABI';
 import { useLaunchpadConfig } from '@/hooks/useLaunchpadConfig';
 
+// Dead address - tokens sent here are considered burned
+const DEAD_ADDRESS = '0x000000000000000000000000000000000000dead' as const;
+
 interface TokenInfo {
   address: string;
   name: string;
@@ -14,6 +17,7 @@ interface TokenInfo {
   totalSupply: bigint;
   creator: string;
   createdAt: number;
+  circulatingSupply?: bigint;
 }
 
 export function TokenList() {
@@ -58,6 +62,22 @@ export function TokenList() {
     },
   });
 
+  // Prepare contracts for batch reading dead address balances
+  const deadBalanceContracts = (allTokens || []).map((tokenAddress: Address) => ({
+    address: tokenAddress,
+    abi: ERC20ABI,
+    functionName: 'balanceOf' as const,
+    args: [DEAD_ADDRESS] as const,
+  }));
+
+  // Batch read dead address balances
+  const { data: deadBalanceResults, isLoading: isDeadBalanceLoading } = useReadContracts({
+    contracts: deadBalanceContracts,
+    query: {
+      enabled: deadBalanceContracts.length > 0,
+    },
+  });
+
   // Process token data with useMemo
   const tokens = useMemo(() => {
     if (!allTokens || !tokenInfoResults) return [];
@@ -66,10 +86,18 @@ export function TokenList() {
     
     for (let i = 0; i < allTokens.length; i++) {
       const result = tokenInfoResults[i];
+      const deadBalanceResult = deadBalanceResults?.[i];
+      
       if (result.status === 'success' && result.result) {
         const [creator, name, symbol, decimals, totalSupply, createdAt] = result.result as [string, string, string, number, bigint, bigint];
-        // Skip burned tokens (totalSupply === 0)
-        if (totalSupply === BigInt(0)) continue;
+        const deadBalance = deadBalanceResult?.status === 'success' ? deadBalanceResult.result as bigint : BigInt(0);
+        
+        // Calculate circulating supply (totalSupply - burned)
+        const circulatingSupply = totalSupply - deadBalance;
+        
+        // Skip fully burned tokens (circulating supply === 0)
+        if (circulatingSupply <= BigInt(0)) continue;
+        
         processedTokens.push({
           address: allTokens[i] as string,
           name,
@@ -78,6 +106,7 @@ export function TokenList() {
           totalSupply,
           creator,
           createdAt: Number(createdAt),
+          circulatingSupply,
         });
       }
     }
@@ -85,7 +114,7 @@ export function TokenList() {
     // Sort by creation time (newest first)
     processedTokens.sort((a, b) => b.createdAt - a.createdAt);
     return processedTokens;
-  }, [allTokens, tokenInfoResults]);
+  }, [allTokens, tokenInfoResults, deadBalanceResults]);
 
   // Filter tokens by search query
   const filteredTokens = tokens.filter(token =>
@@ -101,7 +130,7 @@ export function TokenList() {
     currentPage * tokensPerPage
   );
 
-  const isLoading = isConfigLoading || isCountLoading || isTokensLoading || isInfoLoading;
+  const isLoading = isConfigLoading || isCountLoading || isTokensLoading || isInfoLoading || isDeadBalanceLoading;
 
   // Check if factory is deployed
   const isFactoryDeployed = config?.factoryAddress && 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
 import { formatUnits, parseUnits, type Address } from 'viem';
 import { useReadContracts } from 'wagmi';
@@ -16,14 +16,21 @@ interface TokenInfo {
   totalSupply: bigint;
   creator: string;
   createdAt: number;
+  userBalance?: bigint;
 }
 
 export function MyTokens() {
   const { address, isConnected } = useAccount();
   const { config, isLoading: isConfigLoading } = useLaunchpadConfig();
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Function to trigger refresh
+  const triggerRefresh = useCallback(() => {
+    setRefreshKey(prev => prev + 1);
+  }, []);
 
   // Get user's tokens from factory
-  const { data: userTokenAddresses, isLoading: isTokensLoading } = useReadContract({
+  const { data: userTokenAddresses, isLoading: isTokensLoading, refetch: refetchTokens } = useReadContract({
     address: config?.factoryAddress as Address,
     abi: TokenFactoryABI,
     functionName: 'getTokensByCreator',
@@ -42,12 +49,38 @@ export function MyTokens() {
   }));
 
   // Batch read token info from factory
-  const { data: tokenInfoResults, isLoading: isInfoLoading } = useReadContracts({
+  const { data: tokenInfoResults, isLoading: isInfoLoading, refetch: refetchTokenInfo } = useReadContracts({
     contracts: tokenInfoContracts,
     query: {
       enabled: tokenInfoContracts.length > 0,
     },
   });
+
+  // Prepare contracts for batch reading user balances
+  const balanceContracts = (userTokenAddresses || []).map((tokenAddress: Address) => ({
+    address: tokenAddress,
+    abi: ERC20ABI,
+    functionName: 'balanceOf' as const,
+    args: [address as Address] as const,
+  }));
+
+  // Batch read user balances
+  const { data: balanceResults, isLoading: isBalanceLoading, refetch: refetchBalances } = useReadContracts({
+    contracts: balanceContracts,
+    query: {
+      enabled: balanceContracts.length > 0 && !!address,
+    },
+  });
+
+  // Function to refresh all data
+  const refreshAllData = useCallback(async () => {
+    await Promise.all([
+      refetchTokens(),
+      refetchTokenInfo(),
+      refetchBalances(),
+    ]);
+    triggerRefresh();
+  }, [refetchTokens, refetchTokenInfo, refetchBalances, triggerRefresh]);
 
   // Process token data with useMemo
   const tokens = useMemo(() => {
@@ -57,10 +90,15 @@ export function MyTokens() {
     
     for (let i = 0; i < userTokenAddresses.length; i++) {
       const result = tokenInfoResults[i];
+      const balanceResult = balanceResults?.[i];
+      
       if (result.status === 'success' && result.result) {
         const [creator, name, symbol, decimals, totalSupply, createdAt] = result.result as [string, string, string, number, bigint, bigint];
-        // Skip burned tokens (totalSupply === 0)
-        if (totalSupply === BigInt(0)) continue;
+        const userBalance = balanceResult?.status === 'success' ? balanceResult.result as bigint : BigInt(0);
+        
+        // Skip tokens where user has no balance (fully burned/transferred)
+        if (userBalance === BigInt(0)) continue;
+        
         processedTokens.push({
           address: userTokenAddresses[i] as string,
           name,
@@ -69,6 +107,7 @@ export function MyTokens() {
           totalSupply,
           creator,
           createdAt: Number(createdAt),
+          userBalance,
         });
       }
     }
@@ -76,9 +115,10 @@ export function MyTokens() {
     // Sort by creation time (newest first)
     processedTokens.sort((a, b) => b.createdAt - a.createdAt);
     return processedTokens;
-  }, [userTokenAddresses, tokenInfoResults]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userTokenAddresses, tokenInfoResults, balanceResults, refreshKey]);
 
-  const isLoading = isConfigLoading || isTokensLoading || isInfoLoading;
+  const isLoading = isConfigLoading || isTokensLoading || isInfoLoading || isBalanceLoading;
 
   // Check if factory is deployed
   const isFactoryDeployed = config?.factoryAddress && 
@@ -176,7 +216,7 @@ export function MyTokens() {
         ) : (
           <div className="space-y-3">
             {tokens.map((token) => (
-              <MyTokenCard key={token.address} token={token} />
+              <MyTokenCard key={token.address} token={token} onBurnSuccess={refreshAllData} />
             ))}
           </div>
         )}
@@ -188,7 +228,7 @@ export function MyTokens() {
 // Dead address for burning tokens (transfer to this address = burn)
 const DEAD_ADDRESS = '0x000000000000000000000000000000000000dead' as const;
 
-function MyTokenCard({ token }: { token: TokenInfo }) {
+function MyTokenCard({ token, onBurnSuccess }: { token: TokenInfo; onBurnSuccess?: () => void }) {
   const { address } = useAccount();
   const [showBurnModal, setShowBurnModal] = useState(false);
   const [burnAmount, setBurnAmount] = useState('');
@@ -197,16 +237,8 @@ function MyTokenCard({ token }: { token: TokenInfo }) {
   const createdDate = new Date(token.createdAt * 1000).toLocaleDateString();
   const createdTime = new Date(token.createdAt * 1000).toLocaleTimeString();
 
-  // Get user's balance
-  const { data: userBalance, refetch: refetchBalance } = useReadContract({
-    address: token.address as Address,
-    abi: ERC20ABI,
-    functionName: 'balanceOf',
-    args: [address as Address],
-    query: {
-      enabled: !!address,
-    },
-  });
+  // Use pre-fetched user balance from parent, fallback to token.userBalance
+  const userBalance = token.userBalance ?? BigInt(0);
 
   // Burn transaction (transfer to dead address)
   const { writeContract: burn, data: burnHash, isPending: isBurning, reset: resetBurn } = useWriteContract();
@@ -248,8 +280,9 @@ function MyTokenCard({ token }: { token: TokenInfo }) {
     setShowBurnModal(false);
     setBurnAmount('');
     resetBurn();
-    if (isConfirmed) {
-      refetchBalance();
+    // Refresh parent list after burn success
+    if (isConfirmed && onBurnSuccess) {
+      onBurnSuccess();
     }
   };
 
