@@ -54,6 +54,11 @@ export async function GET() {
         useV2: config.launchpad.useV2 ?? true,
         creationFee: config.launchpad.creationFee || '0'
       } : null,
+      // Blacklist configuration (tokens and LP pairs to hide)
+      blacklist: {
+        tokens: ((config as { blacklist?: { tokens?: { address: string }[] } }).blacklist?.tokens || []).map(t => t.address.toLowerCase()),
+        lpPairs: ((config as { blacklist?: { lpPairs?: { address: string }[] } }).blacklist?.lpPairs || []).map(p => p.address.toLowerCase())
+      },
       // Social links
       social: config.social || null
     });
@@ -76,6 +81,7 @@ export async function GET() {
       network: null,
       dex: null,
       launchpad: null,
+      blacklist: { tokens: [], lpPairs: [] },
       social: null
     }, { status: 500 });
   }

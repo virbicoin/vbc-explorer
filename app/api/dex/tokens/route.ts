@@ -5,8 +5,17 @@ import Web3 from 'web3';
 import { loadConfig } from '@/lib/config';
 import { fetchDexConfig, setMinimalConfig, getNativeToken } from '@/lib/dex/contract-service';
 
-// Hidden tokens (not shown in DEX UI)
-const TEST_TOKEN_ADDRESS = '0x7dcd1b201d6f7a77fc39802f33b8662946220377'.toLowerCase();
+// Load blacklist from config
+const config = loadConfig();
+const blacklistConfig = (config as { blacklist?: { tokens?: { address: string }[], lpPairs?: { address: string }[] } }).blacklist || {};
+const BLACKLISTED_TOKENS = (blacklistConfig.tokens || []).map(t => t.address.toLowerCase());
+const BLACKLISTED_LP_PAIRS = (blacklistConfig.lpPairs || []).map(p => p.address.toLowerCase());
+
+// Helper function to check if address is blacklisted
+const isBlacklisted = (address: string): boolean => {
+  const addr = address.toLowerCase();
+  return BLACKLISTED_TOKENS.includes(addr) || BLACKLISTED_LP_PAIRS.includes(addr);
+};
 
 // Router ABI to get factory address
 const ROUTER_ABI = [
@@ -184,11 +193,11 @@ export async function GET() {
     
     if (db) {
       // Get token info from database for tokens that have pairs
-      // Exclude wrapped native (we show native instead) and TEST token (hidden)
+      // Exclude wrapped native (we show native instead) and blacklisted tokens
       const pairTokenAddresses = Array.from(tokensWithPairs)
         .filter(addr => addr !== '0x0000000000000000000000000000000000000000' && 
                         addr !== wrappedNativeAddress &&
-                        addr !== TEST_TOKEN_ADDRESS);
+                        !isBlacklisted(addr));
       
       if (pairTokenAddresses.length > 0) {
         const dbTokens = await db.collection('tokens').find({

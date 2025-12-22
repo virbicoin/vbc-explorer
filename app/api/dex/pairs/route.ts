@@ -7,6 +7,18 @@ import { fetchDexConfig, setMinimalConfig, getNativeToken } from '@/lib/dex/cont
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// Load blacklist from config
+const config = loadConfig();
+const blacklistConfig = (config as { blacklist?: { tokens?: { address: string }[], lpPairs?: { address: string }[] } }).blacklist || {};
+const BLACKLISTED_TOKENS = (blacklistConfig.tokens || []).map(t => t.address.toLowerCase());
+const BLACKLISTED_LP_PAIRS = (blacklistConfig.lpPairs || []).map(p => p.address.toLowerCase());
+
+// Helper function to check if address is blacklisted
+const isBlacklisted = (address: string): boolean => {
+  const addr = address.toLowerCase();
+  return BLACKLISTED_TOKENS.includes(addr) || BLACKLISTED_LP_PAIRS.includes(addr);
+};
+
 // ABIs
 const FACTORY_ABI = [
   {
@@ -201,6 +213,12 @@ export async function GET() {
       try {
         const pairAddressResult = await factory.methods.allPairs(i).call();
         const pairAddress = String(pairAddressResult);
+        
+        // Skip blacklisted LP pairs
+        if (isBlacklisted(pairAddress)) {
+          continue;
+        }
+        
         const pairContract = new web3.eth.Contract(PAIR_ABI, pairAddress);
         
         const [token0AddressResult, token1AddressResult, reservesResult, totalSupplyResult] = await Promise.all([
@@ -212,6 +230,12 @@ export async function GET() {
         
         const token0Address = String(token0AddressResult);
         const token1Address = String(token1AddressResult);
+        
+        // Skip pairs containing blacklisted tokens
+        if (isBlacklisted(token0Address) || isBlacklisted(token1Address)) {
+          continue;
+        }
+        
         const reserves = reservesResult as unknown as { reserve0: string; reserve1: string };
         const totalSupply = totalSupplyResult ? String(totalSupplyResult) : '0';
         

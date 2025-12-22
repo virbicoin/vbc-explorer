@@ -14,6 +14,11 @@ const web3 = new Web3(RPC_URL);
 const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
 const DEAD_ADDR = '0x000000000000000000000000000000000000dead';
 
+// Blacklisted token addresses from config
+const blacklistConfig = (config as { blacklist?: { tokens?: { address: string }[], lpPairs?: { address: string }[] } }).blacklist || {};
+const BLACKLISTED_TOKENS = (blacklistConfig.tokens || []).map(t => t.address.toLowerCase());
+const BLACKLISTED_LP_PAIRS = (blacklistConfig.lpPairs || []).map(p => p.address.toLowerCase());
+
 // ERC20 ABI for totalSupply
 const ERC20_ABI = [
   {
@@ -383,6 +388,10 @@ export async function GET(request: NextRequest) {
     const addr = t.address.toLowerCase();
     // Only validate address format, don't require Contract collection entry
     if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) return false;
+    // Exclude blacklisted tokens
+    if (BLACKLISTED_TOKENS.includes(addr) || BLACKLISTED_LP_PAIRS.includes(addr)) {
+      return false;
+    }
     // Exclude tokens with 0 holders
     const holders = (t as IToken).holders ?? 0;
     if (holders <= 0) return false;
