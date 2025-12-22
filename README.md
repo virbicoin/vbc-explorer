@@ -13,27 +13,25 @@
 [![EIP-3091](https://img.shields.io/badge/EIP--3091-Supported-brightgreen)](https://eips.ethereum.org/EIPS/eip-3091)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-<b>Live Version: [explorer.digitalregion.jp](https://explorer.digitalregion.jp)</b>
+A modern, real-time blockchain explorer for any EVM-compatible network built with Next.js 15 App Router, TypeScript, and MongoDB. Features advanced NFT support, contract verification, comprehensive token analytics, built-in DEX, and Token Launchpad.
 
-A modern, real-time blockchain explorer for the VirBiCoin network built with Next.js 15 App Router, TypeScript, and MongoDB. Features advanced NFT support, contract verification, and comprehensive token analytics.
-
-**This project is a fork of [ETC Explorer](https://github.com/ethereumclassic/explorer), enhanced and adapted for VirBiCoin with modern technologies and additional features.**
+**This project is a fork of [ETC Explorer](https://github.com/ethereumclassic/explorer), enhanced with modern technologies and additional features.**
 
 ## ✨ Key Features
 
 - **🔍 Advanced Search** - Search blocks, transactions, addresses, tokens, and contracts with intelligent filtering
-- **💎 NFT Explorer** - Complete VRC-721 and VRC-1155 support with metadata, image galleries, and collection analytics
+- **💎 NFT Explorer** - Complete ERC-721 and ERC-1155 support with metadata, image galleries, and collection analytics
 - **📊 Real-time Analytics** - Network statistics, gas price tracking, and blockchain performance metrics
 - **🛡️ Contract Verification** - Smart contract source code verification with Solidity compiler integration
-- **💰 Token Management** - Comprehensive VRC-20, VRC-721, and VRC-1155 token tracking with holder analytics
+- **💰 Token Management** - Comprehensive ERC-20, ERC-721, and ERC-1155 token tracking with holder analytics
 - **📈 Rich List** - Real-time account balance tracking and wealth distribution analysis
-- **💸 Price Tracking** - Live VBC price updates with multiple API integrations
+- **💸 Price Tracking** - Live price updates with multiple API integrations (CoinGecko, CoinPaprika)
 - **⚡ Real-time Sync** - Live blockchain synchronization with WebSocket support
 - **📱 Responsive Design** - Mobile-first design optimized for all devices
 - **🔗 EIP-3091 Support** - Direct URI redirection for ethereum: links
 - **🔄 DEX (Swap)** - Decentralized token exchange with Uniswap V2 style AMM
 - **💧 Liquidity Pools** - Provide liquidity and earn trading fees
-- **🌾 Yield Farming** - Stake LP tokens to earn VBCG rewards
+- **🌾 Yield Farming** - Stake LP tokens to earn rewards
 - **🎨 Token Launchpad V2** - No-code token creation with metadata, transfer, approve, burn, and pause features
 
 ## 💱 DEX Features
@@ -53,32 +51,34 @@ The explorer includes a built-in decentralized exchange (DEX) with the following
 - Trading fee earnings (0.3%)
 
 ### Yield Farming
-- Stake LP tokens to earn VBCG rewards
+- Stake LP tokens to earn reward tokens
 - Real-time APR calculation
 - No lock-up period - withdraw anytime
 - Harvest rewards at any time
 
-### Contract Addresses (V2 - Active)
+### Contract Requirements
 
-| Contract | Address |
-|----------|---------|
-| Factory V2 | `0x663B1b42B79077AaC918515D3f57FED6820Dad63` |
-| Router V2 | `0xdD1Ae4345252FFEA67fE844296fbd6C973B98c18` |
-| MasterChef V2 | `0x12A656c2DeE0EA2685398d52AcF78974fCD67B27` |
-| VBCG (Reward) | `0xac7F60af25C5c4E23d1008C46511e265A8c9B6cF` |
-| WVBC | `0x52CB9F0d65D9d4De08CF103153C7A1A97567Bb9b` |
+To enable DEX features, deploy and configure the following contracts:
 
-> For complete contract documentation, see [docs/DEX_CONTRACTS.md](docs/DEX_CONTRACTS.md)
+| Contract | Description |
+|----------|-------------|
+| Factory | UniswapV2Factory for creating pairs |
+| Router | UniswapV2Router02 for swapping |
+| MasterChef | Farming rewards distribution |
+| Reward Token | Token distributed as farming rewards |
+| WETH/Wrapped Native | Wrapped native currency token |
+
+Configure contract addresses in `config.json` under the `dex` section.
 
 ## 🎨 Token Launchpad (V2)
 
 The explorer includes a Token Launchpad feature for creating and managing custom tokens:
 
 ### Create Tokens
-- **No-Code Token Creation** - Create VRC-20 tokens without writing code
+- **No-Code Token Creation** - Create ERC-20 tokens without writing code
 - **Custom Metadata** - Set logo URL, description, and website
 - **Configurable Supply** - Define total supply and decimals
-- **Creation Fee** - 10 VBC per token creation
+- **Creation Fee** - Configurable fee per token creation
 
 ### Manage Your Tokens
 - **📤 Transfer** - Send tokens to other addresses
@@ -93,11 +93,9 @@ The explorer includes a Token Launchpad feature for creating and managing custom
 - **👥 Holders** - View all token holders with balance and percentage
 - **📜 Transfers** - Complete transaction history with pagination
 
-### Contract Addresses
+### Contract Requirements
 
-| Contract | Address |
-|----------|---------|
-| TokenFactory V2 | `0xE2008c44Bc077eFc1c6B5A3274ACC805c7F03b73` |
+Deploy a TokenFactory V2 contract and configure the address in `config.json` under the `launchpad` section.
 
 ### V2 Token Features
 - Native `burn()` function for token burning
@@ -153,11 +151,11 @@ Edit `config.json` for your blockchain:
 ```
 
 ### Supported Networks
-- ✅ VirBiCoin (native support)
+- ✅ Your Chain (native support)
 - ✅ Any EVM-compatible blockchain
 - ✅ Custom gas units and currency symbols
 - ✅ Configurable RPC endpoints
-- ✅ Multi-chain token standards (VRC-20/721/1155)
+- ✅ Multi-chain token standards (ERC-20/721/1155)
 
 ## 📋 Core Features
 
@@ -168,9 +166,9 @@ Edit `config.json` for your blockchain:
 - **Address Analytics** - Balance history, transaction patterns, and token holdings
 
 ### 💎 **NFT & Token Support**
-- **VRC-721 NFT Gallery** - Image galleries with metadata display and collection analytics
-- **VRC-1155 Multi-Token** - Advanced multi-token standard support
-- **VRC-20 Tracking** - Complete token analytics with holder distribution
+- **ERC-721 NFT Gallery** - Image galleries with metadata display and collection analytics
+- **ERC-1155 Multi-Token** - Advanced multi-token standard support
+- **ERC-20 Tracking** - Complete token analytics with holder distribution
 - **Token Metadata** - Automatic metadata loading and IPFS support
 - **Collection Statistics** - Floor prices, volumes, and trading analytics
 
@@ -260,7 +258,7 @@ graph TB
     end
     
     subgraph "Blockchain Layer"
-        P[VirBiCoin Node]
+        P[EVM Node]
         Q[Web3.js]
         R[RPC Connection]
     end
@@ -477,11 +475,11 @@ Stores account balance information (updated via tools/richlist.ts):
 ### Token
 Stores comprehensive token information (managed via tools/tokens.ts):
 - `address`: Token contract address (unique identifier)
-- `name`: Token name (e.g., "VirBiCoin Token")
-- `symbol`: Token symbol (e.g., "VBC")
-- `decimals`: Token decimals (typically 18 for VRC-20)
+- `name`: Token name (e.g., "My Token")
+- `symbol`: Token symbol (e.g., "MTK")
+- `decimals`: Token decimals (typically 18 for ERC-20)
 - `totalSupply`: Total token supply (BigInt as string)
-- `type`: Token standard ('VRC-20' | 'VRC-721' | 'VRC-1155')
+- `type`: Token standard ('ERC-20' | 'ERC-721' | 'ERC-1155')
 - `verified`: Contract verification status
 - `metadata`: Additional token metadata (JSON object)
 - `holders`: Number of token holders
@@ -504,9 +502,9 @@ Stores verified contract information (via contract verification API):
 - `constructorArgs`: Constructor arguments used during deployment
 
 ### Price
-Stores VBC price data (updated via tools/price.ts):
+Stores native currency price data (updated via tools/price.ts):
 - `timestamp`: Price timestamp
-- `price`: VBC price in USD
+- `price`: Price in USD
 - `volume24h`: 24-hour trading volume
 - `marketCap`: Market capitalization
 - `change24h`: 24-hour price change percentage
@@ -519,7 +517,7 @@ Stores VBC price data (updated via tools/price.ts):
 
 - **Node.js 18+** and npm
 - **MongoDB 6.0+** running on localhost:27017
-- **VirBiCoin node** running on localhost:8329 with RPC enabled
+- **EVM Node** running with RPC enabled (e.g., localhost:8545)
 - **PM2** installed globally: `npm install -g pm2`
 
 ### Installation
@@ -572,8 +570,8 @@ pm2 status
 
 # View logs
 pm2 logs                    # All logs
-pm2 logs vbc-explorer-web   # Web service only
-pm2 logs vbc-sync          # Sync service only
+pm2 logs explorer-web       # Web service only
+pm2 logs explorer-sync      # Sync service only
 
 # Monitor resources
 pm2 monit
@@ -590,14 +588,14 @@ pm2 save
 
 ```bash
 # Start specific services only
-pm2 start ecosystem.config.json --only vbc-explorer-web
-pm2 start ecosystem.config.json --only vbc-sync
-pm2 start ecosystem.config.json --only vbc-stats
+pm2 start ecosystem.config.json --only explorer-web
+pm2 start ecosystem.config.json --only explorer-sync
+pm2 start ecosystem.config.json --only explorer-stats
 
 # Restart specific service
-pm2 restart vbc-explorer-web
-pm2 restart vbc-sync
-pm2 restart vbc-stats
+pm2 restart explorer-web
+pm2 restart explorer-sync
+pm2 restart explorer-stats
 ```
 
 ## Local Installation (Development)
@@ -606,15 +604,15 @@ pm2 restart vbc-stats
 
 - **Node.js 18+** and npm
 - **MongoDB 6.0+** with authentication enabled
-- **VirBiCoin node** running on localhost:8329 with RPC enabled
+- **EVM Node** running with RPC enabled (e.g., localhost:8545)
 - **Minimum 4GB RAM** and **20GB storage** for full blockchain data
 
 ### Setup
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/virbicoin/vbc-explorer
-cd vbc-explorer
+git clone <repository-url>
+cd explorer
 ```
 
 2. **Install dependencies**
@@ -639,12 +637,12 @@ exit
 ```bash
 # Copy and customize configuration
 cp config.example.json config.json
-# Edit config.json for your VirBiCoin node settings
+# Edit config.json for your blockchain node settings
 ```
 
 
 
-6. **Start VirBiCoin node** (ensure RPC is enabled)
+6. **Start EVM node** (ensure RPC is enabled)
 ```bash
 # Verify node is running and accessible
 curl -X POST -H "Content-Type: application/json" \
@@ -915,7 +913,7 @@ mongosh
 
 2. **Create explorer database user**
 ```bash
-> use vbc-explorer
+> use explorerDB
 > db.createUser({ user: "explorer", pwd: "<secure_password>", roles: ["dbOwner"] })
 ```
 
@@ -998,7 +996,7 @@ docker-compose down
 - `GET /api/richlist?page=1&limit=50` - Wealth distribution and top addresses
 
 ### Token and NFT APIs
-- `GET /api/tokens` - List all tracked tokens (VRC-20, VRC-721, VRC-1155)
+- `GET /api/tokens` - List all tracked tokens (ERC-20, ERC-721, ERC-1155)
 - `GET /api/tokens/[address]` - Token details, metadata, and holder information
 - `GET /api/nft/[address]` - NFT collection details and metadata
 - `GET /api/nft/[address]/metadata/[tokenId]` - Individual NFT metadata and image URLs
@@ -1045,7 +1043,7 @@ The system supports WebSocket connections for real-time updates:
 
 ### NFT Support
 Complete NFT functionality:
-- VRC-721 and VRC-1155 token tracking
+- ERC-721 and ERC-1155 token tracking
 - Metadata retrieval and caching
 - Image loading and fallback handling
 - Token holder tracking
@@ -1072,7 +1070,7 @@ npm run export:transactions -- --date=2024-01-01
 npm run export:stats -- --format=csv
 
 # Export tokens
-npm run export:tokens -- --type=VRC-721
+npm run export:tokens -- --type=ERC-721
 ```
 
 
@@ -1090,7 +1088,7 @@ sudo systemctl status mongod
 sudo systemctl restart mongod
 ```
 
-2. **VirBiCoin Node Connection Error**
+2. **EVM Node Connection Error**
 ```bash
 # Test RPC connection - Get current block number
 curl -X POST -H "Content-Type: application/json" \
@@ -1113,7 +1111,7 @@ pm2 status
 pm2 logs --lines 100
 
 # Restart specific service
-pm2 restart vbc-explorer-web
+pm2 restart explorer-web
 ```
 
 4. **Memory Issues (1GB RAM)**
@@ -1139,7 +1137,7 @@ mongoose.connect(config.database.uri || 'mongodb://localhost/explorerDB')
 "
 ```
 
-6. **VirBiCoin Node Connection Issues**
+6. **EVM Node Connection Issues**
 ```bash
 # Check node status and block height
 curl -X POST -H "Content-Type: application/json" \
@@ -1213,14 +1211,14 @@ pm2 monit
 4. **Adjust bulkSize**: Increase bulkSize for large data processing
 5. **Indexes**: Create appropriate indexes in MongoDB
 6. **Memory**: Ensure sufficient memory for large blockchains
-7. **Network**: Ensure high-speed connection to VirBiCoin node
+7. **Network**: Ensure high-speed connection to EVM node
 8. **Caching**: Implement Redis caching for frequently accessed data
 9. **CDN**: Use CDN for static assets and images
 
 ## Security
 
 1. Configure MongoDB access control
-2. Properly restrict RPC access to VirBiCoin node
+2. Properly restrict RPC access to EVM node
 3. Set appropriate permissions for log files
 4. Implement proper firewall settings in production
 5. Validate contract verification inputs
@@ -1313,7 +1311,7 @@ All configuration is now centralized in `config.json`. See the Configuration sec
 // Add new fields to existing collections
 await db.collection('tokens').updateMany({}, {
   $set: {
-    type: 'VRC-20',
+    type: 'ERC-20',
     verified: false,
     metadata: null
   }
@@ -1332,47 +1330,11 @@ await db.collection('tokens').updateMany({}, {
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Contributors
-
-<div align="center" markdown="1">
-
-[![Contributors](https://contrib.rocks/image?repo=virbicoin/vbc-explorer)](https://github.com/virbicoin/vbc-explorer/graphs/contributors)
-
-</div>
-
-## Support
-
-- **Documentation**: [GitHub Wiki](https://github.com/virbicoin/vbc-explorer/wiki)
-- **Issues**: [GitHub Issues](https://github.com/virbicoin/vbc-explorer/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/virbicoin/vbc-explorer/discussions)
-- **Live Demo**: [explorer.digitalregion.jp](https://explorer.digitalregion.jp)
-
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=virbicoin/vbc-explorer&type=Date&theme=dark)](https://star-history.com/#virbicoin/vbc-explorer&Date)
-
-## 📊 Statistics
-
-![GitHub Stats](https://github-readme-stats.vercel.app/api?username=emerauda&repo=TopazBot&show_icons=true&theme=dark)
-
-<div align="center" markdown="1">
-
-**⭐ If you like this project, please give it a star! ⭐**
-
-[![GitHub stars](https://img.shields.io/github/stars/virbicoin/vbc-explorer.svg?style=social&label=Star)](https://github.com/virbicoin/vbc-explorer)
-[![GitHub forks](https://img.shields.io/github/forks/virbicoin/vbc-explorer.svg?style=social&label=Fork)](https://github.com/virbicoin/vbc-explorer/fork)
-[![GitHub watchers](https://img.shields.io/github/watchers/virbicoin/vbc-explorer.svg?style=social&label=Watch)](https://github.com/virbicoin/vbc-explorer)
-
-Made with ❤️ by [VirBiCoin Project](https://github.com/virbicoin)
-
-</div>
-
 ## Acknowledgments
 
-- **VirBiCoin Community** - For blockchain network support
+- **Community** - For blockchain network support
 - **Next.js Team** - For the amazing React framework
 - **MongoDB Team** - For the robust database solution
 - **Web3.js Team** - For blockchain interaction libraries
 
-These tools enable the VirBiCoin Explorer to track the latest blockchain data in real-time, manage NFT collections, verify smart contracts, and provide comprehensive statistical information for the VirBiCoin network.
+These tools enable the EVM Explorer to track the latest blockchain data in real-time, manage NFT collections, verify smart contracts, and provide comprehensive statistical information for the EVM-compatible network.
