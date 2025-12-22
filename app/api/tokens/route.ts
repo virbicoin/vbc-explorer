@@ -330,12 +330,24 @@ export async function GET(request: NextRequest) {
 
     const verificationStatus = typeof token.address === 'string' ? verificationMap.get(token.address.toLowerCase()) : null;
     
-    // Get logo URL from config or database
+    // Get logo URL from config or database or onchain
     const tokenAddr = typeof token.address === 'string' ? token.address.toLowerCase() : '';
     const tokenLogos = (config as { tokenLogos?: Record<string, string> }).tokenLogos || {};
     const configLogoUrl = tokenLogos[tokenAddr] || null;
     const dbLogoUrl = typeof token.logoUrl === 'string' ? token.logoUrl : null;
-    const logoUrl = dbLogoUrl || configLogoUrl;
+    let logoUrl = dbLogoUrl || configLogoUrl;
+    
+    // If no logo from config or DB, try to fetch from Launchpad V2 token contract
+    if (!logoUrl && typeof token.address === 'string') {
+      try {
+        const onchainLogoUrl = await fetchLaunchpadLogoUrl(token.address);
+        if (onchainLogoUrl) {
+          logoUrl = onchainLogoUrl;
+        }
+      } catch {
+        // Ignore errors for onchain fetch
+      }
+    }
     
     return { 
       ...token, 
