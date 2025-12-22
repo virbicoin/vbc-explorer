@@ -253,6 +253,15 @@ function MyTokenCard({ token, onBurnSuccess }: { token: TokenInfo; onBurnSuccess
     try {
       const amountToBurn = parseUnits(burnAmount, token.decimals);
       
+      // Debug logging
+      console.log('Burn attempt:', {
+        tokenAddress: token.address,
+        amount: amountToBurn.toString(),
+        userBalance: userBalance.toString(),
+        burnAmount,
+        decimals: token.decimals,
+      });
+      
       // Check if amount exceeds balance
       if (amountToBurn > userBalance) {
         alert(`Insufficient balance. You have ${formatUnits(userBalance, token.decimals)} ${token.symbol} but trying to burn ${burnAmount}`);
