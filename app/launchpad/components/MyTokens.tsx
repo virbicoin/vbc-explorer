@@ -253,6 +253,12 @@ function MyTokenCard({ token, onBurnSuccess }: { token: TokenInfo; onBurnSuccess
     try {
       const amountToBurn = parseUnits(burnAmount, token.decimals);
       
+      // Check if amount exceeds balance
+      if (amountToBurn > userBalance) {
+        alert(`Insufficient balance. You have ${formatUnits(userBalance, token.decimals)} ${token.symbol} but trying to burn ${burnAmount}`);
+        return;
+      }
+      
       // Use transfer to dead address instead of burn function
       burn({
         address: token.address as Address,
