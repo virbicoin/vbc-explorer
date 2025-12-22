@@ -71,6 +71,23 @@ export function TokenList() {
     },
   });
 
+  // Prepare contracts for batch reading actual totalSupply from token contracts
+  // (Factory stores initial supply, not current supply after burns)
+  const totalSupplyContracts = (allTokens || []).map((tokenAddress: Address) => ({
+    address: tokenAddress,
+    abi: ERC20ABI,
+    functionName: 'totalSupply' as const,
+    args: [] as const,
+  }));
+
+  // Batch read actual totalSupply
+  const { data: totalSupplyResults, isLoading: isTotalSupplyLoading } = useReadContracts({
+    contracts: totalSupplyContracts,
+    query: {
+      enabled: totalSupplyContracts.length > 0,
+    },
+  });
+
   // Prepare contracts for batch reading dead address balances
   const deadBalanceContracts = (allTokens || []).map((tokenAddress: Address) => ({
     address: tokenAddress,
@@ -95,20 +112,29 @@ export function TokenList() {
     
     for (let i = 0; i < allTokens.length; i++) {
       const result = tokenInfoResults[i];
+      const totalSupplyResult = totalSupplyResults?.[i];
       const deadBalanceResult = deadBalanceResults?.[i];
       
       if (result.status === 'success' && result.result) {
+        // Get actual totalSupply from token contract (not factory's stored initial supply)
+        const actualTotalSupply = totalSupplyResult?.status === 'success' 
+          ? totalSupplyResult.result as bigint 
+          : BigInt(0);
+        
+        // Skip tokens with zero total supply (fully burned via burn())
+        if (actualTotalSupply <= BigInt(0)) continue;
+        
         let tokenData: TokenInfo;
         
         if (isV2) {
           // V2: getTokenDetails returns more fields including metadata
-          const [creator, name, symbol, decimals, totalSupply, createdAt, logoUrl, description, website] = result.result as [string, string, string, number, bigint, bigint, string, string, string];
+          const [creator, name, symbol, decimals, , createdAt, logoUrl, description, website] = result.result as [string, string, string, number, bigint, bigint, string, string, string];
           tokenData = {
             address: allTokens[i] as string,
             name,
             symbol,
             decimals,
-            totalSupply,
+            totalSupply: actualTotalSupply, // Use actual totalSupply from token contract
             creator,
             createdAt: Number(createdAt),
             logoUrl,
@@ -117,25 +143,22 @@ export function TokenList() {
           };
         } else {
           // V1: tokenInfo returns basic fields
-          const [creator, name, symbol, decimals, totalSupply, createdAt] = result.result as [string, string, string, number, bigint, bigint];
+          const [creator, name, symbol, decimals, , createdAt] = result.result as [string, string, string, number, bigint, bigint];
           tokenData = {
             address: allTokens[i] as string,
             name,
             symbol,
             decimals,
-            totalSupply,
+            totalSupply: actualTotalSupply, // Use actual totalSupply from token contract
             creator,
             createdAt: Number(createdAt),
           };
         }
         
-        // Skip tokens with zero total supply (fully burned via burn())
-        if (tokenData.totalSupply <= BigInt(0)) continue;
-        
         const deadBalance = deadBalanceResult?.status === 'success' ? deadBalanceResult.result as bigint : BigInt(0);
         
         // Calculate circulating supply (totalSupply - burned to dead address)
-        const circulatingSupply = tokenData.totalSupply - deadBalance;
+        const circulatingSupply = actualTotalSupply - deadBalance;
         
         // Skip tokens fully sent to dead address
         if (circulatingSupply <= BigInt(0)) continue;
@@ -150,7 +173,7 @@ export function TokenList() {
     // Sort by creation time (newest first)
     processedTokens.sort((a, b) => b.createdAt - a.createdAt);
     return processedTokens;
-  }, [allTokens, tokenInfoResults, deadBalanceResults, isV2]);
+  }, [allTokens, tokenInfoResults, totalSupplyResults, deadBalanceResults, isV2]);
 
   // Filter tokens by search query
   const filteredTokens = tokens.filter(token =>
@@ -166,7 +189,7 @@ export function TokenList() {
     currentPage * tokensPerPage
   );
 
-  const isLoading = isConfigLoading || isCountLoading || isTokensLoading || isInfoLoading || isDeadBalanceLoading;
+  const isLoading = isConfigLoading || isCountLoading || isTokensLoading || isInfoLoading || isTotalSupplyLoading || isDeadBalanceLoading;
 
   // Check if factory is deployed
   const isFactoryDeployed = activeFactoryAddress && 
