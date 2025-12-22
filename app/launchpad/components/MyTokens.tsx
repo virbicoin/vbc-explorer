@@ -218,15 +218,25 @@ function MyTokenCard({ token }: { token: TokenInfo }) {
   const handleBurn = () => {
     if (!burnAmount || !token.address) return;
     
-    const amountToBurn = parseUnits(burnAmount, token.decimals);
-    
-    // Use transfer to dead address instead of burn function
-    burn({
-      address: token.address as Address,
-      abi: ERC20ABI,
-      functionName: 'transfer',
-      args: [DEAD_ADDRESS, amountToBurn],
-    });
+    try {
+      const amountToBurn = parseUnits(burnAmount, token.decimals);
+      
+      // Use transfer to dead address instead of burn function
+      burn({
+        address: token.address as Address,
+        abi: ERC20ABI,
+        functionName: 'transfer',
+        args: [DEAD_ADDRESS, amountToBurn],
+      }, {
+        onError: (error: Error) => {
+          console.error('Burn transaction error:', error);
+          alert(`Burn failed: ${error.message}`);
+        }
+      });
+    } catch (error) {
+      console.error('ParseUnits error:', error);
+      alert(`Invalid amount format: ${burnAmount}`);
+    }
   };
 
   const handleBurnAll = () => {
