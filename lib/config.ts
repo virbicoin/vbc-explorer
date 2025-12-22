@@ -133,6 +133,14 @@ export interface LaunchpadConfig {
   creationFee: string;
 }
 
+// Supply configuration
+export interface SupplyConfig {
+  blockReward?: number;
+  premineAmount?: number;
+  excludedAddresses?: string[];
+  cacheDuration?: number;
+}
+
 export interface AppConfig {
   nodeAddr: string;
   port: number;
@@ -156,6 +164,7 @@ export interface AppConfig {
   network?: NetworkConfig;
   dex?: DexConfig;
   launchpad?: LaunchpadConfig;
+  supply?: SupplyConfig;
   social?: SocialConfig;
   [key: string]: unknown;
 }
