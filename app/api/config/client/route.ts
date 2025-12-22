@@ -50,6 +50,8 @@ export async function GET() {
       launchpad: config.launchpad ? {
         enabled: config.launchpad.enabled || false,
         factoryAddress: config.launchpad.factoryAddress || '',
+        factoryAddressV2: config.launchpad.factoryAddressV2 || '',
+        useV2: config.launchpad.useV2 ?? true,
         creationFee: config.launchpad.creationFee || '0'
       } : null,
       // Social links

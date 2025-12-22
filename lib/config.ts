@@ -128,6 +128,8 @@ export interface SocialConfig {
 export interface LaunchpadConfig {
   enabled: boolean;
   factoryAddress: `0x${string}`;
+  factoryAddressV2?: `0x${string}`;
+  useV2?: boolean;
   creationFee: string;
 }
 
