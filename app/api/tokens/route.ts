@@ -359,7 +359,25 @@ export async function GET(request: NextRequest) {
     };
   }));
 
-  // Include all valid tokens from the tokens collection (exclude tokens with 0 holders)
+  // For VRC-721 tokens, check on-chain totalSupply to filter out burned NFTs
+  const nftAddresses = (normalizedTokens as (IToken | Record<string, unknown>)[])
+    .filter(t => 'type' in t && (t.type === 'VRC-721' || t.type === 'VRC-1155'))
+    .map(t => ('address' in t && typeof t.address === 'string') ? t.address.toLowerCase() : '')
+    .filter(addr => addr !== '');
+  
+  const nftOnchainSupplies = new Map<string, bigint>();
+  for (const addr of nftAddresses) {
+    try {
+      const contract = new web3.eth.Contract(ERC20_ABI, addr);
+      const totalSupply = await contract.methods.totalSupply().call();
+      nftOnchainSupplies.set(addr, BigInt(totalSupply?.toString() || '0'));
+    } catch {
+      // Keep it visible if we can't check
+      nftOnchainSupplies.set(addr, BigInt(1));
+    }
+  }
+
+  // Include all valid tokens from the tokens collection (exclude tokens with 0 holders or 0 supply)
   const filteredTokens = (normalizedTokens as (IToken | Record<string, unknown>)[]).filter((t): t is IToken => {
     if (!('address' in t) || typeof t.address !== 'string') return false;
     const addr = t.address.toLowerCase();
@@ -367,7 +385,22 @@ export async function GET(request: NextRequest) {
     if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) return false;
     // Exclude tokens with 0 holders
     const holders = (t as IToken).holders ?? 0;
-    return holders > 0;
+    if (holders <= 0) return false;
+    // For VRC-721/VRC-1155, check on-chain totalSupply
+    const tokenType = (t as IToken).type;
+    if (tokenType === 'VRC-721' || tokenType === 'VRC-1155') {
+      const onchainSupply = nftOnchainSupplies.get(addr) ?? BigInt(1);
+      if (onchainSupply === BigInt(0)) {
+        return false;
+      }
+    } else {
+      // For other tokens, check supply from DB/onchain data
+      const supply = (t as IToken).supply;
+      if (!supply || supply === '0' || supply.replace(/[,\s]/g, '') === '0') {
+        return false;
+      }
+    }
+    return true;
   });
 
   // Combine the native token with the database tokens
