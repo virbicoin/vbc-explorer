@@ -5,6 +5,8 @@ import { useState, useEffect } from 'react';
 export interface LaunchpadConfig {
   enabled: boolean;
   factoryAddress: string;
+  factoryAddressV2: string;
+  useV2: boolean;
   creationFee: string;
   chainId: number;
   rpcUrl: string;
@@ -16,6 +18,8 @@ interface ConfigResponse {
   launchpad?: {
     enabled?: boolean;
     factoryAddress?: string;
+    factoryAddressV2?: string;
+    useV2?: boolean;
     creationFee?: string;
   };
   network?: {
@@ -33,7 +37,9 @@ interface ConfigResponse {
 const defaultConfig: LaunchpadConfig = {
   enabled: false,
   factoryAddress: '0x0000000000000000000000000000000000000000',
-  creationFee: '0',
+  factoryAddressV2: '0x0000000000000000000000000000000000000000',
+  useV2: true,
+  creationFee: '10000000000000000000',
   chainId: 329,
   rpcUrl: 'https://rpc.digitalregion.jp',
   networkName: 'VirBiCoin',
@@ -55,6 +61,8 @@ async function fetchConfig(): Promise<LaunchpadConfig> {
     return {
       enabled: data.launchpad?.enabled ?? defaultConfig.enabled,
       factoryAddress: data.launchpad?.factoryAddress ?? defaultConfig.factoryAddress,
+      factoryAddressV2: data.launchpad?.factoryAddressV2 ?? defaultConfig.factoryAddressV2,
+      useV2: data.launchpad?.useV2 ?? defaultConfig.useV2,
       creationFee: data.launchpad?.creationFee ?? defaultConfig.creationFee,
       chainId: data.network?.chainId ?? defaultConfig.chainId,
       rpcUrl: data.network?.rpcUrl ?? defaultConfig.rpcUrl,
@@ -65,6 +73,11 @@ async function fetchConfig(): Promise<LaunchpadConfig> {
     console.error('[useLaunchpadConfig] Failed to fetch config:', error);
     return defaultConfig;
   }
+}
+
+// Helper function to get the active factory address
+export function getActiveFactoryAddress(config: LaunchpadConfig): string {
+  return config.useV2 ? config.factoryAddressV2 : config.factoryAddress;
 }
 
 export function useLaunchpadConfig() {
@@ -95,7 +108,10 @@ export function useLaunchpadConfig() {
       });
   }, []);
 
-  return { config, isLoading, error };
+  // Get active factory address based on config
+  const activeFactoryAddress = config ? getActiveFactoryAddress(config) : null;
+
+  return { config, isLoading, error, activeFactoryAddress };
 }
 
 // Function to clear the cache (useful for testing or config updates)

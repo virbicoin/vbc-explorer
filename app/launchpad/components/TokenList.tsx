@@ -3,8 +3,10 @@
 import { useState, useMemo } from 'react';
 import { formatUnits, type Address } from 'viem';
 import { useReadContract, useReadContracts } from 'wagmi';
+import { TokenFactoryV2ABI } from '@/abi/TokenFactoryV2ABI';
 import { TokenFactoryABI, ERC20ABI } from '@/abi/TokenFactoryABI';
 import { useLaunchpadConfig } from '@/hooks/useLaunchpadConfig';
+import Link from 'next/link';
 
 // Dead address - tokens sent here are considered burned
 const DEAD_ADDRESS = '0x000000000000000000000000000000000000dead' as const;
@@ -18,39 +20,46 @@ interface TokenInfo {
   creator: string;
   createdAt: number;
   circulatingSupply?: bigint;
+  // V2 metadata
+  logoUrl?: string;
+  description?: string;
+  website?: string;
 }
 
 export function TokenList() {
-  const { config, isLoading: isConfigLoading } = useLaunchpadConfig();
+  const { config, isLoading: isConfigLoading, activeFactoryAddress } = useLaunchpadConfig();
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const tokensPerPage = 10;
 
+  const isV2 = config?.useV2 ?? true;
+  const factoryABI = isV2 ? TokenFactoryV2ABI : TokenFactoryABI;
+
   // Get token count from factory
   const { data: tokenCount, isLoading: isCountLoading } = useReadContract({
-    address: config?.factoryAddress as Address,
-    abi: TokenFactoryABI,
+    address: activeFactoryAddress as Address,
+    abi: factoryABI,
     functionName: 'getTokenCount',
     query: {
-      enabled: !!config?.factoryAddress,
+      enabled: !!activeFactoryAddress,
     },
   });
 
   // Get all token addresses
   const { data: allTokens, isLoading: isTokensLoading } = useReadContract({
-    address: config?.factoryAddress as Address,
-    abi: TokenFactoryABI,
+    address: activeFactoryAddress as Address,
+    abi: factoryABI,
     functionName: 'getAllTokens',
     query: {
-      enabled: !!config?.factoryAddress,
+      enabled: !!activeFactoryAddress,
     },
   });
 
-  // Prepare contracts for batch reading token info
+  // Prepare contracts for batch reading token info (V2 uses getTokenDetails for metadata)
   const tokenInfoContracts = (allTokens || []).map((tokenAddress: Address) => ({
-    address: config?.factoryAddress as Address,
-    abi: TokenFactoryABI,
-    functionName: 'tokenInfo' as const,
+    address: activeFactoryAddress as Address,
+    abi: factoryABI,
+    functionName: isV2 ? 'getTokenDetails' : 'tokenInfo',
     args: [tokenAddress] as const,
   }));
 
@@ -89,23 +98,47 @@ export function TokenList() {
       const deadBalanceResult = deadBalanceResults?.[i];
       
       if (result.status === 'success' && result.result) {
-        const [creator, name, symbol, decimals, totalSupply, createdAt] = result.result as [string, string, string, number, bigint, bigint];
+        let tokenData: TokenInfo;
+        
+        if (isV2) {
+          // V2: getTokenDetails returns more fields including metadata
+          const [creator, name, symbol, decimals, totalSupply, createdAt, logoUrl, description, website] = result.result as [string, string, string, number, bigint, bigint, string, string, string];
+          tokenData = {
+            address: allTokens[i] as string,
+            name,
+            symbol,
+            decimals,
+            totalSupply,
+            creator,
+            createdAt: Number(createdAt),
+            logoUrl,
+            description,
+            website,
+          };
+        } else {
+          // V1: tokenInfo returns basic fields
+          const [creator, name, symbol, decimals, totalSupply, createdAt] = result.result as [string, string, string, number, bigint, bigint];
+          tokenData = {
+            address: allTokens[i] as string,
+            name,
+            symbol,
+            decimals,
+            totalSupply,
+            creator,
+            createdAt: Number(createdAt),
+          };
+        }
+        
         const deadBalance = deadBalanceResult?.status === 'success' ? deadBalanceResult.result as bigint : BigInt(0);
         
         // Calculate circulating supply (totalSupply - burned)
-        const circulatingSupply = totalSupply - deadBalance;
+        const circulatingSupply = tokenData.totalSupply - deadBalance;
         
         // Skip fully burned tokens (circulating supply === 0)
         if (circulatingSupply <= BigInt(0)) continue;
         
         processedTokens.push({
-          address: allTokens[i] as string,
-          name,
-          symbol,
-          decimals,
-          totalSupply,
-          creator,
-          createdAt: Number(createdAt),
+          ...tokenData,
           circulatingSupply,
         });
       }
@@ -114,7 +147,7 @@ export function TokenList() {
     // Sort by creation time (newest first)
     processedTokens.sort((a, b) => b.createdAt - a.createdAt);
     return processedTokens;
-  }, [allTokens, tokenInfoResults, deadBalanceResults]);
+  }, [allTokens, tokenInfoResults, deadBalanceResults, isV2]);
 
   // Filter tokens by search query
   const filteredTokens = tokens.filter(token =>
@@ -133,8 +166,8 @@ export function TokenList() {
   const isLoading = isConfigLoading || isCountLoading || isTokensLoading || isInfoLoading || isDeadBalanceLoading;
 
   // Check if factory is deployed
-  const isFactoryDeployed = config?.factoryAddress && 
-    config.factoryAddress !== '0x0000000000000000000000000000000000000000';
+  const isFactoryDeployed = activeFactoryAddress && 
+    activeFactoryAddress !== '0x0000000000000000000000000000000000000000';
 
   if (isLoading) {
     return (
@@ -180,6 +213,11 @@ export function TokenList() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
             All Tokens
+            {isV2 && (
+              <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-xs font-semibold rounded-lg">
+                V2
+              </span>
+            )}
           </h2>
           <div className="text-gray-400 text-sm">
             {tokenCount ? Number(tokenCount).toString() : '0'} tokens created
@@ -221,7 +259,7 @@ export function TokenList() {
         ) : (
           <div className="space-y-3">
             {paginatedTokens.map((token) => (
-              <TokenCard key={token.address} token={token} />
+              <TokenCard key={token.address} token={token} isV2={isV2} />
             ))}
           </div>
         )}
@@ -257,31 +295,53 @@ export function TokenList() {
   );
 }
 
-function TokenCard({ token }: { token: TokenInfo }) {
+function TokenCard({ token, isV2 }: { token: TokenInfo; isV2: boolean }) {
   const formattedSupply = formatUnits(token.totalSupply, token.decimals);
   const createdDate = new Date(token.createdAt * 1000).toLocaleDateString();
 
   return (
-    <div className="bg-gray-800/50 hover:bg-gray-700/50 rounded-xl p-4 transition-colors">
+    <Link 
+      href={`/launchpad/token/${token.address}`}
+      className="block bg-gray-800/50 hover:bg-gray-700/50 rounded-xl p-4 transition-colors group"
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
+          {/* Token Logo */}
+          {token.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img 
+              src={token.logoUrl} 
+              alt={token.name}
+              className="w-12 h-12 rounded-full object-cover"
+              onError={(e) => {
+                // Fallback to gradient if image fails
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+                target.nextElementSibling?.classList.remove('hidden');
+              }}
+            />
+          ) : null}
+          <div className={`w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-lg ${token.logoUrl ? 'hidden' : ''}`}>
             {token.symbol.charAt(0)}
           </div>
+          
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-white font-semibold">{token.name}</span>
+              <span className="text-white font-semibold group-hover:text-purple-300 transition-colors">{token.name}</span>
               <span className="text-gray-400 text-sm">({token.symbol})</span>
             </div>
+            {token.description && (
+              <p className="text-gray-500 text-xs mt-0.5 line-clamp-1 max-w-md">{token.description}</p>
+            )}
             <div className="flex items-center gap-2 mt-1">
-              <a
-                href={`/token/${token.address}`}
-                className="text-purple-400 hover:text-purple-300 text-xs font-mono"
-              >
+              <span className="text-purple-400 text-xs font-mono">
                 {token.address.slice(0, 10)}...{token.address.slice(-8)}
-              </a>
+              </span>
               <button
-                onClick={() => navigator.clipboard.writeText(token.address)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigator.clipboard.writeText(token.address);
+                }}
                 className="p-1 hover:bg-gray-600 rounded transition-colors"
                 title="Copy address"
               >
@@ -300,6 +360,6 @@ function TokenCard({ token }: { token: TokenInfo }) {
           <div className="text-xs text-gray-500">{createdDate}</div>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }

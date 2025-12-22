@@ -34,6 +34,7 @@ A modern, real-time blockchain explorer for the VirBiCoin network built with Nex
 - **🔄 DEX (Swap)** - Decentralized token exchange with Uniswap V2 style AMM
 - **💧 Liquidity Pools** - Provide liquidity and earn trading fees
 - **🌾 Yield Farming** - Stake LP tokens to earn VBCG rewards
+- **🎨 Token Launchpad V2** - No-code token creation with metadata, transfer, approve, burn, and pause features
 
 ## 💱 DEX Features
 
@@ -68,6 +69,42 @@ The explorer includes a built-in decentralized exchange (DEX) with the following
 | WVBC | `0x52CB9F0d65D9d4De08CF103153C7A1A97567Bb9b` |
 
 > For complete contract documentation, see [docs/DEX_CONTRACTS.md](docs/DEX_CONTRACTS.md)
+
+## 🎨 Token Launchpad (V2)
+
+The explorer includes a Token Launchpad feature for creating and managing custom tokens:
+
+### Create Tokens
+- **No-Code Token Creation** - Create VRC-20 tokens without writing code
+- **Custom Metadata** - Set logo URL, description, and website
+- **Configurable Supply** - Define total supply and decimals
+- **Creation Fee** - 10 VBC per token creation
+
+### Manage Your Tokens
+- **📤 Transfer** - Send tokens to other addresses
+- **✅ Approve** - Set allowances for DEX and smart contracts (with unlimited option)
+- **🔥 Burn** - Permanently burn tokens to reduce supply
+- **⏸️ Pause/Unpause** - Pause token transfers (owner only)
+- **📝 Edit Metadata** - Update logo, description, and website
+- **🦊 MetaMask Integration** - One-click add tokens to MetaMask wallet
+
+### Token Details Page
+- **Overview** - Total supply, decimals, creator, and owner info
+- **👥 Holders** - View all token holders with balance and percentage
+- **📜 Transfers** - Complete transaction history with pagination
+
+### Contract Addresses
+
+| Contract | Address |
+|----------|---------|
+| TokenFactory V2 | `0xE2008c44Bc077eFc1c6B5A3274ACC805c7F03b73` |
+
+### V2 Token Features
+- Native `burn()` function for token burning
+- `pause()` / `unpause()` functions for owner control
+- On-chain metadata (logo URL, description, website)
+- Ownable with ownership transfer support
+- Full ERC-20 compatibility
 
 ## 🚀 Multi-Chain Compatibility
 

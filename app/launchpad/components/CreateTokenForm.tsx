@@ -4,23 +4,36 @@ import { useState, useEffect } from 'react';
 import { useAccount, useChainId, useSwitchChain, useBalance, useWaitForTransactionReceipt } from 'wagmi';
 import { parseUnits, formatUnits, parseEventLogs, type Address } from 'viem';
 import { useWriteContract, useReadContract } from 'wagmi';
+import { TokenFactoryV2ABI } from '@/abi/TokenFactoryV2ABI';
 import { TokenFactoryABI } from '@/abi/TokenFactoryABI';
-import { useLaunchpadConfig } from '@/hooks/useLaunchpadConfig';
+import { useLaunchpadConfig, getActiveFactoryAddress } from '@/hooks/useLaunchpadConfig';
 import { ConnectWalletButton } from './ConnectWalletButton';
 
 export function CreateTokenForm() {
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
-  const { config, isLoading: isConfigLoading } = useLaunchpadConfig();
+  const { config, isLoading: isConfigLoading, activeFactoryAddress } = useLaunchpadConfig();
   
-  // Form state
+  // Form state - Basic
   const [tokenName, setTokenName] = useState('');
   const [tokenSymbol, setTokenSymbol] = useState('');
   const [decimals, setDecimals] = useState('18');
   const [totalSupply, setTotalSupply] = useState('');
+  
+  // Form state - Metadata (V2 only)
+  const [logoUrl, setLogoUrl] = useState('');
+  const [description, setDescription] = useState('');
+  const [website, setWebsite] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  
+  // UI state
   const [showSuccess, setShowSuccess] = useState(false);
   const [deployedAddress, setDeployedAddress] = useState<string | null>(null);
+
+  // Determine which ABI to use based on V2 flag
+  const isV2 = config?.useV2 ?? true;
+  const factoryABI = isV2 ? TokenFactoryV2ABI : TokenFactoryABI;
   
   // Get user balance
   const { data: balance } = useBalance({
@@ -32,11 +45,11 @@ export function CreateTokenForm() {
 
   // Get creation fee from contract
   const { data: creationFee } = useReadContract({
-    address: config?.factoryAddress as Address,
-    abi: TokenFactoryABI,
+    address: activeFactoryAddress as Address,
+    abi: factoryABI,
     functionName: 'creationFee',
     query: {
-      enabled: !!config?.factoryAddress,
+      enabled: !!activeFactoryAddress,
     },
   });
 
@@ -67,6 +80,7 @@ export function CreateTokenForm() {
         body: JSON.stringify({
           tokenAddress,
           creator: creatorAddress,
+          metadata: isV2 ? { logoUrl, description, website } : undefined,
         }),
       });
       const data = await response.json();
@@ -91,23 +105,45 @@ export function CreateTokenForm() {
       
       // Use viem's parseEventLogs to decode the TokenCreated event
       try {
-        const parsedLogs = parseEventLogs({
-          abi: TokenFactoryABI,
-          logs: receipt.logs,
-          eventName: 'TokenCreated',
-        });
+        // Try TokenCreatedWithMetadata first (V2)
+        if (isV2) {
+          try {
+            const parsedLogsV2 = parseEventLogs({
+              abi: TokenFactoryV2ABI,
+              logs: receipt.logs,
+              eventName: 'TokenCreatedWithMetadata',
+            });
+            if (parsedLogsV2.length > 0) {
+              foundTokenAddress = parsedLogsV2[0].args.token;
+              console.log('Extracted token address from TokenCreatedWithMetadata:', foundTokenAddress);
+            }
+          } catch {
+            // Try regular TokenCreated
+          }
+        }
         
-        console.log('Parsed TokenCreated events:', parsedLogs);
+        // Fall back to TokenCreated
+        if (!foundTokenAddress) {
+          const parsedLogs = parseEventLogs({
+            abi: factoryABI,
+            logs: receipt.logs,
+            eventName: 'TokenCreated',
+          });
+          
+          console.log('Parsed TokenCreated events:', parsedLogs);
+          
+          if (parsedLogs.length > 0) {
+            foundTokenAddress = parsedLogs[0].args.token;
+            console.log('Extracted token address:', foundTokenAddress);
+          }
+        }
         
-        if (parsedLogs.length > 0) {
-          foundTokenAddress = parsedLogs[0].args.token;
-          console.log('Extracted token address:', foundTokenAddress);
-        } else {
-          // Fallback: Find any log from a new contract (not factory)
+        // Fallback: Find any log from a new contract (not factory)
+        if (!foundTokenAddress) {
           console.log('No TokenCreated event found, trying fallback...');
           for (const log of receipt.logs) {
             if (log.address && 
-                log.address.toLowerCase() !== config?.factoryAddress?.toLowerCase() &&
+                log.address.toLowerCase() !== activeFactoryAddress?.toLowerCase() &&
                 log.address !== '0x0000000000000000000000000000000000000000') {
               console.log('Using log address as fallback:', log.address);
               foundTokenAddress = log.address;
@@ -120,7 +156,7 @@ export function CreateTokenForm() {
         // Fallback to manual extraction
         for (const log of receipt.logs) {
           if (log.address && 
-              log.address.toLowerCase() !== config?.factoryAddress?.toLowerCase() &&
+              log.address.toLowerCase() !== activeFactoryAddress?.toLowerCase() &&
               log.address !== '0x0000000000000000000000000000000000000000') {
             console.log('Using log address as fallback:', log.address);
             foundTokenAddress = log.address;
@@ -140,35 +176,73 @@ export function CreateTokenForm() {
       
       setShowSuccess(true);
     }
-  }, [isConfirmed, receipt, config?.factoryAddress, address]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConfirmed, receipt, activeFactoryAddress, address, isV2]);
 
   // Validation
   const isValidForm = tokenName.trim().length > 0 && 
+                      tokenName.trim().length <= 50 &&
                       tokenSymbol.trim().length > 0 && 
                       tokenSymbol.trim().length <= 11 &&
                       parseInt(decimals) >= 0 && 
                       parseInt(decimals) <= 18 &&
                       parseFloat(totalSupply) > 0;
 
+  // URL validation
+  const isValidUrl = (url: string) => {
+    if (!url) return true; // Empty is valid (optional field)
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const isMetadataValid = isValidUrl(logoUrl) && isValidUrl(website) && description.length <= 500;
+
   const hasEnoughBalance = balance && creationFee && balance.value >= creationFee;
 
   // Check if on correct chain
   const isCorrectChain = config?.chainId ? chainId === config.chainId : true;
 
+  // Determine if using metadata
+  const hasMetadata = isV2 && (logoUrl.trim() || description.trim() || website.trim());
+
   // Handle create token
   const handleCreateToken = async () => {
-    if (!isConnected || !config?.factoryAddress || !isValidForm) return;
+    if (!isConnected || !activeFactoryAddress || !isValidForm || !isMetadataValid) return;
 
     try {
       const supplyWithDecimals = parseUnits(totalSupply, parseInt(decimals));
       
-      writeContract({
-        address: config.factoryAddress as Address,
-        abi: TokenFactoryABI,
-        functionName: 'createToken',
-        args: [tokenName, tokenSymbol.toUpperCase(), parseInt(decimals), supplyWithDecimals],
-        value: creationFee || 0n,
-      });
+      if (isV2 && hasMetadata) {
+        // Use createTokenWithMetadata for V2 with metadata
+        writeContract({
+          address: activeFactoryAddress as Address,
+          abi: TokenFactoryV2ABI,
+          functionName: 'createTokenWithMetadata',
+          args: [
+            tokenName, 
+            tokenSymbol.toUpperCase(), 
+            parseInt(decimals), 
+            supplyWithDecimals,
+            logoUrl.trim(),
+            description.trim(),
+            website.trim(),
+          ],
+          value: creationFee || 0n,
+        });
+      } else {
+        // Use standard createToken
+        writeContract({
+          address: activeFactoryAddress as Address,
+          abi: factoryABI,
+          functionName: 'createToken',
+          args: [tokenName, tokenSymbol.toUpperCase(), parseInt(decimals), supplyWithDecimals],
+          value: creationFee || 0n,
+        });
+      }
     } catch (error) {
       console.error('Failed to create token:', error);
     }
@@ -180,17 +254,44 @@ export function CreateTokenForm() {
     setTokenSymbol('');
     setDecimals('18');
     setTotalSupply('');
+    setLogoUrl('');
+    setDescription('');
+    setWebsite('');
+    setShowAdvanced(false);
     setShowSuccess(false);
     setDeployedAddress(null);
     resetWrite();
+  };
+
+  // Add token to MetaMask
+  const addToMetaMask = async () => {
+    if (!deployedAddress || typeof window === 'undefined' || !window.ethereum) return;
+    
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (window.ethereum as any).request({
+        method: 'wallet_watchAsset',
+        params: {
+          type: 'ERC20',
+          options: {
+            address: deployedAddress,
+            symbol: tokenSymbol.toUpperCase(),
+            decimals: parseInt(decimals),
+            image: logoUrl || undefined,
+          },
+        },
+      });
+    } catch (error) {
+      console.error('Failed to add token to MetaMask:', error);
+    }
   };
 
   // Format fee for display
   const formattedFee = creationFee ? formatUnits(creationFee, 18) : '0';
 
   // Check if factory is deployed
-  const isFactoryDeployed = config?.factoryAddress && 
-    config.factoryAddress !== '0x0000000000000000000000000000000000000000';
+  const isFactoryDeployed = activeFactoryAddress && 
+    activeFactoryAddress !== '0x0000000000000000000000000000000000000000';
 
   if (isConfigLoading) {
     return (
@@ -221,9 +322,6 @@ export function CreateTokenForm() {
           <p className="text-gray-400 mb-4">
             Token Factory contract is not yet deployed on this network.
           </p>
-          <p className="text-gray-500 text-sm">
-            Please check back later or contact the administrator.
-          </p>
         </div>
       </div>
     );
@@ -243,9 +341,29 @@ export function CreateTokenForm() {
             <h2 className="text-2xl font-bold text-white mb-2">Token Created Successfully!</h2>
             <p className="text-gray-400 mb-6">Your token has been deployed to the blockchain</p>
             
-            <div className="bg-gray-800/50 rounded-xl p-4 mb-6">
-              <div className="text-sm text-gray-400 mb-1">Token Name</div>
-              <div className="text-lg font-semibold text-white">{tokenName} ({tokenSymbol})</div>
+            {/* Token Info Card */}
+            <div className="bg-gray-800/50 rounded-xl p-4 mb-4">
+              <div className="flex items-center gap-4">
+                {logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img 
+                    src={logoUrl} 
+                    alt={tokenName}
+                    className="w-12 h-12 rounded-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                    {tokenSymbol.charAt(0)}
+                  </div>
+                )}
+                <div className="text-left">
+                  <div className="text-lg font-semibold text-white">{tokenName}</div>
+                  <div className="text-gray-400 text-sm">{tokenSymbol}</div>
+                </div>
+              </div>
             </div>
 
             <div className="bg-gray-800/50 rounded-xl p-4 mb-6">
@@ -264,6 +382,18 @@ export function CreateTokenForm() {
               </div>
             </div>
 
+            {/* Add to MetaMask button */}
+            <button
+              onClick={addToMetaMask}
+              className="w-full py-3 px-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition-colors mb-4 flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 35 33" fill="none">
+                <path d="M32.9582 1L19.8241 10.7183L22.2665 4.99099L32.9582 1Z" fill="#E17726" stroke="#E17726" strokeWidth="0.25"/>
+                <path d="M2.04858 1L15.0707 10.809L12.7396 4.99098L2.04858 1Z" fill="#E27625" stroke="#E27625" strokeWidth="0.25"/>
+              </svg>
+              Add to MetaMask
+            </button>
+
             <div className="flex gap-4">
               <button
                 onClick={handleReset}
@@ -272,7 +402,7 @@ export function CreateTokenForm() {
                 Create Another Token
               </button>
               <a
-                href={`/token/${deployedAddress}`}
+                href={`/launchpad/token/${deployedAddress}`}
                 className="flex-1 py-3 px-4 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold rounded-xl hover:opacity-90 transition-opacity text-center"
               >
                 View Token
@@ -287,12 +417,19 @@ export function CreateTokenForm() {
   return (
     <div className="max-w-2xl mx-auto">
       <div className="bg-gradient-to-b from-gray-800/90 to-gray-900/90 backdrop-blur-xl rounded-3xl p-6 shadow-xl border border-gray-700/50">
-        <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-          <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Create New Token
-        </h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-white flex items-center gap-2">
+            <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Create New Token
+          </h2>
+          {isV2 && (
+            <span className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs font-semibold rounded-lg">
+              V2
+            </span>
+          )}
+        </div>
 
         <div className="space-y-4">
           {/* Token Name */}
@@ -308,6 +445,7 @@ export function CreateTokenForm() {
               className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
               maxLength={50}
             />
+            <p className="text-xs text-gray-500 mt-1">{tokenName.length}/50 characters</p>
           </div>
 
           {/* Token Symbol */}
@@ -323,41 +461,128 @@ export function CreateTokenForm() {
               className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent uppercase"
               maxLength={11}
             />
-            <p className="text-xs text-gray-500 mt-1">Max 11 characters</p>
+            <p className="text-xs text-gray-500 mt-1">{tokenSymbol.length}/11 characters</p>
           </div>
 
-          {/* Decimals */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Decimals *
-            </label>
-            <input
-              type="number"
-              value={decimals}
-              onChange={(e) => setDecimals(e.target.value)}
-              placeholder="18"
-              min="0"
-              max="18"
-              className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            />
-            <p className="text-xs text-gray-500 mt-1">Standard is 18, USDT uses 6</p>
+          {/* Decimals & Total Supply - Side by Side */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Decimals *
+              </label>
+              <input
+                type="number"
+                value={decimals}
+                onChange={(e) => setDecimals(e.target.value)}
+                placeholder="18"
+                min="0"
+                max="18"
+                className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              />
+              <p className="text-xs text-gray-500 mt-1">0-18</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Total Supply *
+              </label>
+              <input
+                type="number"
+                value={totalSupply}
+                onChange={(e) => setTotalSupply(e.target.value)}
+                placeholder="e.g., 1000000"
+                min="1"
+                className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              />
+              <p className="text-xs text-gray-500 mt-1">All tokens go to your wallet</p>
+            </div>
           </div>
 
-          {/* Total Supply */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Total Supply *
-            </label>
-            <input
-              type="number"
-              value={totalSupply}
-              onChange={(e) => setTotalSupply(e.target.value)}
-              placeholder="e.g., 1000000"
-              min="1"
-              className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-            />
-            <p className="text-xs text-gray-500 mt-1">All tokens will be sent to your wallet</p>
-          </div>
+          {/* Advanced Options Toggle (V2 only) */}
+          {isV2 && (
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="w-full py-3 px-4 bg-gray-700/30 hover:bg-gray-700/50 border border-gray-600 rounded-xl text-gray-300 flex items-center justify-between transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+                Token Metadata (Optional)
+              </span>
+              <svg 
+                className={`w-5 h-5 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          )}
+
+          {/* Advanced Options Panel */}
+          {isV2 && showAdvanced && (
+            <div className="space-y-4 p-4 bg-gray-800/30 rounded-xl border border-gray-700">
+              <p className="text-xs text-gray-400 mb-2">
+                📝 Add metadata to make your token more discoverable. You can edit these later.
+              </p>
+              
+              {/* Logo URL */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Logo URL
+                </label>
+                <input
+                  type="url"
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
+                  placeholder="https://example.com/logo.png"
+                  className={`w-full px-4 py-3 bg-gray-700/50 border rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                    logoUrl && !isValidUrl(logoUrl) ? 'border-red-500' : 'border-gray-600'
+                  }`}
+                />
+                {logoUrl && !isValidUrl(logoUrl) && (
+                  <p className="text-xs text-red-400 mt-1">Please enter a valid URL</p>
+                )}
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Description
+                </label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe your token..."
+                  rows={3}
+                  maxLength={500}
+                  className="w-full px-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                />
+                <p className="text-xs text-gray-500 mt-1">{description.length}/500 characters</p>
+              </div>
+
+              {/* Website */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Website
+                </label>
+                <input
+                  type="url"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                  placeholder="https://yourproject.com"
+                  className={`w-full px-4 py-3 bg-gray-700/50 border rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent ${
+                    website && !isValidUrl(website) ? 'border-red-500' : 'border-gray-600'
+                  }`}
+                />
+                {website && !isValidUrl(website) && (
+                  <p className="text-xs text-red-400 mt-1">Please enter a valid URL</p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Creation Fee Info */}
           {creationFee !== undefined && creationFee > 0n && (
@@ -366,6 +591,20 @@ export function CreateTokenForm() {
                 <span className="text-gray-400">Creation Fee</span>
                 <span className="text-white font-semibold">{formattedFee} VBC</span>
               </div>
+            </div>
+          )}
+
+          {/* V2 Features Notice */}
+          {isV2 && (
+            <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4">
+              <p className="text-purple-300 text-sm flex items-center gap-2">
+                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <span>
+                  V2 tokens include: <strong>Burn</strong>, <strong>Pause</strong>, and <strong>Ownership</strong> features
+                </span>
+              </p>
             </div>
           )}
 
@@ -397,14 +636,14 @@ export function CreateTokenForm() {
               disabled
               className="w-full py-4 bg-gray-600 text-gray-400 font-bold rounded-xl cursor-not-allowed"
             >
-              Insufficient Balance
+              Insufficient Balance (Need {formattedFee} VBC)
             </button>
           ) : (
             <button
               onClick={handleCreateToken}
-              disabled={!isValidForm || isPending || isConfirming}
+              disabled={!isValidForm || !isMetadataValid || isPending || isConfirming}
               className={`w-full py-4 font-bold rounded-xl transition-all ${
-                isValidForm && !isPending && !isConfirming
+                isValidForm && isMetadataValid && !isPending && !isConfirming
                   ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:opacity-90 shadow-lg'
                   : 'bg-gray-600 text-gray-400 cursor-not-allowed'
               }`}
@@ -426,7 +665,7 @@ export function CreateTokenForm() {
                   Deploying Token...
                 </span>
               ) : (
-                'Create Token'
+                `Create Token${hasMetadata ? ' with Metadata' : ''}`
               )}
             </button>
           )}
@@ -438,14 +677,29 @@ export function CreateTokenForm() {
             <h3 className="text-sm font-medium text-gray-400 mb-3">Token Preview</h3>
             <div className="bg-gray-800/50 rounded-xl p-4">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
-                  {tokenSymbol.charAt(0)}
-                </div>
+                {logoUrl && isValidUrl(logoUrl) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img 
+                    src={logoUrl} 
+                    alt={tokenName}
+                    className="w-12 h-12 rounded-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-lg">
+                    {tokenSymbol.charAt(0)}
+                  </div>
+                )}
                 <div>
                   <div className="text-white font-semibold">{tokenName}</div>
                   <div className="text-gray-400 text-sm">{tokenSymbol}</div>
                 </div>
               </div>
+              {description && (
+                <p className="text-gray-400 text-sm mt-3 line-clamp-2">{description}</p>
+              )}
               <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-gray-700">
                 <div>
                   <div className="text-xs text-gray-500">Total Supply</div>
@@ -456,6 +710,21 @@ export function CreateTokenForm() {
                   <div className="text-sm text-white">{decimals}</div>
                 </div>
               </div>
+              {website && isValidUrl(website) && (
+                <div className="mt-3 pt-3 border-t border-gray-700">
+                  <a 
+                    href={website} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-sm text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    {website}
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         )}
