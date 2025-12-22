@@ -28,16 +28,34 @@ interface SupplyConfig {
   cacheDuration: number;
 }
 
+// Type assertion for config with optional supply property
+interface ConfigWithSupply {
+  supply?: {
+    blockReward?: number;
+    premineAmount?: number;
+    excludedAddresses?: ExcludedAddress[];
+    cacheDuration?: number;
+  };
+  network?: {
+    rpcUrl?: string;
+  };
+  web3Provider?: {
+    url?: string;
+  };
+}
+
+const config = configJson as ConfigWithSupply;
+
 // Load configuration from config.json with defaults
 const supplyConfig: SupplyConfig = {
-  blockReward: configJson.supply?.blockReward ?? 8,
-  premineAmount: configJson.supply?.premineAmount ?? 330000000,
-  excludedAddresses: configJson.supply?.excludedAddresses ?? [],
-  cacheDuration: configJson.supply?.cacheDuration ?? 60,
+  blockReward: config.supply?.blockReward ?? 8,
+  premineAmount: config.supply?.premineAmount ?? 330000000,
+  excludedAddresses: config.supply?.excludedAddresses ?? [],
+  cacheDuration: config.supply?.cacheDuration ?? 60,
 };
 
 // RPC URL from config
-const RPC_URL = configJson.network?.rpcUrl || configJson.web3Provider?.url || 'http://localhost:8329';
+const RPC_URL = config.network?.rpcUrl || config.web3Provider?.url || 'http://localhost:8329';
 
 // ============================================
 // Viem Client Setup
