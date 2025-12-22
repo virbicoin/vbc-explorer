@@ -1,10 +1,10 @@
 'use client';
 
-import { useMemo } from 'react';
-import { useAccount } from 'wagmi';
-import { formatUnits, type Address } from 'viem';
-import { useReadContract, useReadContracts } from 'wagmi';
-import { TokenFactoryABI } from '@/abi/TokenFactoryABI';
+import { useMemo, useState } from 'react';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
+import { formatUnits, parseUnits, type Address } from 'viem';
+import { useReadContracts } from 'wagmi';
+import { TokenFactoryABI, ERC20ABI } from '@/abi/TokenFactoryABI';
 import { useLaunchpadConfig } from '@/hooks/useLaunchpadConfig';
 import { ConnectWalletButton } from './ConnectWalletButton';
 
@@ -59,6 +59,8 @@ export function MyTokens() {
       const result = tokenInfoResults[i];
       if (result.status === 'success' && result.result) {
         const [creator, name, symbol, decimals, totalSupply, createdAt] = result.result as [string, string, string, number, bigint, bigint];
+        // Skip burned tokens (totalSupply === 0)
+        if (totalSupply === BigInt(0)) continue;
         processedTokens.push({
           address: userTokenAddresses[i] as string,
           name,
@@ -184,76 +186,235 @@ export function MyTokens() {
 }
 
 function MyTokenCard({ token }: { token: TokenInfo }) {
+  const { address } = useAccount();
+  const [showBurnModal, setShowBurnModal] = useState(false);
+  const [burnAmount, setBurnAmount] = useState('');
+  
   const formattedSupply = formatUnits(token.totalSupply, token.decimals);
   const createdDate = new Date(token.createdAt * 1000).toLocaleDateString();
   const createdTime = new Date(token.createdAt * 1000).toLocaleTimeString();
 
+  // Get user's balance
+  const { data: userBalance, refetch: refetchBalance } = useReadContract({
+    address: token.address as Address,
+    abi: ERC20ABI,
+    functionName: 'balanceOf',
+    args: [address as Address],
+    query: {
+      enabled: !!address,
+    },
+  });
+
+  // Burn transaction
+  const { writeContract: burn, data: burnHash, isPending: isBurning, reset: resetBurn } = useWriteContract();
+  
+  const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
+    hash: burnHash,
+  });
+
+  const handleBurn = () => {
+    if (!burnAmount || !token.address) return;
+    
+    const amountToBurn = parseUnits(burnAmount, token.decimals);
+    
+    burn({
+      address: token.address as Address,
+      abi: ERC20ABI,
+      functionName: 'burn',
+      args: [amountToBurn],
+    });
+  };
+
+  const handleBurnAll = () => {
+    if (!userBalance || userBalance === BigInt(0)) return;
+    setBurnAmount(formatUnits(userBalance, token.decimals));
+  };
+
+  const closeBurnModal = () => {
+    setShowBurnModal(false);
+    setBurnAmount('');
+    resetBurn();
+    if (isConfirmed) {
+      refetchBalance();
+    }
+  };
+
+  const formattedBalance = userBalance ? formatUnits(userBalance, token.decimals) : '0';
+
   return (
-    <div className="bg-gray-800/50 rounded-xl p-4">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-xl">
-            {token.symbol.charAt(0)}
+    <>
+      <div className="bg-gray-800/50 rounded-xl p-4">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-xl">
+              {token.symbol.charAt(0)}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-white font-semibold text-lg">{token.name}</span>
+                <span className="text-gray-400">({token.symbol})</span>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <a
+                  href={`/token/${token.address}`}
+                  className="text-purple-400 hover:text-purple-300 text-sm font-mono"
+                >
+                  {token.address.slice(0, 14)}...{token.address.slice(-10)}
+                </a>
+                <button
+                  onClick={() => navigator.clipboard.writeText(token.address)}
+                  className="p-1 hover:bg-gray-600 rounded transition-colors"
+                  title="Copy address"
+                >
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-white font-semibold text-lg">{token.name}</span>
-              <span className="text-gray-400">({token.symbol})</span>
+          <div className="text-right">
+            <div className="bg-purple-500/20 text-purple-400 text-xs px-2 py-1 rounded-full mb-2">
+              Created
             </div>
-            <div className="flex items-center gap-2 mt-1">
-              <a
-                href={`/token/${token.address}`}
-                className="text-purple-400 hover:text-purple-300 text-sm font-mono"
-              >
-                {token.address.slice(0, 14)}...{token.address.slice(-10)}
-              </a>
-              <button
-                onClick={() => navigator.clipboard.writeText(token.address)}
-                className="p-1 hover:bg-gray-600 rounded transition-colors"
-                title="Copy address"
-              >
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-              </button>
-            </div>
+            <div className="text-sm text-gray-400">{createdDate}</div>
+            <div className="text-xs text-gray-500">{createdTime}</div>
           </div>
         </div>
-        <div className="text-right">
-          <div className="bg-purple-500/20 text-purple-400 text-xs px-2 py-1 rounded-full mb-2">
-            Created
+
+        <div className="grid grid-cols-4 gap-4 mt-4 pt-4 border-t border-gray-700">
+          <div>
+            <div className="text-xs text-gray-500">Total Supply</div>
+            <div className="text-sm text-white font-medium">
+              {Number(formattedSupply).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            </div>
           </div>
-          <div className="text-sm text-gray-400">{createdDate}</div>
-          <div className="text-xs text-gray-500">{createdTime}</div>
+          <div>
+            <div className="text-xs text-gray-500">Your Balance</div>
+            <div className="text-sm text-white font-medium">
+              {Number(formattedBalance).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500">Decimals</div>
+            <div className="text-sm text-white font-medium">{token.decimals}</div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <a
+              href={`/token/${token.address}`}
+              className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white transition-colors"
+            >
+              View
+            </a>
+            <button
+              onClick={() => setShowBurnModal(true)}
+              className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 rounded-lg text-sm text-red-400 transition-colors"
+            >
+              Burn
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-700">
-        <div>
-          <div className="text-xs text-gray-500">Total Supply</div>
-          <div className="text-sm text-white font-medium">
-            {Number(formattedSupply).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+      {/* Burn Modal */}
+      {showBurnModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-2xl p-6 max-w-md w-full border border-gray-700">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
+                </svg>
+                Burn {token.symbol}
+              </h3>
+              <button
+                onClick={closeBurnModal}
+                className="p-1 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {isConfirmed ? (
+              <div className="text-center py-6">
+                <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h4 className="text-lg font-semibold text-white mb-2">Burn Successful!</h4>
+                <p className="text-gray-400 text-sm mb-4">
+                  {burnAmount} {token.symbol} has been burned.
+                </p>
+                <button
+                  onClick={closeBurnModal}
+                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 rounded-xl text-white transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-4">
+                  <p className="text-red-400 text-sm">
+                    ⚠️ Warning: Burning tokens is irreversible. The burned tokens will be permanently destroyed.
+                  </p>
+                </div>
+
+                <div className="mb-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-sm text-gray-400">Amount to Burn</label>
+                    <span className="text-xs text-gray-500">
+                      Balance: {Number(formattedBalance).toLocaleString(undefined, { maximumFractionDigits: 4 })} {token.symbol}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={burnAmount}
+                      onChange={(e) => setBurnAmount(e.target.value)}
+                      placeholder="0.0"
+                      className="w-full px-4 py-3 pr-20 bg-gray-700/50 border border-gray-600 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                    />
+                    <button
+                      onClick={handleBurnAll}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs text-red-400 hover:text-red-300 bg-red-500/20 hover:bg-red-500/30 rounded-lg transition-colors"
+                    >
+                      MAX
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleBurn}
+                  disabled={!burnAmount || isBurning || isConfirming || Number(burnAmount) <= 0 || Number(burnAmount) > Number(formattedBalance)}
+                  className="w-full py-3 bg-gradient-to-r from-red-500 to-orange-500 text-white font-semibold rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity flex items-center justify-center gap-2"
+                >
+                  {isBurning || isConfirming ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      {isBurning ? 'Confirming...' : 'Processing...'}
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+                      </svg>
+                      Burn Tokens
+                    </>
+                  )}
+                </button>
+              </>
+            )}
           </div>
         </div>
-        <div>
-          <div className="text-xs text-gray-500">Decimals</div>
-          <div className="text-sm text-white font-medium">{token.decimals}</div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <a
-            href={`/token/${token.address}`}
-            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white transition-colors"
-          >
-            View
-          </a>
-          <a
-            href={`/dex?tab=pool&token=${token.address}`}
-            className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 rounded-lg text-sm text-purple-400 transition-colors"
-          >
-            Add Liquidity
-          </a>
-        </div>
-      </div>
-    </div>
+      )}
+    </>
   );
 }

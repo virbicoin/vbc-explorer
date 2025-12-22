@@ -168,6 +168,14 @@ export const ERC20ABI = [
     stateMutability: 'nonpayable',
     type: 'function',
   },
+  // Burn function (ERC20Burnable)
+  {
+    inputs: [{ name: 'amount', type: 'uint256' }],
+    name: 'burn',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
   // Events
   {
     anonymous: false,

@@ -68,6 +68,8 @@ export function TokenList() {
       const result = tokenInfoResults[i];
       if (result.status === 'success' && result.result) {
         const [creator, name, symbol, decimals, totalSupply, createdAt] = result.result as [string, string, string, number, bigint, bigint];
+        // Skip burned tokens (totalSupply === 0)
+        if (totalSupply === BigInt(0)) continue;
         processedTokens.push({
           address: allTokens[i] as string,
           name,
