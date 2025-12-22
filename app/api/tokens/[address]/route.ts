@@ -266,6 +266,7 @@ export async function GET(
   { params }: { params: Promise<{ address: string }> }
 ) {
   const ZERO_ADDR = '0x0000000000000000000000000000000000000000' as const;
+  const DEAD_ADDR = '0x000000000000000000000000000000000000dead' as const;
   try {
     await connectDB();
     const { address } = await params;
@@ -684,15 +685,15 @@ export async function GET(
       throw new Error('Database connection not established');
     }
     
-    // Get total holders count for pagination (exclude zero address)
+    // Get total holders count for pagination (exclude zero address and dead address)
     const totalHolders = await db.collection('tokenholders').countDocuments({
       tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
-      holderAddress: { $ne: ZERO_ADDR }
+      holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] }
     });
     
     const holders = await db.collection('tokenholders').find({
       tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
-      holderAddress: { $ne: ZERO_ADDR }
+      holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] }
     })
       .sort({ rank: 1 })
       .skip((holdersPage - 1) * holdersLimit)
@@ -783,10 +784,10 @@ export async function GET(
     let mintCount = 0;
 
     if (token.type !== 'Native') {
-      // Get actual holder count (exclude zero address)
+      // Get actual holder count (exclude zero address and dead address)
       realHolders = await db.collection('tokenholders').countDocuments({
         tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
-        holderAddress: { $ne: ZERO_ADDR }
+        holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] }
       });
       // Get actual transfer count with alternative field names
       realTransfers = await db.collection('tokentransfers').countDocuments({

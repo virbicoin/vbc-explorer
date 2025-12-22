@@ -10,6 +10,10 @@ const config = loadConfig();
 const RPC_URL = config.web3Provider?.url || 'http://localhost:8545';
 const web3 = new Web3(RPC_URL);
 
+// Address constants
+const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
+const DEAD_ADDR = '0x000000000000000000000000000000000000dead';
+
 // ERC20 ABI for totalSupply
 const ERC20_ABI = [
   {
@@ -217,7 +221,7 @@ export async function GET(request: NextRequest) {
     const decimals = typeof token.decimals === 'number' ? token.decimals : 18;
 
     try {
-      // For VRC-20 tokens, fetch real-time totalSupply from blockchain
+      // For VRC-20 tokens, fetch real-time totalSupply and holder count
       if (type === 'VRC-20' && token.address && typeof token.address === 'string') {
         try {
           const contract = new web3.eth.Contract(ERC20_ABI, token.address as string);
@@ -242,6 +246,22 @@ export async function GET(request: NextRequest) {
         } catch (err) {
           console.error(`Error fetching totalSupply for ${token.address}:`, err);
         }
+
+        // Get actual holder count from tokenholders collection (exclude zero and dead addresses)
+        try {
+          const TokenHolder = mongoose.models.TokenHolder || mongoose.model('TokenHolder', new mongoose.Schema({
+            tokenAddress: String,
+            holderAddress: String,
+            balance: String,
+          }, { collection: 'tokenholders' }));
+
+          actualHolders = await TokenHolder.countDocuments({
+            tokenAddress: { $regex: new RegExp(`^${token.address}$`, 'i') },
+            holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] }
+          });
+        } catch (err) {
+          console.error(`Error fetching holder count for ${token.address}:`, err);
+        }
       }
 
       // For VRC-721 token, get actual statistics
@@ -255,7 +275,7 @@ export async function GET(request: NextRequest) {
 
         actualHolders = await TokenHolder.countDocuments({
           tokenAddress: { $regex: new RegExp(`^${token.address}$`, 'i') },
-          holderAddress: { $ne: '0x0000000000000000000000000000000000000000' }
+          holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] }
         });
 
         // Use database totalSupply if available, otherwise calculate from transfers
@@ -293,12 +313,15 @@ export async function GET(request: NextRequest) {
     };
   }));
 
-  // Include all valid tokens from the tokens collection
+  // Include all valid tokens from the tokens collection (exclude tokens with 0 holders)
   const filteredTokens = (normalizedTokens as (IToken | Record<string, unknown>)[]).filter((t): t is IToken => {
     if (!('address' in t) || typeof t.address !== 'string') return false;
     const addr = t.address.toLowerCase();
     // Only validate address format, don't require Contract collection entry
-    return /^0x[0-9a-fA-F]{40}$/.test(addr);
+    if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) return false;
+    // Exclude tokens with 0 holders
+    const holders = (t as IToken).holders ?? 0;
+    return holders > 0;
   });
 
   // Combine the native token with the database tokens
