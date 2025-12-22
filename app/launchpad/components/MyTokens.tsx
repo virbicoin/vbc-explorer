@@ -185,6 +185,9 @@ export function MyTokens() {
   );
 }
 
+// Dead address for burning tokens (transfer to this address = burn)
+const DEAD_ADDRESS = '0x000000000000000000000000000000000000dead' as const;
+
 function MyTokenCard({ token }: { token: TokenInfo }) {
   const { address } = useAccount();
   const [showBurnModal, setShowBurnModal] = useState(false);
@@ -205,7 +208,7 @@ function MyTokenCard({ token }: { token: TokenInfo }) {
     },
   });
 
-  // Burn transaction
+  // Burn transaction (transfer to dead address)
   const { writeContract: burn, data: burnHash, isPending: isBurning, reset: resetBurn } = useWriteContract();
   
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
@@ -217,11 +220,12 @@ function MyTokenCard({ token }: { token: TokenInfo }) {
     
     const amountToBurn = parseUnits(burnAmount, token.decimals);
     
+    // Use transfer to dead address instead of burn function
     burn({
       address: token.address as Address,
       abi: ERC20ABI,
-      functionName: 'burn',
-      args: [amountToBurn],
+      functionName: 'transfer',
+      args: [DEAD_ADDRESS, amountToBurn],
     });
   };
 
