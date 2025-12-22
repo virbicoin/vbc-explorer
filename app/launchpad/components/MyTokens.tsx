@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo, useState, useCallback } from 'react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi';
-import { formatUnits, parseUnits, type Address } from 'viem';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract, useSendTransaction, useEstimateGas } from 'wagmi';
+import { formatUnits, parseUnits, encodeFunctionData, type Address } from 'viem';
 import { useReadContracts } from 'wagmi';
 import { TokenFactoryABI, ERC20ABI } from '@/abi/TokenFactoryABI';
 import { useLaunchpadConfig } from '@/hooks/useLaunchpadConfig';
@@ -226,12 +226,14 @@ export function MyTokens() {
 }
 
 // Dead address for burning tokens (transfer to this address = burn)
-const DEAD_ADDRESS = '0x000000000000000000000000000000000000dead' as const;
+// Must be full 40-character hex address (without 0x prefix)
+const DEAD_ADDRESS = '0x000000000000000000000000000000000000dEaD' as Address;
 
 function MyTokenCard({ token, onBurnSuccess }: { token: TokenInfo; onBurnSuccess?: () => void }) {
   const { address } = useAccount();
   const [showBurnModal, setShowBurnModal] = useState(false);
   const [burnAmount, setBurnAmount] = useState('');
+  const [burnError, setBurnError] = useState<string | null>(null);
   
   const formattedSupply = formatUnits(token.totalSupply, token.decimals);
   const createdDate = new Date(token.createdAt * 1000).toLocaleDateString();
@@ -240,15 +242,16 @@ function MyTokenCard({ token, onBurnSuccess }: { token: TokenInfo; onBurnSuccess
   // Use pre-fetched user balance from parent, fallback to token.userBalance
   const userBalance = token.userBalance ?? BigInt(0);
 
-  // Burn transaction (transfer to dead address)
-  const { writeContract: burn, data: burnHash, isPending: isBurning, reset: resetBurn } = useWriteContract();
+  // Use sendTransaction for lower-level control
+  const { sendTransaction, data: burnHash, isPending: isBurning, reset: resetBurn } = useSendTransaction();
   
   const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
     hash: burnHash,
   });
 
-  const handleBurn = () => {
+  const handleBurn = async () => {
     if (!burnAmount || !token.address) return;
+    setBurnError(null);
     
     try {
       const amountToBurn = parseUnits(burnAmount, token.decimals);
@@ -264,25 +267,36 @@ function MyTokenCard({ token, onBurnSuccess }: { token: TokenInfo; onBurnSuccess
       
       // Check if amount exceeds balance
       if (amountToBurn > userBalance) {
-        alert(`Insufficient balance. You have ${formatUnits(userBalance, token.decimals)} ${token.symbol} but trying to burn ${burnAmount}`);
+        setBurnError(`Insufficient balance. You have ${formatUnits(userBalance, token.decimals)} ${token.symbol} but trying to burn ${burnAmount}`);
         return;
       }
       
-      // Use transfer to dead address instead of burn function
-      burn({
-        address: token.address as Address,
+      // Encode the transfer function call
+      const data = encodeFunctionData({
         abi: ERC20ABI,
         functionName: 'transfer',
         args: [DEAD_ADDRESS, amountToBurn],
+      });
+      
+      console.log('Sending transaction:', {
+        to: token.address,
+        data,
+      });
+      
+      // Use sendTransaction with explicit gas to avoid MetaMask estimation issues
+      sendTransaction({
+        to: token.address as Address,
+        data,
+        gas: BigInt(100000), // Explicit gas limit for ERC20 transfer
       }, {
         onError: (error: Error) => {
           console.error('Burn transaction error:', error);
-          alert(`Burn failed: ${error.message}`);
+          setBurnError(`Burn failed: ${error.message}`);
         }
       });
     } catch (error) {
       console.error('ParseUnits error:', error);
-      alert(`Invalid amount format: ${burnAmount}`);
+      setBurnError(`Invalid amount format: ${burnAmount}`);
     }
   };
 
@@ -294,6 +308,7 @@ function MyTokenCard({ token, onBurnSuccess }: { token: TokenInfo; onBurnSuccess
   const closeBurnModal = () => {
     setShowBurnModal(false);
     setBurnAmount('');
+    setBurnError(null);
     resetBurn();
     // Refresh parent list after burn success
     if (isConfirmed && onBurnSuccess) {
@@ -449,6 +464,12 @@ function MyTokenCard({ token, onBurnSuccess }: { token: TokenInfo; onBurnSuccess
                     </button>
                   </div>
                 </div>
+
+                {burnError && (
+                  <div className="bg-red-900/30 border border-red-500/50 rounded-xl p-3 mb-4">
+                    <p className="text-red-400 text-sm">{burnError}</p>
+                  </div>
+                )}
 
                 <button
                   onClick={handleBurn}
