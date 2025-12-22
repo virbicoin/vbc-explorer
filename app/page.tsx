@@ -413,8 +413,19 @@ export default function Page() {
 
   // Add VirBiCoin network to MetaMask
   const handleAddVBC = async () => {
+    console.log('handleAddVBC called');
+    // Check if MetaMask is installed
+    if (typeof window === 'undefined' || !window.ethereum) {
+      console.log('MetaMask not found');
+      alert('MetaMask is not installed. Please install MetaMask to add the VirBiCoin network.');
+      window.open('https://metamask.io/download/', '_blank');
+      return;
+    }
+    
+    console.log('MetaMask found, requesting...');
     try {
-      await (window as unknown as { ethereum?: { request: (params: { method: string; params: unknown[] }) => Promise<unknown> } }).ethereum?.request({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (window.ethereum as any).request({
         method: 'wallet_addEthereumChain',
         params: [{
           chainId: '0x149',
@@ -426,9 +437,10 @@ export default function Page() {
           },
           rpcUrls: ['https://rpc.digitalregion.jp'],
           blockExplorerUrls: ['https://explorer.digitalregion.jp'],
-          iconUrls: ['https://vbc.digitalregion.jp/VBC.svg']
+          iconUrls: ['https://vbc.digitalregion.jp/VBC.png']
         }],
       });
+      console.log('Request completed');
     } catch (addError) {
       console.error('Failed to add VirBiCoin network:', addError);
     }
@@ -610,6 +622,7 @@ export default function Page() {
           </div>
           {/* Right: Add VirBiCoin Button */}
           <button
+            type='button'
             onClick={handleAddVBC}
             className='w-full sm:w-auto mt-4 sm:mt-0 flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40'
           >
