@@ -25,6 +25,29 @@ const ERC20_ABI = [
   }
 ] as const;
 
+// Launchpad V2 Token ABI for logoUrl
+const LAUNCHPAD_V2_ABI = [
+  {
+    "inputs": [],
+    "name": "logoUrl",
+    "outputs": [{"name": "", "type": "string"}],
+    "stateMutability": "view",
+    "type": "function"
+  }
+] as const;
+
+// Function to fetch logoUrl from Launchpad V2 token contract
+async function fetchLaunchpadLogoUrl(tokenAddress: string): Promise<string | null> {
+  try {
+    const contract = new web3.eth.Contract(LAUNCHPAD_V2_ABI, tokenAddress);
+    const logoUrl = await contract.methods.logoUrl().call();
+    return logoUrl && logoUrl !== '' ? (logoUrl as string) : null;
+  } catch {
+    // Token doesn't have logoUrl method (not a Launchpad V2 token)
+    return null;
+  }
+}
+
 // Define Token schema inline since it's not exported from models/index
 const tokenSchema = new mongoose.Schema({
   address: String,
@@ -35,7 +58,8 @@ const tokenSchema = new mongoose.Schema({
   holders: { type: Number, default: 0 },
   type: String,
   supply: String,
-  verified: { type: Boolean, default: false }
+  verified: { type: Boolean, default: false },
+  logoUrl: { type: String, default: null }
 }, { collection: 'tokens' });
 
 const Token = mongoose.models.Token || mongoose.model('Token', tokenSchema);
@@ -48,6 +72,7 @@ interface IToken {
   decimals?: number;
   totalSupply?: string;
   holders?: number;
+  logoUrl?: string;
   type: 'Native' | 'VRC-20' | 'VRC-721' | 'VRC-1155';
   supply?: string;
   verified?: boolean;
@@ -198,6 +223,7 @@ export async function GET(request: NextRequest) {
     type: 'Native',
     holders: chainStats.activeAddresses || 0, // Real wallet count
     supply: chainStats.totalSupply || 'unlimited', // Real total supply
+    logoUrl: config.currency?.icon ? `https://explorer.digitalregion.jp${config.currency.icon}` : undefined,
   };
 
   // Normalize token types and update with real statistics
@@ -304,12 +330,20 @@ export async function GET(request: NextRequest) {
 
     const verificationStatus = typeof token.address === 'string' ? verificationMap.get(token.address.toLowerCase()) : null;
     
+    // Get logo URL from config or database
+    const tokenAddr = typeof token.address === 'string' ? token.address.toLowerCase() : '';
+    const tokenLogos = (config as { tokenLogos?: Record<string, string> }).tokenLogos || {};
+    const configLogoUrl = tokenLogos[tokenAddr] || null;
+    const dbLogoUrl = typeof token.logoUrl === 'string' ? token.logoUrl : null;
+    const logoUrl = dbLogoUrl || configLogoUrl;
+    
     return { 
       ...token, 
       type,
       holders: actualHolders,
       supply: actualSupply,
-      verified: verificationStatus !== null ? verificationStatus : false
+      verified: verificationStatus !== null ? verificationStatus : false,
+      logoUrl: logoUrl
     };
   }));
 

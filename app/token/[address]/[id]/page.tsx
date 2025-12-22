@@ -79,6 +79,43 @@ export default function TokenIdDetailPage() {
   // 1. API取得時にmetadataだけでなく全体をtokenDetailとして保持
   const [tokenDetail, setTokenDetail] = useState<TokenDetail | null>(null);
 
+  // Add NFT to MetaMask
+  const addNFTToMetaMask = async () => {
+    // Wait for ethereum to be injected
+    let ethereum = (window as unknown as { ethereum?: { request: (args: { method: string; params: unknown }) => Promise<boolean> } }).ethereum;
+    if (!ethereum) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      ethereum = (window as unknown as { ethereum?: { request: (args: { method: string; params: unknown }) => Promise<boolean> } }).ethereum;
+    }
+    
+    if (!ethereum) {
+      const confirmed = confirm('No Web3 wallet detected. Would you like to install MetaMask?');
+      if (confirmed) {
+        window.open('https://metamask.io/download/', '_blank');
+      }
+      return;
+    }
+    
+    try {
+      await ethereum.request({
+        method: 'wallet_watchAsset',
+        params: {
+          type: 'ERC721',
+          options: {
+            address: address,
+            tokenId: id,
+          },
+        },
+      });
+    } catch (err: unknown) {
+      const error = err as { code?: number };
+      if (error.code !== 4001) {
+        console.error('Failed to add NFT to MetaMask:', err);
+        alert('Failed to add NFT to MetaMask. Your wallet may not support this feature.');
+      }
+    }
+  };
+
   useEffect(() => {
     if (!address || !id) return;
     let cancelled = false;
@@ -123,9 +160,18 @@ export default function TokenIdDetailPage() {
       {/* Page header */}
       <div className="bg-gray-800 border-b border-gray-700">
         <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center gap-3 mb-4">
-            <CubeIcon className="w-8 h-8 text-green-400" />
-            <h1 className="text-3xl font-bold text-gray-100">NFT Token Details</h1>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <CubeIcon className="w-8 h-8 text-green-400" />
+              <h1 className="text-3xl font-bold text-gray-100">NFT Token Details</h1>
+            </div>
+            <button
+              onClick={addNFTToMetaMask}
+              className="flex items-center gap-2 px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors text-sm font-medium"
+              title="Add NFT to MetaMask"
+            >
+              🦊 Add to MetaMask
+            </button>
           </div>
           <p className="text-gray-400">Token ID: <span className="text-white font-mono">{id}</span> details</p>
         </div>

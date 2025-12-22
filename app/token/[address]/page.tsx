@@ -29,6 +29,7 @@ interface TokenData {
     floorPrice?: string;
     volume24h?: string;
     creator?: string;
+    logoUrl?: string;
   };
   contract?: {
     verified: boolean;
@@ -188,13 +189,38 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
     }
   };
 
-  // Add token to MetaMask
+  // Check if token is an NFT (ERC721/ERC1155)
+  const isNFTToken = (type: string) => {
+    const nftTypes = ['ERC721', 'ERC1155', 'VRC-721', 'VRC-1155', 'NFT'];
+    return nftTypes.some(t => type.toUpperCase().includes(t.toUpperCase()));
+  };
+
+  // Add ERC20 token to MetaMask
   const addToMetaMask = async () => {
-    if (typeof window === 'undefined' || !window.ethereum) return;
-    if (!tokenData?.token || tokenData.token.isNFT || tokenData.token.type === 'Native') return;
+    // NFTs should use addNFTToMetaMask instead
+    if (tokenData?.token?.type && isNFTToken(tokenData.token.type)) {
+      return;
+    }
+    
+    // Wait for ethereum to be injected
+    let ethereum = (window as any).ethereum;
+    if (!ethereum) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      ethereum = (window as any).ethereum;
+    }
+    
+    if (!ethereum) {
+      const confirmed = confirm('No Web3 wallet detected. Would you like to install MetaMask?');
+      if (confirmed) {
+        window.open('https://metamask.io/download/', '_blank');
+      }
+      return;
+    }
+    
+    if (!tokenData?.token || tokenData.token.type === 'Native') return;
+    
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (window.ethereum as any).request({
+      await ethereum.request({
         method: 'wallet_watchAsset',
         params: {
           type: 'ERC20',
@@ -202,12 +228,50 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
             address: tokenData.token.address,
             symbol: tokenData.token.symbol.slice(0, 11),
             decimals: tokenData.token.decimals ?? 18,
-            image: undefined, // Token logo URL if available
+            image: tokenData.token.logoUrl || undefined,
           },
         },
       });
-    } catch (err) {
-      console.error('Failed to add token to MetaMask:', err);
+    } catch (err: any) {
+      if (err.code !== 4001) {
+        console.error('Failed to add token to MetaMask:', err);
+      }
+    }
+  };
+
+  // Add specific NFT to MetaMask by tokenId
+  const addNFTToMetaMask = async (tokenId: number | string) => {
+    // Wait for ethereum to be injected
+    let ethereum = (window as any).ethereum;
+    if (!ethereum) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      ethereum = (window as any).ethereum;
+    }
+    
+    if (!ethereum) {
+      const confirmed = confirm('No Web3 wallet detected. Would you like to install MetaMask?');
+      if (confirmed) {
+        window.open('https://metamask.io/download/', '_blank');
+      }
+      return;
+    }
+    
+    try {
+      await ethereum.request({
+        method: 'wallet_watchAsset',
+        params: {
+          type: 'ERC721',
+          options: {
+            address: tokenData?.token?.address || address,
+            tokenId: String(tokenId),
+          },
+        },
+      });
+    } catch (err: any) {
+      if (err.code !== 4001) {
+        console.error('Failed to add NFT to MetaMask:', err);
+        alert('Failed to add NFT to MetaMask. Your wallet may not support this feature.');
+      }
     }
   };
 
@@ -931,6 +995,20 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                                   </div>
                                 </div>
                               )}
+                              {/* Add to MetaMask button - right aligned */}
+                              <div className='flex justify-end mt-2'>
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    addNFTToMetaMask(tokenId);
+                                  }}
+                                  className='flex items-center gap-1 px-2 py-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors text-xs font-medium'
+                                  title='Add this NFT to MetaMask'
+                                >
+                                  🦊 Add to Wallet
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ) : (
@@ -1126,8 +1204,8 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
         <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8'>
           <div className='flex items-center justify-between mb-6'>
             <h2 className='text-xl font-semibold text-gray-100'>Token Information</h2>
-            {/* Add to MetaMask button for VRC-20 tokens only */}
-            {tokenData?.token?.type === 'VRC-20' && !tokenData?.token?.isNFT && (
+            {/* Add to MetaMask button for ERC20 tokens only */}
+            {tokenData?.token?.type && tokenData.token.type !== 'Native' && !isNFTToken(tokenData.token.type) && (
               <button
                 onClick={addToMetaMask}
                 className='flex items-center gap-2 px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors text-sm font-medium'

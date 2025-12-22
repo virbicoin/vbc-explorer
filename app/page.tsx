@@ -14,6 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { formatVBC, initializeCurrency } from '../lib/bigint-utils';
 import Image from 'next/image';
+import AddVBCButton from './components/AddVBCButton';
 
 interface Config {
   miners: Record<string, string>;
@@ -411,41 +412,6 @@ export default function Page() {
   const [now, setNow] = useState(() => Date.now());
   const [config, setConfig] = useState<{ miners: Record<string, string> } | null>(null);
 
-  // Add VirBiCoin network to MetaMask
-  const handleAddVBC = async () => {
-    console.log('handleAddVBC called');
-    // Check if MetaMask is installed
-    if (typeof window === 'undefined' || !window.ethereum) {
-      console.log('MetaMask not found');
-      alert('MetaMask is not installed. Please install MetaMask to add the VirBiCoin network.');
-      window.open('https://metamask.io/download/', '_blank');
-      return;
-    }
-    
-    console.log('MetaMask found, requesting...');
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (window.ethereum as any).request({
-        method: 'wallet_addEthereumChain',
-        params: [{
-          chainId: '0x149',
-          chainName: 'VirBiCoin',
-          nativeCurrency: {
-            name: 'VirBiCoin',
-            symbol: 'VBC',
-            decimals: 18,
-          },
-          rpcUrls: ['https://rpc.digitalregion.jp'],
-          blockExplorerUrls: ['https://explorer.digitalregion.jp'],
-          iconUrls: ['https://vbc.digitalregion.jp/VBC.png']
-        }],
-      });
-      console.log('Request completed');
-    } catch (addError) {
-      console.error('Failed to add VirBiCoin network:', addError);
-    }
-  };
-
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
@@ -621,14 +587,7 @@ export default function Page() {
             </form>
           </div>
           {/* Right: Add VirBiCoin Button */}
-          <button
-            type='button'
-            onClick={handleAddVBC}
-            className='w-full sm:w-auto mt-4 sm:mt-0 flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40'
-          >
-            <Image src='/img/MetaMask.svg' alt='MetaMask' width={24} height={24} className='w-6 h-6' />
-            Add VirBiCoin
-          </button>
+          <AddVBCButton />
         </div>
         {/* Summary Cards */}
         <section className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8'>

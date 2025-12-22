@@ -58,6 +58,29 @@ const ERC20_ABI = [
   }
 ] as const;
 
+// Launchpad V2 Token ABI for logoUrl
+const LAUNCHPAD_V2_ABI = [
+  {
+    "inputs": [],
+    "name": "logoUrl",
+    "outputs": [{"name": "", "type": "string"}],
+    "stateMutability": "view",
+    "type": "function"
+  }
+] as const;
+
+// Function to fetch logoUrl from Launchpad V2 token contract
+async function fetchLaunchpadLogoUrl(tokenAddress: string): Promise<string | null> {
+  try {
+    const contract = new web3.eth.Contract(LAUNCHPAD_V2_ABI, tokenAddress);
+    const logoUrl = await contract.methods.logoUrl().call();
+    return logoUrl && logoUrl !== '' ? (logoUrl as string) : null;
+  } catch {
+    // Token doesn't have logoUrl method (not a Launchpad V2 token)
+    return null;
+  }
+}
+
 // Function to fetch ERC20 token info from blockchain
 async function fetchERC20Info(tokenAddress: string): Promise<{
   name: string | null;
@@ -259,6 +282,7 @@ interface ApiToken {
   holders: number;
   createdAt: Date;
   updatedAt: Date;
+  logoUrl?: string;
 }
 
 export async function GET(
@@ -1205,6 +1229,19 @@ export async function GET(
       }
     }
 
+    // Get logoUrl from config.tokenLogos mapping, database, or onchain (Launchpad V2)
+    const tokenLogos = (config as { tokenLogos?: Record<string, string> }).tokenLogos || {};
+    const tokenAddressLower = (token.address as string)?.toLowerCase() || '';
+    let logoUrl = token.logoUrl || tokenLogos[tokenAddressLower] || null;
+    
+    // If no logoUrl found, try to fetch from onchain (Launchpad V2 token)
+    if (!logoUrl && !isNFT) {
+      const onchainLogoUrl = await fetchLaunchpadLogoUrl(token.address as string);
+      if (onchainLogoUrl) {
+        logoUrl = onchainLogoUrl;
+      }
+    }
+
     const response = {
       token: {
         address: token.address,
@@ -1215,7 +1252,8 @@ export async function GET(
         decimals: Number(token.decimals ?? (isNFT ? 0 : 18)),
         totalSupply: realSupply ? formatTokenAmount(String(realSupply), Number(token.decimals ?? (isNFT ? 0 : 18)), isNFT) : '0',
         totalSupplyRaw: realSupply || '0',
-        verified: verified
+        verified: verified,
+        logoUrl: logoUrl
       },
       contract: contractInfo,
       statistics: {

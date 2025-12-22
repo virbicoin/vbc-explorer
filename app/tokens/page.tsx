@@ -17,13 +17,39 @@ type Token = {
   logoUrl?: string;
 };
 
+// Check if token is an NFT (ERC721/ERC1155)
+const isNFTToken = (type: string) => {
+  const nftTypes = ['ERC721', 'ERC1155', 'VRC-721', 'VRC-1155', 'NFT'];
+  return nftTypes.some(t => type.toUpperCase().includes(t.toUpperCase()));
+};
+
 // MetaMask追加関数
 const addToMetaMask = async (token: Token) => {
-  if (typeof window === 'undefined' || !window.ethereum) return;
+  // NFTs cannot be added to MetaMask as ERC20 tokens
+  if (isNFTToken(token.type)) {
+    alert('NFT tokens cannot be added to MetaMask wallet.');
+    return;
+  }
+  
+  // Wait for ethereum to be injected
+  let ethereum = (window as any).ethereum;
+  if (!ethereum) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    ethereum = (window as any).ethereum;
+  }
+  
+  if (!ethereum) {
+    const confirmed = confirm('No Web3 wallet detected. Would you like to install MetaMask?');
+    if (confirmed) {
+      window.open('https://metamask.io/download/', '_blank');
+    }
+    return;
+  }
+  
   if (token.type === 'Native' || token.address === 'N/A') return;
+  
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (window.ethereum as any).request({
+    await ethereum.request({
       method: 'wallet_watchAsset',
       params: {
         type: 'ERC20',
@@ -35,8 +61,10 @@ const addToMetaMask = async (token: Token) => {
         },
       },
     });
-  } catch (err) {
-    console.error('Failed to add token to MetaMask:', err);
+  } catch (err: any) {
+    if (err.code !== 4001) {
+      console.error('Failed to add token to MetaMask:', err);
+    }
   }
 };
 
@@ -269,7 +297,7 @@ export default function TokensPage() {
                         </div>
                       </td>
                       <td className='py-3 px-4 w-24'>
-                        {token.type !== 'Native' && token.address !== 'N/A' && token.type === 'VRC-20' && (
+                        {token.type !== 'Native' && token.address !== 'N/A' && !isNFTToken(token.type) && (
                           <button
                             onClick={() => addToMetaMask(token)}
                             className='p-2 hover:bg-gray-600 rounded-lg transition-colors'
