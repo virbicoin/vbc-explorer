@@ -265,6 +265,7 @@ function MyTokenCard({ token }: { token: TokenInfo }) {
               {isVerified && (
                 <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 text-xs font-semibold rounded flex items-center gap-1" title="Verified Contract">
                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
+                  Verified
                 </span>
               )}
               {token.isPaused && <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs font-semibold rounded-lg">Paused</span>}
@@ -275,8 +276,9 @@ function MyTokenCard({ token }: { token: TokenInfo }) {
               <button onClick={() => navigator.clipboard.writeText(token.address)} className="p-1 hover:bg-gray-600 rounded transition-colors" title="Copy address">
                 <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
               </button>
-              <button onClick={addToMetaMask} className="p-1 hover:bg-gray-600 rounded transition-colors" title="Add to MetaMask">
+              <button onClick={addToMetaMask} className="px-2 py-1 hover:bg-gray-600 rounded transition-colors flex items-center gap-1" title="Add to MetaMask">
                 <span className="text-sm">🦊</span>
+                <span className="text-xs text-gray-400">Add to MetaMask</span>
               </button>
             </div>
           </div>

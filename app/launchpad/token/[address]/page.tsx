@@ -92,12 +92,35 @@ function TokenDetailContent() {
   const isV2 = config?.useV2 ?? true;
   const ITEMS_PER_PAGE = 20;
 
+  // Fetch basic token info from factory (creator, name, symbol, decimals, totalSupply, createdAt)
   const { data: tokenDetails, isLoading: isDetailsLoading, refetch: refetchDetails } = useReadContract({
     address: activeFactoryAddress as Address,
     abi: TokenFactoryV2ABI,
     functionName: 'getTokenDetails',
     args: [tokenAddress as Address],
     query: { enabled: !!activeFactoryAddress && !!tokenAddress && isV2 },
+  });
+
+  // Fetch mutable metadata directly from token contract (logoUrl, description, website)
+  const { data: tokenLogoUrl, refetch: refetchLogoUrl } = useReadContract({
+    address: tokenAddress as Address,
+    abi: LaunchpadTokenV2ABI,
+    functionName: 'logoUrl',
+    query: { enabled: !!tokenAddress && isV2 },
+  });
+
+  const { data: tokenDescription, refetch: refetchDescription } = useReadContract({
+    address: tokenAddress as Address,
+    abi: LaunchpadTokenV2ABI,
+    functionName: 'description',
+    query: { enabled: !!tokenAddress && isV2 },
+  });
+
+  const { data: tokenWebsite, refetch: refetchWebsite } = useReadContract({
+    address: tokenAddress as Address,
+    abi: LaunchpadTokenV2ABI,
+    functionName: 'website',
+    query: { enabled: !!tokenAddress && isV2 },
   });
 
   const { data: isPaused, refetch: refetchPaused } = useReadContract({
@@ -133,7 +156,15 @@ function TokenDetailContent() {
   const { isLoading: isActionConfirming, isSuccess: isActionConfirmed } = useWaitForTransactionReceipt({ hash: actionHash });
 
   useEffect(() => { if (isPauseConfirmed) refetchPaused(); }, [isPauseConfirmed, refetchPaused]);
-  useEffect(() => { if (isMetadataConfirmed) { refetchDetails(); setShowEditModal(false); } }, [isMetadataConfirmed, refetchDetails]);
+  useEffect(() => { 
+    if (isMetadataConfirmed) { 
+      // Refetch metadata from token contract directly
+      refetchLogoUrl();
+      refetchDescription();
+      refetchWebsite();
+      setShowEditModal(false); 
+    } 
+  }, [isMetadataConfirmed, refetchLogoUrl, refetchDescription, refetchWebsite]);
 
   // Fetch holders
   const fetchHolders = useCallback(async () => {
@@ -172,8 +203,12 @@ function TokenDetailContent() {
     const details = tokenDetails as readonly [string, string, string, number, bigint, bigint, string, string, string];
     return {
       creator: details[0], name: details[1], symbol: details[2], decimals: details[3],
-      totalSupply: details[4], createdAt: Number(details[5]), logoUrl: details[6],
-      description: details[7], website: details[8], isPaused: isPaused as boolean ?? false, owner: owner as string ?? '',
+      totalSupply: details[4], createdAt: Number(details[5]), 
+      // Use metadata from token contract directly (not from factory cache)
+      logoUrl: (tokenLogoUrl as string) ?? details[6],
+      description: (tokenDescription as string) ?? details[7], 
+      website: (tokenWebsite as string) ?? details[8], 
+      isPaused: isPaused as boolean ?? false, owner: owner as string ?? '',
     };
   })() : null;
 
@@ -338,7 +373,10 @@ function TokenDetailContent() {
                   {copied ? <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                   : <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>}
                 </button>
-                <button onClick={addToMetaMask} className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors" title="Add to MetaMask">🦊</button>
+                <button onClick={addToMetaMask} className="px-3 py-1.5 hover:bg-gray-700 rounded-lg transition-colors flex items-center gap-1" title="Add to MetaMask">
+                  <span>🦊</span>
+                  <span className="text-sm text-gray-400">Add to MetaMask</span>
+                </button>
               </div>
             </div>
 
