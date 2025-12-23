@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
-import config from '@/config.json';
+import { loadConfig } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -45,14 +45,15 @@ export async function GET() {
       });
     }
 
-    const provider = new ethers.JsonRpcProvider(config.network.rpcUrl);
+    const config = loadConfig();
+    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const assets: Record<string, Asset> = {};
 
     // Add native token (VBC)
     assets['VBC'] = {
-      name: config.currency.name,
-      symbol: config.currency.symbol,
-      id: config.currency.symbol,
+      name: config.currency?.name || 'Native',
+      symbol: config.currency?.symbol || 'NATIVE',
+      id: config.currency?.symbol || 'NATIVE',
       maker_fee: '0.3',
       taker_fee: '0.3',
       can_withdraw: 'true',
@@ -62,7 +63,8 @@ export async function GET() {
     };
 
     // Add wrapped native token
-    const wvbc = config.dex.wrappedNative;
+    const wvbc = config.dex?.wrappedNative;
+    if (wvbc) {
     assets['WVBC'] = {
       name: wvbc.name,
       symbol: wvbc.symbol,
@@ -75,9 +77,11 @@ export async function GET() {
       max_withdraw: '1000000000',
       contractAddress: wvbc.address,
     };
+    }
 
     // Add configured tokens
-    for (const [key, token] of Object.entries(config.dex.tokens)) {
+    const dexTokens = config.dex?.tokens || {};
+    for (const [key, token] of Object.entries(dexTokens)) {
       try {
         const tokenData = token as {
           address: string;

@@ -2,7 +2,15 @@ import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import dbConnect from '@/lib/db';
 import mongoose from 'mongoose';
-import config from '@/config.json';
+import { loadConfig } from '@/lib/config';
+
+interface LpToken {
+  address: string;
+  name: string;
+  symbol: string;
+  token0: string;
+  token1: string;
+}
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -45,7 +53,8 @@ export async function GET(
     }
 
     // Find the matching LP token
-    const lpTokens = config.dex.lpTokens;
+    const config = loadConfig();
+    const lpTokens = (config.dex?.lpTokens || {}) as Record<string, LpToken>;
     let matchedPair: { address: string; token0: string; token1: string } | null = null;
 
     for (const [, lpToken] of Object.entries(lpTokens)) {
@@ -69,7 +78,7 @@ export async function GET(
       );
     }
 
-    const provider = new ethers.JsonRpcProvider(config.network.rpcUrl);
+    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const pairContract = new ethers.Contract(matchedPair.address, PAIR_ABI, provider);
 
     const token0Address = await pairContract.token0();

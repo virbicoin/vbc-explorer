@@ -22,7 +22,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createPublicClient, http, formatEther, formatUnits, type Address } from 'viem';
 import mongoose from 'mongoose';
 import { connectDB, Block, Transaction, TokenTransfer, Account, Contract } from '@/models/index';
-import configJsonRaw from '@/config.json';
+import { loadConfig } from '@/lib/config';
 
 // Type for config with supply
 interface ConfigWithSupply {
@@ -37,7 +37,7 @@ interface ConfigWithSupply {
   [key: string]: unknown;
 }
 
-const configJson = configJsonRaw as ConfigWithSupply;
+const configJson = loadConfig() as ConfigWithSupply;
 
 // Define Token schema inline since it's not exported from models/index
 const tokenSchema = new mongoose.Schema({

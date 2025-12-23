@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
-import config from '@/config.json';
+import { loadConfig } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -49,10 +49,11 @@ export async function GET() {
       });
     }
 
-    const provider = new ethers.JsonRpcProvider(config.network.rpcUrl);
+    const config = loadConfig();
+    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
 
     // Get LP tokens from config
-    const lpTokens = config.dex.lpTokens as Record<string, {
+    const lpTokens = (config.dex?.lpTokens || {}) as Record<string, {
       address: string;
       name: string;
       symbol: string;

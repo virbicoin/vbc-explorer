@@ -10,7 +10,7 @@
  */
 
 import { createPublicClient, http, formatEther, type Address } from 'viem';
-import configJson from '../config.json';
+import { loadConfig } from './config';
 
 // ============================================
 // Configuration
@@ -44,7 +44,7 @@ interface ConfigWithSupply {
   };
 }
 
-const config = configJson as ConfigWithSupply;
+const config = loadConfig() as ConfigWithSupply;
 
 // Load configuration from config.json with defaults
 const supplyConfig: SupplyConfig = {
