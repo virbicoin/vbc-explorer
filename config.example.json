@@ -115,7 +115,7 @@
     "url": "https://explorer.example.com",
     "apiUrl": "https://explorer.example.com/api",
     "copyright": "Your Company Name",
-    "github": "https://github.com/your-repo/explorer"
+    "github": "https://github.com/virbicoin/vbc-explorer"
   },
   "network": {
     "chainId": 1,

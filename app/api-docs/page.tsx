@@ -806,7 +806,7 @@ export default function ApiDocsPage() {
                     ← Back to Explorer
                   </Link>
                   <a 
-                    href="https://github.com/ROZ-MOFUMOFU-ME/vbc-explorer" 
+                    href="https://github.com/virbicoin/vbc-explorer" 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="block text-gray-400 hover:text-white"
