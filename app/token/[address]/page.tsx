@@ -1,6 +1,5 @@
 'use client';
 
-import Header from '../../components/Header';
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -30,6 +29,7 @@ interface TokenData {
     floorPrice?: string;
     volume24h?: string;
     creator?: string;
+    logoUrl?: string;
   };
   contract?: {
     verified: boolean;
@@ -44,7 +44,7 @@ interface TokenData {
   statistics?: {
     holders: number;
     transfers: number;
-    age: number;
+    age: number | string;
     marketCap: string;
     totalTransfers?: number;
     transfers24h?: number;
@@ -67,6 +67,26 @@ interface TokenData {
     timeAgo: string;
     tokenId?: string;
   }>;
+  pagination?: {
+    holders: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+    transfers: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+    nfts?: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  };
 }
 
 interface TokenMetadata {
@@ -110,15 +130,15 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
   const [tokenMetadata, setTokenMetadata] = useState<Record<number, TokenMetadata>>({});
   const [metadataLoading, setMetadataLoading] = useState<Record<number, boolean>>({});
   const [imageLoadState, setImageLoadState] = useState<ImageLoadState>({});
+  
+  // Pagination states
+  const [holdersPage, setHoldersPage] = useState(1);
+  const [transfersPage, setTransfersPage] = useState(1);
+  const [nftsPage, setNftsPage] = useState(1);
+  const ITEMS_PER_PAGE = 50;
+  const NFTS_PER_PAGE = 12;
 
-  // Get transaction hash for a specific token ID
-  const getTransactionForTokenId = (tokenId: number) => {
-    if (!tokenData?.transfers) return null;
-    
-    // Find the transfer that created this token ID
-    const transfer = tokenData.transfers.find(tx => tx.tokenId === tokenId.toString());
-    return transfer?.hash || null;
-  };
+  // getTransactionForTokenId function removed (unused)
 
 
   useEffect(() => {
@@ -137,8 +157,10 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
         setLoading(true);
         setError(null);
         
-        // Use the unified tokens API
-        const response = await fetch(`/api/tokens/${address}`);
+        // Use the unified tokens API with pagination
+        const response = await fetch(
+          `/api/tokens/${address}?holdersPage=${holdersPage}&holdersLimit=${ITEMS_PER_PAGE}&transfersPage=${transfersPage}&transfersLimit=${ITEMS_PER_PAGE}&nftsPage=${nftsPage}&nftsLimit=${NFTS_PER_PAGE}`
+        );
         
           if (!response.ok) {
             throw new Error('Failed to fetch token/NFT data');
@@ -154,7 +176,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
     };
 
     fetchTokenData();
-  }, [address]);
+  }, [address, holdersPage, transfersPage, nftsPage]);
 
   // Copy address to clipboard handler
   const copyAddressToClipboard = async () => {
@@ -164,6 +186,92 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
       setTimeout(() => setCopiedAddress(false), 2000);
     } catch (err) {
       console.error('Failed to copy address:', err);
+    }
+  };
+
+  // Check if token is an NFT (ERC721/ERC1155)
+  const isNFTToken = (type: string) => {
+    const nftTypes = ['ERC721', 'ERC1155', 'VRC-721', 'VRC-1155', 'NFT'];
+    return nftTypes.some(t => type.toUpperCase().includes(t.toUpperCase()));
+  };
+
+  // Add ERC20 token to MetaMask
+  const addToMetaMask = async () => {
+    // NFTs should use addNFTToMetaMask instead
+    if (tokenData?.token?.type && isNFTToken(tokenData.token.type)) {
+      return;
+    }
+    
+    // Wait for ethereum to be injected
+    let ethereum = (window as any).ethereum;
+    if (!ethereum) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      ethereum = (window as any).ethereum;
+    }
+    
+    if (!ethereum) {
+      const confirmed = confirm('No Web3 wallet detected. Would you like to install MetaMask?');
+      if (confirmed) {
+        window.open('https://metamask.io/download/', '_blank');
+      }
+      return;
+    }
+    
+    if (!tokenData?.token || tokenData.token.type === 'Native') return;
+    
+    try {
+      await ethereum.request({
+        method: 'wallet_watchAsset',
+        params: {
+          type: 'ERC20',
+          options: {
+            address: tokenData.token.address,
+            symbol: tokenData.token.symbol.slice(0, 11),
+            decimals: tokenData.token.decimals ?? 18,
+            image: tokenData.token.logoUrl || undefined,
+          },
+        },
+      });
+    } catch (err: any) {
+      if (err.code !== 4001) {
+        console.error('Failed to add token to MetaMask:', err);
+      }
+    }
+  };
+
+  // Add specific NFT to MetaMask by tokenId
+  const addNFTToMetaMask = async (tokenId: number | string) => {
+    // Wait for ethereum to be injected
+    let ethereum = (window as any).ethereum;
+    if (!ethereum) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      ethereum = (window as any).ethereum;
+    }
+    
+    if (!ethereum) {
+      const confirmed = confirm('No Web3 wallet detected. Would you like to install MetaMask?');
+      if (confirmed) {
+        window.open('https://metamask.io/download/', '_blank');
+      }
+      return;
+    }
+    
+    try {
+      await ethereum.request({
+        method: 'wallet_watchAsset',
+        params: {
+          type: 'ERC721',
+          options: {
+            address: tokenData?.token?.address || address,
+            tokenId: String(tokenId),
+          },
+        },
+      });
+    } catch (err: any) {
+      if (err.code !== 4001) {
+        console.error('Failed to add NFT to MetaMask:', err);
+        alert('Failed to add NFT to MetaMask. Your wallet may not support this feature.');
+      }
     }
   };
 
@@ -198,15 +306,49 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
   }, [address, tokenMetadata, metadataLoading]);
 
   const checkBalance = async () => {
-    if (!balanceAddress || !tokenData) return;
+    if (!balanceAddress || !tokenData || !address) return;
 
     setBalanceLoading(true);
     try {
-      // Find balance for the address in holders data
+      // Fetch balance from API for the specific address
+      const response = await fetch(`/api/tokens/${address}/balance?wallet=${balanceAddress}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setBalanceResult({
+          address: balanceAddress,
+          balance: data.balance || '0',
+          percentage: data.percentage || '0.00',
+          rank: data.rank || null
+        });
+      } else {
+        // Fallback: Find balance for the address in current holders data
+        const holder = tokenData.holders?.find(h =>
+          h.address.toLowerCase() === balanceAddress.toLowerCase()
+        );
+
+        if (holder) {
+          setBalanceResult({
+            address: balanceAddress,
+            balance: holder.balance,
+            percentage: holder.percentage,
+            rank: holder.rank
+          });
+        } else {
+          setBalanceResult({
+            address: balanceAddress,
+            balance: '0',
+            percentage: '0.00',
+            rank: null
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error checking balance:', err);
+      // Fallback to local holders data
       const holder = tokenData.holders?.find(h =>
         h.address.toLowerCase() === balanceAddress.toLowerCase()
       );
-
       if (holder) {
         setBalanceResult({
           address: balanceAddress,
@@ -222,9 +364,6 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
           rank: null
         });
       }
-    } catch (err) {
-      console.error('Error checking balance:', err);
-      setBalanceResult(null);
     } finally {
       setBalanceLoading(false);
     }
@@ -266,6 +405,93 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
 
   // NFT固有の情報を表示するかどうかを判定
   const isNFT = tokenData?.token?.isNFT || tokenData?.token?.type === 'VRC-721';
+
+  // Pagination component
+  const PaginationUI = ({ 
+    currentPage, 
+    totalPages, 
+    total,
+    itemsPerPage,
+    onPageChange,
+    itemName = 'items'
+  }: { 
+    currentPage: number; 
+    totalPages: number;
+    total: number;
+    itemsPerPage: number;
+    onPageChange: (page: number) => void;
+    itemName?: string;
+  }) => {
+    if (totalPages <= 1) return null;
+    
+    return (
+      <div className='mt-6'>
+        <div className='flex justify-center items-center gap-4'>
+          <button
+            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1}
+            className='px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium'
+          >
+            Previous
+          </button>
+          
+          <div className='flex items-center gap-2'>
+            {currentPage > 3 && (
+              <>
+                <button
+                  onClick={() => onPageChange(1)}
+                  className='px-3 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors font-medium'
+                >
+                  1
+                </button>
+                {currentPage > 4 && <span className='text-gray-500'>...</span>}
+              </>
+            )}
+            
+            {Array.from({ length: 5 }, (_, i) => currentPage - 2 + i)
+              .filter(page => page >= 1 && page <= totalPages)
+              .map(page => (
+                <button
+                  key={page}
+                  onClick={() => onPageChange(page)}
+                  className={`px-3 py-2 rounded-lg transition-colors font-medium ${
+                    page === currentPage
+                      ? 'bg-blue-600 text-white shadow-lg'
+                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+            
+            {currentPage < totalPages - 2 && (
+              <>
+                {currentPage < totalPages - 3 && <span className='text-gray-500'>...</span>}
+                <button
+                  onClick={() => onPageChange(totalPages)}
+                  className='px-3 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors font-medium'
+                >
+                  {totalPages}
+                </button>
+              </>
+            )}
+          </div>
+          
+          <button
+            onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages}
+            className='px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium'
+          >
+            Next
+          </button>
+        </div>
+        
+        <div className='text-center mt-4 text-gray-400 text-sm'>
+          Showing {itemName} {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, total)} of {total.toLocaleString()} total
+        </div>
+      </div>
+    );
+  };
 
   const tabs = [
     { id: 'holders', label: 'Token Holders', icon: UsersIcon },
@@ -326,69 +552,131 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
         );
 
       case 'transfers':
+        // MetaMask準拠のトランザクションタイプバッジを生成
+        const getTransferTypeBadge = (from: string, to: string) => {
+          const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
+          const DEAD_ADDR = '0x000000000000000000000000000000000000dead';
+          
+          // Mint (from zero address)
+          if (from === ZERO_ADDR || from === 'System' || from.toLowerCase() === ZERO_ADDR) {
+            return (
+              <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 shadow-sm'>
+                <span className='text-sm'>✨</span>
+                <span>Mint</span>
+              </span>
+            );
+          }
+          
+          // Burn (to zero address or dead address)
+          const toLower = to.toLowerCase();
+          if (to === ZERO_ADDR || to === 'System' || toLower === ZERO_ADDR || toLower === DEAD_ADDR) {
+            return (
+              <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 shadow-sm'>
+                <span className='text-sm'>🔥</span>
+                <span>Burn</span>
+              </span>
+            );
+          }
+          
+          // Regular transfer
+          return (
+            <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 shadow-sm'>
+              <span className='text-sm'>⇆</span>
+              <span>Transfer</span>
+            </span>
+          );
+        };
+
+        const transfersList = isNFT 
+          ? (tokenData?.transfers || [])
+              .filter(tx => tx.tokenId !== undefined)
+              .sort((a, b) => Number(b.tokenId) - Number(a.tokenId))
+          : (tokenData?.transfers || []);
+
         return (
           <div className='space-y-4'>
-            {tokenData?.transfers && tokenData.transfers.length > 0 ? (
+            {transfersList.length > 0 ? (
               <div className='overflow-x-auto'>
                 <table className='w-full'>
                   <thead>
                     <tr className='border-b border-gray-600'>
-                      <th className='text-left py-2 text-gray-400'>Tx Hash</th>
-                      <th className='text-left py-2 text-gray-400'>From</th>
-                      <th className='text-left py-2 text-gray-400'>To</th>
-                      <th className='text-left py-2 text-gray-400'>Value</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Tx Hash</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Type</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>From</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>To</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Value</th>
                       {isNFT && (
-                        <th className='text-left py-2 text-gray-400'>Token ID</th>
+                        <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Token ID</th>
                       )}
-                      <th className='text-left py-2 text-gray-400'>Time</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Age</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {tokenData.transfers.map((transfer, index) => (
-                      <tr key={index} className='border-b border-gray-700/50'>
-                        <td className='py-2'>
-                          <Link href={`/tx/${transfer.hash}`} className='text-blue-400 hover:text-blue-300 font-mono text-sm'>
-                            {transfer.hash.slice(0, 8)}...{transfer.hash.slice(-8)}
+                  <tbody className='divide-y divide-gray-700'>
+                    {transfersList.map((transfer, index) => (
+                      <tr key={index} className='hover:bg-gray-700/50 transition-colors'>
+                        <td className='py-3 px-4'>
+                          <Link 
+                            href={transfer.hash ? `/tx/${transfer.hash}` : '#'} 
+                            className='text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors'
+                          >
+                            {transfer.hash ? `${transfer.hash.slice(0, 10)}...${transfer.hash.slice(-6)}` : 'N/A'}
                           </Link>
                         </td>
-                        <td className='py-2'>
-                          {transfer.from === 'System' ? (
-                            <span className="text-gray-400 font-mono text-sm">System</span>
+                        <td className='py-3 px-4'>
+                          {getTransferTypeBadge(transfer.from, transfer.to)}
+                        </td>
+                        <td className='py-3 px-4'>
+                          {transfer.from === 'System' || transfer.from === '0x0000000000000000000000000000000000000000' ? (
+                            <span className="text-emerald-400 text-sm">System (Mint)</span>
                           ) : (
                             <Link
                               href={`/address/${transfer.from}`}
-                              className="text-blue-400 hover:text-blue-300 font-mono text-sm"
+                              className="text-green-400 hover:text-green-300 font-mono text-sm transition-colors"
                             >
                               {formatAddress(transfer.from)}
                             </Link>
                           )}
                         </td>
-                        <td className='py-2'>
-                          {transfer.to === 'System' ? (
-                            <span className="text-gray-400 font-mono text-sm">System</span>
-                          ) : (
-                            <Link
-                              href={`/address/${transfer.to}`}
-                              className="text-blue-400 hover:text-blue-300 font-mono text-sm"
-                            >
-                              {formatAddress(transfer.to)}
-                            </Link>
-                          )}
+                        <td className='py-3 px-4'>
+                          {(() => {
+                            const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
+                            const DEAD_ADDR = '0x000000000000000000000000000000000000dead';
+                            const toLower = transfer.to?.toLowerCase() || '';
+                            const isBurn = transfer.to === 'System' || toLower === ZERO_ADDR || toLower === DEAD_ADDR;
+                            
+                            return isBurn ? (
+                              <span className="text-red-400 text-sm">Burn Address</span>
+                            ) : (
+                              <Link
+                                href={`/address/${transfer.to}`}
+                                className="text-purple-400 hover:text-purple-300 font-mono text-sm transition-colors"
+                              >
+                                {formatAddress(transfer.to)}
+                              </Link>
+                            );
+                          })()}
                         </td>
-                        <td className='py-2 text-green-400 font-bold'>{transfer.value}</td>
+                        <td className='py-3 px-4'>
+                          <span className='text-green-400 font-medium'>{transfer.value} {tokenData?.token?.symbol || ''}</span>
+                        </td>
                         {isNFT && (
-                          <td className='py-2 text-gray-300'>
-                            <Link href={`/tx/${transfer.hash}`} className='text-blue-400 hover:text-blue-300 font-mono text-sm'>
-                              {transfer.tokenId || '-'}
+                          <td className='py-3 px-4'>
+                            <Link 
+                              href={`/token/${address}/${transfer.tokenId}`} 
+                              className='text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors'
+                            >
+                              #{transfer.tokenId === undefined || transfer.tokenId === null ? '0' : transfer.tokenId}
                             </Link>
                           </td>
                         )}
-                        <td className='py-2 text-gray-400 text-sm'>
-                          <div className='flex items-center'>
-                            <ClockIcon className='w-4 h-4 text-yellow-400 mr-2' />
+                        <td className='py-3 px-4'>
+                          <div className='flex items-center gap-2'>
+                            <ClockIcon className='w-4 h-4 text-gray-500' />
                             <div>
                               <div className='text-sm text-gray-300'>{transfer.timeAgo}</div>
-                              <div className='text-xs text-gray-500'>{new Date(transfer.timestamp).toLocaleString()}</div>
+                              <div className='text-xs text-gray-500'>
+                                {new Date(transfer.timestamp).toLocaleString(undefined, { timeZoneName: 'short' })}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -402,6 +690,18 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                 <ArrowPathIcon className='w-12 h-12 text-gray-500 mx-auto mb-4' />
                 <p className='text-gray-400'>No transfers found</p>
               </div>
+            )}
+            
+            {/* Transfers Pagination */}
+            {tokenData?.pagination?.transfers && (
+              <PaginationUI
+                currentPage={transfersPage}
+                totalPages={tokenData.pagination.transfers.totalPages}
+                total={tokenData.pagination.transfers.total}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setTransfersPage}
+                itemName='transfers'
+              />
             )}
           </div>
         );
@@ -570,11 +870,11 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
           >
             <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'>
               {tokenData?.holders && tokenData.holders.length > 0 ? (
-                // Collect all token IDs and sort by token ID in descending order (newest first)
+                // Collect all token IDs and sort by token ID 降順
                 tokenData.holders.flatMap((holder) =>
                   (holder.tokenIds || []).map(tokenId => ({ tokenId, holder }))
                 )
-                .sort((a, b) => b.tokenId - a.tokenId) // Sort by token ID descending
+                .sort((a, b) => Number(b.tokenId) - Number(a.tokenId)) // tokenId降順
                 .map(({ tokenId, holder }) => {
                   const metadata = tokenMetadata[tokenId];
                   const isLoading = metadataLoading[tokenId];
@@ -583,7 +883,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                     <div key={`${holder.address}-${tokenId}`} className='bg-gray-700/50 rounded-lg p-4 border border-gray-600 hover:border-gray-500 transition-colors'>
                       <div className='flex items-center justify-between mb-3'>
                         <span className='text-gray-400'>Token ID:</span>
-                        <span className='text-green-400 font-bold'>#{tokenId}</span>
+                        <Link href={`/token/${address}/${tokenId}`} className='text-blue-400 font-bold hover:underline'>#{tokenId}</Link>
                       </div>
                       <div className='flex items-center justify-between mb-3'>
                         <span className='text-gray-400'>Owner:</span>
@@ -605,7 +905,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                         ) : metadata ? (
                           <div>
                             {metadata.image ? (
-                              <div className='relative h-48 w-full overflow-hidden'>
+                              <Link href={`/token/${address}/${tokenId}`} className='block w-full h-48 rounded-t-lg overflow-hidden shadow hover:opacity-90 transition-opacity cursor-pointer' title='View NFT detail page'>
                                 {/* Loading state */}
                                 {imageLoadState[tokenId] === 'loading' && (
                                   <div className='absolute inset-0 flex items-center justify-center bg-gray-800 z-15'>
@@ -629,34 +929,27 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                                 )}
                                 
                                 {/* Main image with link */}
-                                <a 
-                                  href={metadata.image} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className='block w-full h-full hover:opacity-90 transition-opacity cursor-pointer'
-                                  title='Click to view original image'
-                                >
-                                  <Image
-                                    src={metadata.image}
-                                    alt={metadata.name || `Token #${tokenId}`}
-                                    layout='fill'
-                                    objectFit='cover'
-                                    className={`w-full h-full object-cover z-10 ${
-                                      imageLoadState[tokenId] === 'loaded' ? 'opacity-100' : 'opacity-0'
-                                    }`}
-                                    onLoadStart={() => {
-                                      setImageLoadState(prev => ({ ...prev, [tokenId]: 'loading' }));
-                                    }}
-                                    onLoad={() => {
-                                      setImageLoadState(prev => ({ ...prev, [tokenId]: 'loaded' }));
-                                    }}
-                                    onError={() => {
-                                      setImageLoadState(prev => ({ ...prev, [tokenId]: 'error' }));
-                                    }}
-                                    unoptimized
-                                  />
-                                </a>
-                              </div>
+                                <Image
+                                  src={metadata.image}
+                                  alt={metadata.name || `Token #${tokenId}`}
+                                  width={320}
+                                  height={192}
+                                  style={{ objectFit: 'cover', width: '100%', height: '192px' }}
+                                  className={`w-full h-48 object-cover z-10 ${
+                                    imageLoadState[tokenId] === 'loaded' ? 'opacity-100' : 'opacity-0'
+                                  }`}
+                                  onLoadStart={() => {
+                                    setImageLoadState(prev => ({ ...prev, [tokenId]: 'loading' }));
+                                  }}
+                                  onLoad={() => {
+                                    setImageLoadState(prev => ({ ...prev, [tokenId]: 'loaded' }));
+                                  }}
+                                  onError={() => {
+                                    setImageLoadState(prev => ({ ...prev, [tokenId]: 'error' }));
+                                  }}
+                                  unoptimized
+                                />
+                              </Link>
                             ) : (
                               <div className='h-48 flex items-center justify-center bg-gray-800'>
                                 <span className='text-gray-500 text-sm'>No image</span>
@@ -665,29 +958,30 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                             
                             {/* Metadata info */}
                             <div className='p-3'>
-                              <h5 className='font-semibold text-gray-200 mb-2'>
-                                {(() => {
-                                  const txHash = getTransactionForTokenId(tokenId);
-                                  const title = metadata.name || `Token #${tokenId}`;
-                                  
-                                  if (txHash) {
+                              <div className='flex items-center justify-between mb-2'>
+                                <h5 className='font-semibold text-gray-200 flex items-center gap-2'>
+                                  {(() => {
+                                    // const txHash = getTransactionForTokenId(tokenId);
+                                    const title = metadata.name || `Token #${tokenId}`;
+                                    const tokenDetailUrl = `/token/${address}/${tokenId}`;
                                     return (
-                                      <Link 
-                                        href={`/tx/${txHash}`}
+                                      <Link
+                                        href={tokenDetailUrl}
                                         className='text-blue-400 hover:text-blue-300 transition-colors'
-                                        title='View transaction details'
+                                        title='NFT詳細ページへ'
                                       >
                                         {title}
                                       </Link>
                                     );
-                                  }
-                                  return title;
-                                })()}
-                              </h5>
-                              {metadata.description && (
-                                <p className='text-sm text-gray-400 mb-2'>{metadata.description}</p>
-                              )}
-                              
+                                  })()}
+                                </h5>
+                                {/* createdAtを右側に表示 */}
+                                {metadata.createdAt && (
+                                  <span className='text-xs text-gray-500 ml-2 whitespace-nowrap'>Created: {new Date(metadata.createdAt).toLocaleString()}</span>
+                                )}
+                              </div>
+                              {/* descriptionを必ず表示 */}
+                              <p className='text-sm text-gray-400 mb-2'>{metadata.description || '-'}</p>
                               {/* Attributes */}
                               {metadata.attributes && metadata.attributes.length > 0 && (
                                 <div className='space-y-1'>
@@ -701,6 +995,20 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                                   </div>
                                 </div>
                               )}
+                              {/* Add to MetaMask button - right aligned */}
+                              <div className='flex justify-end mt-2'>
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    addNFTToMetaMask(tokenId);
+                                  }}
+                                  className='flex items-center gap-1 px-2 py-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors text-xs font-medium'
+                                  title='Add this NFT to MetaMask'
+                                >
+                                  🦊 Add to Wallet
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ) : (
@@ -726,6 +1034,18 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                 </p>
               </div>
             )}
+            
+            {/* NFT Collections Pagination */}
+            {tokenData?.pagination?.nfts && (
+              <PaginationUI
+                currentPage={nftsPage}
+                totalPages={tokenData.pagination.nfts.totalPages}
+                total={tokenData.pagination.nfts.total}
+                itemsPerPage={NFTS_PER_PAGE}
+                onPageChange={setNftsPage}
+                itemName='NFTs'
+              />
+            )}
           </div>
         );
 
@@ -736,27 +1056,33 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
               <div className='overflow-x-auto'>
                 <table className='w-full'>
                   <thead>
-                    <tr className='border-b border-gray-700'>
-                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>#</th>
-                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Address</th>
-                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Balance</th>
-                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Percentage</th>
+                    <tr className='border-b border-gray-600'>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Rank</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Address</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Balance</th>
+                      <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Percentage</th>
                     </tr>
                   </thead>
                   <tbody className='divide-y divide-gray-700'>
                     {tokenData.holders.map((holder) => (
                       <tr key={`${holder.address}-${holder.rank}`} className='hover:bg-gray-700/50 transition-colors'>
-                        <td className='py-3 px-4 text-gray-200 font-bold'>#{holder.rank}</td>
+                        <td className='py-3 px-4'>
+                          <span className='text-yellow-400 font-bold'>#{holder.rank}</span>
+                        </td>
                         <td className='py-3 px-4'>
                           <Link
                             href={`/address/${holder.address}`}
-                            className='font-mono text-blue-400 hover:text-blue-300 transition-colors break-all'
+                            className='text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors'
                           >
                             {formatAddress(holder.address)}
                           </Link>
                         </td>
-                        <td className='py-3 px-4 text-green-400 font-bold'>{holder.balance}</td>
-                        <td className='py-3 px-4 text-yellow-400 font-medium'>{holder.percentage}%</td>
+                        <td className='py-3 px-4'>
+                          <span className='text-green-400 font-medium'>{holder.balance} {tokenData?.token?.symbol || ''}</span>
+                        </td>
+                        <td className='py-3 px-4'>
+                          <span className='text-gray-300'>{holder.percentage}%</span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -764,8 +1090,21 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
               </div>
             ) : (
               <div className='text-center py-8'>
-                <p className='text-gray-400'>No holders data available</p>
+                <UsersIcon className='w-12 h-12 text-gray-500 mx-auto mb-4' />
+                <p className='text-gray-400'>No holders found</p>
               </div>
+            )}
+            
+            {/* Holders Pagination */}
+            {tokenData?.pagination?.holders && (
+              <PaginationUI
+                currentPage={holdersPage}
+                totalPages={tokenData.pagination.holders.totalPages}
+                total={tokenData.pagination.holders.total}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setHoldersPage}
+                itemName='holders'
+              />
             )}
           </div>
         );
@@ -775,7 +1114,6 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
   if (loading) {
     return (
       <>
-        <Header />
         <div className='page-header-container'>
           <div className='container mx-auto px-4 py-8'>
             <h1 className='text-3xl font-bold mb-2 text-gray-100'>Token Details</h1>
@@ -797,7 +1135,6 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
   if (error) {
     return (
       <>
-        <Header />
         <div className='page-header-container'>
           <div className='container mx-auto px-4 py-8'>
             <h1 className='text-3xl font-bold mb-2 text-gray-100'>Token Details</h1>
@@ -821,8 +1158,6 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
 
   return (
     <>
-      <Header />
-
       {/* Page Header */}
       <div className='page-header-container'>
         <div className='container mx-auto px-4 py-8'>
@@ -856,7 +1191,11 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
 
           <div className='bg-gray-700/50 rounded-lg p-4 border border-gray-600/50'>
             <h3 className='text-sm font-medium text-gray-300 mb-2'>Age</h3>
-            <p className='text-2xl font-bold text-yellow-400'>{tokenData?.statistics?.age || 0} days</p>
+            <p className='text-2xl font-bold text-yellow-400'>
+              {tokenData?.statistics?.age !== undefined && tokenData?.statistics?.age !== 'N/A' && typeof tokenData?.statistics?.age === 'number'
+                ? `${tokenData.statistics.age} days`
+                : 'N/A'}
+            </p>
             <p className='text-xs text-gray-400'>Since creation</p>
           </div>
         </div>
@@ -865,6 +1204,16 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
         <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8'>
           <div className='flex items-center justify-between mb-6'>
             <h2 className='text-xl font-semibold text-gray-100'>Token Information</h2>
+            {/* Add to MetaMask button for ERC20 tokens only */}
+            {tokenData?.token?.type && tokenData.token.type !== 'Native' && !isNFTToken(tokenData.token.type) && (
+              <button
+                onClick={addToMetaMask}
+                className='flex items-center gap-2 px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors text-sm font-medium'
+                title='Add to MetaMask'
+              >
+                🦊 Add to MetaMask
+              </button>
+            )}
           </div>
           <div className='grid grid-cols-1 md:grid-cols-4 gap-6'>
             <div className='md:col-span-2'>

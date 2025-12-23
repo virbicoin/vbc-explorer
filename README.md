@@ -8,29 +8,101 @@
 [![Node.js CI](https://github.com/virbicoin/vbc-explorer/actions/workflows/node.js.yml/badge.svg)](https://github.com/virbicoin/vbc-explorer/actions/workflows/node.js.yml)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
-[![Node.js](https://img.shields.io/badge/Node.js-22.x-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-15+-000000?style=flat&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-24.x-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16+-000000?style=flat&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![EIP-3091](https://img.shields.io/badge/EIP--3091-Supported-brightgreen)](https://eips.ethereum.org/EIPS/eip-3091)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-<b>Live Version: [explorer.digitalregion.jp](https://explorer.digitalregion.jp)</b>
+A modern, real-time blockchain explorer for any EVM-compatible network built with Next.js 15 App Router, TypeScript, and MongoDB. Features advanced NFT support, contract verification, comprehensive token analytics, built-in DEX, and Token Launchpad.
 
-A modern, real-time blockchain explorer for the VirBiCoin network built with Next.js 15 App Router, TypeScript, and MongoDB. Features advanced NFT support, contract verification, and comprehensive token analytics.
-
-**This project is a fork of [ETC Explorer](https://github.com/ethereumclassic/explorer), enhanced and adapted for VirBiCoin with modern technologies and additional features.**
+**This project is a fork of [ETC Explorer](https://github.com/ethereumclassic/explorer), enhanced with modern technologies and additional features.**
 
 ## ✨ Key Features
 
 - **🔍 Advanced Search** - Search blocks, transactions, addresses, tokens, and contracts with intelligent filtering
-- **💎 NFT Explorer** - Complete VRC-721 and VRC-1155 support with metadata, image galleries, and collection analytics
+- **💎 NFT Explorer** - Complete ERC-721 and ERC-1155 support with metadata, image galleries, and collection analytics
 - **📊 Real-time Analytics** - Network statistics, gas price tracking, and blockchain performance metrics
 - **🛡️ Contract Verification** - Smart contract source code verification with Solidity compiler integration
-- **💰 Token Management** - Comprehensive VRC-20, VRC-721, and VRC-1155 token tracking with holder analytics
+- **💰 Token Management** - Comprehensive ERC-20, ERC-721, and ERC-1155 token tracking with holder analytics
 - **📈 Rich List** - Real-time account balance tracking and wealth distribution analysis
-- **💸 Price Tracking** - Live VBC price updates with multiple API integrations
+- **💸 Price Tracking** - Live price updates with multiple API integrations (CoinGecko, CoinPaprika)
 - **⚡ Real-time Sync** - Live blockchain synchronization with WebSocket support
 - **📱 Responsive Design** - Mobile-first design optimized for all devices
 - **🔗 EIP-3091 Support** - Direct URI redirection for ethereum: links
+- **🔄 DEX (Swap)** - Decentralized token exchange with Uniswap V2 style AMM
+- **💧 Liquidity Pools** - Provide liquidity and earn trading fees
+- **🌾 Yield Farming** - Stake LP tokens to earn rewards
+- **🎨 Token Launchpad V2** - No-code token creation with metadata, transfer, approve, burn, and pause features
+
+## 💱 DEX Features
+
+The explorer includes a built-in decentralized exchange (DEX) with the following features:
+
+### Swap
+- Token swapping with automatic price calculation
+- Slippage tolerance configuration
+- Price impact warnings
+- Multi-hop routing support
+
+### Liquidity Pools
+- Add/remove liquidity for token pairs
+- LP token management
+- Real-time pool statistics
+- Trading fee earnings (0.3%)
+
+### Yield Farming
+- Stake LP tokens to earn reward tokens
+- Real-time APR calculation
+- No lock-up period - withdraw anytime
+- Harvest rewards at any time
+
+### Contract Requirements
+
+To enable DEX features, deploy and configure the following contracts:
+
+| Contract | Description |
+|----------|-------------|
+| Factory | UniswapV2Factory for creating pairs |
+| Router | UniswapV2Router02 for swapping |
+| MasterChef | Farming rewards distribution |
+| Reward Token | Token distributed as farming rewards |
+| WETH/Wrapped Native | Wrapped native currency token |
+
+Configure contract addresses in `config.json` under the `dex` section.
+
+## 🎨 Token Launchpad (V2)
+
+The explorer includes a Token Launchpad feature for creating and managing custom tokens:
+
+### Create Tokens
+- **No-Code Token Creation** - Create ERC-20 tokens without writing code
+- **Custom Metadata** - Set logo URL, description, and website
+- **Configurable Supply** - Define total supply and decimals
+- **Creation Fee** - Configurable fee per token creation
+
+### Manage Your Tokens
+- **📤 Transfer** - Send tokens to other addresses
+- **✅ Approve** - Set allowances for DEX and smart contracts (with unlimited option)
+- **🔥 Burn** - Permanently burn tokens to reduce supply
+- **⏸️ Pause/Unpause** - Pause token transfers (owner only)
+- **📝 Edit Metadata** - Update logo, description, and website
+- **🦊 MetaMask Integration** - One-click add tokens to MetaMask wallet
+
+### Token Details Page
+- **Overview** - Total supply, decimals, creator, and owner info
+- **👥 Holders** - View all token holders with balance and percentage
+- **📜 Transfers** - Complete transaction history with pagination
+
+### Contract Requirements
+
+Deploy a TokenFactory V2 contract and configure the address in `config.json` under the `launchpad` section.
+
+### V2 Token Features
+- Native `burn()` function for token burning
+- `pause()` / `unpause()` functions for owner control
+- On-chain metadata (logo URL, description, website)
+- Ownable with ownership transfer support
+- Full ERC-20 compatibility
 
 ## 🚀 Multi-Chain Compatibility
 
@@ -79,11 +151,11 @@ Edit `config.json` for your blockchain:
 ```
 
 ### Supported Networks
-- ✅ VirBiCoin (native support)
+- ✅ Your Chain (native support)
 - ✅ Any EVM-compatible blockchain
 - ✅ Custom gas units and currency symbols
 - ✅ Configurable RPC endpoints
-- ✅ Multi-chain token standards (VRC-20/721/1155)
+- ✅ Multi-chain token standards (ERC-20/721/1155)
 
 ## 📋 Core Features
 
@@ -94,9 +166,9 @@ Edit `config.json` for your blockchain:
 - **Address Analytics** - Balance history, transaction patterns, and token holdings
 
 ### 💎 **NFT & Token Support**
-- **VRC-721 NFT Gallery** - Image galleries with metadata display and collection analytics
-- **VRC-1155 Multi-Token** - Advanced multi-token standard support
-- **VRC-20 Tracking** - Complete token analytics with holder distribution
+- **ERC-721 NFT Gallery** - Image galleries with metadata display and collection analytics
+- **ERC-1155 Multi-Token** - Advanced multi-token standard support
+- **ERC-20 Tracking** - Complete token analytics with holder distribution
 - **Token Metadata** - Automatic metadata loading and IPFS support
 - **Collection Statistics** - Floor prices, volumes, and trading analytics
 
@@ -186,7 +258,7 @@ graph TB
     end
     
     subgraph "Blockchain Layer"
-        P[VirBiCoin Node]
+        P[EVM Node]
         Q[Web3.js]
         R[RPC Connection]
     end
@@ -403,11 +475,11 @@ Stores account balance information (updated via tools/richlist.ts):
 ### Token
 Stores comprehensive token information (managed via tools/tokens.ts):
 - `address`: Token contract address (unique identifier)
-- `name`: Token name (e.g., "VirBiCoin Token")
-- `symbol`: Token symbol (e.g., "VBC")
-- `decimals`: Token decimals (typically 18 for VRC-20)
+- `name`: Token name (e.g., "My Token")
+- `symbol`: Token symbol (e.g., "MTK")
+- `decimals`: Token decimals (typically 18 for ERC-20)
 - `totalSupply`: Total token supply (BigInt as string)
-- `type`: Token standard ('VRC-20' | 'VRC-721' | 'VRC-1155')
+- `type`: Token standard ('ERC-20' | 'ERC-721' | 'ERC-1155')
 - `verified`: Contract verification status
 - `metadata`: Additional token metadata (JSON object)
 - `holders`: Number of token holders
@@ -430,9 +502,9 @@ Stores verified contract information (via contract verification API):
 - `constructorArgs`: Constructor arguments used during deployment
 
 ### Price
-Stores VBC price data (updated via tools/price.ts):
+Stores native currency price data (updated via tools/price.ts):
 - `timestamp`: Price timestamp
-- `price`: VBC price in USD
+- `price`: Price in USD
 - `volume24h`: 24-hour trading volume
 - `marketCap`: Market capitalization
 - `change24h`: 24-hour price change percentage
@@ -445,7 +517,7 @@ Stores VBC price data (updated via tools/price.ts):
 
 - **Node.js 18+** and npm
 - **MongoDB 6.0+** running on localhost:27017
-- **VirBiCoin node** running on localhost:8329 with RPC enabled
+- **EVM Node** running with RPC enabled (e.g., localhost:8545)
 - **PM2** installed globally: `npm install -g pm2`
 
 ### Installation
@@ -498,8 +570,8 @@ pm2 status
 
 # View logs
 pm2 logs                    # All logs
-pm2 logs vbc-explorer-web   # Web service only
-pm2 logs vbc-sync          # Sync service only
+pm2 logs explorer-web       # Web service only
+pm2 logs explorer-sync      # Sync service only
 
 # Monitor resources
 pm2 monit
@@ -516,14 +588,14 @@ pm2 save
 
 ```bash
 # Start specific services only
-pm2 start ecosystem.config.json --only vbc-explorer-web
-pm2 start ecosystem.config.json --only vbc-sync
-pm2 start ecosystem.config.json --only vbc-stats
+pm2 start ecosystem.config.json --only explorer-web
+pm2 start ecosystem.config.json --only explorer-sync
+pm2 start ecosystem.config.json --only explorer-stats
 
 # Restart specific service
-pm2 restart vbc-explorer-web
-pm2 restart vbc-sync
-pm2 restart vbc-stats
+pm2 restart explorer-web
+pm2 restart explorer-sync
+pm2 restart explorer-stats
 ```
 
 ## Local Installation (Development)
@@ -532,15 +604,15 @@ pm2 restart vbc-stats
 
 - **Node.js 18+** and npm
 - **MongoDB 6.0+** with authentication enabled
-- **VirBiCoin node** running on localhost:8329 with RPC enabled
+- **EVM Node** running with RPC enabled (e.g., localhost:8545)
 - **Minimum 4GB RAM** and **20GB storage** for full blockchain data
 
 ### Setup
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/virbicoin/vbc-explorer
-cd vbc-explorer
+git clone <repository-url>
+cd explorer
 ```
 
 2. **Install dependencies**
@@ -565,12 +637,12 @@ exit
 ```bash
 # Copy and customize configuration
 cp config.example.json config.json
-# Edit config.json for your VirBiCoin node settings
+# Edit config.json for your blockchain node settings
 ```
 
 
 
-6. **Start VirBiCoin node** (ensure RPC is enabled)
+6. **Start EVM node** (ensure RPC is enabled)
 ```bash
 # Verify node is running and accessible
 curl -X POST -H "Content-Type: application/json" \
@@ -841,7 +913,7 @@ mongosh
 
 2. **Create explorer database user**
 ```bash
-> use vbc-explorer
+> use explorerDB
 > db.createUser({ user: "explorer", pwd: "<secure_password>", roles: ["dbOwner"] })
 ```
 
@@ -906,6 +978,268 @@ docker-compose down
 
 ## API Endpoints
 
+### Blockscout/Etherscan Compatible API
+
+The explorer provides a Blockscout/Etherscan compatible API endpoint at `/api`. All requests use query parameters in the format `?module=<module>&action=<action>&...params`.
+
+**Base URL:** `https://your-explorer.com/api`
+
+**Response Format:**
+```json
+{
+  "status": "1",       // "1" for success, "0" for error
+  "message": "OK",     // Status message
+  "result": "..."      // Response data
+}
+```
+
+#### Account Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `balance` | Get address balance (wei) | `address` |
+| `balancemulti` | Get multiple balances (max 20) | `address` (comma separated) |
+| `txlist` | Get transaction list | `address`, `page`, `offset`, `sort` |
+| `txlistinternal` | Get internal transactions | `address` or `txhash`, `page`, `offset` |
+| `tokentx` | Get token transfers | `address`, `contractaddress`, `page`, `offset` |
+| `tokenbalance` | Get specific token balance | `address`, `contractaddress` |
+| `getminedblocks` | Get blocks mined by address | `address`, `page`, `offset` |
+
+**Examples:**
+```bash
+# Get balance
+curl "https://explorer.example.com/api?module=account&action=balance&address=0x950302976387b43e042aea242ae8dab8e5c204d1"
+
+# Get multiple balances
+curl "https://explorer.example.com/api?module=account&action=balancemulti&address=0xaddr1,0xaddr2,0xaddr3"
+
+# Get transaction list
+curl "https://explorer.example.com/api?module=account&action=txlist&address=0x...&page=1&offset=10&sort=desc"
+
+# Get token balance for specific token
+curl "https://explorer.example.com/api?module=account&action=tokenbalance&address=0x...&contractaddress=0x..."
+
+# Get mined blocks
+curl "https://explorer.example.com/api?module=account&action=getminedblocks&address=0x..."
+```
+
+#### Block Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `getblockreward` | Get block reward info | `blockno` |
+| `getblocknobytime` | Get block by timestamp | `timestamp`, `closest` (before/after) |
+
+**Examples:**
+```bash
+# Get block reward
+curl "https://explorer.example.com/api?module=block&action=getblockreward&blockno=1234567"
+
+# Get block by timestamp
+curl "https://explorer.example.com/api?module=block&action=getblocknobytime&timestamp=1609459200&closest=before"
+```
+
+#### Transaction Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `gettxinfo` | Get transaction details | `txhash` |
+| `gettxreceiptstatus` | Get transaction status | `txhash` |
+
+**Examples:**
+```bash
+# Get transaction info
+curl "https://explorer.example.com/api?module=transaction&action=gettxinfo&txhash=0x..."
+
+# Get transaction status
+curl "https://explorer.example.com/api?module=transaction&action=gettxreceiptstatus&txhash=0x..."
+```
+
+#### Token Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `gettoken` / `tokeninfo` | Get token information | `contractaddress` |
+| `gettokenholders` | Get token holders list | `contractaddress`, `page`, `offset` |
+| `tokenlist` | Get all tokens list | `page`, `offset` |
+
+**Examples:**
+```bash
+# Get token info
+curl "https://explorer.example.com/api?module=token&action=gettoken&contractaddress=0x..."
+
+# Get token holders
+curl "https://explorer.example.com/api?module=token&action=gettokenholders&contractaddress=0x...&page=1&offset=10"
+
+# Get all tokens
+curl "https://explorer.example.com/api?module=token&action=tokenlist&page=1&offset=100"
+```
+
+#### Stats Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `ethsupply` / `coinsupply` | Get total coin supply (wei) | - |
+| `tokensupply` | Get token total supply | `contractaddress` |
+| `ethprice` / `coinprice` | Get coin price (placeholder) | - |
+| `chainsize` | Get chain size statistics | - |
+| `dailytx` | Get daily transaction count | `startdate`, `enddate`, `sort` |
+
+**Examples:**
+```bash
+# Get native coin supply
+curl "https://explorer.example.com/api?module=stats&action=ethsupply"
+
+# Get token supply
+curl "https://explorer.example.com/api?module=stats&action=tokensupply&contractaddress=0x..."
+
+# Get chain size
+curl "https://explorer.example.com/api?module=stats&action=chainsize"
+
+# Get daily transactions (last 30 days)
+curl "https://explorer.example.com/api?module=stats&action=dailytx&startdate=2025-01-01&enddate=2025-01-31"
+```
+
+#### Contract Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `getabi` | Get contract ABI | `address` |
+| `getsourcecode` | Get contract source code | `address` |
+| `getcontractcreation` | Get contract creation info | `contractaddresses` (max 5, comma separated) |
+
+**Examples:**
+```bash
+# Get contract ABI (verified contracts only)
+curl "https://explorer.example.com/api?module=contract&action=getabi&address=0x..."
+
+# Get contract source code
+curl "https://explorer.example.com/api?module=contract&action=getsourcecode&address=0x..."
+
+# Get contract creation info
+curl "https://explorer.example.com/api?module=contract&action=getcontractcreation&contractaddresses=0x...,0x..."
+```
+
+#### Logs Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `getLogs` | Get event logs | `address`, `fromBlock`, `toBlock`, `topic0-3`, `page`, `offset` |
+
+**Examples:**
+```bash
+# Get logs for contract
+curl "https://explorer.example.com/api?module=logs&action=getLogs&address=0x...&fromBlock=0&toBlock=latest"
+
+# Get logs with topic filter
+curl "https://explorer.example.com/api?module=logs&action=getLogs&address=0x...&topic0=0xddf252..."
+```
+
+#### Proxy Module (JSON-RPC)
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `eth_blockNumber` | Get current block number (hex) | - |
+| `eth_getBlockByNumber` | Get block by number | `tag`, `boolean` |
+| `eth_getTransactionByHash` | Get transaction by hash | `txhash` |
+| `eth_getTransactionReceipt` | Get transaction receipt | `txhash` |
+| `eth_call` | Execute contract call | `to`, `data`, `tag` |
+| `eth_getCode` | Get contract bytecode | `address`, `tag` |
+| `eth_gasPrice` | Get current gas price (hex) | - |
+| `eth_estimateGas` | Estimate gas for transaction | `to`, `data`, `value`, `from` |
+
+**Examples:**
+```bash
+# Get current block number
+curl "https://explorer.example.com/api?module=proxy&action=eth_blockNumber"
+
+# Get block by number
+curl "https://explorer.example.com/api?module=proxy&action=eth_getBlockByNumber&tag=latest&boolean=true"
+
+# Get transaction by hash
+curl "https://explorer.example.com/api?module=proxy&action=eth_getTransactionByHash&txhash=0x..."
+
+# Get transaction receipt
+curl "https://explorer.example.com/api?module=proxy&action=eth_getTransactionReceipt&txhash=0x..."
+
+# Execute contract call
+curl "https://explorer.example.com/api?module=proxy&action=eth_call&to=0x...&data=0x..."
+
+# Get contract code
+curl "https://explorer.example.com/api?module=proxy&action=eth_getCode&address=0x..."
+
+# Get gas price
+curl "https://explorer.example.com/api?module=proxy&action=eth_gasPrice"
+
+# Estimate gas
+curl "https://explorer.example.com/api?module=proxy&action=eth_estimateGas&to=0x...&value=0x0"
+```
+
+### Supply APIs (CoinGecko / CoinMarketCap Compatible)
+
+These endpoints return plain text numbers only, as required by CoinGecko and CoinMarketCap.
+
+#### Total Supply
+```
+GET /api/total_supply
+```
+Returns the total supply of VBC as a plain text number.
+
+**Response:** `354921680` (plain text, no JSON)
+
+**Calculation:** `(Block Height × Block Reward) + Pre-mine Amount`
+
+**Debug Mode:** Add `?debug=true` to get detailed JSON response:
+```json
+{
+  "blockNumber": "3115210",
+  "blockReward": 8,
+  "premineAmount": 330000000,
+  "totalSupply": 354921680,
+  "circulatingSupply": 354921679.5,
+  "excludedAddresses": [
+    {
+      "address": "0x0000000000000000000000000000000000000000",
+      "label": "Burn Address",
+      "balance": "0.5"
+    }
+  ]
+}
+```
+
+#### Circulating Supply
+```
+GET /api/circulating_supply
+```
+Returns the circulating supply of VBC as a plain text number.
+
+**Response:** `354921679` (plain text, no JSON)
+
+**Calculation:** `Total Supply - (Sum of Excluded Wallet Balances)`
+
+**Excluded Addresses:** Configured in `config.json` under `supply.excludedAddresses`
+
+#### Configuration (config.json)
+```json
+{
+  "supply": {
+    "blockReward": 8,
+    "premineAmount": 330000000,
+    "excludedAddresses": [
+      {
+        "address": "0x0000000000000000000000000000000000000000",
+        "label": "Burn Address"
+      },
+      {
+        "address": "0x12A656c2DeE0EA2685398d52AcF78974fCD67B27",
+        "label": "MasterChef Contract"
+      }
+    ],
+    "cacheDuration": 60
+  }
+}
+```
+
 ### Core Statistics APIs
 - `GET /api/stats` - Basic network statistics (blocks, transactions, difficulty)
 - `GET /api/stats-enhanced` - Extended statistics with network hashrate and mining data
@@ -924,7 +1258,7 @@ docker-compose down
 - `GET /api/richlist?page=1&limit=50` - Wealth distribution and top addresses
 
 ### Token and NFT APIs
-- `GET /api/tokens` - List all tracked tokens (VRC-20, VRC-721, VRC-1155)
+- `GET /api/tokens` - List all tracked tokens (ERC-20, ERC-721, ERC-1155)
 - `GET /api/tokens/[address]` - Token details, metadata, and holder information
 - `GET /api/nft/[address]` - NFT collection details and metadata
 - `GET /api/nft/[address]/metadata/[tokenId]` - Individual NFT metadata and image URLs
@@ -971,12 +1305,11 @@ The system supports WebSocket connections for real-time updates:
 
 ### NFT Support
 Complete NFT functionality:
-- VRC-721 and VRC-1155 token tracking
+- ERC-721 and ERC-1155 token tracking
 - Metadata retrieval and caching
 - Image loading and fallback handling
 - Token holder tracking
 - Transfer history with proper TokenID display
-- OSATO collection support with reverse chronological TokenID ordering
 
 ### Contract Verification
 Smart contract verification system:
@@ -999,7 +1332,7 @@ npm run export:transactions -- --date=2024-01-01
 npm run export:stats -- --format=csv
 
 # Export tokens
-npm run export:tokens -- --type=VRC-721
+npm run export:tokens -- --type=ERC-721
 ```
 
 
@@ -1017,7 +1350,7 @@ sudo systemctl status mongod
 sudo systemctl restart mongod
 ```
 
-2. **VirBiCoin Node Connection Error**
+2. **EVM Node Connection Error**
 ```bash
 # Test RPC connection - Get current block number
 curl -X POST -H "Content-Type: application/json" \
@@ -1040,7 +1373,7 @@ pm2 status
 pm2 logs --lines 100
 
 # Restart specific service
-pm2 restart vbc-explorer-web
+pm2 restart explorer-web
 ```
 
 4. **Memory Issues (1GB RAM)**
@@ -1066,7 +1399,7 @@ mongoose.connect(config.database.uri || 'mongodb://localhost/explorerDB')
 "
 ```
 
-6. **VirBiCoin Node Connection Issues**
+6. **EVM Node Connection Issues**
 ```bash
 # Check node status and block height
 curl -X POST -H "Content-Type: application/json" \
@@ -1140,14 +1473,14 @@ pm2 monit
 4. **Adjust bulkSize**: Increase bulkSize for large data processing
 5. **Indexes**: Create appropriate indexes in MongoDB
 6. **Memory**: Ensure sufficient memory for large blockchains
-7. **Network**: Ensure high-speed connection to VirBiCoin node
+7. **Network**: Ensure high-speed connection to EVM node
 8. **Caching**: Implement Redis caching for frequently accessed data
 9. **CDN**: Use CDN for static assets and images
 
 ## Security
 
 1. Configure MongoDB access control
-2. Properly restrict RPC access to VirBiCoin node
+2. Properly restrict RPC access to EVM node
 3. Set appropriate permissions for log files
 4. Implement proper firewall settings in production
 5. Validate contract verification inputs
@@ -1240,7 +1573,7 @@ All configuration is now centralized in `config.json`. See the Configuration sec
 // Add new fields to existing collections
 await db.collection('tokens').updateMany({}, {
   $set: {
-    type: 'VRC-20',
+    type: 'ERC-20',
     verified: false,
     metadata: null
   }
@@ -1259,47 +1592,11 @@ await db.collection('tokens').updateMany({}, {
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Contributors
-
-<div align="center" markdown="1">
-
-[![Contributors](https://contrib.rocks/image?repo=virbicoin/vbc-explorer)](https://github.com/virbicoin/vbc-explorer/graphs/contributors)
-
-</div>
-
-## Support
-
-- **Documentation**: [GitHub Wiki](https://github.com/virbicoin/vbc-explorer/wiki)
-- **Issues**: [GitHub Issues](https://github.com/virbicoin/vbc-explorer/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/virbicoin/vbc-explorer/discussions)
-- **Live Demo**: [explorer.digitalregion.jp](https://explorer.digitalregion.jp)
-
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=virbicoin/vbc-explorer&type=Date&theme=dark)](https://star-history.com/#virbicoin/vbc-explorer&Date)
-
-## 📊 Statistics
-
-![GitHub Stats](https://github-readme-stats.vercel.app/api?username=emerauda&repo=TopazBot&show_icons=true&theme=dark)
-
-<div align="center" markdown="1">
-
-**⭐ If you like this project, please give it a star! ⭐**
-
-[![GitHub stars](https://img.shields.io/github/stars/virbicoin/vbc-explorer.svg?style=social&label=Star)](https://github.com/virbicoin/vbc-explorer)
-[![GitHub forks](https://img.shields.io/github/forks/virbicoin/vbc-explorer.svg?style=social&label=Fork)](https://github.com/virbicoin/vbc-explorer/fork)
-[![GitHub watchers](https://img.shields.io/github/watchers/virbicoin/vbc-explorer.svg?style=social&label=Watch)](https://github.com/virbicoin/vbc-explorer)
-
-Made with ❤️ by [VirBiCoin Project](https://github.com/virbicoin)
-
-</div>
-
 ## Acknowledgments
 
-- **VirBiCoin Community** - For blockchain network support
+- **Community** - For blockchain network support
 - **Next.js Team** - For the amazing React framework
 - **MongoDB Team** - For the robust database solution
 - **Web3.js Team** - For blockchain interaction libraries
 
-These tools enable the VirBiCoin Explorer to track the latest blockchain data in real-time, manage NFT collections, verify smart contracts, and provide comprehensive statistical information for the VirBiCoin network.
+These tools enable the EVM Explorer to track the latest blockchain data in real-time, manage NFT collections, verify smart contracts, and provide comprehensive statistical information for the EVM-compatible network.

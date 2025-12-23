@@ -6,7 +6,7 @@
 let BASE_TO_CURRENCY = 1000000000000000000n; // 10^18
 let BASE_TO_GAS_UNIT = 1000000000n; // 10^9
 let CURRENCY_UNIT = 'ETH';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 let BASE_UNIT = 'wei';
 let GAS_UNIT = 'Gwei';
 
@@ -18,7 +18,11 @@ export async function initializeCurrency() {
     const response = await fetch('/api/config/client');
     if (response.ok) {
       const config = await response.json();
-      const decimals = config.currency?.decimals || 18;
+      // Safely convert decimals to number first
+      const decimalsRaw = config.currency?.decimals;
+      const decimals = typeof decimalsRaw === 'number' ? decimalsRaw : 
+                       typeof decimalsRaw === 'string' ? parseInt(decimalsRaw, 10) : 
+                       typeof decimalsRaw === 'bigint' ? Number(decimalsRaw) : 18;
       const unit = config.currency?.unit || 'wei';
       const symbol = config.currency?.symbol || 'ETH';
       const gasUnit = config.currency?.gasUnit || 'Gwei';
@@ -168,9 +172,23 @@ export function weiToGwei(wei: string | bigint): string {
   return baseToGasUnit(wei);
 }
 
-export function formatVBC(value: string): string {
-  return formatCurrency(value);
+/**
+ * Format wei value to native currency display string
+ * Converts from wei to native currency and formats for display
+ */
+export function formatNativeCurrency(weiValue: string | bigint): string {
+  try {
+    // First convert from wei to native currency
+    const nativeValue = baseToCurrency(weiValue);
+    // Then format for display
+    return formatCurrency(nativeValue);
+  } catch {
+    return `0 ${CURRENCY_UNIT}`;
+  }
 }
+
+// Legacy alias for backward compatibility
+export const formatVBC = formatNativeCurrency;
 
 export function formatGwei(value: string): string {
   return formatGasUnit(value);

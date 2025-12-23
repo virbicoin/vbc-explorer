@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import Header from '../app/components/Header';
 import { 
   ArrowUpIcon,
   UserIcon,
@@ -75,7 +74,6 @@ const formatNumber = (value: string | number) => {
 
   return (
     <>
-      <Header />
       {/* Page Header */}
       <div className='bg-gray-800 border-b border-gray-700'>
         <div className='container mx-auto px-4 py-8'>

@@ -1,9 +1,8 @@
 'use client';
-import Header from '../components/Header';
 import Link from 'next/link';
 import { CubeTransparentIcon, CheckCircleIcon, PhotoIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState } from 'react';
-import { getCurrencyName, getCurrencySymbol } from '../../lib/config';
+import { getCurrencyName, getCurrencySymbol, initializeCurrencyConfig } from '../../lib/client-config';
 import { initializeCurrency } from '../../lib/bigint-utils';
 
 type Token = {
@@ -14,6 +13,59 @@ type Token = {
   supply: string;
   type: string;
   verified?: boolean;
+  decimals?: number;
+  logoUrl?: string;
+};
+
+// Check if token is an NFT (ERC721/ERC1155)
+const isNFTToken = (type: string) => {
+  const nftTypes = ['ERC721', 'ERC1155', 'VRC-721', 'VRC-1155', 'NFT'];
+  return nftTypes.some(t => type.toUpperCase().includes(t.toUpperCase()));
+};
+
+// MetaMask追加関数
+const addToMetaMask = async (token: Token) => {
+  // NFTs cannot be added to MetaMask as ERC20 tokens
+  if (isNFTToken(token.type)) {
+    alert('NFT tokens cannot be added to MetaMask wallet.');
+    return;
+  }
+  
+  // Wait for ethereum to be injected
+  let ethereum = (window as any).ethereum;
+  if (!ethereum) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    ethereum = (window as any).ethereum;
+  }
+  
+  if (!ethereum) {
+    const confirmed = confirm('No Web3 wallet detected. Would you like to install MetaMask?');
+    if (confirmed) {
+      window.open('https://metamask.io/download/', '_blank');
+    }
+    return;
+  }
+  
+  if (token.type === 'Native' || token.address === 'N/A') return;
+  
+  try {
+    await ethereum.request({
+      method: 'wallet_watchAsset',
+      params: {
+        type: 'ERC20',
+        options: {
+          address: token.address,
+          symbol: token.symbol.slice(0, 11),
+          decimals: token.decimals ?? 18,
+          image: token.logoUrl || undefined,
+        },
+      },
+    });
+  } catch (err: any) {
+    if (err.code !== 4001) {
+      console.error('Failed to add token to MetaMask:', err);
+    }
+  }
 };
 
 export default function TokensPage() {
@@ -23,55 +75,73 @@ export default function TokensPage() {
   const [currencySymbol, setCurrencySymbol] = useState<string>('');
 
   const [activeTab, setActiveTab] = useState<'all' | 'nft'>('all');
-  const [vbcSupply, setVbcSupply] = useState<string>('0');
+  const [nativeSupply, setNativeSupply] = useState<string>('0');
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalTokens, setTotalTokens] = useState(0);
+  const ITEMS_PER_PAGE = 50;
 
-  // Fetch VBC total supply from richlist API
-  const fetchVBCSupply = async () => {
+  // Fetch native token total supply from richlist API
+  const fetchNativeSupply = async () => {
     try {
       const res = await fetch('/api/richlist?page=1&limit=1');
       if (res.ok) {
         const data = await res.json();
         const totalSupply = data.statistics?.totalSupply || 0;
-        // Convert from Wei to VBC and format
-        const vbcSupply = (totalSupply / 1e18).toLocaleString(undefined, {
+        // Convert from Wei to native currency and format
+        const supply = (totalSupply / 1e18).toLocaleString(undefined, {
           minimumFractionDigits: 0,
           maximumFractionDigits: 0
         });
-        setVbcSupply(vbcSupply);
+        setNativeSupply(supply);
       }
     } catch (error) {
-      console.error('Error fetching VBC supply:', error);
-      setVbcSupply('0');
+      console.error('Error fetching native supply:', error);
+      setNativeSupply('0');
     }
   };
 
   useEffect(() => {
     async function fetchTokens() {
       try {
+        setLoading(true);
+        
         // Initialize currency conversion factors
         await initializeCurrency();
         
-        // Load config values
-        const [name, symbol] = await Promise.all([
-          getCurrencyName(),
-          getCurrencySymbol()
-        ]);
+        // Initialize currency config cache
+        await initializeCurrencyConfig();
+        
+        // Load config values (now from initialized cache)
+        const name = getCurrencyName();
+        const symbol = getCurrencySymbol();
         setCurrencyName(name);
         setCurrencySymbol(symbol);
         
-        const res = await fetch('/api/tokens');
+        // Fetch tokens with pagination
+        const typeParam = activeTab === 'nft' ? 'nft' : 'vrc20';
+        const res = await fetch(`/api/tokens?page=${currentPage}&limit=${ITEMS_PER_PAGE}&type=${typeParam}`);
         if (!res.ok) throw new Error('Failed to fetch tokens');
         const data = await res.json();
-        // トークンを新しい順（降順）にソート
+        
+        // Sort tokens (Native first, then by address descending)
         const sortedTokens = (data.tokens || []).sort((a: Token, b: Token) => {
-          // Nativeトークン（VBC）は最も古いので最後に表示
-          if (a.type === 'Native') return 1;
-          if (b.type === 'Native') return -1;
+          // Nativeトークン（VBC）は最初に表示
+          if (a.type === 'Native') return -1;
+          if (b.type === 'Native') return 1;
           
           // その他のトークンはアドレスでソート（新しい順）
           return b.address.localeCompare(a.address);
         });
         setTokens(sortedTokens);
+        
+        // Update pagination info
+        if (data.pagination) {
+          setTotalPages(data.pagination.totalPages || 1);
+          setTotalTokens(data.pagination.total || 0);
+        }
       } catch {
         setTokens([]);
       } finally {
@@ -80,19 +150,21 @@ export default function TokensPage() {
     }
     fetchTokens();
     
-    // VBC supplyをリッチリストAPIから取得
-    fetchVBCSupply();
-  }, []);
+    // Fetch native token supply from richlist API
+    fetchNativeSupply();
+  }, [activeTab, currentPage]);
+  
+  // Reset to page 1 when tab changes
+  const handleTabChange = (tab: 'all' | 'nft') => {
+    setActiveTab(tab);
+    setCurrentPage(1);
+  };
 
-  // Filter tokens based on active tab
-  const filteredTokens = activeTab === 'nft' 
-    ? tokens.filter(token => token.type === 'VRC-721' || token.type === 'VRC-1155')
-    : tokens;
+  // Use tokens directly since filtering is done server-side
+  const filteredTokens = tokens;
 
   return (
     <div className='min-h-screen bg-gray-900 text-white'>
-      <Header />
-
       {/* Page Header */}
       <div className='bg-gray-800 border-b border-gray-700'>
         <div className='container mx-auto px-4 py-8'>
@@ -133,17 +205,18 @@ export default function TokensPage() {
         <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-6'>
           <div className='flex items-center gap-4 mb-6'>
             <button
-              onClick={() => setActiveTab('all')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              onClick={() => handleTabChange('all')}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
                 activeTab === 'all'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
             >
-              All Tokens
+              <CubeTransparentIcon className='w-4 h-4' />
+              VRC-20 Tokens
             </button>
             <button
-              onClick={() => setActiveTab('nft')}
+              onClick={() => handleTabChange('nft')}
               className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
                 activeTab === 'nft'
                   ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white'
@@ -162,6 +235,7 @@ export default function TokensPage() {
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Token</th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Type</th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Contract Address</th>
+                  <th className='text-left py-3 px-4 text-sm font-medium text-gray-300 w-24'>Actions</th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-300 w-32'>Verify</th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Holders</th>
                   <th className='text-left py-3 px-4 text-sm font-medium text-gray-300'>Total Supply</th>
@@ -170,7 +244,7 @@ export default function TokensPage() {
               <tbody className='divide-y divide-gray-700'>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className='py-12'>
+                    <td colSpan={7} className='py-12'>
                       <div className='flex justify-center items-center'>
                         <div className='animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500'></div>
                       </div>
@@ -178,13 +252,13 @@ export default function TokensPage() {
                   </tr>
                 ) : filteredTokens.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className='py-6 text-center text-gray-400'>
+                    <td colSpan={7} className='py-6 text-center text-gray-400'>
                       {activeTab === 'nft' ? 'No NFT collections found' : 'No tokens found'}
                     </td>
                   </tr>
                 ) : (
-                  filteredTokens.map((token) => (
-                    <tr key={token.symbol} className='hover:bg-gray-700/50 transition-colors'>
+                  filteredTokens.map((token, index) => (
+                    <tr key={`${token.address}-${index}`} className='hover:bg-gray-700/50 transition-colors'>
                       <td className='py-3 px-4'>
                         <div>
                           <div className='font-bold text-gray-200'>{token.symbol}</div>
@@ -222,6 +296,17 @@ export default function TokensPage() {
                           )}
                         </div>
                       </td>
+                      <td className='py-3 px-4 w-24'>
+                        {token.type !== 'Native' && token.address !== 'N/A' && !isNFTToken(token.type) && (
+                          <button
+                            onClick={() => addToMetaMask(token)}
+                            className='p-2 hover:bg-gray-600 rounded-lg transition-colors'
+                            title='Add to MetaMask'
+                          >
+                            🦊
+                          </button>
+                        )}
+                      </td>
                       <td className='py-3 px-4 w-32'>
                         {token.type !== 'Native' && token.verified ? (
                           <span className='flex items-center gap-1 px-3 py-1 bg-green-500/20 text-green-400 rounded text-sm font-medium w-fit'>
@@ -237,7 +322,7 @@ export default function TokensPage() {
                       </td>
                       <td className='py-3 px-4'>
                         <span className='text-green-400 text-lg font-bold'>
-                          {token.type === 'Native' ? `${vbcSupply} ${currencySymbol}` : (token.supply ? `${token.supply} ${token.symbol}` : '-')}
+                          {token.type === 'Native' ? `${nativeSupply} ${currencySymbol}` : (token.supply ? `${token.supply} ${token.symbol}` : '-')}
                         </span>
                       </td>
                     </tr>
@@ -247,6 +332,79 @@ export default function TokensPage() {
             </table>
           </div>
         </div>
+        
+        {/* Pagination UI */}
+        {totalPages > 1 && (
+          <div className='flex justify-center items-center gap-4 mt-8'>
+            <button
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className='px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium'
+            >
+              Previous
+            </button>
+            
+            <div className='flex items-center gap-2'>
+              {/* 最初のページ */}
+              {currentPage > 3 && (
+                <>
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    className='px-3 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors font-medium'
+                  >
+                    1
+                  </button>
+                  {currentPage > 4 && <span className='text-gray-500'>...</span>}
+                </>
+              )}
+              
+              {/* 現在のページ周辺 */}
+              {Array.from({ length: 5 }, (_, i) => currentPage - 2 + i)
+                .filter(page => page >= 1 && page <= totalPages)
+                .map(page => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`px-3 py-2 rounded-lg transition-colors font-medium ${
+                      page === currentPage
+                        ? 'bg-blue-600 text-white shadow-lg'
+                        : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              
+              {/* 最後のページ */}
+              {currentPage < totalPages - 2 && (
+                <>
+                  {currentPage < totalPages - 3 && <span className='text-gray-500'>...</span>}
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    className='px-3 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors font-medium'
+                  >
+                    {totalPages}
+                  </button>
+                </>
+              )}
+            </div>
+            
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className='px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium'
+            >
+              Next
+            </button>
+          </div>
+        )}
+
+        {/* ページ情報 */}
+        {totalTokens > 0 && (
+          <div className='text-center mt-4 text-gray-400 text-sm'>
+            Showing tokens {((currentPage - 1) * ITEMS_PER_PAGE) + 1} to {Math.min(currentPage * ITEMS_PER_PAGE, totalTokens)} of {totalTokens.toLocaleString()} total {activeTab === 'nft' ? 'NFT collections' : 'tokens'}
+          </div>
+        )}
       </main>
     </div>
   );

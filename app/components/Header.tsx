@@ -1,28 +1,31 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import {
-  HomeIcon,
   CubeTransparentIcon,
   CubeIcon,
   ArrowPathIcon,
-  GlobeAltIcon,
   CodeBracketIcon,
-  TrophyIcon
+  TrophyIcon,
+  RocketLaunchIcon,
+  DocumentTextIcon
 } from '@heroicons/react/24/outline';
+import { loadConfig } from '@/lib/config';
 
-const Header = () => {
+export default function Header() {
+  const config = loadConfig();
+  const explorerName = config.explorer?.name || `${config.currency?.name || 'Blockchain'} Explorer`;
+  const currencySymbol = config.currency?.symbol || 'ETH';
+  const dexEnabled = config.dex?.enabled ?? false;
+  const launchpadEnabled = config.launchpad?.enabled ?? false;
+  
   return (
-    <header className='bg-gray-900 border-b border-gray-800'>
-      <nav className='container mx-auto px-2 flex items-center justify-between h-14'>
-        <Link href='/' className='text-xl font-bold nav-link text-gray-100 hover:text-blue-400 transition-colors'>
-          VirBiCoin Explorer
+    <header className="bg-gray-900 border-b border-gray-800">
+      <nav className="container mx-auto px-2 flex items-center justify-between h-14">
+        <Link href='/' className='text-xl font-bold nav-link text-gray-100 hover:text-blue-400 transition-colors flex items-center gap-2'>
+          <Image src={`/img/${currencySymbol}.svg`} alt={currencySymbol} width={32} height={32} />
+          {explorerName}
         </Link>
         <ul className='flex items-center space-x-2 md:space-x-4'>
-          <li>
-            <Link href='/' className='nav-link text-gray-200 flex items-center gap-1'>
-              <HomeIcon className='w-5 h-5' />
-              <span className='hidden sm:inline'>Dashboard</span>
-            </Link>
-          </li>
           <li>
             <Link href='/blocks' className='nav-link text-gray-200 flex items-center gap-1'>
               <CubeIcon className='w-5 h-5' />
@@ -47,23 +50,45 @@ const Header = () => {
               <span className='hidden sm:inline'>Tokens</span>
             </Link>
           </li>
-
           <li>
             <Link href='/contract/verify' className='nav-link text-gray-200 flex items-center gap-1'>
               <CodeBracketIcon className='w-5 h-5' />
               <span className='hidden sm:inline'>Verify</span>
             </Link>
           </li>
+          {dexEnabled && (
+            <li>
+              <Link href='/dex' className='nav-link text-gray-200 flex items-center gap-1'>
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M16 3h5v5" />
+                  <path d="M8 3H3v5" />
+                  <path d="M21 3l-7 7" />
+                  <path d="M3 3l7 7" />
+                  <path d="M16 21h5v-5" />
+                  <path d="M8 21H3v-5" />
+                  <path d="M21 21l-7-7" />
+                  <path d="M3 21l7-7" />
+                </svg>
+                <span className='hidden sm:inline'>DEX</span>
+              </Link>
+            </li>
+          )}
+          {launchpadEnabled && (
+            <li>
+              <Link href='/launchpad' className='nav-link text-gray-200 flex items-center gap-1'>
+                <RocketLaunchIcon className='w-5 h-5' />
+                <span className='hidden sm:inline'>Launchpad</span>
+              </Link>
+            </li>
+          )}
           <li>
-            <a href='https://stats.digitalregion.jp/' rel='noopener noreferrer' target='_blank' className='nav-link text-gray-200 flex items-center gap-1'>
-              <GlobeAltIcon className='w-5 h-5' />
-              <span className='hidden sm:inline'>Network</span>
-            </a>
+            <Link href='/api-docs' className='nav-link text-gray-200 flex items-center gap-1'>
+              <DocumentTextIcon className='w-5 h-5' />
+              <span className='hidden sm:inline'>API</span>
+            </Link>
           </li>
         </ul>
       </nav>
     </header>
   );
 };
-
-export default Header;

@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { use } from 'react';
 import Link from 'next/link';
-import Header from '../../components/Header';
 import { 
   ArrowUpIcon, 
   ClockIcon,
@@ -15,7 +14,7 @@ import {
   ArrowPathIcon,
   ClipboardDocumentIcon
 } from '@heroicons/react/24/outline';
-import { getCurrencySymbol } from '../../../lib/config';
+import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
 import { initializeCurrency, formatGasUnit } from '../../../lib/bigint-utils';
 
 interface Config {
@@ -67,6 +66,8 @@ interface Transaction {
     miner: string;
   };
   isMiningReward?: boolean; // Added for mining reward
+  txType?: string; // MetaMask compliant type
+  txAction?: string; // MetaMask compliant action
   // Additional fields for mining reward transactions
   cumulativeGasUsed?: number;
   effectiveGasPrice?: string;
@@ -96,8 +97,9 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
         // Initialize currency conversion factors
         await initializeCurrency();
         
-        // Load config values
-        const symbol = await getCurrencySymbol();
+        // Load config values from API
+        await initializeCurrencyConfig();
+        const symbol = getCurrencySymbol();
         setCurrencySymbol(symbol);
         
         const response = await fetch('/api/config');
@@ -141,14 +143,14 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
 
   const formatValue = (value: string) => {
     try {
-      // WeiからVBCに変換（1 VBC = 10^18 Wei）
+      // Convert from Wei to native currency (1 unit = 10^18 Wei)
       const weiValue = BigInt(value);
-      const vbcValue = Number(weiValue) / 1e18;
+      const nativeValue = Number(weiValue) / 1e18;
       
-      if (vbcValue === 0) return `0 ${currencySymbol}`;
-      if (vbcValue < 0.000001) return `<0.000001 ${currencySymbol}`;
-      // 小数点以下を丸めずに表示
-      return `${vbcValue} ${currencySymbol}`;
+      if (nativeValue === 0) return `0 ${currencySymbol}`;
+      if (nativeValue < 0.000001) return `<0.000001 ${currencySymbol}`;
+      // Display without rounding decimals
+      return `${nativeValue} ${currencySymbol}`;
     } catch {
       return `${value} ${currencySymbol}`;
     }
@@ -211,6 +213,37 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
     };
   };
 
+  // MetaMask準拠のトランザクションタイプバッジを生成
+  const getTransactionTypeBadge = (type?: string, action?: string) => {
+    const typeConfig: Record<string, { bg: string; text: string; icon: string }> = {
+      send: { bg: 'bg-red-100', text: 'text-red-700', icon: '↑' },
+      receive: { bg: 'bg-green-100', text: 'text-green-700', icon: '↓' },
+      token_transfer: { bg: 'bg-purple-100', text: 'text-purple-700', icon: '⇆' },
+      nft_transfer: { bg: 'bg-pink-100', text: 'text-pink-700', icon: '🖼' },
+      approve: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '✓' },
+      swap: { bg: 'bg-blue-100', text: 'text-blue-700', icon: '⇋' },
+      liquidity: { bg: 'bg-cyan-100', text: 'text-cyan-700', icon: '💧' },
+      stake: { bg: 'bg-orange-100', text: 'text-orange-700', icon: '📌' },
+      unstake: { bg: 'bg-amber-100', text: 'text-amber-700', icon: '📤' },
+      harvest: { bg: 'bg-lime-100', text: 'text-lime-700', icon: '🌾' },
+      mint: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: '✨' },
+      burn: { bg: 'bg-red-200', text: 'text-red-800', icon: '🔥' },
+      contract_creation: { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: '📄' },
+      contract_interaction: { bg: 'bg-violet-100', text: 'text-violet-700', icon: '📝' },
+      mining_reward: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '⛏️' },
+    };
+    
+    const config = typeConfig[type || 'contract_interaction'] || typeConfig.contract_interaction;
+    const displayAction = action || type || 'Transaction';
+    
+    return (
+      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${config.bg} ${config.text}`}>
+        <span>{config.icon}</span>
+        <span>{displayAction}</span>
+      </span>
+    );
+  };
+
   const copyToClipboard = async (text: string) => {
     try {
       // モダンなブラウザでは Clipboard API を使用
@@ -243,7 +276,6 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
   if (loading) {
     return (
       <>
-        <Header />
         <div className='bg-gray-800 border-b border-gray-700'>
           <div className='container mx-auto px-4 py-8'>
             <div className='flex items-center gap-3 mb-4'>
@@ -266,7 +298,6 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
   if (error || !transaction) {
     return (
       <>
-        <Header />
         <div className='bg-gray-800 border-b border-gray-700'>
           <div className='container mx-auto px-4 py-8'>
             <div className='flex items-center gap-3 mb-4'>
@@ -293,20 +324,20 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
   }
 
   if (!loading && transaction) {
-    // サマリーカード
+    // Summary cards
     const summaryStats = [
       {
         title: 'Value',
         value: (() => {
           try {
             const weiValue = BigInt(transaction.value);
-            const vbcValue = Number(weiValue) / 1e18;
-            const symbol = currencySymbol || 'VBC';
-            if (vbcValue === 0) return `0 ${symbol}`;
-            if (vbcValue < 0.000001) return `<0.000001 ${symbol}`;
-            return `${vbcValue.toFixed(4)} ${symbol}`;
+            const nativeValue = Number(weiValue) / 1e18;
+            const symbol = currencySymbol || 'ETH';
+            if (nativeValue === 0) return `0 ${symbol}`;
+            if (nativeValue < 0.000001) return `<0.000001 ${symbol}`;
+            return `${nativeValue.toFixed(4)} ${symbol}`;
           } catch {
-            const symbol = currencySymbol || 'VBC';
+            const symbol = currencySymbol || 'ETH';
             return `${transaction.value} ${symbol}`;
           }
         })(),
@@ -462,14 +493,13 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
 
     return (
       <>
-        <Header />
-
         {/* Page Header */}
         <div className='bg-gray-800 border-b border-gray-700'>
           <div className='container mx-auto px-4 py-8'>
             <div className='flex items-center gap-3 mb-4'>
               <ArrowPathIcon className='w-8 h-8 text-blue-400' />
               <h1 className='text-3xl font-bold text-gray-100'>Transaction Details</h1>
+              {getTransactionTypeBadge(transaction.txType, transaction.txAction)}
             </div>
             <p className='text-gray-400'>
               Transaction {formatAddress(transaction.hash)} details and information.

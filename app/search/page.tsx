@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Header from '../components/Header';
 import { 
   MagnifyingGlassIcon, 
   ArrowPathIcon,
@@ -12,7 +11,7 @@ import {
   UserIcon,
   CurrencyDollarIcon
 } from '@heroicons/react/24/outline';
-import { getCurrencySymbol } from '../../lib/config';
+import { getCurrencySymbol, initializeCurrencyConfig } from '../../lib/client-config';
 
 interface Config {
   miners: Record<string, string>;
@@ -50,6 +49,9 @@ export default function SearchPage() {
     // 設定を取得
     const fetchConfig = async () => {
       try {
+        // Initialize currency config cache
+        await initializeCurrencyConfig();
+        
         const response = await fetch('/api/config');
         if (response.ok) {
           const configData = await response.json();
@@ -118,8 +120,6 @@ export default function SearchPage() {
 
   return (
     <div className='min-h-screen bg-gray-900 text-white'>
-      <Header />
-
       {/* Page Header */}
       <div className='bg-gray-800 border-b border-gray-700'>
         <div className='container mx-auto px-4 py-8'>
@@ -242,7 +242,7 @@ export default function SearchPage() {
                         <div className='flex items-center'>
                           <ClockIcon className='w-4 h-4 text-gray-400 mr-2' />
                           <span className='text-gray-400'>
-                            {result.data.timestamp ? new Date(result.data.timestamp).toLocaleString() : 'N/A'}
+                            {result.data.timestamp ? new Date(result.data.timestamp).toLocaleString(undefined, { timeZoneName: 'short' }) : 'N/A'}
                           </span>
                         </div>
                       </div>

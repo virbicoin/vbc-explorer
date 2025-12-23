@@ -1,8 +1,8 @@
 'use client';
 
-import Header from '../../components/Header';
 import { useState, useEffect, useCallback } from 'react';
 import { PlayIcon, CodeBracketIcon } from '@heroicons/react/24/outline';
+import { initializeCurrencyConfig, getNetworkName } from '../../../lib/client-config';
 
 interface Method {
   name: string;
@@ -53,6 +53,9 @@ export default function ContractInteractPage() {
     if (address) {
       setContractAddress(address);
     }
+    
+    // Initialize config to get network name
+    initializeCurrencyConfig();
   }, []);
   const [contractInfo, setContractInfo] = useState<ContractInfo | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<Method | null>(null);
@@ -148,8 +151,6 @@ export default function ContractInteractPage() {
 
   return (
     <div className="min-h-screen bg-gray-900">
-      <Header />
-      
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="bg-gray-800 rounded-lg shadow-xl">
           <div className="px-6 py-4 border-b border-gray-700">
@@ -158,7 +159,7 @@ export default function ContractInteractPage() {
               Contract Interaction
             </h1>
             <p className="text-gray-400 mt-2">
-              Interact with smart contracts on the VirBiCoin blockchain.
+              Interact with smart contracts on the {getNetworkName()} blockchain.
             </p>
           </div>
 

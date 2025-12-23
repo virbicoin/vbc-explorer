@@ -2,7 +2,7 @@
 
 import { use } from 'react';
 import { useState, useEffect } from 'react';
-import Header from '../../components/Header';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
   UserIcon, 
@@ -10,10 +10,14 @@ import {
   CurrencyDollarIcon,
   CubeIcon,
   ArrowPathIcon,
-  ClipboardDocumentIcon
+  ClipboardDocumentIcon,
+  CheckCircleIcon,
+  CodeBracketIcon,
+  PlayIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline';
 import SummaryCard from '../../components/SummaryCard';
-import { getCurrencySymbol } from '../../../lib/config';
+import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
 import { initializeCurrency } from '../../../lib/bigint-utils';
 
 interface Account {
@@ -39,6 +43,13 @@ interface Contract {
   verified: boolean;
   creationTransaction: string;
   blockNumber: number;
+  isContract?: boolean;
+  bytecodeSize?: number;
+  sourceCode?: string;
+  abi?: string;
+  byteCode?: string;
+  compilerVersion?: string;
+  optimization?: boolean;
 }
 
 interface Config {
@@ -51,20 +62,41 @@ interface Config {
   };
 }
 
+interface TokenInfo {
+  address: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  type: string;
+  value: string;
+  tokenId?: number;
+}
+
 interface Transaction {
   hash: string;
   from: string;
   to: string;
   value: string;
+  valueRaw?: string;
   timestamp: number;
   blockNumber: number;
   gasUsed?: number;
-  status?: number;
+  gasPrice?: string;
+  status?: number | string;
   type?: string;
+  action?: string;
+  direction?: 'in' | 'out' | 'self';
+  input?: string;
+  tokenInfo?: TokenInfo;
+  nftInfo?: {
+    tokenId: number;
+    tokenAddress: string;
+  };
 }
 
 export default function AddressPage({ params }: { params: Promise<{ address: string }> }) {
   const resolvedParams = use(params);
+  const router = useRouter();
   const [account, setAccount] = useState<Account | null>(null);
   const [contract, setContract] = useState<Contract | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -73,25 +105,28 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
 
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
   const [config, setConfig] = useState<Config | null>(null);
-  const [activeTab, setActiveTab] = useState<'transactions' | 'mining'>('transactions');
+  const [activeTab, setActiveTab] = useState<'transactions' | 'mining' | 'source'>('transactions');
   const [transactionStats, setTransactionStats] = useState<{
     regularCount: number;
     miningCount: number;
     totalCount: number;
   } | null>(null);
   const [currencySymbol, setCurrencySymbol] = useState<string>('');
+  const [contractDetails, setContractDetails] = useState<{
+    sourceCode?: string;
+    abi?: string;
+    byteCode?: string;
+    compilerVersion?: string;
+    optimization?: boolean;
+  } | null>(null);
 
   useEffect(() => {
-    // 設定を取得
     const fetchConfig = async () => {
       try {
-        // Initialize currency conversion factors
         await initializeCurrency();
-        
-        // Load config values
-        const symbol = await getCurrencySymbol();
+        await initializeCurrencyConfig();
+        const symbol = getCurrencySymbol();
         setCurrencySymbol(symbol);
-        
         const response = await fetch('/api/config');
         if (response.ok) {
           const configData = await response.json();
@@ -101,7 +136,6 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
         console.error('Error fetching config:', err);
       }
     };
-
     fetchConfig();
   }, []);
 
@@ -111,13 +145,33 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
         setLoading(true);
         setError(null);
         
-        const response = await fetch(`/api/address/${resolvedParams.address}`);
+        // First check if this is a token contract - if so, redirect to /token/ page
+        try {
+          const tokenRes = await fetch(`/api/tokens/${resolvedParams.address}`);
+          if (tokenRes.ok) {
+            const tokenData = await tokenRes.json();
+            // If it's a registered token (VRC-20, VRC-721, VRC-1155), redirect
+            if (tokenData.token && ['VRC-20', 'VRC-721', 'VRC-1155', 'ERC20', 'ERC721'].includes(tokenData.token.type)) {
+              router.replace(`/token/${resolvedParams.address}`);
+              return;
+            }
+          }
+        } catch {
+          // Not a token, continue checking if contract
+        }
         
+        const response = await fetch(`/api/address/${resolvedParams.address}`);
         if (!response.ok) {
           throw new Error('Address not found');
         }
-        
         const data = await response.json();
+        
+        // If it's a contract (but not a token), redirect to /contract/ page
+        if (data.contract?.isContract) {
+          router.replace(`/contract/${resolvedParams.address}`);
+          return;
+        }
+        
         setAccount(data.account);
         setContract(data.contract);
         setTransactions(data.transactions || []);
@@ -128,13 +182,24 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
         setLoading(false);
       }
     };
-
     if (resolvedParams.address) {
       fetchAddressData();
     }
-  }, [resolvedParams.address]);
+  }, [resolvedParams.address, router]);
 
-
+  // 通貨記号が取得できるまでローディング表示
+  if (!currencySymbol) {
+    return (
+      <div className='min-h-screen bg-gray-900 text-white'>
+        <div className='container mx-auto px-4 py-8'>
+          <div className='flex justify-center items-center h-64'>
+            <div className='animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500'></div>
+          </div>
+          <div className='text-center text-gray-400 mt-4'>Loading currency symbol...</div>
+        </div>
+      </div>
+    );
+  }
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -167,13 +232,11 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
 
   const formatValue = (value: string) => {
     try {
-      // WeiからVBCに変換（1 VBC = 10^18 Wei）
       const weiValue = BigInt(value);
-      const vbcValue = Number(weiValue) / 1e18;
-      
-      if (vbcValue === 0) return `0 ${currencySymbol}`;
-      if (vbcValue < 0.000001) return `<0.000001 ${currencySymbol}`;
-      return `${vbcValue.toFixed(4)} ${currencySymbol}`;
+      const nativeValue = Number(weiValue) / 1e18;
+      if (nativeValue === 0) return `0 ${currencySymbol}`;
+      if (nativeValue < 0.000001) return `<0.000001 ${currencySymbol}`;
+      return `${nativeValue.toFixed(4)} ${currencySymbol}`;
     } catch {
       return `${value} ${currencySymbol}`;
     }
@@ -206,19 +269,6 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
     return isNaN(date.getTime()) ? null : date;
   };
 
-  // Filter transactions by type
-  const regularTransactions = transactions.filter(tx => 
-    tx.type === 'native' || tx.type === 'token'
-  );
-  
-  const miningRewards = transactions.filter(tx => 
-    tx.type === 'mining_reward'
-  );
-
-  // 統計情報を使用して件数を表示（APIから取得した正確な件数）
-  const regularCount = transactionStats?.regularCount || regularTransactions.length;
-  const miningCount = transactionStats?.miningCount || miningRewards.length;
-
   const getMinerDisplayInfo = (miner: string) => {
     if (!miner || !config?.miners) return { name: 'Unknown', isPool: false, address: null };
 
@@ -242,14 +292,18 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
   };
 
   const getAddressType = () => {
-    if (contract) return 'Contract Address';
+    if (contract?.isContract) {
+      if (contract.type === 'ERC20' || contract.type === 'VRC-20') return 'Token Contract';
+      if (contract.type === 'VRC-721' || contract.type === 'ERC721') return 'NFT Contract';
+      return 'Smart Contract';
+    }
     if (resolvedParams.address === '0x0000000000000000000000000000000000000000') return 'System Address';
     return 'Wallet Address';
   };
 
   const getAddressName = () => {
     // コントラクトの場合
-    if (contract) {
+    if (contract?.name && contract.name !== 'Unknown Contract' && contract.name !== 'Unverified Contract') {
       return contract.name;
     }
     
@@ -267,10 +321,86 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
     return null;
   };
 
+  // MetaMask準拠のトランザクションタイプバッジを返す
+  const getTransactionTypeBadge = (tx: Transaction) => {
+    const type = tx.type || 'unknown';
+    const action = tx.action || type;
+    const direction = tx.direction || 'out';
+    
+    // タイプごとのスタイル定義
+    const styles: Record<string, { bg: string; text: string; icon: string }> = {
+      'send': { bg: 'bg-red-500/20', text: 'text-red-400', icon: '↑' },
+      'receive': { bg: 'bg-green-500/20', text: 'text-green-400', icon: '↓' },
+      'token_transfer': { bg: 'bg-purple-500/20', text: 'text-purple-400', icon: '⇄' },
+      'nft_transfer': { bg: 'bg-pink-500/20', text: 'text-pink-400', icon: '🎨' },
+      'approve': { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: '✓' },
+      'swap': { bg: 'bg-blue-500/20', text: 'text-blue-400', icon: '⟲' },
+      'liquidity': { bg: 'bg-cyan-500/20', text: 'text-cyan-400', icon: '💧' },
+      'stake': { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: '📥' },
+      'unstake': { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: '📤' },
+      'harvest': { bg: 'bg-lime-500/20', text: 'text-lime-400', icon: '🌾' },
+      'mint': { bg: 'bg-emerald-500/20', text: 'text-emerald-400', icon: '✨' },
+      'burn': { bg: 'bg-red-600/20', text: 'text-red-500', icon: '🔥' },
+      'contract_creation': { bg: 'bg-indigo-500/20', text: 'text-indigo-400', icon: '📄' },
+      'contract_interaction': { bg: 'bg-violet-500/20', text: 'text-violet-400', icon: '⚡' },
+      'mining_reward': { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: '⛏️' },
+      'unknown': { bg: 'bg-gray-500/20', text: 'text-gray-400', icon: '?' }
+    };
+    
+    const style = styles[type] || styles['unknown'];
+    
+    // 方向矢印（receive/sendの場合を除く）
+    let directionIcon = '';
+    if (type !== 'send' && type !== 'receive' && type !== 'mining_reward') {
+      if (direction === 'in') directionIcon = ' ↓';
+      else if (direction === 'out') directionIcon = ' ↑';
+    }
+    
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${style.bg} ${style.text}`}>
+        <span>{style.icon}</span>
+        <span>{action}{directionIcon}</span>
+      </span>
+    );
+  };
+
+  // トークン転送値をフォーマット
+  const formatTokenValue = (tx: Transaction) => {
+    if (!tx.tokenInfo) return null;
+    
+    const { value, decimals, symbol, tokenId, type } = tx.tokenInfo;
+    
+    // NFTの場合
+    if (type === 'VRC-721' || type === 'ERC721' || tokenId !== undefined) {
+      return (
+        <span className='text-pink-400'>
+          Token ID: #{tokenId}
+        </span>
+      );
+    }
+    
+    // ERC20の場合
+    try {
+      const numValue = BigInt(value);
+      const divisor = BigInt(10 ** decimals);
+      const intPart = numValue / divisor;
+      const fracPart = numValue % divisor;
+      const formatted = fracPart > 0n 
+        ? `${intPart}.${fracPart.toString().padStart(decimals, '0').slice(0, 4)}`
+        : intPart.toString();
+      return (
+        <span className='text-purple-400'>
+          {formatted} {symbol}
+        </span>
+      );
+    } catch {
+      return <span className='text-purple-400'>{value} {symbol}</span>;
+    }
+  };
+
   if (loading) {
     return (
       <div className='min-h-screen bg-gray-900 text-white'>
-        <Header />
           <div className='container mx-auto px-4 py-8'>
           <div className='flex justify-center items-center h-64'>
             <div className='animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500'></div>
@@ -283,7 +413,6 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
   if (error) {
     return (
       <div className='min-h-screen bg-gray-900 text-white'>
-        <Header />
           <div className='container mx-auto px-4 py-8'>
           <div className='bg-red-800 border border-red-600 text-red-100 px-4 py-3 rounded mb-4'>
             <strong className='font-bold'>Error:</strong>
@@ -300,28 +429,476 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
       </div>
     );
   }
+
+  // Filter transactions by type (needed for both contract and wallet views)
+  // Mining rewards以外の全てのトランザクションを通常トランザクションとして表示
+  const regularTransactions = transactions.filter(tx => 
+    tx.type !== 'mining_reward'
+  );
   
-  // サマリーカード
+  const miningRewards = transactions.filter(tx => 
+    tx.type === 'mining_reward'
+  );
+
+  // 統計情報を使用して件数を表示（APIから取得した正確な件数）
+  const regularCount = transactionStats?.regularCount || regularTransactions.length;
+  const miningCount = transactionStats?.miningCount || miningRewards.length;
+  
+  // Check if this is a contract address
+  const isContractAddress = contract?.isContract === true;
+
+  // Contract Page (Token-like design)
+  if (isContractAddress) {
+    const tabs = [
+      { id: 'transactions', label: 'Transactions', icon: ArrowPathIcon },
+      ...(miningCount > 0 ? [{ id: 'mining', label: 'Mining Rewards', icon: CubeIcon }] : []),
+      { id: 'source', label: 'Contract Source', icon: CodeBracketIcon },
+    ];
+
+    return (
+      <div className='min-h-screen bg-gray-900 text-white'>
+        {/* Page Header */}
+        <div className='bg-gray-800 border-b border-gray-700'>
+          <div className='container mx-auto px-4 py-8'>
+            <div className='flex items-center gap-3 mb-2'>
+              <CodeBracketIcon className='w-8 h-8 text-purple-400' />
+              <h1 className='text-3xl font-bold text-gray-100'>Contract Details</h1>
+            </div>
+            <p className='text-gray-400'>
+              {contract?.name || 'Smart Contract'} {contract?.symbol ? `(${contract.symbol})` : ''} - {formatAddress(resolvedParams.address)}
+            </p>
+          </div>
+        </div>
+
+        <main className='container mx-auto px-4 py-8'>
+          {/* Stats Cards */}
+          <div className='grid grid-cols-1 md:grid-cols-4 gap-4 mb-8'>
+            <div className='bg-gray-700/50 rounded-lg p-4 border border-gray-600/50'>
+              <h3 className='text-sm font-medium text-gray-300 mb-2'>Balance</h3>
+              <p className='text-2xl font-bold text-green-400'>
+                {account ? (() => {
+                  try {
+                    const weiValue = BigInt(account.balanceRaw);
+                    const nativeValue = Number(weiValue) / 1e18;
+                    if (nativeValue === 0) return '0';
+                    if (nativeValue < 0.0001) return '<0.0001';
+                    return nativeValue.toFixed(4);
+                  } catch {
+                    return account.balance;
+                  }
+                })() : '0'} {currencySymbol}
+              </p>
+              <p className='text-xs text-gray-400'>Contract balance</p>
+            </div>
+
+            <div className='bg-gray-700/50 rounded-lg p-4 border border-gray-600/50'>
+              <h3 className='text-sm font-medium text-gray-300 mb-2'>Transactions</h3>
+              <p className='text-2xl font-bold text-blue-400'>{(account?.transactionCount || 0).toLocaleString()}</p>
+              <p className='text-xs text-gray-400'>Total interactions</p>
+            </div>
+
+            <div className='bg-gray-700/50 rounded-lg p-4 border border-gray-600/50'>
+              <h3 className='text-sm font-medium text-gray-300 mb-2'>Token Transfers</h3>
+              <p className='text-2xl font-bold text-purple-400'>{(account?.tokenTransferCount || 0).toLocaleString()}</p>
+              <p className='text-xs text-gray-400'>ERC20/721 transfers</p>
+            </div>
+
+            <div className='bg-gray-700/50 rounded-lg p-4 border border-gray-600/50'>
+              <h3 className='text-sm font-medium text-gray-300 mb-2'>Verification</h3>
+              <p className='text-2xl font-bold'>
+                {contract?.verified ? (
+                  <span className='text-green-400 flex items-center gap-2'>
+                    <CheckCircleIcon className='w-6 h-6' />
+                    Verified
+                  </span>
+                ) : (
+                  <span className='text-yellow-400'>Unverified</span>
+                )}
+              </p>
+              <p className='text-xs text-gray-400'>Source code status</p>
+            </div>
+          </div>
+
+          {/* Contract Info Card */}
+          <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8'>
+            <div className='flex items-center justify-between mb-6'>
+              <h2 className='text-xl font-semibold text-gray-100'>Contract Information</h2>
+              <div className='flex gap-2'>
+                <Link
+                  href={`/contract/interact?address=${resolvedParams.address}`}
+                  className='inline-flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors text-sm'
+                >
+                  <PlayIcon className='w-4 h-4' />
+                  Interact
+                </Link>
+                {!contract?.verified && (
+                  <Link
+                    href={`/contract/verify?address=${resolvedParams.address}&contractName=${contract?.name?.replace(/\s+/g, '') || 'Contract'}`}
+                    className='inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm'
+                  >
+                    <CodeBracketIcon className='w-4 h-4' />
+                    Verify
+                  </Link>
+                )}
+              </div>
+            </div>
+            
+            <div className='grid grid-cols-1 md:grid-cols-4 gap-6'>
+              <div className='md:col-span-2'>
+                <div className='text-sm font-medium text-gray-300 mb-2'>Contract Address</div>
+                <div className='flex items-center gap-2 font-mono text-blue-400 text-sm break-all bg-white/10 rounded px-3 py-2'>
+                  <span>{resolvedParams.address}</span>
+                  <button
+                    onClick={() => copyToClipboard(resolvedParams.address)}
+                    className='p-1 text-gray-400 hover:text-blue-400 transition-colors'
+                    title='Copy address'
+                  >
+                    <ClipboardDocumentIcon className='w-4 h-4' />
+                  </button>
+                  {copiedItem === resolvedParams.address && (
+                    <span className='text-green-400 text-xs'>Copied!</span>
+                  )}
+                </div>
+              </div>
+              
+              <div>
+                <div className='text-sm font-medium text-gray-300 mb-2'>Contract Name</div>
+                <div className='text-orange-400 text-lg font-semibold'>{contract?.name || 'Unknown'}</div>
+              </div>
+              
+              <div>
+                <div className='text-sm font-medium text-gray-300 mb-2'>Type</div>
+                <span className={`px-3 py-1 rounded text-sm font-medium ${
+                  contract?.type === 'ERC20' || contract?.type === 'VRC-20' ? 'bg-blue-500/20 text-blue-400' :
+                  contract?.type === 'VRC-721' || contract?.type === 'ERC721' ? 'bg-purple-500/20 text-purple-400' :
+                  'bg-gray-500/20 text-gray-400'
+                }`}>
+                  {contract?.type || 'Contract'}
+                </span>
+              </div>
+              
+              {contract?.symbol && (
+                <div>
+                  <div className='text-sm font-medium text-gray-300 mb-2'>Symbol</div>
+                  <div className='text-green-400 text-lg font-bold'>{contract.symbol}</div>
+                </div>
+              )}
+              
+              {contract?.decimals !== undefined && contract.decimals > 0 && (
+                <div>
+                  <div className='text-sm font-medium text-gray-300 mb-2'>Decimals</div>
+                  <div className='text-gray-200 text-lg font-bold'>{contract.decimals}</div>
+                </div>
+              )}
+              
+              {contract?.blockNumber && contract.blockNumber > 0 && (
+                <div>
+                  <div className='text-sm font-medium text-gray-300 mb-2'>Created at Block</div>
+                  <Link
+                    href={`/block/${contract.blockNumber}`}
+                    className='text-blue-400 hover:text-blue-300 text-lg font-bold'
+                  >
+                    #{contract.blockNumber.toLocaleString()}
+                  </Link>
+                </div>
+              )}
+              
+              {contract?.creationTransaction && (
+                <div>
+                  <div className='text-sm font-medium text-gray-300 mb-2'>Creation Tx</div>
+                  <Link
+                    href={`/tx/${contract.creationTransaction}`}
+                    className='text-blue-400 hover:text-blue-300 font-mono text-sm'
+                  >
+                    {formatAddress(contract.creationTransaction)}
+                  </Link>
+                </div>
+              )}
+
+              {contract?.verified && (
+                <div>
+                  <div className='text-sm font-medium text-gray-300 mb-2'>Verification</div>
+                  <div className='flex items-center gap-1 px-3 py-1 bg-green-500/20 text-green-400 rounded text-sm font-medium w-fit'>
+                    <CheckCircleIcon className='w-4 h-4' />
+                    <span>Verified</span>
+                  </div>
+                </div>
+              )}
+
+              {contractDetails?.compilerVersion && (
+                <div>
+                  <div className='text-sm font-medium text-gray-300 mb-2'>Compiler</div>
+                  <div className='text-gray-200'>Solidity {contractDetails.compilerVersion}</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Tabs */}
+          <div className='bg-gray-800 rounded-lg border border-gray-700 overflow-hidden'>
+            <div className='border-b border-gray-700'>
+              <div className='flex flex-wrap'>
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id as 'transactions' | 'mining' | 'source')}
+                      className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors ${
+                        activeTab === tab.id
+                          ? 'bg-gray-700/50 text-blue-400 border-b-2 border-blue-400'
+                          : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/30'
+                      }`}
+                    >
+                      <Icon className='w-5 h-5' />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className='p-6'>
+              {/* Transactions Tab */}
+              {activeTab === 'transactions' && (
+                <div className='space-y-4'>
+                  {regularTransactions.length === 0 ? (
+                    <p className='text-gray-400 text-center py-8'>No transactions found for this contract.</p>
+                  ) : (
+                    <>
+                      <div className='overflow-x-auto'>
+                        <table className='w-full'>
+                          <thead>
+                            <tr className='border-b border-gray-600'>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Tx Hash</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>From</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>To</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Value</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Age</th>
+                            </tr>
+                          </thead>
+                          <tbody className='divide-y divide-gray-600'>
+                            {regularTransactions.slice(0, 10).map((tx) => (
+                              <tr key={tx.hash} className='hover:bg-gray-700/50 transition-colors'>
+                                <td className='py-3 px-4'>
+                                  <Link href={`/tx/${tx.hash}`} className='text-blue-400 hover:text-blue-300 font-mono text-sm'>
+                                    {formatAddress(tx.hash)}
+                                  </Link>
+                                </td>
+                                <td className='py-3 px-4'>
+                                  <Link href={`/address/${tx.from}`} className='text-green-400 hover:text-green-300 font-mono text-sm'>
+                                    {formatAddress(tx.from)}
+                                  </Link>
+                                </td>
+                                <td className='py-3 px-4'>
+                                  <Link href={`/address/${tx.to}`} className='text-red-400 hover:text-red-300 font-mono text-sm'>
+                                    {formatAddress(tx.to)}
+                                  </Link>
+                                </td>
+                                <td className='py-3 px-4 text-yellow-400'>{formatValue(tx.value)}</td>
+                                <td className='py-3 px-4'>
+                                  <div className='flex items-center gap-2'>
+                                    <ClockIcon className='w-4 h-4 text-gray-500' />
+                                    <span className='text-gray-300 text-sm'>{getTimeAgo(tx.timestamp)}</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className='text-center'>
+                        <Link
+                          href={`/address/${resolvedParams.address}/transactions`}
+                          className='text-blue-400 hover:text-blue-300 text-sm'
+                        >
+                          View all {regularCount} transactions →
+                        </Link>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Mining Tab */}
+              {activeTab === 'mining' && (
+                <div className='space-y-4'>
+                  {miningRewards.length === 0 ? (
+                    <p className='text-gray-400 text-center py-8'>No mining rewards for this address.</p>
+                  ) : (
+                    <>
+                      <div className='overflow-x-auto'>
+                        <table className='w-full'>
+                          <thead>
+                            <tr className='border-b border-gray-600'>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Block Hash</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Reward</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Age</th>
+                            </tr>
+                          </thead>
+                          <tbody className='divide-y divide-gray-600'>
+                            {miningRewards.slice(0, 10).map((tx) => (
+                              <tr key={tx.hash} className='hover:bg-gray-700/50 transition-colors'>
+                                <td className='py-3 px-4'>
+                                  <Link href={`/tx/${tx.hash}`} className='text-blue-400 hover:text-blue-300 font-mono text-sm'>
+                                    {formatAddress(tx.hash)}
+                                  </Link>
+                                </td>
+                                <td className='py-3 px-4 text-yellow-400'>{formatValue(tx.value)}</td>
+                                <td className='py-3 px-4'>
+                                  <div className='flex items-center gap-2'>
+                                    <ClockIcon className='w-4 h-4 text-gray-500' />
+                                    <span className='text-gray-300 text-sm'>{getTimeAgo(tx.timestamp)}</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className='text-center'>
+                        <Link
+                          href={`/address/${resolvedParams.address}/mining`}
+                          className='text-blue-400 hover:text-blue-300 text-sm'
+                        >
+                          View all {miningCount} mining rewards →
+                        </Link>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Source Code Tab */}
+              {activeTab === 'source' && (
+                <div className='space-y-4'>
+                  {contract?.verified && contractDetails?.sourceCode ? (
+                    <div className='space-y-4'>
+                      <div className='flex items-center gap-2 mb-4'>
+                        <div className='w-2 h-2 bg-green-400 rounded-full'></div>
+                        <span className='text-green-400 font-medium'>Contract Verified</span>
+                      </div>
+
+                      <div className='grid grid-cols-3 gap-4 mb-4'>
+                        <div className='bg-gray-700/50 rounded p-3'>
+                          <div className='text-gray-400 text-sm'>Contract Name</div>
+                          <div className='text-gray-200 font-medium'>{contract.name}</div>
+                        </div>
+                        <div className='bg-gray-700/50 rounded p-3'>
+                          <div className='text-gray-400 text-sm'>Compiler</div>
+                          <div className='text-gray-200 font-medium'>Solidity {contractDetails.compilerVersion || 'Unknown'}</div>
+                        </div>
+                        <div className='bg-gray-700/50 rounded p-3'>
+                          <div className='text-gray-400 text-sm'>Optimization</div>
+                          <div className='text-gray-200 font-medium'>{contractDetails.optimization ? 'Enabled' : 'Disabled'}</div>
+                        </div>
+                      </div>
+
+                      {/* Source Code */}
+                      <div className='bg-gray-950 rounded border border-gray-700 overflow-hidden'>
+                        <div className='bg-gray-800 px-4 py-2 border-b border-gray-700'>
+                          <span className='text-sm font-medium text-gray-300'>Contract Source Code</span>
+                        </div>
+                        <pre className='p-4 overflow-x-auto text-sm text-gray-300 max-h-96 overflow-y-auto'>
+                          <code className='whitespace-pre-wrap break-all'>
+                            {contractDetails.sourceCode}
+                          </code>
+                        </pre>
+                      </div>
+
+                      {/* ABI */}
+                      {contractDetails.abi && (
+                        <div className='bg-gray-950 rounded border border-gray-700 overflow-hidden'>
+                          <div className='bg-gray-800 px-4 py-2 border-b border-gray-700'>
+                            <span className='text-sm font-medium text-gray-300'>Contract ABI</span>
+                          </div>
+                          <pre className='p-4 overflow-x-auto text-sm text-gray-300 max-h-48 overflow-y-auto'>
+                            <code className='whitespace-pre-wrap break-all'>
+                              {contractDetails.abi}
+                            </code>
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className='space-y-4'>
+                      <div className='flex items-center gap-2 mb-4'>
+                        <div className='w-2 h-2 bg-red-400 rounded-full'></div>
+                        <span className='text-red-400 font-medium'>Contract Not Verified</span>
+                      </div>
+
+                      {/* Bytecode */}
+                      <div className='bg-gray-950 rounded border border-gray-700 overflow-hidden'>
+                        <div className='bg-gray-800 px-4 py-2 border-b border-gray-700'>
+                          <span className='text-sm font-medium text-gray-300'>Contract Bytecode</span>
+                        </div>
+                        <pre className='p-4 overflow-x-auto text-sm text-gray-300 max-h-48 overflow-y-auto'>
+                          <code className='whitespace-pre-wrap break-all'>
+                            {contractDetails?.byteCode || contract?.byteCode || '0x'}
+                          </code>
+                        </pre>
+                      </div>
+
+                      {/* Verify Button */}
+                      <div className='bg-gray-700/50 rounded-lg p-6 border border-gray-600'>
+                        <div className='text-center'>
+                          <CodeBracketIcon className='w-12 h-12 text-gray-500 mx-auto mb-4' />
+                          <h3 className='text-lg font-semibold text-gray-100 mb-2'>Verify Contract Source Code</h3>
+                          <p className='text-gray-400 text-sm mb-6'>
+                            Verify and publish the source code for this contract to make it readable and auditable.
+                          </p>
+                          
+                          <div className='flex flex-col sm:flex-row gap-3 justify-center'>
+                            <Link 
+                              href={`/contract/verify?address=${resolvedParams.address}&contractName=${contract?.name?.replace(/\s+/g, '') || 'Contract'}`}
+                              className='inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors'
+                            >
+                              <CodeBracketIcon className='w-5 h-5' />
+                              Verify & Push
+                            </Link>
+                            
+                            <Link 
+                              href={`/contract/interact?address=${resolvedParams.address}`}
+                              className='inline-flex items-center gap-2 px-6 py-3 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors'
+                            >
+                              <PlayIcon className='w-5 h-5' />
+                              Interact
+                            </Link>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+  
+  // Summary cards
   console.log('Account data:', account);
   console.log('Currency symbol:', currencySymbol);
   
   const balanceValue = account ? (() => {
     try {
       const weiValue = BigInt(account.balanceRaw);
-      const vbcValue = Number(weiValue) / 1e18;
-      const symbol = currencySymbol || 'VBC';
-      console.log('Balance formatting:', { weiValue: account.balanceRaw, vbcValue, symbol });
-      if (vbcValue === 0) return `0 ${symbol}`;
-      if (vbcValue < 0.000001) return `<0.000001 ${symbol}`;
-      const result = `${vbcValue.toFixed(4)} ${symbol}`;
+      const nativeValue = Number(weiValue) / 1e18;
+      const symbol = currencySymbol || 'ETH';
+      console.log('Balance formatting:', { weiValue: account.balanceRaw, nativeValue, symbol });
+      if (nativeValue === 0) return `0 ${symbol}`;
+      if (nativeValue < 0.000001) return `<0.000001 ${symbol}`;
+      const result = `${nativeValue.toFixed(4)} ${symbol}`;
       console.log('Formatted balance:', result);
       return result;
     } catch (error) {
       console.error('Balance formatting error:', error);
-      const symbol = currencySymbol || 'VBC';
+      const symbol = currencySymbol || 'ETH';
       return `${account.balance} ${symbol}`;
     }
-  })() : `0 ${currencySymbol || 'VBC'}`;
+  })() : `0 ${currencySymbol || 'ETH'}`;
   
   console.log('Final balance value:', balanceValue);
   
@@ -358,8 +935,6 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
 
   return (
     <div className='min-h-screen bg-gray-900 text-white'>
-      <Header />
-
       {/* Page Header */}
       <div className='bg-gray-800 border-b border-gray-700'>
         <div className='container mx-auto px-4 py-8'>
@@ -568,67 +1143,6 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
           </div>
         </div>
 
-        {/* Contract Information (if applicable) */}
-        {contract && (
-          <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8'>
-            <h2 className='text-xl font-semibold text-gray-100 mb-4'>Contract Information</h2>
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Name</label>
-                <div className='text-white'>{contract.name}</div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Symbol</label>
-                <div className='text-white'>{contract.symbol}</div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Type</label>
-                <div className='text-white'>{contract.type}</div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Decimals</label>
-                <div className='text-white'>{contract.decimals}</div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Total Supply</label>
-                <div className='text-white'>{contract.totalSupply}</div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Verified</label>
-                <div className={contract.verified ? 'text-green-400' : 'text-red-400'}>
-                  {contract.verified ? 'Yes' : 'No'}
-                </div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Creation Block</label>
-                <div className='text-blue-400'>
-                  {contract.blockNumber ? (
-                    <Link
-                      href={`/block/${contract.blockNumber}`}
-                      className='hover:text-blue-300 transition-colors hover:underline'
-                    >
-                      {contract.blockNumber.toLocaleString()}
-                    </Link>
-                  ) : 'Unknown'}
-                </div>
-              </div>
-              <div>
-                <label className='block text-sm font-medium text-gray-400 mb-2'>Creation Transaction</label>
-                <div className='text-blue-400'>
-                  {contract.creationTransaction ? (
-                    <Link
-                      href={`/tx/${contract.creationTransaction}`}
-                      className='hover:text-blue-300 transition-colors hover:underline'
-                    >
-                      {formatAddress(contract.creationTransaction)}
-                    </Link>
-                  ) : 'Unknown'}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Transactions */}
         <div className='bg-gray-800 rounded-lg border border-gray-700 p-6'>
           <div className='flex items-center justify-between mb-6'>
@@ -678,7 +1192,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                 <>
                   {regularTransactions.length === 0 ? (
                     <>
-                      <p className='text-gray-400'>No regular transactions for this address.</p>
+                      <p className='text-gray-400'>No transactions for this address.</p>
                       <div className='mt-4 text-center'>
                         <Link
                           href={`/address/${resolvedParams.address}/transactions`}
@@ -694,11 +1208,11 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                         <table className='w-full'>
                           <thead>
                             <tr className='border-b border-gray-600'>
-                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Transaction Hash</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Tx Hash</th>
+                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Type</th>
                               <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>From</th>
                               <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>To</th>
                               <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Value</th>
-                              <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Status</th>
                               <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Age</th>
                             </tr>
                           </thead>
@@ -715,16 +1229,29 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                                   </Link>
                                 </td>
                                 <td className='py-3 px-4'>
-                                  <Link
-                                    href={`/address/${tx.from}`}
-                                    className='text-green-400 hover:text-green-300 font-mono text-sm transition-colors'
-                                    title={tx.from}
-                                  >
-                                    {formatAddress(tx.from)}
-                                  </Link>
+                                  {getTransactionTypeBadge(tx)}
                                 </td>
                                 <td className='py-3 px-4'>
-                                  {tx.to ? (
+                                  {tx.from === '0x0000000000000000000000000000000000000000' ? (
+                                    <span className='text-yellow-400 text-sm'>System</span>
+                                  ) : tx.from.toLowerCase() === resolvedParams.address.toLowerCase() ? (
+                                    <span className='text-gray-400 font-mono text-sm'>You</span>
+                                  ) : (
+                                    <Link
+                                      href={`/address/${tx.from}`}
+                                      className='text-green-400 hover:text-green-300 font-mono text-sm transition-colors'
+                                      title={tx.from}
+                                    >
+                                      {formatAddress(tx.from)}
+                                    </Link>
+                                  )}
+                                </td>
+                                <td className='py-3 px-4'>
+                                  {!tx.to || tx.to === '0x0000000000000000000000000000000000000000' ? (
+                                    <span className='text-indigo-400 text-sm'>Contract Created</span>
+                                  ) : tx.to.toLowerCase() === resolvedParams.address.toLowerCase() ? (
+                                    <span className='text-gray-400 font-mono text-sm'>You</span>
+                                  ) : (
                                     <Link
                                       href={`/address/${tx.to}`}
                                       className='text-red-400 hover:text-red-300 font-mono text-sm transition-colors'
@@ -732,34 +1259,35 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                                     >
                                       {formatAddress(tx.to)}
                                     </Link>
-                                  ) : (
-                                    <span className='text-gray-500 text-sm'>Contract Creation</span>
                                   )}
                                 </td>
                                 <td className='py-3 px-4'>
-                                  <span className='text-green-400'>{formatValue(tx.value)}</span>
+                                  <div className='flex flex-col'>
+                                    {/* ネイティブ通貨 */}
+                                    {parseFloat(tx.value) > 0 && (
+                                      <span className={tx.direction === 'in' ? 'text-green-400' : 'text-red-400'}>
+                                        {tx.direction === 'in' ? '+' : '-'}{formatValue(tx.value)}
+                                      </span>
+                                    )}
+                                    {/* トークン転送 */}
+                                    {tx.tokenInfo && (
+                                      <div className='text-sm'>
+                                        {formatTokenValue(tx)}
+                                      </div>
+                                    )}
+                                    {/* 値がない場合 */}
+                                    {parseFloat(tx.value) === 0 && !tx.tokenInfo && (
+                                      <span className='text-gray-500'>-</span>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className='py-3 px-4'>
-                                  {(() => {
-                                    const statusStr = String(tx.status || '');
-                                    const isSuccess = 
-                                      tx.status === 1 || 
-                                      statusStr === '1' || 
-                                      statusStr === 'true' ||
-                                      statusStr === 'success' ||
-                                      statusStr === 'Success' ||
-                                      tx.status === 0x1 ||
-                                      statusStr === '0x1';
-                                    
-                                    return isSuccess ? 
-                                      <span className='text-green-400'>Success</span> : 
-                                      <span className='text-red-400'>Failed</span>;
-                                  })()}
-                                </td>
-                                <td className='py-3 px-4'>
-                                  <div className='text-sm'>
-                                    <div className='text-gray-300'>{getTimeAgo(tx.timestamp)}</div>
-                                    <div className='text-gray-500 text-xs'>{formatTimestamp(tx.timestamp)}</div>
+                                  <div className='flex items-center gap-2'>
+                                    <ClockIcon className='w-4 h-4 text-gray-500 flex-shrink-0' />
+                                    <div className='text-sm'>
+                                      <div className='text-gray-300'>{getTimeAgo(tx.timestamp)}</div>
+                                      <div className='text-gray-500 text-xs'>{formatTimestamp(tx.timestamp)}</div>
+                                    </div>
                                   </div>
                                 </td>
                               </tr>
@@ -837,10 +1365,13 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                               <span className='text-green-400'>Success</span>
                             </td>
                             <td className='py-3 px-4'>
-                              <div className='text-sm'>
-                                <div className='text-gray-300'>{getTimeAgo(tx.timestamp)}</div>
-                                <div className='text-gray-500 text-xs'>{formatTimestamp(tx.timestamp)}</div>
-                    </div>
+                              <div className='flex items-center gap-2'>
+                                <ClockIcon className='w-4 h-4 text-gray-500 flex-shrink-0' />
+                                <div className='text-sm'>
+                                  <div className='text-gray-300'>{getTimeAgo(tx.timestamp)}</div>
+                                  <div className='text-gray-500 text-xs'>{formatTimestamp(tx.timestamp)}</div>
+                                </div>
+                              </div>
                             </td>
                           </tr>
                         ))}

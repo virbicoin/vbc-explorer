@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { use } from 'react';
-import Header from '../../components/Header';
 import Link from 'next/link';
 import {
   CubeIcon,
@@ -15,7 +14,7 @@ import {
   ClipboardDocumentIcon
 } from '@heroicons/react/24/outline';
 import SummaryCard from '../../components/SummaryCard';
-import { getCurrencySymbol } from '../../../lib/config';
+import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
 import { initializeCurrency } from '../../../lib/bigint-utils';
 
 interface Config {
@@ -59,6 +58,8 @@ interface Transaction {
   blockNumber: number;
   gasUsed?: number;
   status?: number | string;
+  type?: string;
+  action?: string;
 }
 
 export default function BlockDetailPage({ params }: { params: Promise<{ number: string }> }) {
@@ -77,6 +78,8 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
       try {
         // Initialize currency conversion factors
         await initializeCurrency();
+        // Initialize currency config cache
+        await initializeCurrencyConfig();
         
         const response = await fetch('/api/config');
         if (response.ok) {
@@ -167,15 +170,15 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
   const formatValue = (value: string) => {
     try {
       const currencySymbol = getCurrencySymbol();
-      // WeiからVBCに変換（1 VBC = 10^18 Wei）
+      // Convert from Wei to native currency (1 unit = 10^18 Wei)
       const weiValue = BigInt(value);
-      const vbcValue = Number(weiValue) / 1e18;
+      const nativeValue = Number(weiValue) / 1e18;
       
-      if (vbcValue === 0) return `0 ${currencySymbol}`;
-      if (vbcValue < 0.000001) return `<0.000001 ${currencySymbol}`;
-      if (vbcValue < 1) return `${vbcValue.toFixed(6)} ${currencySymbol}`;
-      if (vbcValue < 1000) return `${vbcValue.toFixed(4)} ${currencySymbol}`;
-      return `${vbcValue.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${currencySymbol}`;
+      if (nativeValue === 0) return `0 ${currencySymbol}`;
+      if (nativeValue < 0.000001) return `<0.000001 ${currencySymbol}`;
+      if (nativeValue < 1) return `${nativeValue.toFixed(6)} ${currencySymbol}`;
+      if (nativeValue < 1000) return `${nativeValue.toFixed(4)} ${currencySymbol}`;
+      return `${nativeValue.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${currencySymbol}`;
     } catch {
       const currencySymbol = getCurrencySymbol();
       return `${value} ${currencySymbol}`;
@@ -185,6 +188,37 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
   const formatAddress = (address: string) => {
     if (!address) return 'N/A';
     return `${address.slice(0, 8)}...${address.slice(-6)}`;
+  };
+
+  // MetaMask準拠のトランザクションタイプバッジを生成
+  const getTransactionTypeBadge = (type?: string, action?: string) => {
+    const typeConfig: Record<string, { bg: string; text: string; icon: string }> = {
+      send: { bg: 'bg-red-100', text: 'text-red-700', icon: '↑' },
+      receive: { bg: 'bg-green-100', text: 'text-green-700', icon: '↓' },
+      token_transfer: { bg: 'bg-purple-100', text: 'text-purple-700', icon: '⇆' },
+      nft_transfer: { bg: 'bg-pink-100', text: 'text-pink-700', icon: '🖼' },
+      approve: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '✓' },
+      swap: { bg: 'bg-blue-100', text: 'text-blue-700', icon: '⇋' },
+      liquidity: { bg: 'bg-cyan-100', text: 'text-cyan-700', icon: '💧' },
+      stake: { bg: 'bg-orange-100', text: 'text-orange-700', icon: '📌' },
+      unstake: { bg: 'bg-amber-100', text: 'text-amber-700', icon: '📤' },
+      harvest: { bg: 'bg-lime-100', text: 'text-lime-700', icon: '🌾' },
+      mint: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: '✨' },
+      burn: { bg: 'bg-red-200', text: 'text-red-800', icon: '🔥' },
+      contract_creation: { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: '📄' },
+      contract_interaction: { bg: 'bg-violet-100', text: 'text-violet-700', icon: '📝' },
+      mining_reward: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '⛏️' },
+    };
+    
+    const config = typeConfig[type || 'contract_interaction'] || typeConfig.contract_interaction;
+    const displayAction = action || type || 'Transaction';
+    
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
+        <span>{config.icon}</span>
+        <span>{displayAction}</span>
+      </span>
+    );
   };
 
   const getMinerDisplayInfo = (miner: string) => {
@@ -221,7 +255,6 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
   if (loading) {
     return (
       <div className='min-h-screen bg-gray-900 text-white'>
-        <Header />
         <div className='container mx-auto px-4 py-8'>
           <div className='flex justify-center items-center h-64'>
             <div className='animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500'></div>
@@ -234,7 +267,6 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
   if (error || !block) {
     return (
       <div className='min-h-screen bg-gray-900 text-white'>
-        <Header />
         <div className='container mx-auto px-4 py-8'>
           <div className='bg-red-800 border border-red-600 text-red-100 px-4 py-3 rounded mb-4'>
             <strong className='font-bold'>Error:</strong>
@@ -287,8 +319,6 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
 
   return (
     <div className='min-h-screen bg-gray-900 text-white'>
-      <Header />
-
       {/* Page Header */}
       <div className='bg-gray-800 border-b border-gray-700'>
         <div className='container mx-auto px-4 py-8'>
@@ -525,6 +555,7 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
                 <thead>
                   <tr className='border-b border-gray-600'>
                     <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Transaction Hash</th>
+                    <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Type</th>
                     <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>From</th>
                     <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>To</th>
                     <th className='text-left py-3 px-4 text-sm font-medium text-gray-400'>Value</th>
@@ -542,6 +573,9 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
                         >
                           {formatAddress(tx.hash)}
                         </Link>
+                      </td>
+                      <td className='py-3 px-4'>
+                        {getTransactionTypeBadge(tx.type, tx.action)}
                       </td>
                       <td className='py-3 px-4'>
                         <Link

@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18, 20, 22]
+        node-version: [20, 22, 24]
     env:
       NEXT_TELEMETRY_DISABLED: 1
       TAILWIND_DISABLE_TOUCH: true
@@ -33,7 +33,7 @@ jobs:
       - name: Run linter
         run: npm run lint
       - name: Run type check
-        run: npm run type-check
+        run: npm run typecheck
       - name: Run build
         run: npm run build
 

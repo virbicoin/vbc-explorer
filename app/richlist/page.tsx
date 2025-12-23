@@ -1,10 +1,9 @@
 'use client';
 
-import Header from '../components/Header';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { TrophyIcon } from '@heroicons/react/24/outline';
-import { getCurrencySymbol } from '../../lib/config';
+import { getCurrencySymbol, initializeCurrencyConfig } from '../../lib/client-config';
 import { initializeCurrency } from '../../lib/bigint-utils';
 
 interface RichlistAccount {
@@ -63,8 +62,9 @@ export default function RichlistPage() {
         // Initialize currency conversion factors
         await initializeCurrency();
         
-        // Load config values
-        const symbol = await getCurrencySymbol();
+        // Load config values from API
+        await initializeCurrencyConfig();
+        const symbol = getCurrencySymbol();
         setCurrencySymbol(symbol);
         
         setLoading(true);
@@ -90,8 +90,6 @@ export default function RichlistPage() {
 
   return (
     <div className='min-h-screen bg-gray-900 text-white'>
-      <Header />
-
       {/* Page Header */}
       <div className='bg-gray-800 border-b border-gray-700'>
         <div className='container mx-auto px-4 py-8'>

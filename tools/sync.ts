@@ -8,51 +8,37 @@ import mongoose from 'mongoose';
 import Web3 from 'web3';
 import fs from 'fs';
 import path from 'path';
-import { connectDB, Block, Transaction } from '../models/index';
+import { connectDB, Block, Transaction, Contract } from '../models/index';
 import { main as statsMain } from './stats';
-import { main as richlistMain } from './richlist';
+import { makeRichList } from './richlist';
 import { main as tokensMain } from './tokens';
+import { readConfig as loadConfig, getWeb3ProviderURL } from '../lib/config';
 
-// Function to read config
-const readConfig = () => {
-  try {
-    const configPath = path.join(process.cwd(), 'config.json');
-    const exampleConfigPath = path.join(process.cwd(), 'config.example.json');
-    
-    if (fs.existsSync(configPath)) {
-      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    } else if (fs.existsSync(exampleConfigPath)) {
-      return JSON.parse(fs.readFileSync(exampleConfigPath, 'utf8'));
-    }
-  } catch (error) {
-    console.error('Error reading config:', error);
-  }
-  
-  // Default configuration
-  return {
-    nodeAddr: 'localhost',
-    port: 8329,
-    wsPort: 8330,
-    bulkSize: 50,
-    syncAll: false,
-    patch: false,
-    quiet: false,
-    useRichList: true,
-    startBlock: 0,
-    endBlock: null
-  };
-};
+// Use unified config loader
 
 // Initialize database connection
 const initDB = async () => {
   try {
     // Check if already connected
     if (mongoose.connection.readyState === 1) {
-      console.log('🔗 Database already connected');
       return;
     }
     
     await connectDB();
+    
+    // Wait for connection to be fully established
+    let retries = 0;
+    const maxRetries = 30;
+    while ((mongoose.connection.readyState as number) !== 1 && retries < maxRetries) {
+      console.log('⌛ Waiting for database connection...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      retries++;
+    }
+    
+    if ((mongoose.connection.readyState as number) !== 1) {
+      throw new Error('Database connection timeout');
+    }
+    
     console.log('🔗 Database connection initialized successfully');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);
@@ -64,7 +50,7 @@ const initDB = async () => {
 const checkMemory = () => {
   const usage = process.memoryUsage();
   const usedMB = Math.round(usage.heapUsed / 1024 / 1024);
-  const limitMB = parseInt(process.env.MEMORY_LIMIT_MB || '1024'); // 環境変数から取得、デフォルト1024MB
+  const limitMB = parseInt(process.env.MEMORY_LIMIT_MB || '1024'); // Optimized for 2GB instances
   
   if (usedMB > limitMB) {
     console.log(`⚠️  Memory usage: ${usedMB}MB (limit: ${limitMB}MB)`);
@@ -96,6 +82,204 @@ const toBoolean = (value: any): boolean | null => {
   if (typeof value === 'bigint') return value > 0n;
   if (typeof value === 'string') return value === '1' || value.toLowerCase() === 'true';
   return Boolean(value);
+};
+
+/**
+ * Register a contract in the database
+ * Called when a contract creation transaction is detected
+ */
+const registerContract = async (
+  contractAddress: string,
+  creatorAddress: string,
+  creationTxHash: string,
+  blockNumber: number,
+  web3Instance: Web3
+): Promise<void> => {
+  try {
+    const normalizedAddress = contractAddress.toLowerCase();
+    
+    // Check if contract already exists
+    const existing = await Contract.findOne({ address: normalizedAddress });
+    if (existing) {
+      return; // Already registered
+    }
+
+    // Get bytecode to verify it's a contract
+    const bytecode = await web3Instance.eth.getCode(contractAddress);
+    if (!bytecode || bytecode === '0x' || bytecode === '0x0') {
+      return; // Not a contract
+    }
+
+    // Try to detect if it's an ERC20 token
+    let isERC20 = false;
+    let tokenName = '';
+    let tokenSymbol = '';
+    let tokenDecimals = 0;
+
+    try {
+      const erc20ABI = [
+        { constant: true, inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], type: 'function' },
+        { constant: true, inputs: [], name: 'symbol', outputs: [{ name: '', type: 'string' }], type: 'function' },
+        { constant: true, inputs: [], name: 'decimals', outputs: [{ name: '', type: 'uint8' }], type: 'function' }
+      ];
+      const contract = new web3Instance.eth.Contract(erc20ABI as any, contractAddress);
+      
+      // Try to call ERC20 methods
+      const [name, symbol, decimals] = await Promise.all([
+        contract.methods.name().call().catch(() => null),
+        contract.methods.symbol().call().catch(() => null),
+        contract.methods.decimals().call().catch(() => null)
+      ]);
+
+      if (name && symbol) {
+        isERC20 = true;
+        tokenName = String(name);
+        tokenSymbol = String(symbol);
+        tokenDecimals = decimals ? Number(decimals) : 18;
+      }
+    } catch {
+      // Not an ERC20 token or method call failed
+    }
+
+    // Create contract entry
+    await Contract.create({
+      address: normalizedAddress,
+      blockNumber: blockNumber,
+      ERC: isERC20 ? 2 : 0, // 2 = ERC20, 0 = normal contract
+      creationTransaction: creationTxHash,
+      contractName: isERC20 ? tokenName : 'Contract',
+      tokenName: tokenName || null,
+      symbol: tokenSymbol || null,
+      owner: creatorAddress.toLowerCase(),
+      decimals: tokenDecimals,
+      verified: false
+    });
+
+    console.log(`📝 Contract registered: ${normalizedAddress}${isERC20 ? ` (${tokenSymbol})` : ''}`);
+  } catch (error: any) {
+    // Ignore duplicate key errors
+    if (error.code !== 11000) {
+      console.error(`⚠️ Failed to register contract ${contractAddress}:`, error.message);
+    }
+  }
+};
+
+/**
+ * Register known contracts from config.json
+ */
+const registerKnownContracts = async (web3Instance: Web3): Promise<void> => {
+  const cfg = config as any;
+  const contracts: Array<{
+    address: string;
+    contractName: string;
+    symbol?: string;
+    tokenName?: string;
+    decimals?: number;
+    type: 'contract' | 'token';
+  }> = [];
+
+  // DEX Contracts
+  if (cfg.dex) {
+    if (cfg.dex.factory) {
+      contracts.push({ address: cfg.dex.factory.toLowerCase(), contractName: 'SimpleFactoryV2', type: 'contract' });
+    }
+    if (cfg.dex.router) {
+      contracts.push({ address: cfg.dex.router.toLowerCase(), contractName: 'SimpleRouterV2', type: 'contract' });
+    }
+    if (cfg.dex.masterChef) {
+      contracts.push({ address: cfg.dex.masterChef.toLowerCase(), contractName: 'MasterChef', type: 'contract' });
+    }
+    if (cfg.dex.wrappedNative?.address) {
+      contracts.push({
+        address: cfg.dex.wrappedNative.address.toLowerCase(),
+        contractName: cfg.dex.wrappedNative.name || 'WVBC',
+        symbol: cfg.dex.wrappedNative.symbol,
+        tokenName: cfg.dex.wrappedNative.name,
+        decimals: cfg.dex.wrappedNative.decimals || 18,
+        type: 'token'
+      });
+    }
+    if (cfg.dex.rewardToken?.address) {
+      contracts.push({
+        address: cfg.dex.rewardToken.address.toLowerCase(),
+        contractName: cfg.dex.rewardToken.name || 'Reward Token',
+        symbol: cfg.dex.rewardToken.symbol,
+        tokenName: cfg.dex.rewardToken.name,
+        decimals: cfg.dex.rewardToken.decimals || 18,
+        type: 'token'
+      });
+    }
+    // DEX Tokens
+    if (cfg.dex.tokens) {
+      for (const [, token] of Object.entries(cfg.dex.tokens)) {
+        const t = token as any;
+        if (t.address) {
+          contracts.push({
+            address: t.address.toLowerCase(),
+            contractName: t.name || 'Token',
+            symbol: t.symbol,
+            tokenName: t.name,
+            decimals: t.decimals || 18,
+            type: 'token'
+          });
+        }
+      }
+    }
+    // LP Tokens
+    if (cfg.dex.lpTokens) {
+      for (const [, lp] of Object.entries(cfg.dex.lpTokens)) {
+        const l = lp as any;
+        if (l.address) {
+          contracts.push({
+            address: l.address.toLowerCase(),
+            contractName: l.name || 'LP Token',
+            symbol: l.symbol,
+            tokenName: l.name,
+            type: 'token'
+          });
+        }
+      }
+    }
+  }
+
+  // Launchpad TokenFactory
+  if (cfg.launchpad?.factoryAddress) {
+    contracts.push({
+      address: cfg.launchpad.factoryAddress.toLowerCase(),
+      contractName: 'TokenFactory',
+      type: 'contract'
+    });
+  }
+
+  if (contracts.length === 0) return;
+
+  console.log(`📋 Registering ${contracts.length} known contracts from config.json...`);
+
+  for (const contract of contracts) {
+    try {
+      const existing = await Contract.findOne({ address: contract.address });
+      if (!existing) {
+        // Verify it's actually a contract on-chain
+        const bytecode = await web3Instance.eth.getCode(contract.address);
+        if (bytecode && bytecode !== '0x' && bytecode !== '0x0') {
+          await Contract.create({
+            address: contract.address,
+            contractName: contract.contractName,
+            symbol: contract.symbol,
+            tokenName: contract.tokenName,
+            decimals: contract.decimals,
+            ERC: contract.type === 'token' ? 2 : 0,
+            verified: false
+          });
+          console.log(`  ✅ ${contract.contractName} (${contract.address.slice(0, 10)}...)`);
+        }
+      }
+    } catch (error: any) {
+      if (error.code !== 11000) {
+        console.error(`  ⚠️ Failed to register ${contract.contractName}:`, error.message);
+      }
+    }
+  }
 };
 
 // Interface definitions
@@ -152,7 +336,7 @@ interface BlockDocument {
 }
 
 // Generic Configuration
-const config: Config = readConfig();
+const config = loadConfig();
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -202,10 +386,12 @@ if (args.length >= 2 && !isNaN(parseInt(args[0])) && !isNaN(parseInt(args[1]))) 
   console.log(`Command line override: syncing blocks ${config.startBlock} to ${config.endBlock}`);
 }
 
-console.log(`🔌 Connecting to VirBiCoin node ${config.nodeAddr}:${config.port}...`);
+// Use unified Web3 provider URL
+const providerUrl = getWeb3ProviderURL();
+console.log(`🔌 Connecting to VirBiCoin node at ${providerUrl}...`);
 
-// Web3 connection
-const web3 = new Web3(new Web3.providers.HttpProvider(`http://${config.nodeAddr}:${config.port}`));
+// Web3 connection using unified config
+const web3 = new Web3(new Web3.providers.HttpProvider(providerUrl));
 
 /**
  * Normalize transaction data
@@ -239,7 +425,7 @@ const normalizeTX = async (
 };
 
 /**
- * Write block to database
+ * Write block to database with improved performance
  */
 interface WriteBlockToDB {
   (blockData: any | null, flush?: boolean): Promise<void>;
@@ -305,7 +491,7 @@ const writeBlockToDB: WriteBlockToDB = async function (blockData: any | null, fl
 };
 
 /**
- * Write transactions to database
+ * Write transactions to database with improved performance
  */
 interface WriteTransactionsToDB {
   (blockData: any | null, flush?: boolean): Promise<void>;
@@ -331,6 +517,17 @@ const writeTransactionsToDB: WriteTransactionsToDB = async function (
         const receipt = await web3.eth.getTransactionReceipt(toString(txData.hash));
         const tx = await normalizeTX(txData, receipt, blockData);
         self.bulkOps.push(tx);
+        
+        // Detect contract creation and auto-register
+        if (receipt && receipt.contractAddress) {
+          const contractAddr = toString(receipt.contractAddress);
+          const creatorAddr = toString(txData.from);
+          const txHash = toString(txData.hash);
+          const blockNum = toNumber(blockData.number);
+          
+          // Register contract asynchronously (don't wait)
+          registerContract(contractAddr, creatorAddr, txHash, blockNum, web3).catch(() => {});
+        }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.log(`⚠️ Warning: Failed to get receipt for tx ${toString(txData.hash)}: ${errorMessage}`);
@@ -371,12 +568,12 @@ const writeTransactionsToDB: WriteTransactionsToDB = async function (
 };
 
 /**
- * Listen for new blocks (real-time sync)
+ * Listen for new blocks (real-time sync) with improved performance
  */
 const listenBlocks = function (): void {
   console.log('🚀 Starting real-time block listener...');
 
-  const pollInterval = 3000; // Poll every 3 seconds (5秒→3秒に短縮)
+  const pollInterval = 5000; // Poll every 5 seconds (3秒→5秒に延長)
   let lastProcessedBlock = 0;
   let isProcessing = false; // 重複処理を防ぐフラグ
 
@@ -394,7 +591,7 @@ const listenBlocks = function (): void {
         console.log(`🔍 New block detected: ${currentBlock} (last: ${lastProcessedBlock})`);
 
         // Process new blocks in batches
-        const blocksToProcess = Math.min(currentBlock - lastProcessedBlock, 10); // 最大10ブロックずつ処理
+        const blocksToProcess = Math.min(currentBlock - lastProcessedBlock, 5); // Reduced from 10 to 5
         
         for (let i = 0; i < blocksToProcess; i++) {
           const blockNum = lastProcessedBlock + 1 + i;
@@ -403,8 +600,8 @@ const listenBlocks = function (): void {
             const blockData = await web3.eth.getBlock(blockNum, true);
 
             if (blockData) {
-              // Check if block already exists to avoid duplicates
-              const existingBlock = await Block.findOne({ number: blockNum }).lean();
+              // Check if block already exists to avoid duplicates with extended timeout
+              const existingBlock = await Block.findOne({ number: blockNum }).lean().maxTimeMS(60000);
               
               if (!existingBlock) {
                 await writeBlockToDB(blockData, true);
@@ -416,7 +613,13 @@ const listenBlocks = function (): void {
             }
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            console.log(`❌ Error processing block ${blockNum}: ${errorMessage}`);
+            // If timeout error, wait and continue - don't fail
+            if (errorMessage.includes('time limit') || errorMessage.includes('timeout')) {
+              console.log(`⏳ Block ${blockNum} query timeout, will retry later`);
+              await new Promise(resolve => setTimeout(resolve, 5000));
+            } else {
+              console.log(`❌ Error processing block ${blockNum}: ${errorMessage}`);
+            }
           }
         }
 
@@ -446,7 +649,7 @@ const listenBlocks = function (): void {
 };
 
 /**
- * Sync chain from specific block range
+ * Sync chain from specific block range with improved performance and parallel processing
  */
 const syncChain = async function (startBlock?: number, endBlock?: number): Promise<void> {
   // Use config values if not provided
@@ -460,66 +663,208 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
 
   console.log(`🔄 Syncing blocks from ${startBlock} to ${endBlock}...`);
 
-  // Check which blocks already exist in database
+  // Check which blocks already exist in database with timeout
   const existingBlocks = await Block.find({ 
     number: { $gte: startBlock, $lte: endBlock } 
-  }).select('number').lean();
+  }).select('number').lean().maxTimeMS(120000);
   
   const existingBlockNumbers = new Set(existingBlocks.map(b => b.number));
   console.log(`🔍 Found ${existingBlocks.length} existing blocks in range ${startBlock}-${endBlock}`);
 
   let processedCount = 0;
   let skippedCount = 0;
+  const BATCH_SIZE = Math.min(config.bulkSize, 50); // Reduced for 2GB instances
+  const CONCURRENCY_LIMIT = 3; // Reduced concurrent block fetches for low memory
 
-  for (let blockNum = startBlock; blockNum <= endBlock; blockNum++) {
-    // メモリ監視を追加
-    if (!checkMemory()) {
-      console.log('💾 Memory limit reached, pausing sync for 5 seconds');
-      await new Promise(resolve => setTimeout(resolve, 5000));
+  // Process blocks in parallel batches
+  for (let batchStart = startBlock; batchStart <= endBlock; batchStart += BATCH_SIZE) {
+    const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, endBlock);
+    const batchNumbers = [];
+    
+    // Collect block numbers that need processing
+    for (let blockNum = batchStart; blockNum <= batchEnd; blockNum++) {
+      if (!existingBlockNumbers.has(blockNum)) {
+        batchNumbers.push(blockNum);
+      } else {
+        skippedCount++;
+      }
     }
 
+    if (batchNumbers.length === 0) {
+      continue; // Skip this batch if all blocks exist
+    }
+
+    console.log(`🚀 Processing batch ${batchStart}-${batchEnd} (${batchNumbers.length} new blocks)`);
+
     try {
-      // Check if block already exists in DB
-      const existingBlock = await Block.findOne({ number: blockNum }).lean();
+      // Process blocks in smaller chunks to avoid overwhelming the node
+      const chunks = [];
+      for (let i = 0; i < batchNumbers.length; i += CONCURRENCY_LIMIT) {
+        chunks.push(batchNumbers.slice(i, i + CONCURRENCY_LIMIT));
+      }
+
+      const allBlocksData = [];
       
-      if (existingBlock) {
-        skippedCount++;
-        continue;
-      }
+      for (const chunk of chunks) {
+        // Fetch blocks in parallel within each chunk
+        const blockPromises = chunk.map(async (blockNum) => {
+          try {
+            const blockData = await web3.eth.getBlock(blockNum, true);
+            return { blockNum, blockData };
+          } catch (error) {
+            console.log(`❌ Error fetching block ${blockNum}: ${error}`);
+            return { blockNum, blockData: null };
+          }
+        });
 
-      const blockData = await web3.eth.getBlock(blockNum, true);
-
-      if (blockData) {
-        // Process new block
-        await writeBlockToDB(blockData);
-        await writeTransactionsToDB(blockData);
-        processedCount++;
-      }
-
-      // Flush every bulkSize blocks
-      if ((blockNum - startBlock) % config.bulkSize === 0) {
-        await writeBlockToDB(null, true);
-        await writeTransactionsToDB(null, true);
+        const chunkResults = await Promise.all(blockPromises);
+        allBlocksData.push(...chunkResults);
         
-        // バッチ処理後にGC実行
-        if (global.gc) {
-          global.gc();
+        // Small delay between chunks to prevent overwhelming the node
+        if (chunks.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
 
-      // 500個単位でログ出力
-      if ((blockNum - startBlock + 1) % 500 === 0) {
-        console.log(`📦 Processed ${blockNum - startBlock + 1} blocks (${blockNum}/${endBlock}) - 📈 Processed: ${processedCount}, ⏩ Skipped: ${skippedCount}`);
+      // Batch write to database
+      const blocksToInsert = [];
+      const transactionsToInsert = [];
+
+      for (const { blockNum, blockData } of allBlocksData) {
+        if (blockData) {
+          // Prepare block data for insertion
+          const blockDoc = {
+            number: toNumber(blockData.number),
+            hash: toString(blockData.hash),
+            parentHash: toString(blockData.parentHash),
+            nonce: toString(blockData.nonce),
+            sha3Uncles: toString(blockData.sha3Uncles),
+            logsBloom: toString(blockData.logsBloom),
+            transactionsRoot: toString(blockData.transactionsRoot),
+            stateRoot: toString(blockData.stateRoot),
+            receiptsRoot: toString(blockData.receiptsRoot),
+            miner: toString(blockData.miner),
+            difficulty: toString(blockData.difficulty),
+            totalDifficulty: toString(blockData.totalDifficulty),
+            extraData: toString(blockData.extraData),
+            size: toNumber(blockData.size),
+            gasLimit: toNumber(blockData.gasLimit),
+            gasUsed: toNumber(blockData.gasUsed),
+            timestamp: toNumber(blockData.timestamp),
+            transactions: blockData.transactions ? blockData.transactions.map((tx: any) => toString(tx.hash || tx)) : [],
+            uncles: blockData.uncles || [],
+            baseFeePerGas: blockData.baseFeePerGas ? toString(blockData.baseFeePerGas) : undefined,
+            mixHash: blockData.mixHash ? toString(blockData.mixHash) : undefined,
+            withdrawals: (blockData as any).withdrawals || [],
+            withdrawalsRoot: (blockData as any).withdrawalsRoot ? toString((blockData as any).withdrawalsRoot) : undefined,
+            blobGasUsed: (blockData as any).blobGasUsed ? toNumber((blockData as any).blobGasUsed) : undefined,
+            excessBlobGas: (blockData as any).excessBlobGas ? toNumber((blockData as any).excessBlobGas) : undefined,
+            parentBeaconBlockRoot: (blockData as any).parentBeaconBlockRoot ? toString((blockData as any).parentBeaconBlockRoot) : undefined
+          };
+
+          blocksToInsert.push(blockDoc);
+
+          // Process transactions if they exist and are detailed
+          if (blockData.transactions && Array.isArray(blockData.transactions)) {
+            // Get transaction receipts in parallel for gas usage and status
+            const receiptPromises = blockData.transactions
+              .filter((tx: any) => typeof tx === 'object' && tx !== null)
+              .map(async (tx: any) => {
+                try {
+                  const receipt = await web3.eth.getTransactionReceipt(toString(tx.hash));
+                  return { tx, receipt };
+                } catch (error) {
+                  console.log(`⚠️ Warning: Failed to get receipt for tx ${toString(tx.hash)}: ${error}`);
+                  return { tx, receipt: null };
+                }
+              });
+
+            const txReceiptPairs = await Promise.all(receiptPromises);
+
+            for (const { tx, receipt } of txReceiptPairs) {
+              const txDoc = {
+                hash: toString(tx.hash),
+                nonce: toNumber(tx.nonce),
+                blockHash: toString(tx.blockHash),
+                blockNumber: toNumber(tx.blockNumber),
+                transactionIndex: toNumber(tx.transactionIndex),
+                from: toString(tx.from),
+                to: tx.to ? toString(tx.to) : null,
+                value: toString(tx.value),
+                gasPrice: tx.gasPrice ? toString(tx.gasPrice) : null,
+                gas: toNumber(tx.gas),
+                gasUsed: receipt ? toNumber(receipt.gasUsed) : 0, // Add gasUsed from receipt
+                status: receipt ? (receipt.status ? 1 : 0) : null, // Add status from receipt
+                input: toString(tx.input),
+                timestamp: toNumber(blockData.timestamp), // Add block timestamp to transaction
+                creates: (tx as any).creates ? toString((tx as any).creates) : null,
+                raw: (tx as any).raw ? toString((tx as any).raw) : null,
+                publicKey: (tx as any).publicKey ? toString((tx as any).publicKey) : null,
+                r: tx.r ? toString(tx.r) : null,
+                s: tx.s ? toString(tx.s) : null,
+                v: tx.v ? toString(tx.v) : null,
+                standardV: (tx as any).standardV ? toString((tx as any).standardV) : null,
+                type: tx.type !== undefined ? toNumber(tx.type) : null,
+                accessList: tx.accessList || [],
+                chainId: tx.chainId ? toNumber(tx.chainId) : null,
+                maxFeePerGas: tx.maxFeePerGas ? toString(tx.maxFeePerGas) : null,
+                maxPriorityFeePerGas: tx.maxPriorityFeePerGas ? toString(tx.maxPriorityFeePerGas) : null,
+                maxFeePerBlobGas: (tx as any).maxFeePerBlobGas ? toString((tx as any).maxFeePerBlobGas) : null,
+                blobVersionedHashes: (tx as any).blobVersionedHashes || [],
+                yParity: (tx as any).yParity ? toString((tx as any).yParity) : null
+              };
+              transactionsToInsert.push(txDoc);
+              
+              // Detect contract creation and auto-register
+              if (receipt && receipt.contractAddress) {
+                const contractAddr = toString(receipt.contractAddress);
+                const creatorAddr = toString(tx.from);
+                const txHash = toString(tx.hash);
+                const blockNum = toNumber(blockData.number);
+                
+                // Register contract asynchronously (don't block sync)
+                registerContract(contractAddr, creatorAddr, txHash, blockNum, web3).catch(() => {});
+              }
+            }
+          }
+          processedCount++;
+        }
       }
+
+      // Bulk insert blocks and transactions
+      try {
+        if (blocksToInsert.length > 0) {
+          await Block.insertMany(blocksToInsert, { ordered: false });
+        }
+        if (transactionsToInsert.length > 0) {
+          await Transaction.insertMany(transactionsToInsert, { ordered: false });
+        }
+      } catch (error) {
+        // Handle duplicate key errors gracefully
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (!errorMessage.includes('duplicate key') && !errorMessage.includes('E11000')) {
+          console.log(`❌ Database error: ${errorMessage}`);
+        }
+      }
+
+      // Memory check and GC
+      if (!checkMemory()) {
+        console.log('💾 Memory limit reached, forcing garbage collection');
+        if (global.gc) {
+          global.gc();
+        }
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      // Progress logging
+      const progress = ((batchEnd - startBlock + 1) / (endBlock - startBlock + 1) * 100).toFixed(1);
+      console.log(`📦 Batch completed: ${batchStart}-${batchEnd} | Progress: ${progress}% | Processed: ${processedCount}, Skipped: ${skippedCount}`);
+
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.log(`❌ Error syncing block ${blockNum}: ${errorMessage}`);
+      console.log(`❌ Error processing batch ${batchStart}-${batchEnd}: ${errorMessage}`);
     }
   }
-
-  // Final flush
-  await writeBlockToDB(null, true);
-  await writeTransactionsToDB(null, true);
 
   console.log(`✅ Sync Completed`);
   console.log(`📊 Processed: ${processedCount} blocks`);
@@ -532,7 +877,7 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
 const prepareSync = async (): Promise<void> => {
   try {
     // Find the latest block in database
-    const latestBlockDoc = await Block.findOne({}, { number: 1 }).sort({ number: -1 });
+    const latestBlockDoc = await Block.findOne({}, { number: 1 }).sort({ number: -1 }).maxTimeMS(60000);
 
     if (latestBlockDoc) {
       const dbLatestBlock = latestBlockDoc.number;
@@ -559,8 +904,6 @@ const prepareSync = async (): Promise<void> => {
   }
 };
 
-
-
 /**
  * Hybrid sync: Catch latest blocks while syncing past blocks
  */
@@ -581,7 +924,7 @@ const hybridSync = async (): Promise<void> => {
 };
 
 /**
- * Main execution
+ * Main execution with improved performance
  */
 const main = async (): Promise<void> => {
   try {
@@ -618,9 +961,13 @@ const main = async (): Promise<void> => {
     // Initialize database connection ONCE
     await initDB();
     
-    // Test connection
-    const isListening = await web3.eth.net.isListening();
-    if (!isListening) {
+    // Register known contracts from config.json
+    await registerKnownContracts(web3);
+    
+    // Test connection by getting latest block number
+    try {
+      await web3.eth.getBlockNumber();
+    } catch (connectionError) {
       console.log('❌ Error: Cannot connect to VirBiCoin node');
       process.exit(1);
     }
@@ -640,6 +987,17 @@ const main = async (): Promise<void> => {
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // Check if it's a timeout error - these are recoverable
+    if (errorMessage.includes('timed out') || errorMessage.includes('timeout')) {
+      console.log(`⌛ Timeout error occurred: ${errorMessage}`);
+      console.log('⌛ Waiting 60 seconds before retry...');
+      await new Promise(resolve => setTimeout(resolve, 60000));
+      // Don't exit - let PM2 restart the process
+      console.log('🔄 Restarting sync process...');
+      return main();
+    }
+    
     console.log(`💥 Fatal error: ${errorMessage}`);
     process.exit(1);
   }
@@ -654,14 +1012,59 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
+// Richlist wrapper function
+const runRichlist = async () => {
+  console.log('🚀 Starting richlist calculation...');
+  
+  // Ensure database connection first
+  await initDB();
+  
+  const web3 = new Web3(new Web3.providers.HttpProvider(getWeb3ProviderURL()));
+  const latestBlock = await web3.eth.getBlockNumber();
+  const blockNumber = Number(latestBlock);
+  const BATCH_SIZE = 50;
+  
+  console.log(`📦 Processing richlist for block ${blockNumber}`);
+  await makeRichList(blockNumber, BATCH_SIZE);
+};
+
 const runAll = async () => {
-  // 各mainを並列で実行
-  await Promise.all([
-    main(),         // sync
-    statsMain(),    // stats
-    richlistMain(), // richlist
-    tokensMain()    // tokens
-  ]);
+  // 最初にデータベース接続を確立
+  console.log('🔗 Initializing database connection for all tasks...');
+  await initDB();
+  
+  // 接続が確立されるまで待機
+  let retries = 0;
+  const maxRetries = 10;
+  while (mongoose.connection.readyState !== 1 && retries < maxRetries) {
+    console.log('⌛ Waiting for database connection...');
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    retries++;
+  }
+  
+  if (mongoose.connection.readyState !== 1) {
+    console.error('❌ Failed to establish database connection');
+    process.exit(1);
+  }
+  
+  console.log('✅ Database connection established, starting all tasks...');
+  
+  // 各mainを順次実行（データベース接続の競合を防ぐ）
+  try {
+    // まずstatsとrichlistを並行実行
+    await Promise.all([
+      statsMain(),
+      runRichlist()
+    ]);
+    
+    // その後、syncとtokensを実行
+    await Promise.all([
+      main(),
+      tokensMain()
+    ]);
+  } catch (error) {
+    console.error('❌ Error in runAll:', error);
+  }
 };
 
 if (require.main === module) {
@@ -675,7 +1078,7 @@ if (require.main === module) {
         await statsMain();
         break;
       case 'richlist':
-        await richlistMain();
+        await runRichlist();
         break;
       case 'tokens':
         await tokensMain();

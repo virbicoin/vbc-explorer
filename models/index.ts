@@ -170,6 +170,9 @@ const TransactionSchema = new Schema({
   'input': String,
 }, { collection: 'Transaction' });
 
+// Note: Compound indexes will be created programmatically via create-indexes script
+// to avoid duplicate index warnings. Individual field indexes are handled above.
+
 const TokenTransferSchema = new Schema({
   'hash': { type: String, index: { unique: true }, lowercase: true },
   'blockNumber': Number,
@@ -202,7 +205,9 @@ const MarketSchema = new Schema({
 }, { collection: 'Market' });
 
 // Create indices
+// Optimized transaction indexes for homepage queries
 TransactionSchema.index({ blockNumber: -1 });
+TransactionSchema.index({ blockNumber: -1, transactionIndex: -1 }, { background: true });
 TransactionSchema.index({ from: 1, blockNumber: -1 });
 TransactionSchema.index({ to: 1, blockNumber: -1 });
 TransactionSchema.index({ creates: 1, blockNumber: -1 });
@@ -244,9 +249,9 @@ export const connectDB = async (): Promise<void> => {
         try {
           const fs = await import('fs');
           const path = await import('path');
-          const configPath = path.default.join(process.cwd(), 'config.json');
-          if (fs.default.existsSync(configPath)) {
-            const config = JSON.parse(fs.default.readFileSync(configPath, 'utf8'));
+          const configPath = path.join(process.cwd(), 'config.json');
+          if (fs.existsSync(configPath)) {
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
             if (config.database && config.database.uri) {
               uri = config.database.uri;
               console.log('📄 Using MongoDB URI from config.json');
@@ -261,27 +266,29 @@ export const connectDB = async (): Promise<void> => {
           console.log('📄 Using default MongoDB URI');
         }
 
-        // Load config.json for database options
-        let dbOptions = {
-          maxPoolSize: 20,
-          serverSelectionTimeoutMS: 30000,
-          socketTimeoutMS: 60000,
-          connectTimeoutMS: 30000,
+        // Optimized database connection options for t4g.small (2GB RAM)
+        let dbOptions: mongoose.ConnectOptions = {
+          maxPoolSize: 5,   // Minimal pool for 2GB RAM
+          minPoolSize: 1,   // Single connection minimum
+          serverSelectionTimeoutMS: 120000, // 2 minutes for slow instances
+          socketTimeoutMS: 180000, // 3 minutes for slow operations
+          connectTimeoutMS: 120000, // 2 minutes for slow connections
           retryWrites: true,
           retryReads: true,
-          bufferCommands: true, // Changed to true to avoid connection issues
-          autoIndex: true,
-          autoCreate: true,
-          heartbeatFrequencyMS: 10000,
-          maxIdleTimeMS: 30000,
+          bufferCommands: true, // Queue commands during reconnection
+          autoIndex: false,      // Disable auto indexing in production
+          autoCreate: false,     // Disable auto creation in production
+          heartbeatFrequencyMS: 30000,  // 30 seconds to reduce overhead
+          maxIdleTimeMS: 120000,  // 2 minutes to keep connections alive
+          waitQueueTimeoutMS: 180000, // 3 minutes wait for connections
         };
 
         try {
           const fs = await import('fs');
           const path = await import('path');
-          const configPath = path.default.join(process.cwd(), 'config.json');
-          if (fs.default.existsSync(configPath)) {
-            const config = JSON.parse(fs.default.readFileSync(configPath, 'utf8'));
+          const configPath = path.join(process.cwd(), 'config.json');
+          if (fs.existsSync(configPath)) {
+            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
             if (config.database && config.database.options) {
               dbOptions = { ...dbOptions, ...config.database.options };
               console.log('📄 Using database options from config.json');
@@ -291,7 +298,7 @@ export const connectDB = async (): Promise<void> => {
           console.log('📄 Using default database options');
         }
 
-        const connectionOptions: mongoose.ConnectOptions = dbOptions;
+        const connectionOptions = dbOptions;
         
         console.log('🔗 Connecting to MongoDB...');
         await mongoose.connect(uri, connectionOptions);
@@ -302,12 +309,12 @@ export const connectDB = async (): Promise<void> => {
         return;
       }
       console.error('❌ MongoDB connection error:', error);
+      // Clear the promise so retry is possible
+      connectionPromise = null;
       // Don't throw error, just log it and continue
       console.log('⚠️ Continuing without database connection...');
-    } finally {
-      // Clear the promise after connection attempt
-      connectionPromise = null;
     }
+    // Note: Don't clear connectionPromise on success to prevent race conditions
   })();
 
   return connectionPromise;
@@ -323,7 +330,7 @@ export const BlockStat = mongoose.models.BlockStat || mongoose.model<IBlockStat>
 export const Market = mongoose.models.Market || mongoose.model<IMarket>('Market', MarketSchema);
 
 // Default export for convenience
-export default {
+const models = {
   connectDB,
   Block,
   Account,
@@ -333,3 +340,5 @@ export default {
   BlockStat,
   Market,
 };
+
+export default models;

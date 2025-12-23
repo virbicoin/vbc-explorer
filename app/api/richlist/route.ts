@@ -28,6 +28,14 @@ export async function GET(request: NextRequest) {
     if (totalSupply < 0) {
       const docs = await Account.aggregate([
         { $match: { balance: { $gt: "0" } } },
+        // Group by address to remove duplicates and keep the latest balance
+        {
+          $group: {
+            _id: "$address",
+            balance: { $first: "$balance" },
+            blockNumber: { $max: "$blockNumber" }
+          }
+        },
         { $addFields: { balanceNum: { $toDouble: "$balance" } } },
         { $group: { _id: null, totalSupply: { $sum: '$balanceNum' } } },
       ]);
@@ -36,8 +44,13 @@ export async function GET(request: NextRequest) {
       totalSupplyCache.value = totalSupply;
     }
 
-    // Get total count of accounts with balance > 0
-    const totalAccounts = await Account.countDocuments({ balance: { $gt: "0" } });
+    // Get total count of unique accounts with balance > 0 (removing duplicates)
+    const totalAccountsResult = await Account.aggregate([
+      { $match: { balance: { $gt: "0" } } },
+      { $group: { _id: "$address" } },
+      { $count: "total" }
+    ]);
+    const totalAccounts = totalAccountsResult[0]?.total || 0;
     
     // Get contract addresses from Contract table
     const contractAddresses = await Contract.find({}, 'address').lean();
@@ -48,20 +61,40 @@ export async function GET(request: NextRequest) {
     
     const walletAccounts = totalAccounts - contractAccounts;
 
-    // Get richlist data using aggregation for proper numeric sorting of string balances
+    // Get richlist data using aggregation with duplicate removal
     let accounts;
     if (totalAccounts === 0) {
       // If no accounts with balance > 0, get all accounts for debugging
       accounts = await Account.aggregate([
+        // Group by address to remove duplicates and keep the latest record
+        {
+          $group: {
+            _id: "$address",
+            address: { $first: "$address" },
+            balance: { $first: "$balance" },
+            blockNumber: { $max: "$blockNumber" }, // Keep the latest blockNumber
+            type: { $first: "$type" }
+          }
+        },
         { $addFields: { balanceNum: { $toDouble: "$balance" } } },
         { $sort: { balanceNum: -1 } },
         { $skip: offset },
         { $limit: limit }
       ]);
     } else {
-      // Get accounts with balance > 0, sorted by balance descending
+      // Get accounts with balance > 0, sorted by balance descending, with duplicates removed
       accounts = await Account.aggregate([
         { $match: { balance: { $gt: "0" } } },
+        // Group by address to remove duplicates and keep the latest record
+        {
+          $group: {
+            _id: "$address",
+            address: { $first: "$address" },
+            balance: { $first: "$balance" },
+            blockNumber: { $max: "$blockNumber" }, // Keep the latest blockNumber
+            type: { $first: "$type" }
+          }
+        },
         { $addFields: { balanceNum: { $toDouble: "$balance" } } },
         { $sort: { balanceNum: -1 } },
         { $skip: offset },
@@ -206,11 +239,23 @@ export async function POST(request: NextRequest) {
       data.totalSupply = totalSupply;
     }
 
-    const accounts = await Account.find({})
-      .lean(true)
-      .sort(sortOrder as { [key: string]: 1 | -1 })
-      .skip(start)
-      .limit(limit);
+    // Use aggregation to remove duplicates and apply sorting
+    const accounts = await Account.aggregate([
+      // Group by address to remove duplicates and keep the latest record
+      {
+        $group: {
+          _id: "$address",
+          address: { $first: "$address" },
+          balance: { $first: "$balance" },
+          blockNumber: { $max: "$blockNumber" },
+          type: { $first: "$type" }
+        }
+      },
+      { $addFields: { balanceNum: { $toDouble: "$balance" } } },
+      { $sort: sortOrder.balance ? { balanceNum: sortOrder.balance as 1 | -1 } : sortOrder as Record<string, 1 | -1> },
+      { $skip: start },
+      { $limit: limit }
+    ]);
       
     data.data = accounts.map((account, i) => [
       i + 1 + start, 

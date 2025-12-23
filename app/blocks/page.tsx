@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Header from '../components/Header';
 import Link from 'next/link';
 import { 
   CubeIcon, 
@@ -59,6 +58,7 @@ export default function BlocksPage() {
     lastBlockTimestamp: 0,
     lastBlockTime: 'Unknown'
   });
+  const [latestBlockTimestamp, setLatestBlockTimestamp] = useState(0);
 
   useEffect(() => {
     // 設定を取得
@@ -100,26 +100,64 @@ export default function BlocksPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // ブロック一覧を取得（ポーリング付き）
   useEffect(() => {
-    const fetchBlocks = async () => {
+    let isMounted = true;
+    
+    const fetchBlocks = async (isInitial: boolean = false) => {
       try {
-        setLoading(true);
+        if (isInitial) {
+          setLoading(true);
+        }
         setError(null);
-        const response = await fetch(`/api/blocks?page=${currentPage}&limit=50`);
+        
+        // キャッシュを無効化してフェッチ
+        const response = await fetch(`/api/blocks?page=${currentPage}&limit=50&_t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        });
         if (!response.ok) {
           throw new Error('Failed to fetch blocks');
         }
         const data = await response.json();
-        setBlocks(Array.isArray(data.blocks) ? data.blocks : []);
-        setTotalPages(data.pagination?.totalPages || 1);
-        setTotalBlocks(data.pagination?.total || 0);
+        
+        if (isMounted) {
+          const blocksData = Array.isArray(data.blocks) ? data.blocks : [];
+          setBlocks(blocksData);
+          setTotalPages(data.pagination?.totalPages || 1);
+          setTotalBlocks(data.pagination?.total || 0);
+          // 最新ブロックのタイムスタンプをリアルタイムで更新
+          if (blocksData.length > 0 && blocksData[0].timestamp) {
+            setLatestBlockTimestamp(Number(blocksData[0].timestamp));
+          }
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : 'An error occurred');
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
-    fetchBlocks();
+    
+    // 初回ロード
+    fetchBlocks(true);
+    
+    // ページ1の場合のみポーリング（5秒間隔）
+    let interval: NodeJS.Timeout | null = null;
+    if (currentPage === 1) {
+      interval = setInterval(() => fetchBlocks(false), 5000);
+    }
+    
+    return () => {
+      isMounted = false;
+      if (interval) clearInterval(interval);
+    };
   }, [currentPage]);
 
   const formatTimestamp = (timestamp: string) => {
@@ -163,7 +201,7 @@ export default function BlocksPage() {
   const summaryStats = [
     {
       title: 'Latest Block',
-      value: blocks.length > 0 ? blocks[0].number : '-',
+      value: blocks.length > 0 ? Number(blocks[0].number).toLocaleString() : '-',
       sub: 'Most recent block number',
       icon: <CubeIcon className='w-5 h-5 text-green-400' />,
       colorClass: 'text-green-400'
@@ -184,14 +222,19 @@ export default function BlocksPage() {
     },
     {
       title: 'Last Block Found',
-      value: stats.lastBlockTimestamp && stats.lastBlockTimestamp > 0 ? (() => {
-        const secondsAgo = Math.floor(now / 1000 - stats.lastBlockTimestamp);
-        if (secondsAgo < 0) return '0s ago';
-        if (secondsAgo < 60) return `${secondsAgo}s ago`;
-        if (secondsAgo < 3600) return `${Math.floor(secondsAgo / 60)}m ago`;
-        if (secondsAgo < 86400) return `${Math.floor(secondsAgo / 3600)}h ago`;
-        return `${Math.floor(secondsAgo / 86400)}d ago`;
-      })() : (stats.lastBlockTime || 'Unknown'),
+      value: (() => {
+        // blocksから取得したリアルタイムのタイムスタンプを優先
+        const timestamp = latestBlockTimestamp > 0 ? latestBlockTimestamp : stats.lastBlockTimestamp;
+        if (timestamp && timestamp > 0) {
+          const secondsAgo = Math.floor(now / 1000 - timestamp);
+          if (secondsAgo < 0) return '0s ago';
+          if (secondsAgo < 60) return `${secondsAgo}s ago`;
+          if (secondsAgo < 3600) return `${Math.floor(secondsAgo / 60)}m ago`;
+          if (secondsAgo < 86400) return `${Math.floor(secondsAgo / 3600)}h ago`;
+          return `${Math.floor(secondsAgo / 86400)}d ago`;
+        }
+        return stats.lastBlockTime || 'Unknown';
+      })(),
       sub: 'Time since last block',
       icon: <CalendarIcon className='w-5 h-5 text-emerald-400' />,
       colorClass: 'text-emerald-400'
@@ -201,7 +244,6 @@ export default function BlocksPage() {
   if (loading) {
     return (
       <div className='min-h-screen bg-gray-900 text-white'>
-        <Header />
         <div className='container mx-auto px-4 py-8'>
           <div className='flex justify-center items-center h-64'>
             <div className='animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500'></div>
@@ -214,7 +256,6 @@ export default function BlocksPage() {
   if (error) {
     return (
       <div className='min-h-screen bg-gray-900 text-white'>
-        <Header />
         <div className='container mx-auto px-4 py-8'>
           <div className='bg-red-800 border border-red-600 text-red-100 px-4 py-3 rounded mb-4'>
             <strong className='font-bold'>Error:</strong>
@@ -227,7 +268,6 @@ export default function BlocksPage() {
 
   return (
     <div className='min-h-screen bg-gray-900 text-white'>
-      <Header />
       {/* Page Header */}
       <div className='bg-gray-800 border-b border-gray-700'>
         <div className='container mx-auto px-4 py-8'>
@@ -235,7 +275,7 @@ export default function BlocksPage() {
             <CubeIcon className='w-8 h-8 text-green-400' />
             <h1 className='text-3xl font-bold text-gray-100'>Latest Blocks</h1>
           </div>
-          <p className='text-gray-400'>Most recent blocks on the Virbicoin network</p>
+          <p className='text-gray-400'>Most recent blocks on the network</p>
         </div>
       </div>
       <main className='container mx-auto px-4 py-8'>
@@ -279,10 +319,13 @@ export default function BlocksPage() {
                           <span className='bg-yellow-600/20 text-yellow-400 text-xs font-bold px-2 py-1 rounded border border-yellow-600/50'>GENESIS</span>
                         </div>
                       ) : (
-                        <>
-                          <div className='text-sm text-gray-300'>{getTimeAgo(block.timestamp)}</div>
-                          <div className='text-xs text-gray-500'>{formatTimestamp(block.timestamp)}</div>
-                        </>
+                        <div className='flex items-center gap-2'>
+                          <ClockIcon className='w-4 h-4 text-gray-500 flex-shrink-0' />
+                          <div>
+                            <div className='text-sm text-gray-300'>{getTimeAgo(block.timestamp)}</div>
+                            <div className='text-xs text-gray-500'>{formatTimestamp(block.timestamp)}</div>
+                          </div>
+                        </div>
                       )}
                     </td>
                     <td className='py-3 px-4 whitespace-nowrap'>

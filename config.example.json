@@ -2,7 +2,7 @@
   "nodeAddr": "localhost",
   "port": 8545,
   "wsPort": 8546,
-  "bulkSize": 50,
+  "bulkSize": 100,
   "syncAll": true,
   "quiet": false,
   "useRichList": true,
@@ -16,12 +16,17 @@
   "enableTokenTracking": true,
   "apiRateLimit": 100,
   "webSocketEnabled": true,
+  "web3Provider": {
+    "url": "http://localhost:8545"
+  },
   "currency": {
     "name": "Ethereum",
     "symbol": "ETH",
     "unit": "wei",
     "decimals": 18,
     "gasUnit": "Gwei",
+    "icon": "/img/eth.svg",
+    "color": "from-blue-500 to-purple-600",
     "priceApi": {
       "coingecko": {
         "enabled": true,
@@ -33,9 +38,17 @@
       }
     }
   },
+  "performance": {
+    "memoryLimitMB": 512,
+    "nodeOptions": "--max-old-space-size=512"
+  },
+  "caching": {
+    "enabled": true,
+    "duration": 300
+  },
   "miners": {
-    "0x0000000000000000000000000000000000000000": "Example Pool 1",
-    "0x1111111111111111111111111111111111111111": "Example Pool 2"
+    "0x0000000000000000000000000000000000000001": "Example Pool 1",
+    "0x0000000000000000000000000000000000000002": "Example Pool 2"
   },
   "features": {
     "nft": {
@@ -74,7 +87,7 @@
   "database": {
     "uri": "mongodb://explorer:your_secure_password@localhost:27017/explorerDB?authSource=explorerDB",
     "options": {
-      "maxPoolSize": 20,
+      "maxPoolSize": 50,
       "serverSelectionTimeoutMS": 15000,
       "socketTimeoutMS": 60000,
       "connectTimeoutMS": 15000,
@@ -96,10 +109,128 @@
     }
   },
   "explorer": {
-    "name": "VirBiCoin Explorer",
-    "description": "Real-time blockchain explorer for VirBiCoin network",
+    "name": "Blockchain Explorer",
+    "description": "Real-time blockchain explorer for EVM-compatible networks",
     "version": "1.0.0",
     "url": "https://explorer.example.com",
-    "apiUrl": "https://explorer.example.com/api"
+    "apiUrl": "https://explorer.example.com/api",
+    "copyright": "Your Company Name",
+    "github": "https://github.com/virbicoin/vbc-explorer"
+  },
+  "network": {
+    "chainId": 1,
+    "name": "Ethereum Mainnet",
+    "rpcUrl": "http://localhost:8545",
+    "wsUrl": "ws://localhost:8546",
+    "explorer": "https://explorer.example.com",
+    "blockTime": 12
+  },
+  "dex": {
+    "enabled": false,
+    "factory": "0x0000000000000000000000000000000000000000",
+    "router": "0x0000000000000000000000000000000000000000",
+    "masterChef": "0x0000000000000000000000000000000000000000",
+    "wrappedNative": {
+      "address": "0x0000000000000000000000000000000000000000",
+      "name": "Wrapped Native Token",
+      "symbol": "WETH",
+      "decimals": 18,
+      "icon": "/img/eth.svg",
+      "color": "from-blue-400 to-purple-500"
+    },
+    "rewardToken": {
+      "address": "0x0000000000000000000000000000000000000000",
+      "symbol": "REWARD",
+      "name": "Reward Token",
+      "decimals": 18,
+      "icon": "/img/reward.png",
+      "color": "from-yellow-400 to-amber-500"
+    },
+    "tokens": {
+      "usdt": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "name": "Tether USD",
+        "symbol": "USDT",
+        "decimals": 6,
+        "icon": "/img/USDT.svg",
+        "color": "from-green-400 to-emerald-500"
+      },
+      "usdc": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "name": "USD Coin",
+        "symbol": "USDC",
+        "decimals": 6,
+        "icon": "/img/USDC.svg",
+        "color": "from-blue-400 to-blue-500"
+      }
+    },
+    "lpTokens": {
+      "usdtWeth": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "name": "USDT-WETH LP",
+        "symbol": "USDT-ETH LP",
+        "token0": "USDT",
+        "token1": "WETH"
+      }
+    },
+    "farmPools": [
+      {
+        "pid": 0,
+        "name": "Example LP Pool",
+        "lpToken": "0x0000000000000000000000000000000000000000",
+        "token0Symbol": "USDT",
+        "token1Symbol": "ETH"
+      }
+    ]
+  },
+  "launchpad": {
+    "enabled": true,
+    "useV2": true,
+    "factoryAddressV2": "0x0000000000000000000000000000000000000000",
+    "factoryAddress": "0x0000000000000000000000000000000000000000",
+    "creationFee": "10000000000000000000",
+    "note": "factoryAddressV2 = TokenFactory V2 (recommended), factoryAddress = TokenFactory V1 (legacy)"
+  },
+  "tokenLogos": {
+    "0x0000000000000000000000000000000000000001": "https://example.com/img/token1.svg",
+    "0x0000000000000000000000000000000000000002": "https://example.com/img/token2.png"
+  },
+  "blacklist": {
+    "tokens": [
+      {
+        "address": "0x0000000000000000000000000000000000000000",
+        "name": "Example Blacklisted Token",
+        "symbol": "SPAM",
+        "reason": "Example reason for blacklisting"
+      }
+    ],
+    "lpPairs": [
+      {
+        "address": "0x0000000000000000000000000000000000000000",
+        "name": "Example/SPAM LP",
+        "reason": "Contains blacklisted token"
+      }
+    ]
+  },
+  "social": {
+    "x": "https://x.com/your_project",
+    "discord": "https://discord.gg/your_invite",
+    "telegram": "https://t.me/your_channel",
+    "github": "https://github.com/your-repo"
+  },
+  "supply": {
+    "blockReward": 2,
+    "premineAmount": 0,
+    "excludedAddresses": [
+      {
+        "address": "0x0000000000000000000000000000000000000000",
+        "label": "Burn Address"
+      },
+      {
+        "address": "0x0000000000000000000000000000000000000001",
+        "label": "Treasury Contract"
+      }
+    ],
+    "cacheDuration": 60
   }
 }

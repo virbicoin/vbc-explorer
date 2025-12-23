@@ -1,6 +1,28 @@
 import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/explorerDB';
+// Function to get MongoDB URI from config.json or environment variable
+const getMongoDBURI = (): string => {
+  // Try to read from config.json first
+  try {
+    const configPath = path.join(process.cwd(), 'config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (config.database && config.database.uri) {
+        console.log('📄 Using MongoDB URI from config.json');
+        return config.database.uri;
+      }
+    }
+  } catch {
+    console.log('📄 Could not read config.json, using environment variable or default');
+  }
+  
+  // Fallback to environment variable or default
+  return process.env.MONGODB_URI || 'mongodb://localhost:27017/explorerDB';
+};
+
+const MONGODB_URI = getMongoDBURI();
 
 if (!MONGODB_URI) {
   throw new Error('Please define the MONGODB_URI environment variable');
@@ -16,11 +38,12 @@ if (!cached) {
   cached = (global as Record<string, unknown>).mongoose = { conn: null, promise: null };
 }
 
-// 軽量化されたMongoDB接続オプション
+// 軽量化されたMongoDB接続オプション with config.json support
 const getOptimizedOptions = () => {
   const isLowMemory = process.env.NODE_OPTIONS?.includes('256') || process.env.LOW_MEMORY === 'true';
   
-  return {
+  // Default options
+  let options = {
     bufferCommands: false,
     maxPoolSize: isLowMemory ? 5 : 8, // 10→8、軽量時は5
     serverSelectionTimeoutMS: isLowMemory ? 3000 : 5000,
@@ -31,6 +54,22 @@ const getOptimizedOptions = () => {
     autoIndex: false,
     autoCreate: false,
   };
+  
+  // Try to merge with config.json options
+  try {
+    const configPath = path.join(process.cwd(), 'config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      if (config.database && config.database.options) {
+        options = { ...options, ...config.database.options };
+        console.log('📄 Using database options from config.json');
+      }
+    }
+  } catch {
+    console.log('📄 Using default database options');
+  }
+  
+  return options;
 };
 
 async function dbConnect() {

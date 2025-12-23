@@ -1,12 +1,9 @@
-import Header from '../../components/Header';
 import { getCurrencySymbol } from '../../../lib/config';
 
 export default async function RichlistPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = await params;
   return (
     <>
-      <Header />
-
       {/* Page Header */}
       <div className='page-header-container'>
         <div className='container mx-auto px-4 py-8'>

@@ -6,6 +6,35 @@ async function connectDB() {
   await connectDBFromModels();
 }
 
+// Cache configuration
+interface CacheEntry<T = unknown> {
+  data: T;
+  timestamp: number;
+  expiry: number;
+}
+
+const statsCache = new Map<string, CacheEntry>();
+const CACHE_DURATION = 300000; // 5 minutes cache for t4g.small instances
+
+// Helper function to get cached data or execute callback
+async function getCachedData<T>(key: string, callback: () => Promise<T>, customTTL?: number): Promise<T> {
+  const now = Date.now();
+  const cached = statsCache.get(key);
+  
+  if (cached && now < cached.expiry) {
+    return cached.data as T;
+  }
+  
+  const data = await callback();
+  statsCache.set(key, {
+    data,
+    timestamp: now,
+    expiry: now + (customTTL || CACHE_DURATION)
+  });
+  
+  return data;
+}
+
 export async function getChainStats() {
   try {
     await connectDB();
@@ -19,60 +48,67 @@ export async function getChainStats() {
     throw new Error('Database connection not available');
   }
   
-  // Get latest block information
-  let latestBlockDoc = null;
-  let latestBlock = 0;
+  // Get latest block information with caching
+  const { latestBlockDoc, latestBlock } = await getCachedData('latestBlock', async () => {
+    try {
+      const blockDoc = await db.collection('Block').findOne(
+        {}, 
+        { sort: { number: -1 }, maxTimeMS: 30000 }
+      );
+      const blockNum = blockDoc ? blockDoc.number : 0;
+      console.log('[Stats] Latest block found:', blockNum);
+      return { latestBlockDoc: blockDoc, latestBlock: blockNum };
+    } catch (error) {
+      console.error('[Stats] Error getting latest block:', error);
+      return { latestBlockDoc: null, latestBlock: 0 };
+    }
+  }, 300000); // 5 minute cache for latest block (for t4g.small)
   
-  try {
-    latestBlockDoc = await db.collection('Block').findOne({}, { sort: { number: -1 } });
-    latestBlock = latestBlockDoc ? latestBlockDoc.number : 0;
-    console.log('[Stats] Latest block found:', latestBlock);
-  } catch (error) {
-    console.error('[Stats] Error getting latest block:', error);
-    latestBlock = 0;
-  }
-  
-  // Calculate average block time from last 100 blocks
-  let avgBlockTime = '13.00';
-  try {
-    const recentBlocks = await db.collection('Block').find({})
-      .sort({ number: -1 })
-      .limit(100)
-      .project({ timestamp: 1, number: 1, blockTime: 1 })
-      .toArray();
-    
-    if (recentBlocks && recentBlocks.length >= 2) {
-      // Method 1: Use stored blockTime if available
-      const blocksWithTime = recentBlocks.filter(b => b.blockTime && b.blockTime > 0);
-      if (blocksWithTime.length > 0) {
-        const avgTime = blocksWithTime.reduce((sum, block) => sum + block.blockTime, 0) / blocksWithTime.length;
-        avgBlockTime = avgTime.toFixed(2);
-      } else {
-        // Method 2: Calculate from timestamps
-        let totalTimeDiff = 0;
-        let validPairs = 0;
-        
-        for (let i = 0; i < recentBlocks.length - 1; i++) {
-          const current = recentBlocks[i];
-          const next = recentBlocks[i + 1];
+  // Calculate average block time from last 100 blocks with caching
+  const avgBlockTime = await getCachedData('avgBlockTime', async () => {
+    try {
+      const recentBlocks = await db.collection('Block').find({})
+        .sort({ number: -1 })
+        .limit(100)
+        .project({ timestamp: 1, number: 1, blockTime: 1 })
+        .maxTimeMS(30000)
+        .toArray();
+      
+      if (recentBlocks && recentBlocks.length >= 2) {
+        // Method 1: Use stored blockTime if available
+        const blocksWithTime = recentBlocks.filter(b => b.blockTime && b.blockTime > 0);
+        if (blocksWithTime.length > 0) {
+          const avgTime = blocksWithTime.reduce((sum, block) => sum + block.blockTime, 0) / blocksWithTime.length;
+          return avgTime.toFixed(2);
+        } else {
+          // Method 2: Calculate from timestamps
+          let totalTimeDiff = 0;
+          let validPairs = 0;
           
-          if (current.timestamp && next.timestamp) {
-            const timeDiff = current.timestamp - next.timestamp;
-            if (timeDiff > 0 && timeDiff < 300) { // Reasonable block time (< 5 minutes)
-              totalTimeDiff += timeDiff;
-              validPairs++;
+          for (let i = 0; i < recentBlocks.length - 1; i++) {
+            const current = recentBlocks[i];
+            const next = recentBlocks[i + 1];
+            
+            if (current.timestamp && next.timestamp) {
+              const timeDiff = current.timestamp - next.timestamp;
+              if (timeDiff > 0 && timeDiff < 300) { // Reasonable block time (< 5 minutes)
+                totalTimeDiff += timeDiff;
+                validPairs++;
+              }
             }
           }
-        }
-        
-        if (validPairs > 0) {
-          avgBlockTime = (totalTimeDiff / validPairs).toFixed(2);
+          
+          if (validPairs > 0) {
+            return (totalTimeDiff / validPairs).toFixed(2);
+          }
         }
       }
+      return '13.00';
+    } catch (error) {
+      console.error('Error calculating average block time:', error);
+      return '13.00';
     }
-  } catch (error) {
-    console.error('Error calculating average block time:', error);
-  }
+  }, 300000); // 5 minute cache for block time (for t4g.small)
 
   // Get network difficulty from latest block
   let networkDifficulty = 'N/A';
@@ -178,7 +214,7 @@ export async function getChainStats() {
       const uniqueAddresses = new Set();
       
       if (transactions) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         transactions.forEach((tx: any) => {
           if (tx.from) uniqueAddresses.add(tx.from.toLowerCase());
           if (tx.to) uniqueAddresses.add(tx.to.toLowerCase());
@@ -193,14 +229,16 @@ export async function getChainStats() {
   }
 
   const totalSupply = "unlimited"; // VBC has unlimited supply
-  let totalTransactions = 0;
-  try {
-    totalTransactions = await db.collection('Transaction').countDocuments();
-    console.log('[Stats] Total transactions found:', totalTransactions);
-  } catch (error) {
-    console.error('[Stats] Error getting total transactions:', error);
-    totalTransactions = 0;
-  }
+  const totalTransactions = await getCachedData('totalTransactions', async () => {
+    try {
+      const count = await db.collection('Transaction').estimatedDocumentCount();
+      console.log('[Stats] Total transactions found:', count);
+      return count;
+    } catch (error) {
+      console.error('[Stats] Error getting total transactions:', error);
+      return 0;
+    }
+  }, 120000); // 2 minute cache for transaction count
   
   // Calculate time since last block
   let lastBlockTime = 'Unknown';
