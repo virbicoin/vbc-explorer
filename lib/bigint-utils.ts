@@ -18,7 +18,11 @@ export async function initializeCurrency() {
     const response = await fetch('/api/config/client');
     if (response.ok) {
       const config = await response.json();
-      const decimals = config.currency?.decimals || 18;
+      // Safely convert decimals to number first
+      const decimalsRaw = config.currency?.decimals;
+      const decimals = typeof decimalsRaw === 'number' ? decimalsRaw : 
+                       typeof decimalsRaw === 'string' ? parseInt(decimalsRaw, 10) : 
+                       typeof decimalsRaw === 'bigint' ? Number(decimalsRaw) : 18;
       const unit = config.currency?.unit || 'wei';
       const symbol = config.currency?.symbol || 'ETH';
       const gasUnit = config.currency?.gasUnit || 'Gwei';

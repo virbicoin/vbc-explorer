@@ -50,7 +50,16 @@ export function updateCurrencyConfig(config: CurrencyConfig) {
 }
 
 const createCurrencyUnits = (): CurrencyUnits => {
-  const mainUnitValue = BigInt(10 ** currencyConfig.decimals);
+  // Ensure decimals is a number before using
+  const rawDecimals = currencyConfig.decimals;
+  const decimals = typeof rawDecimals === 'bigint' 
+    ? Number(rawDecimals) 
+    : typeof rawDecimals === 'string'
+    ? parseInt(rawDecimals, 10)
+    : typeof rawDecimals === 'number'
+    ? rawDecimals
+    : 18;
+  const mainUnitValue = BigInt(10) ** BigInt(decimals);
   
   return {
     unitMap: {
@@ -106,7 +115,9 @@ const createCurrencyUnits = (): CurrencyUnits => {
     toMainUnit(number: string | number | bigint, unit?: string): string {
       const baseValue = BigInt(this.toBaseUnit(number, unit));
       const mainValue = baseValue / this.getValueOfUnit(this.mainUnit);
-      return (Number(mainValue) / (10 ** this.decimals)).toString();
+      // Ensure decimals is a number for Math.pow
+      const dec = typeof this.decimals === 'bigint' ? Number(this.decimals) : Number(this.decimals) || 18;
+      return (Number(mainValue) / Math.pow(10, dec)).toString();
     },
 
     toBaseUnit(number: string | number | bigint, unit?: string): string {
@@ -127,8 +138,16 @@ const createCurrencyUnits = (): CurrencyUnits => {
   };
 };
 
-// Initialize with default configuration
-let currencyUnits = createCurrencyUnits();
+// Initialize lazily - will be created on first access
+let currencyUnits: CurrencyUnits | null = null;
+
+// Get currency units (lazy initialization)
+function getCurrencyUnits(): CurrencyUnits {
+  if (!currencyUnits) {
+    currencyUnits = createCurrencyUnits();
+  }
+  return currencyUnits;
+}
 
 // Function to update currency units when config changes
 export function updateCurrencyUnits() {
@@ -137,11 +156,24 @@ export function updateCurrencyUnits() {
 
 // Export individual functions for compatibility
 export const toEther = (number: string | number | bigint, unit?: string): string => {
-  return currencyUnits.toEther(number, unit);
+  return getCurrencyUnits().toEther(number, unit);
 };
 
 export const toGwei = (number: string | number | bigint, unit?: string): string => {
-  return currencyUnits.toBaseUnit(number, unit);
+  return getCurrencyUnits().toBaseUnit(number, unit);
 };
 
-export default currencyUnits;
+// Default export with lazy proxy
+const lazyUnits = new Proxy({} as CurrencyUnits, {
+  get: (_, prop) => {
+    const units = getCurrencyUnits();
+    const value = units[prop as keyof CurrencyUnits];
+    // If it's a function, bind it to the units object
+    if (typeof value === 'function') {
+      return value.bind(units);
+    }
+    return value;
+  }
+});
+
+export default lazyUnits;

@@ -5,9 +5,13 @@ import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useAcc
 import { parseEther, formatEther, formatUnits, parseUnits, type Address } from 'viem';
 import { getDexContracts, ROUTER_ABI, FACTORY_ABI, PAIR_ABI, ERC20_ABI, type Token, getNativeToken, getWrappedNativeToken } from './config';
 
-// Generic token exports (dynamically loaded from config)
-export const NATIVE_TOKEN = getNativeToken();
-export const WRAPPED_NATIVE_TOKEN = getWrappedNativeToken();
+// Generic token exports (lazily evaluated via Proxy to avoid module load errors)
+export const NATIVE_TOKEN = new Proxy({} as Token, {
+  get: (_, prop) => getNativeToken()[prop as keyof Token],
+});
+export const WRAPPED_NATIVE_TOKEN = new Proxy({} as Token, {
+  get: (_, prop) => getWrappedNativeToken()[prop as keyof Token],
+});
 
 // ============================================
 // Utility Functions

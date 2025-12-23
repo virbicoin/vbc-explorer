@@ -20,13 +20,21 @@ export interface ChainConfig {
 
 // Create chain definition dynamically from config
 export function createChain(config: ChainConfig): Chain {
+  // Ensure all values are proper types for viem
+  const chainId = typeof config.chainId === 'bigint' 
+    ? Number(config.chainId)
+    : Number(config.chainId) || 1;
+  const decimals = typeof config.currency.decimals === 'bigint' 
+    ? Number(config.currency.decimals)
+    : Number(config.currency.decimals) || 18;
+    
   return defineChain({
-    id: config.chainId,
+    id: chainId,
     name: config.name,
     nativeCurrency: {
       name: config.currency.name,
       symbol: config.currency.symbol,
-      decimals: config.currency.decimals,
+      decimals: decimals,
     },
     rpcUrls: {
       default: {
@@ -106,11 +114,15 @@ export interface Token {
 export function getNativeToken(): Token {
   const config = getMinimalConfig();
   const currency = config.currency || { name: 'Ether', symbol: 'ETH', decimals: 18 };
+  // Ensure decimals is a number
+  const decimals = typeof currency.decimals === 'bigint' 
+    ? Number(currency.decimals) 
+    : Number(currency.decimals) || 18;
   return {
     address: '0x0000000000000000000000000000000000000000' as `0x${string}`,
     name: currency.name,
     symbol: currency.symbol,
-    decimals: currency.decimals,
+    decimals: decimals,
   };
 }
 
@@ -119,20 +131,27 @@ export function getWrappedNativeToken(): Token {
   const config = getMinimalConfig();
   const wrappedNative = config.wrappedNative;
   if (wrappedNative) {
+    // Ensure decimals is a number
+    const decimals = typeof wrappedNative.decimals === 'bigint' 
+      ? Number(wrappedNative.decimals) 
+      : Number(wrappedNative.decimals) || 18;
     return {
       address: wrappedNative.address,
       name: wrappedNative.name,
       symbol: wrappedNative.symbol,
-      decimals: wrappedNative.decimals,
+      decimals: decimals,
     };
   }
   // Fallback for WETH-compatible
   const currency = config.currency || { name: 'Ether', symbol: 'ETH', decimals: 18 };
+  const decimals = typeof currency.decimals === 'bigint' 
+    ? Number(currency.decimals) 
+    : Number(currency.decimals) || 18;
   return {
     address: '0x0000000000000000000000000000000000000000' as `0x${string}`,
     name: `Wrapped ${currency.name}`,
     symbol: `W${currency.symbol}`,
-    decimals: currency.decimals,
+    decimals: decimals,
   };
 }
 

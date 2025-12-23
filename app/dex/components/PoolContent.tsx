@@ -98,6 +98,28 @@ const MASTERCHEF_USERINFO_ABI = [
   },
 ] as const;
 
+// Auto-scaling LP display (same as FarmContent)
+// When LP value is too small with 18 decimals, display with 9 decimals as "nLP" (nano LP)
+const formatLPAmount = (rawAmount: bigint): string => {
+  if (rawAmount === 0n) return '0';
+  
+  const ethValue = Number(rawAmount) / 1e18;
+  if (ethValue >= 0.0001) {
+    // Normal display with 18 decimals
+    return ethValue.toLocaleString('en-US', { maximumFractionDigits: 4 });
+  }
+  // Small value - display with 9 decimals as nLP (nano LP)
+  const nanoValue = Number(rawAmount) / 1e9;
+  return nanoValue.toLocaleString('en-US', { maximumFractionDigits: 4 });
+};
+
+// Get LP unit suffix based on value size
+const getLPUnit = (rawAmount: bigint): string => {
+  if (rawAmount === 0n) return 'LP';
+  const ethValue = Number(rawAmount) / 1e18;
+  return ethValue >= 0.0001 ? 'LP' : 'nLP';
+};
+
 export function PoolContent({ initialTokenAddress }: PoolContentProps) {
   const { address, isConnected } = useAccount();
   const [initialTokenSet, setInitialTokenSet] = useState(false);
@@ -768,7 +790,7 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
                 <div className="flex justify-between mb-2">
                   <span className="text-gray-400 text-sm">Your LP Balance</span>
                   <span className="font-semibold text-white">
-                    {lpBalance ? formatTokenAmount(lpBalance as bigint, 18, 6) : '0'} LP
+                    {lpBalance ? formatLPAmount(lpBalance as bigint) : '0'} {lpBalance ? getLPUnit(lpBalance as bigint) : 'LP'}
                   </span>
                 </div>
                 <div className="text-sm text-gray-500 flex items-center gap-2">
@@ -933,14 +955,14 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
                   </div>
                   <div className="text-right">
                     <div className="font-bold text-green-400">
-                      {formatTokenAmount(position.totalBalance, 18, 6)} LP
+                      {formatLPAmount(position.totalBalance)} {getLPUnit(position.totalBalance)}
                     </div>
                     <div className="text-xs text-gray-500 space-x-2">
                       {position.walletBalance > 0n && (
-                        <span className="text-blue-400">Wallet: {formatTokenAmount(position.walletBalance, 18, 4)}</span>
+                        <span className="text-blue-400">Wallet: {formatLPAmount(position.walletBalance)} {getLPUnit(position.walletBalance)}</span>
                       )}
                       {position.stakedBalance > 0n && (
-                        <span className="text-purple-400">Staked: {formatTokenAmount(position.stakedBalance, 18, 4)}</span>
+                        <span className="text-purple-400">Staked: {formatLPAmount(position.stakedBalance)} {getLPUnit(position.stakedBalance)}</span>
                       )}
                     </div>
                   </div>

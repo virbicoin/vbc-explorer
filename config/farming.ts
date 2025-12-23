@@ -124,12 +124,15 @@ export function getStaticContracts(): MinimalContracts {
 }
 
 // Block timing constants (calculated from block time)
+const SECONDS_PER_YEAR = 31_536_000; // 365 days
+
 export function getBlocksPerDay(): number {
   return Math.floor(86400 / NETWORK_CONFIG.blockTime);
 }
 
 export function getBlocksPerYear(): number {
-  return getBlocksPerDay() * 365;
+  // Use seconds per year directly for more accurate calculation
+  return Math.floor(SECONDS_PER_YEAR / NETWORK_CONFIG.blockTime);
 }
 
 // Legacy compatibility - FARMING_CONFIG with placeholder values for dynamic fields

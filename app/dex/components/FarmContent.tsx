@@ -103,11 +103,35 @@ function FarmPoolCard({
     }
   };
 
-  const formatAmount = (amount: bigint) => {
-    const formatted = ethers.formatEther(amount);
-    const num = parseFloat(formatted);
-    if (num === 0) return '0';
-    if (num < 0.0001) return '< 0.0001';
+  // Auto-scaling LP display (recommended by contract)
+  // When LP value is too small with 18 decimals, display with 9 decimals as "nLP" (nano LP)
+  const formatLPAmount = (rawAmount: bigint): string => {
+    if (rawAmount === 0n) return '0';
+    
+    const ethValue = Number(rawAmount) / 1e18;
+    if (ethValue >= 0.0001) {
+      // Normal display with 18 decimals
+      return ethValue.toLocaleString('en-US', { maximumFractionDigits: 4 });
+    }
+    // Small value - display with 9 decimals as nLP (nano LP)
+    const nanoValue = Number(rawAmount) / 1e9;
+    return nanoValue.toLocaleString('en-US', { maximumFractionDigits: 4 });
+  };
+
+  // Get LP unit suffix based on value size
+  const getLPUnit = (rawAmount: bigint): string => {
+    if (rawAmount === 0n) return 'LP';
+    const ethValue = Number(rawAmount) / 1e18;
+    return ethValue >= 0.0001 ? 'LP' : 'nLP';
+  };
+
+  // Always use 18 decimals for reward token (VBCG)
+  const formatRewardAmount = (amount: bigint): string => {
+    if (amount === 0n) return '0';
+    const num = Number(amount) / 1e18;
+    if (num < 0.0001 && num > 0) {
+      return num.toExponential(2);
+    }
     return num.toLocaleString('en-US', { maximumFractionDigits: 4 });
   };
 
@@ -133,15 +157,17 @@ function FarmPoolCard({
       <div className="grid grid-cols-3 gap-4 p-3 bg-gray-800/50 rounded-xl">
         <div>
           <p className="text-xs text-gray-500">APR</p>
-          <p className="font-semibold text-green-400">{pool.apr.toFixed(2)}%</p>
+          <p className="font-semibold text-green-400" title={pool.apr < 0 ? 'Insufficient liquidity for APR calculation' : undefined}>
+            {pool.apr < 0 ? '—' : pool.apr >= 9999 ? '>9999%' : pool.apr < 0.01 && pool.apr >= 0 ? '<0.01%' : `${pool.apr.toFixed(2)}%`}
+          </p>
         </div>
         <div>
           <p className="text-xs text-gray-500">Total Staked</p>
-          <p className="font-semibold text-white">{formatAmount(pool.totalStaked)}</p>
+          <p className="font-semibold text-white">{formatLPAmount(pool.totalStaked)} {getLPUnit(pool.totalStaked)}</p>
         </div>
         <div>
           <p className="text-xs text-gray-500">Pending Reward</p>
-          <p className="font-semibold text-yellow-400">{formatAmount(pendingReward)}</p>
+          <p className="font-semibold text-yellow-400">{formatRewardAmount(pendingReward)}</p>
         </div>
       </div>
 
@@ -150,11 +176,11 @@ function FarmPoolCard({
         <div className="grid grid-cols-2 gap-4 p-3 bg-gray-800/50 rounded-xl">
           <div>
             <p className="text-xs text-gray-500">Your Staked</p>
-            <p className="text-white font-semibold">{formatAmount(userStaked)} LP</p>
+            <p className="text-white font-semibold">{formatLPAmount(userStaked)} {getLPUnit(userStaked)}</p>
           </div>
           <div>
             <p className="text-xs text-gray-500">LP Balance</p>
-            <p className="text-white font-semibold">{formatAmount(lpBalance)} LP</p>
+            <p className="text-white font-semibold">{formatLPAmount(lpBalance)} {getLPUnit(lpBalance)}</p>
           </div>
         </div>
       )}
@@ -166,7 +192,7 @@ function FarmPoolCard({
           disabled={loading}
           className="w-full py-3 rounded-xl bg-gradient-to-r from-yellow-600 to-orange-600 text-white font-semibold hover:from-yellow-500 hover:to-orange-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
         >
-          {loading ? 'Harvesting...' : `Harvest ${formatAmount(pendingReward)} Rewards`}
+          {loading ? 'Harvesting...' : `Harvest ${formatRewardAmount(pendingReward)} Rewards`}
         </button>
       )}
 
@@ -176,7 +202,7 @@ function FarmPoolCard({
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-400">Deposit LP</span>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">Balance: {formatAmount(lpBalance)}</span>
+              <span className="text-xs text-gray-500">Balance: {formatLPAmount(lpBalance)} {getLPUnit(lpBalance)}</span>
               <button
                 onClick={() => setDepositAmount(ethers.formatEther(lpBalance / 2n))}
                 className="text-xs text-blue-400 hover:text-blue-300 font-medium px-2 py-0.5 bg-blue-500/10 rounded"
@@ -224,7 +250,7 @@ function FarmPoolCard({
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-400">Withdraw LP</span>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">Staked: {formatAmount(userStaked)}</span>
+              <span className="text-xs text-gray-500">Staked: {formatLPAmount(userStaked)} {getLPUnit(userStaked)}</span>
               <button
                 onClick={() => setWithdrawAmount(ethers.formatEther(userStaked / 2n))}
                 className="text-xs text-blue-400 hover:text-blue-300 font-medium px-2 py-0.5 bg-blue-500/10 rounded"
