@@ -160,18 +160,9 @@ export default function TokenIdDetailPage() {
       {/* Page header */}
       <div className="bg-gray-800 border-b border-gray-700">
         <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <CubeIcon className="w-8 h-8 text-green-400" />
-              <h1 className="text-3xl font-bold text-gray-100">NFT Token Details</h1>
-            </div>
-            <button
-              onClick={addNFTToMetaMask}
-              className="flex items-center gap-2 px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors text-sm font-medium"
-              title="Add NFT to MetaMask"
-            >
-              🦊 Add to MetaMask
-            </button>
+          <div className="flex items-center gap-3 mb-4">
+            <CubeIcon className="w-8 h-8 text-green-400" />
+            <h1 className="text-3xl font-bold text-gray-100">NFT Token Details</h1>
           </div>
           <p className="text-gray-400">Token ID: <span className="text-white font-mono">{id}</span> details</p>
         </div>
@@ -278,6 +269,14 @@ export default function TokenIdDetailPage() {
               {tokenDetail?.owner && (
                 <div className="text-sm text-gray-400">Holder: <Link href={`/address/${tokenDetail.owner}`} className="text-blue-400 hover:underline font-mono">{tokenDetail.owner}</Link></div>
               )}
+              {/* Add to MetaMask button */}
+              <button
+                onClick={addNFTToMetaMask}
+                className="mt-3 flex items-center gap-2 px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors text-sm font-medium w-fit"
+                title="Add NFT to MetaMask"
+              >
+                🦊 Add to MetaMask
+              </button>
               {tokenDetail?.createdAt && (
                 <div className="text-sm text-gray-400">Created: {new Date(tokenDetail.createdAt).toLocaleString(undefined, { timeZoneName: 'short' })}</div>
               )}
