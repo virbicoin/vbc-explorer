@@ -1037,7 +1037,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                                   className='flex items-center gap-1 px-2 py-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors text-xs font-medium'
                                   title='Add this NFT to MetaMask'
                                 >
-                                  🦊 Add to Wallet
+                                  🦊 Add to MetaMask
                                 </button>
                               </div>
                             </div>
