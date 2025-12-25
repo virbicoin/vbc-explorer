@@ -294,61 +294,91 @@ export default function TokenIdDetailPage() {
                   <tr className="border-b border-gray-600">
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Tx Hash</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Block</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Status</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Age</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">From</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">To</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Value</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Gas Used</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Block Hash</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Contract</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Input</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Logs</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Time</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700">
-                  {sortedTransfers.map((tx: TokenTransfer, idx: number) => (
-                    <tr key={tx.hash + idx} className="hover:bg-gray-700/50 transition-colors">
-                      <td className="py-3 px-4">
-                        <Link href={`/tx/${tx.hash}`} className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors" title={tx.hash}>{tx.hash.slice(0, 10)}...{tx.hash.slice(-8)}</Link>
-                      </td>
-                      <td className="py-3 px-4">
-                        {tx.blockNumber ? (
-                          <Link href={`/block/${tx.blockNumber}`} className="text-green-400 hover:text-green-300 font-mono text-sm transition-colors" title={tx.blockNumber}>{tx.blockNumber}</Link>
-                        ) : '-' }
-                      </td>
-                      <td className="py-3 px-4">
-                        {tx.status !== undefined ? (
-                          <span className={tx.status === 1 || tx.status === '1' || tx.status === true || tx.status === 'success' ? 'text-green-400' : 'text-red-400'}>
-                            {tx.status === 1 || tx.status === '1' || tx.status === true || tx.status === 'success' ? 'Success' : 'Failed'}
-                          </span>
-                        ) : '-' }
-                      </td>
-                      <td className="py-3 px-4">
-                        <Link href={`/address/${tx.from}`} className="text-purple-400 hover:text-purple-300 font-mono text-sm transition-colors" title={tx.from}>{tx.from.slice(0, 8)}...{tx.from.slice(-6)}</Link>
-                      </td>
-                      <td className="py-3 px-4">
-                        <Link href={`/address/${tx.to}`} className="text-orange-400 hover:text-orange-300 font-mono text-sm transition-colors" title={tx.to}>{tx.to.slice(0, 8)}...{tx.to.slice(-6)}</Link>
-                      </td>
-                      <td className="py-3 px-4 text-green-400 font-bold">{tx.value}</td>
-                      <td className="py-3 px-4">{tx.gasUsed !== undefined ? tx.gasUsed : '-'}</td>
-                      <td className="py-3 px-4">
-                        {tx.block?.hash ? (
-                          <Link href={`/block/${tx.block.number}`} className="text-blue-400 hover:underline font-mono text-xs break-all">
-                            {tx.block.hash.slice(0, 10)}...{tx.block.hash.slice(-8)}
+                  {sortedTransfers.map((tx: TokenTransfer, idx: number) => {
+                    // Calculate time ago
+                    const getTimeAgo = (timestamp: string) => {
+                      if (!timestamp) return '-';
+                      const seconds = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000);
+                      if (seconds < 0) return 'Just now';
+                      if (seconds < 60) return `${seconds}s ago`;
+                      if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+                      if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+                      return `${Math.floor(seconds / 86400)}d ago`;
+                    };
+                    
+                    const isFromSystem = tx.from === '0x0000000000000000000000000000000000000000';
+                    const isToSystem = tx.to === '0x0000000000000000000000000000000000000000';
+                    
+                    return (
+                      <tr key={tx.hash + idx} className="hover:bg-gray-700/50 transition-colors">
+                        <td className="py-3 px-4">
+                          <Link href={`/tx/${tx.hash}`} className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors" title={tx.hash}>
+                            {tx.hash.slice(0, 10)}...{tx.hash.slice(-8)}
                           </Link>
-                        ) : '-' }
-                      </td>
-                      <td className="py-3 px-4">
-                        {tx.contractAddress ? (
-                          <Link href={`/address/${tx.contractAddress}`} className="text-blue-400 hover:underline font-mono text-xs break-all">{tx.contractAddress}</Link>
-                        ) : '-' }
-                      </td>
-                      <td className="py-3 px-4 text-xs break-all">{tx.input ? tx.input.slice(0, 24) + (tx.input.length > 24 ? '...' : '') : '-'}</td>
-                      <td className="py-3 px-4 text-xs break-all">{tx.logs ? (Array.isArray(tx.logs) ? tx.logs.length + ' logs' : '-') : '-'}</td>
-                      <td className="py-3 px-4 text-gray-400 text-sm">{tx.timestamp ? new Date(tx.timestamp).toLocaleString(undefined, { timeZoneName: 'short' }) : '-'}</td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="py-3 px-4">
+                          {tx.blockNumber ? (
+                            <Link href={`/block/${tx.blockNumber}`} className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors">
+                              {tx.blockNumber}
+                            </Link>
+                          ) : '-'}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center">
+                            <ClockIcon className="w-4 h-4 text-gray-400 mr-2" />
+                            <div>
+                              <div className="text-sm text-gray-300">{getTimeAgo(tx.timestamp)}</div>
+                              <div className="text-xs text-gray-500">{tx.timestamp ? new Date(tx.timestamp).toLocaleString() : '-'}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          {isFromSystem ? (
+                            <span className="text-yellow-400 font-mono text-sm">System (Mint)</span>
+                          ) : (
+                            <Link href={`/address/${tx.from}`} className="text-green-400 hover:text-green-300 font-mono text-sm transition-colors" title={tx.from}>
+                              {tx.from.slice(0, 8)}...{tx.from.slice(-6)}
+                            </Link>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          {isToSystem ? (
+                            <span className="text-red-400 font-mono text-sm">🔥 Burn</span>
+                          ) : (
+                            <Link href={`/address/${tx.to}`} className="text-purple-400 hover:text-purple-300 font-mono text-sm transition-colors" title={tx.to}>
+                              {tx.to.slice(0, 8)}...{tx.to.slice(-6)}
+                            </Link>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          {tx.status !== undefined ? (
+                            <div className="flex items-center">
+                              {tx.status === 1 || tx.status === '1' || tx.status === true || tx.status === 'success' ? (
+                                <>
+                                  <CheckCircleIcon className="w-4 h-4 text-green-400 mr-2" />
+                                  <span className="text-green-400 text-sm">Success</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="w-4 h-4 text-red-400 mr-2">✕</span>
+                                  <span className="text-red-400 text-sm">Failed</span>
+                                </>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-sm">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
