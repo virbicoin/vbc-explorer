@@ -188,7 +188,15 @@ export default function TokenIdDetailPage() {
           </div>
         </div>
         {/* Image and metadata */}
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8 flex flex-col md:flex-row gap-8">
+        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8 flex flex-col md:flex-row gap-8 relative">
+          {/* Add to MetaMask button - 右上に配置 */}
+          <button
+            onClick={addNFTToMetaMask}
+            className="absolute top-4 right-4 flex items-center gap-2 px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors text-sm font-medium"
+            title="Add NFT to MetaMask"
+          >
+            🦊 Add to MetaMask
+          </button>
           {/* 画像 */}
           {tokenDetail?.metadata?.image ? (
             <div className="w-48 h-48 relative bg-gray-900 rounded-lg overflow-hidden flex-shrink-0">
@@ -269,14 +277,6 @@ export default function TokenIdDetailPage() {
               {tokenDetail?.owner && (
                 <div className="text-sm text-gray-400">Holder: <Link href={`/address/${tokenDetail.owner}`} className="text-blue-400 hover:underline font-mono">{tokenDetail.owner}</Link></div>
               )}
-              {/* Add to MetaMask button */}
-              <button
-                onClick={addNFTToMetaMask}
-                className="mt-3 flex items-center gap-2 px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors text-sm font-medium w-fit"
-                title="Add NFT to MetaMask"
-              >
-                🦊 Add to MetaMask
-              </button>
               {tokenDetail?.createdAt && (
                 <div className="text-sm text-gray-400">Created: {new Date(tokenDetail.createdAt).toLocaleString(undefined, { timeZoneName: 'short' })}</div>
               )}
