@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { 
@@ -113,6 +114,7 @@ const formatAddress = (address: string) => {
 };
 
 export default function TokenDetailPage({ params }: { params: Promise<{ address: string }> }) {
+  const router = useRouter();
   const [address, setAddress] = useState<string>('');
   const [tokenData, setTokenData] = useState<TokenData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -140,6 +142,35 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
 
   // getTransactionForTokenId function removed (unused)
 
+  // 有効なタブIDのリスト
+  const validTabs = ['holders', 'transfers', 'balance', 'source', 'tokenids'];
+
+  // URLハッシュからタブを読み取る
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.slice(1); // #を除去
+      if (hash && validTabs.includes(hash)) {
+        setActiveTab(hash);
+      }
+    };
+    
+    // 初期ロード時にハッシュを読み取る
+    handleHashChange();
+    
+    // ハッシュ変更イベントをリッスン
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // タブ切り替え時にURLハッシュを更新
+  const handleTabChange = useCallback((tabId: string) => {
+    setActiveTab(tabId);
+    // URLハッシュを更新（履歴に追加せず置き換え）
+    const url = new URL(window.location.href);
+    url.hash = tabId;
+    router.replace(url.toString(), { scroll: false });
+  }, [router]);
 
   useEffect(() => {
     const getParams = async () => {
@@ -1320,7 +1351,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                 <div className='text-sm font-medium text-gray-300 mb-2'>NFT Collection</div>
                 <button
                   onClick={() => {
-                    setActiveTab('tokenids');
+                    handleTabChange('tokenids');
                     
                     // タブ切り替え後にスクロール
                     setTimeout(() => {
@@ -1367,7 +1398,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => handleTabChange(tab.id)}
                   className={`flex items-center gap-2 pb-3 px-4 py-2 transition-colors rounded-lg ${
                     activeTab === tab.id ?
                       (tab.id === 'tokenids' ? 
