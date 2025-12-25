@@ -88,6 +88,10 @@ interface TokenData {
       totalPages: number;
     };
   };
+  nftItems?: Array<{
+    tokenId: number;
+    owner: string;
+  }>;
 }
 
 interface TokenMetadata {
@@ -402,9 +406,9 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
 
   // Load metadata when tokenids tab is active and we have token data
   useEffect(() => {
-    if (activeTab === 'tokenids' && tokenData && tokenData.holders) {
-      const allTokenIds = tokenData.holders.flatMap(holder => holder.tokenIds || []);
-      allTokenIds.forEach(tokenId => {
+    if (activeTab === 'tokenids' && tokenData && tokenData.nftItems) {
+      // nftItemsからtokenIdを取得してメタデータを読み込む
+      tokenData.nftItems.forEach(({ tokenId }) => {
         if (!tokenMetadata[tokenId] && !metadataLoading[tokenId]) {
           fetchTokenMetadata(tokenId);
         }
@@ -900,31 +904,23 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
             }}
           >
             <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'>
-              {tokenData?.holders && tokenData.holders.length > 0 ? (
-                // Collect all token IDs and sort by token ID 降順
-                tokenData.holders.flatMap((holder) =>
-                  (holder.tokenIds || []).map(tokenId => ({ tokenId, holder }))
-                )
-                .sort((a, b) => Number(b.tokenId) - Number(a.tokenId)) // tokenId降順
-                .map(({ tokenId, holder }) => {
+              {tokenData?.nftItems && tokenData.nftItems.length > 0 ? (
+                // nftItemsを使用してNFT一覧を表示（既にtokenId降順でソート済み）
+                tokenData.nftItems.map(({ tokenId, owner }) => {
                   const metadata = tokenMetadata[tokenId];
                   const isLoading = metadataLoading[tokenId];
                   
                   return (
-                    <div key={`${holder.address}-${tokenId}`} className='bg-gray-700/50 rounded-lg p-4 border border-gray-600 hover:border-gray-500 transition-colors'>
+                    <div key={`nft-${tokenId}`} className='bg-gray-700/50 rounded-lg p-4 border border-gray-600 hover:border-gray-500 transition-colors'>
                       <div className='flex items-center justify-between mb-3'>
                         <span className='text-gray-400'>Token ID:</span>
                         <Link href={`/token/${address}/${tokenId}`} className='text-blue-400 font-bold hover:underline'>#{tokenId}</Link>
                       </div>
                       <div className='flex items-center justify-between mb-3'>
                         <span className='text-gray-400'>Owner:</span>
-                        <Link href={`/address/${holder.address}`} className='text-blue-400 hover:text-blue-300 font-mono text-sm break-all'>
-                          {formatAddress(holder.address)}
+                        <Link href={`/address/${owner}`} className='text-blue-400 hover:text-blue-300 font-mono text-sm break-all'>
+                          {formatAddress(owner)}
                         </Link>
-                      </div>
-                      <div className='flex items-center justify-between mb-3'>
-                        <span className='text-gray-400'>Rank:</span>
-                        <span className='text-yellow-400'>#{holder.rank}</span>
                       </div>
                       
                       {/* NFT Image and Metadata */}
@@ -1057,14 +1053,6 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                 </div>
               )}
             </div>
-            
-            {tokenData?.holders && tokenData.holders.flatMap(h => h.tokenIds || []).length > 0 && (
-              <div className='text-center mt-4'>
-                <p className='text-sm text-gray-400'>
-                  Showing all {tokenData.holders.flatMap(h => h.tokenIds || []).length} token IDs
-                </p>
-              </div>
-            )}
             
             {/* NFT Collections Pagination */}
             {tokenData?.pagination?.nfts && (

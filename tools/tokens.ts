@@ -1101,12 +1101,28 @@ Options:
   --rescan            Reset scan progress and rescan from block 0
   --update-all-vrc721 Update all VRC-721 token metadata
   --update-all-vrc20  Update all VRC-20 token supply data
+  --update-single <address>  Update a single token by address
   
 Without options, the scanner runs continuously and:
   - Scans for new tokens every 15 minutes
   - Updates VRC-20 token data every 5 minutes
   - Updates VRC-721 token metadata every 15 minutes
 `);
+      await disconnect();
+      return;
+    }
+    
+    // Handle --update-single option
+    const updateSingleIndex = args.indexOf('--update-single');
+    if (updateSingleIndex !== -1) {
+      const tokenAddress = args[updateSingleIndex + 1];
+      if (!tokenAddress || tokenAddress.startsWith('--')) {
+        console.error('❌ Please provide a token address after --update-single');
+        await disconnect();
+        return;
+      }
+      console.log(`🔄 Updating single token: ${tokenAddress}`);
+      await updateTokenWithRealData(tokenAddress);
       await disconnect();
       return;
     }

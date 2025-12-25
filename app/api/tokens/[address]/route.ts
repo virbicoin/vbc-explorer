@@ -1140,9 +1140,21 @@ export async function GET(
         };
       });
       
-      // Calculate total NFT items from all holders
-      const allTokenIds = mappedHolders.flatMap(h => h.tokenIds || []);
-      const totalNftItems = allTokenIds.length;
+      // tokenOwnershipマップから全NFTアイテムを取得（ページネーションに依存しない）
+      const allNftItems: Array<{ tokenId: number; owner: string }> = [];
+      for (const [tokenId, owner] of tokenOwnership.entries()) {
+        allNftItems.push({ tokenId, owner });
+      }
+      // tokenId降順でソート
+      allNftItems.sort((a, b) => b.tokenId - a.tokenId);
+      
+      const totalNftItems = allNftItems.length;
+      
+      // NFTアイテムのページネーション
+      const paginatedNftItems = allNftItems.slice(
+        (nftsPage - 1) * nftsLimit,
+        nftsPage * nftsLimit
+      );
       
       const nftData = {
         token: {
@@ -1172,6 +1184,7 @@ export async function GET(
         },
         holders: mappedHolders,
         transfers: nftTransfers,
+        nftItems: paginatedNftItems, // 全NFTアイテム（ページネーション済み）
         pagination: {
           holders: {
             page: holdersPage,
