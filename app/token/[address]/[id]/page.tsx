@@ -292,11 +292,11 @@ export default function TokenIdDetailPage() {
                 <thead>
                   <tr className="border-b border-gray-600">
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Tx Hash</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Block</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Age</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Type</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">From</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">To</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Status</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Value</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Age</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700">
@@ -312,35 +312,50 @@ export default function TokenIdDetailPage() {
                       return `${Math.floor(seconds / 86400)}d ago`;
                     };
                     
-                    const isFromSystem = tx.from === '0x0000000000000000000000000000000000000000';
-                    const isToSystem = tx.to === '0x0000000000000000000000000000000000000000';
+                    const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
+                    const DEAD_ADDR = '0x000000000000000000000000000000000000dead';
+                    const isFromSystem = tx.from === ZERO_ADDR || tx.from?.toLowerCase() === ZERO_ADDR;
+                    const isToSystem = tx.to === ZERO_ADDR || tx.to?.toLowerCase() === ZERO_ADDR || tx.to?.toLowerCase() === DEAD_ADDR;
+                    
+                    // Get transfer type badge
+                    const getTransferTypeBadge = () => {
+                      if (isFromSystem) {
+                        return (
+                          <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 shadow-sm'>
+                            <span className='text-sm'>✨</span>
+                            <span>Mint</span>
+                          </span>
+                        );
+                      }
+                      if (isToSystem) {
+                        return (
+                          <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 shadow-sm'>
+                            <span className='text-sm'>🔥</span>
+                            <span>Burn</span>
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 shadow-sm'>
+                          <span className='text-sm'>⇆</span>
+                          <span>Transfer</span>
+                        </span>
+                      );
+                    };
                     
                     return (
                       <tr key={tx.hash + idx} className="hover:bg-gray-700/50 transition-colors">
                         <td className="py-3 px-4">
                           <Link href={`/tx/${tx.hash}`} className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors" title={tx.hash}>
-                            {tx.hash.slice(0, 10)}...{tx.hash.slice(-8)}
+                            {tx.hash.slice(0, 10)}...{tx.hash.slice(-6)}
                           </Link>
                         </td>
                         <td className="py-3 px-4">
-                          {tx.blockNumber ? (
-                            <Link href={`/block/${tx.blockNumber}`} className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors">
-                              {tx.blockNumber}
-                            </Link>
-                          ) : '-'}
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center">
-                            <ClockIcon className="w-4 h-4 text-gray-400 mr-2" />
-                            <div>
-                              <div className="text-sm text-gray-300">{getTimeAgo(tx.timestamp)}</div>
-                              <div className="text-xs text-gray-500">{tx.timestamp ? new Date(tx.timestamp).toLocaleString() : '-'}</div>
-                            </div>
-                          </div>
+                          {getTransferTypeBadge()}
                         </td>
                         <td className="py-3 px-4">
                           {isFromSystem ? (
-                            <span className="text-yellow-400 font-mono text-sm">System (Mint)</span>
+                            <span className="text-emerald-400 text-sm">System (Mint)</span>
                           ) : (
                             <Link href={`/address/${tx.from}`} className="text-green-400 hover:text-green-300 font-mono text-sm transition-colors" title={tx.from}>
                               {tx.from.slice(0, 8)}...{tx.from.slice(-6)}
@@ -349,7 +364,7 @@ export default function TokenIdDetailPage() {
                         </td>
                         <td className="py-3 px-4">
                           {isToSystem ? (
-                            <span className="text-red-400 font-mono text-sm">🔥 Burn</span>
+                            <span className="text-red-400 text-sm">Burn Address</span>
                           ) : (
                             <Link href={`/address/${tx.to}`} className="text-purple-400 hover:text-purple-300 font-mono text-sm transition-colors" title={tx.to}>
                               {tx.to.slice(0, 8)}...{tx.to.slice(-6)}
@@ -357,23 +372,16 @@ export default function TokenIdDetailPage() {
                           )}
                         </td>
                         <td className="py-3 px-4">
-                          {tx.status !== undefined ? (
-                            <div className="flex items-center">
-                              {tx.status === 1 || tx.status === '1' || tx.status === true || tx.status === 'success' ? (
-                                <>
-                                  <CheckCircleIcon className="w-4 h-4 text-green-400 mr-2" />
-                                  <span className="text-green-400 text-sm">Success</span>
-                                </>
-                              ) : (
-                                <>
-                                  <span className="w-4 h-4 text-red-400 mr-2">✕</span>
-                                  <span className="text-red-400 text-sm">Failed</span>
-                                </>
-                              )}
+                          <span className="text-green-400 font-medium">1 {tokenDetail?.metadata?.symbol || 'NFT'}</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <ClockIcon className="w-4 h-4 text-gray-500" />
+                            <div>
+                              <div className="text-sm text-gray-300">{getTimeAgo(tx.timestamp)}</div>
+                              <div className="text-xs text-gray-500">{tx.timestamp ? new Date(tx.timestamp).toLocaleString(undefined, { timeZoneName: 'short' }) : '-'}</div>
                             </div>
-                          ) : (
-                            <span className="text-gray-400 text-sm">-</span>
-                          )}
+                          </div>
                         </td>
                       </tr>
                     );
