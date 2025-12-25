@@ -295,7 +295,6 @@ export default function TokenIdDetailPage() {
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Type</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">From</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">To</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Value</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Age</th>
                   </tr>
                 </thead>
@@ -370,9 +369,6 @@ export default function TokenIdDetailPage() {
                               {tx.to.slice(0, 8)}...{tx.to.slice(-6)}
                             </Link>
                           )}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="text-green-400 font-medium">1 {tokenDetail?.metadata?.symbol || 'NFT'}</span>
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
