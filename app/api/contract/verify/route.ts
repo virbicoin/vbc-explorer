@@ -4,6 +4,7 @@ import Web3 from 'web3';
 import solc from 'solc';
 import fs from 'fs';
 import path from 'path';
+import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders, isValidContentType } from '../../../../lib/security';
 
 // Function to read config
 const readConfig = () => {
@@ -128,6 +129,24 @@ function findBestCompilerVersion(requestedVersion: string): string {
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting - stricter for contract verification
+    const clientIp = getClientIp(request);
+    const rateLimit = checkRateLimit(`verify:${clientIp}`, 10, 1); // 10 requests per 10 seconds
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Contract verification is limited to prevent abuse.', retryAfter: rateLimit.resetIn },
+        { status: 429, headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) } }
+      );
+    }
+
+    // Validate content type
+    if (!isValidContentType(request)) {
+      return NextResponse.json(
+        { error: 'Invalid content type. Expected application/json' },
+        { status: 400, headers: getSecurityHeaders() }
+      );
+    }
+
     // Try to connect to DB with timeout
     try {
       await Promise.race([
@@ -144,7 +163,7 @@ export async function POST(request: NextRequest) {
           details: 'Unable to connect to the database. Please try again later.',
           message: dbError instanceof Error ? dbError.message : 'Unknown database error'
         },
-        { status: 503 }
+        { status: 503, headers: getSecurityHeaders() }
       );
     }
     
@@ -155,7 +174,7 @@ export async function POST(request: NextRequest) {
       console.error('Failed to parse request body:', parseError);
       return NextResponse.json(
         { error: 'Invalid JSON in request body' },
-        { status: 400 }
+        { status: 400, headers: getSecurityHeaders() }
       );
     }
     
@@ -180,28 +199,36 @@ export async function POST(request: NextRequest) {
             hasOptimization: optimization !== undefined
           }
         },
-        { status: 400 }
+        { status: 400, headers: getSecurityHeaders() }
       );
     }
 
-    // Validate address format
-    if (!address.startsWith('0x') || address.length !== 42) {
+    // Validate address format using security module
+    const sanitizedAddress = sanitizeAddress(address);
+    if (!sanitizedAddress) {
       return NextResponse.json(
         { error: 'Invalid contract address format. Must be a 42-character hex string starting with 0x.' },
-        { status: 400 }
+        { status: 400, headers: getSecurityHeaders() }
       );
     }
 
-    // Validate source code is not empty
+    // Validate source code is not empty and not too large (max 500KB)
+    const MAX_SOURCE_SIZE = 500 * 1024; // 500KB
     if (sourceCode.trim().length === 0) {
       return NextResponse.json(
         { error: 'Source code cannot be empty' },
-        { status: 400 }
+        { status: 400, headers: getSecurityHeaders() }
+      );
+    }
+    if (sourceCode.length > MAX_SOURCE_SIZE) {
+      return NextResponse.json(
+        { error: `Source code too large. Maximum size is ${MAX_SOURCE_SIZE / 1024}KB` },
+        { status: 400, headers: getSecurityHeaders() }
       );
     }
 
     console.log('📝 Received verification request:', {
-      address,
+      address: sanitizedAddress,
       contractName,
       compilerVersion,
       optimization,

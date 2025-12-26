@@ -2,18 +2,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { getChainStats } from '../../../../lib/stats';
-import { loadConfig } from '../../../../lib/config';
 import { connectDB } from '../../../../models/index';
-import Web3 from 'web3';
+import { getNftOwnershipFromDb, groupTokensByHolder, paginateNftItems, ZERO_ADDR, DEAD_ADDR } from '../../../../lib/services/nft.service';
+import { getWeb3 } from '../../../../lib/web3';
+import { apiCache, CACHE_TTL } from '../../../../lib/cache';
+import { loadConfig } from '../../../../lib/config';
+import { sanitizeAddress, validatePagination, checkRateLimit, getClientIp, getSecurityHeaders } from '../../../../lib/security';
 
-// ZERO_ADDR moved inside GET function to avoid export issue
+// Get shared Web3 instance
+const web3 = getWeb3();
 
 // Load configuration
 const config = loadConfig();
-const GVBC_RPC_URL = config.web3Provider?.url || 'http://localhost:8545';
-
-// Web3 instance for blockchain interaction
-const web3 = new Web3(GVBC_RPC_URL);
 
 // Standard ERC721 ABI for tokenURI function
 const ERC721_ABI = [
@@ -289,21 +289,44 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ address: string }> }
 ) {
-  const ZERO_ADDR = '0x0000000000000000000000000000000000000000' as const;
-  const DEAD_ADDR = '0x000000000000000000000000000000000000dead' as const;
+  // ZERO_ADDR and DEAD_ADDR are imported from nft.service
   try {
+    // Rate limiting
+    const clientIp = getClientIp(request);
+    const rateLimit = checkRateLimit(`tokens:${clientIp}`, 60, 10);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
+        { status: 429, headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) } }
+      );
+    }
+
     await connectDB();
-    const { address } = await params;
+    const { address: rawAddress } = await params;
+    
+    // Validate and sanitize address
+    const address = sanitizeAddress(rawAddress);
+    if (!address) {
+      return NextResponse.json(
+        { error: 'Invalid address format' },
+        { status: 400, headers: getSecurityHeaders() }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const tokenId = searchParams.get('tokenId');
     
-    // Pagination parameters
-    const holdersPage = Math.max(1, parseInt(searchParams.get('holdersPage') || '1'));
-    const holdersLimit = Math.min(100, Math.max(1, parseInt(searchParams.get('holdersLimit') || '50')));
-    const transfersPage = Math.max(1, parseInt(searchParams.get('transfersPage') || '1'));
-    const transfersLimit = Math.min(100, Math.max(1, parseInt(searchParams.get('transfersLimit') || '50')));
-    const nftsPage = Math.max(1, parseInt(searchParams.get('nftsPage') || '1'));
-    const nftsLimit = Math.min(100, Math.max(1, parseInt(searchParams.get('nftsLimit') || '12')));
+    // Pagination parameters with validation
+    const holdersParams = validatePagination(searchParams.get('holdersPage'), searchParams.get('holdersLimit'));
+    const transfersParams = validatePagination(searchParams.get('transfersPage'), searchParams.get('transfersLimit'));
+    const nftsParams = validatePagination(searchParams.get('nftsPage'), searchParams.get('nftsLimit'));
+    
+    const holdersPage = holdersParams.page;
+    const holdersLimit = holdersParams.limit;
+    const transfersPage = transfersParams.page;
+    const transfersLimit = transfersParams.limit;
+    const nftsPage = nftsParams.page;
+    const nftsLimit = Math.min(nftsParams.limit, 12);
 
     // If tokenId is provided, return NFT metadata
     if (tokenId) {
@@ -725,35 +748,13 @@ export async function GET(
       .toArray();
 
     // 各holderの所有tokenId配列をtokentransfersから集計してセット
-    // トークンの現在の所有者を正確に計算するため、全転送履歴から最終所有者を特定
-    const allTransfers = await db.collection('tokentransfers').find({
-      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
-      tokenId: { $exists: true, $ne: null }
-    }).sort({ timestamp: 1 }).toArray();
-    
-    // tokenIdごとの現在の所有者をマップで管理
-    const tokenOwnership = new Map<number, string>();
-    for (const transfer of allTransfers) {
-      if (transfer.tokenId !== undefined && transfer.tokenId !== null) {
-        const tokenId = Number(transfer.tokenId);
-        // バーンの場合は所有者をnullに（ゼロアドレス宛）
-        if (transfer.to === ZERO_ADDR) {
-          tokenOwnership.delete(tokenId); // バーンされたトークンは削除
-        } else {
-          tokenOwnership.set(tokenId, transfer.to);
-        }
-      }
-    }
+    // NFTサービスを使用して所有権を計算（トークンの現在の所有者を正確に計算）
+    const { ownership: tokenOwnership } = await getNftOwnershipFromDb(db, address);
     
     // 各ホルダーの所有tokenIdを設定
+    const { holderTokens } = groupTokensByHolder(tokenOwnership);
     for (const holder of holders) {
-      const ownedTokenIds: number[] = [];
-      for (const [tokenId, owner] of tokenOwnership.entries()) {
-        if (owner.toLowerCase() === holder.holderAddress.toLowerCase()) {
-          ownedTokenIds.push(tokenId);
-        }
-      }
-      holder.tokenIds = ownedTokenIds.sort((a, b) => a - b);
+      holder.tokenIds = holderTokens.get(holder.holderAddress.toLowerCase()) || [];
     }
 
     // Get recent transfers - use case-insensitive match with alternative field names
@@ -1108,8 +1109,8 @@ export async function GET(
         ];
       }
       const isNFT = token.type === 'VRC-721' || token.type === 'VRC-1155';
-      // For NFTs, get realSupply from token (already set above)
-      const nftRealSupply = String(token.totalSupply || token.supply || '0');
+      // For NFTs, use actual ownership count (excluding burned tokens)
+      const nftRealSupply = String(tokenOwnership.size);
       const mappedHolders = holders.map((holder: Record<string, unknown>) => {
         const balanceRaw = holder.balance as string;
         // Calculate percentage based on nftRealSupply
@@ -1156,6 +1157,9 @@ export async function GET(
         nftsPage * nftsLimit
       );
       
+      // 実際のNFT供給量（バーンを考慮）
+      const actualNftSupply = totalNftItems.toString();
+      
       const nftData = {
         token: {
           address: token.address,
@@ -1163,8 +1167,8 @@ export async function GET(
           symbol: token.symbol,
           type: token.type,
           decimals: Number(token.decimals ?? 0),
-          totalSupply: token.supply && typeof token.supply === 'string' ? formatTokenAmount(token.supply, Number(token.decimals ?? 0), true) : 'Unknown',
-          totalSupplyRaw: token.supply && typeof token.supply === 'string' ? token.supply : '0',
+          totalSupply: actualNftSupply,
+          totalSupplyRaw: actualNftSupply,
           description: `Unique digital collectibles on ${config.network?.name || 'blockchain'} network. ${token.type} standard NFT collection with verified smart contract.`,
           floorPrice: floorPrice,
           volume24h: volume24h,

@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
-import Web3 from 'web3';
-import { getChainStats } from '../../../lib/stats'; // Import the stats function
+import { getChainStats } from '../../../lib/stats';
 import { Contract, connectDB } from '../../../models/index';
 import { loadConfig } from '../../../lib/config';
+import { getWeb3 } from '../../../lib/web3';
+import { apiCache, CACHE_TTL } from '../../../lib/cache';
 
-// Load configuration for Web3
+// Get shared Web3 instance
+const web3 = getWeb3();
+
+// Load configuration for blacklist
 const config = loadConfig();
-const RPC_URL = config.web3Provider?.url || 'http://localhost:8545';
-const web3 = new Web3(RPC_URL);
 
 // Address constants
 const ZERO_ADDR = '0x0000000000000000000000000000000000000000';

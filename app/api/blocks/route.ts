@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Block } from '../../../models/index';
+import { apiCache, CACHE_TTL } from '../../../lib/cache';
 
 interface BlockData {
   number: string;

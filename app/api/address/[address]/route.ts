@@ -1,31 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
-import Web3 from 'web3';
 import { connectDB } from '../../../../models/index';
-import fs from 'fs';
-import path from 'path';
+import { getWeb3 } from '../../../../lib/web3';
+import { apiCache, CACHE_TTL } from '../../../../lib/cache';
+import { loadConfig } from '../../../../lib/config';
+import { sanitizeAddress, validatePagination, checkRateLimit, getClientIp, getSecurityHeaders } from '../../../../lib/security';
 
-// Function to read config
-const readConfig = () => {
-  try {
-    const configPath = path.join(process.cwd(), 'config.json');
-    const exampleConfigPath = path.join(process.cwd(), 'config.example.json');
-    
-    if (fs.existsSync(configPath)) {
-      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    } else if (fs.existsSync(exampleConfigPath)) {
-      return JSON.parse(fs.readFileSync(exampleConfigPath, 'utf8'));
-    }
-  } catch (error) {
-    console.error('Error reading config:', error);
-  }
-  
-  // Default configuration
-  return {
-    nodeAddr: 'localhost',
-    port: 8329
-  };
-};
+// Load config for known contract names
+const config = loadConfig();
+
+// Get shared Web3 instance
+const web3 = getWeb3();
 
 // Account schema
 const accountSchema = new mongoose.Schema({
@@ -100,9 +85,6 @@ const Transaction = mongoose.models.Transaction || mongoose.model('Transaction',
 const TokenTransfer = mongoose.models.TokenTransfer || mongoose.model('TokenTransfer', tokenTransferSchema);
 const Contract = mongoose.models.Contract || mongoose.model('Contract', contractSchema);
 const Block = mongoose.models.Block || mongoose.model('Block', blockSchema);
-
-const config = readConfig();
-const web3 = new Web3(new Web3.providers.HttpProvider(`http://${config.nodeAddr}:${config.port}`));
 
 // MetaMask準拠のトランザクションタイプを判定
 const METHOD_IDS: Record<string, { type: string; action: string }> = {
@@ -218,15 +200,34 @@ export async function GET(
   { params }: { params: Promise<{ address: string }> }
 ) {
   try {
+    // Rate limiting
+    const clientIp = getClientIp(request);
+    const rateLimit = checkRateLimit(`address:${clientIp}`, 60, 10);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
+        { status: 429, headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) } }
+      );
+    }
+
     await connectDB();
   } catch (dbError) {
     console.error('Database connection error:', dbError);
-    return NextResponse.json({ error: 'Database connection failed' }, { status: 500 });
+    return NextResponse.json({ error: 'Database connection failed' }, { status: 500, headers: getSecurityHeaders() });
   }
   
-  const { address } = await params;
+  const { address: rawAddress } = await params;
+  
+  // Validate and sanitize address
+  const address = sanitizeAddress(rawAddress);
+  if (!address) {
+    return NextResponse.json(
+      { error: 'Invalid address format' },
+      { status: 400, headers: getSecurityHeaders() }
+    );
+  }
 
-  // DBからアカウント取得
+  // DBからアカウント取得 (use lowercase comparison instead of regex)
   const account = await Account.findOne({ address: { $regex: new RegExp(`^${address}$`, 'i') } }).lean();
 
   // コントラクト情報を取得

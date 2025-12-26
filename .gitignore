@@ -58,6 +58,9 @@ config.json
 # Cursor
 .cursorrules
 
+# Claude
+CLAUDE.md
+
 # Environment variables
 .env
 .env.local

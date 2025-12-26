@@ -13,12 +13,20 @@ const nextConfig: NextConfig = {
 
   // 本番環境でのメモリ最適化
   experimental: {
-    // メモリ使用量を削減
-    optimizePackageImports: ['react', 'react-dom'],
+    // メモリ使用量を削減 - 大きなパッケージを最適化
+    optimizePackageImports: [
+      'react',
+      'react-dom',
+      '@heroicons/react',
+      'react-icons',
+      'ethers',
+      'viem',
+      '@tanstack/react-query',
+    ],
   },
 
-  // 外部パッケージ設定（experimental から移動）
-  serverExternalPackages: ['mongoose', 'web3', 'pino', 'thread-stream', 'pino-pretty'],
+  // 外部パッケージ設定（サーバーサイドでバンドルしない）
+  serverExternalPackages: ['mongoose', 'web3', 'pino', 'thread-stream', 'pino-pretty', 'solc'],
 
   // 軽量化設定
   compiler: {
@@ -28,6 +36,15 @@ const nextConfig: NextConfig = {
 
   // バンドルサイズ最適化
   bundlePagesRouterDependencies: true,
+
+  // 圧縮有効化
+  compress: true,
+
+  // PoweredByヘッダー削除
+  poweredByHeader: false,
+
+  // 静的ファイルの最適化
+  productionBrowserSourceMaps: false,
 
   env: {
     MONGODB_URI: process.env.MONGODB_URI,

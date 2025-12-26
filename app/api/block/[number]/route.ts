@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { loadConfig } from '../../../../lib/config';
 import { getTransactionTypeGlobal } from '../../../../lib/transaction-utils';
-import Web3 from 'web3';
+import { getWeb3 } from '../../../../lib/web3';
+import { apiCache, CACHE_TTL } from '../../../../lib/cache';
 
 // Utility: recursively converts BigInt values inside unknown structures to string while preserving shape
 function convertBigIntToString(obj: unknown): unknown {
@@ -45,8 +45,7 @@ export async function GET(
   { params }: { params: Promise<{ number: string }> }
 ) {
   try {
-    const config = loadConfig();
-    const web3 = new Web3(config.web3Provider.url);
+    const web3 = getWeb3();
     
     const resolvedParams = await params;
     const blockNumber = resolvedParams.number;

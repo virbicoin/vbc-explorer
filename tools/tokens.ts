@@ -13,6 +13,9 @@ import humanStandardTokenAbi from 'human-standard-token-abi';
 import fs from 'fs';
 import path from 'path';
 
+// Import NFT service for ownership calculation
+import { ZERO_ADDR, DEAD_ADDR, calculateNftOwnership, TokenTransfer } from '../lib/services/nft.service';
+
 // Import additional models for token transfers and holders
 import '../models/index'; // Ensure all models are loaded
 
@@ -299,8 +302,7 @@ async function getTokenTransfers(tokenAddress: string, fromBlock: number = 0): P
   }
 }
 
-// Zero address constant for burn detection
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+// Zero address constants are imported from nft.service (ZERO_ADDR, DEAD_ADDR)
 
 // Function to calculate token holders from transfers with optimization (for NFTs - balance ±1)
 async function calculateTokenHolders(transfers: any[]): Promise<any[]> {
@@ -315,13 +317,13 @@ async function calculateTokenHolders(transfers: any[]): Promise<any[]> {
       const { from, to } = transfer;
       
       // If from is zero address, it's a mint
-      if (from !== ZERO_ADDRESS) {
+      if (from !== ZERO_ADDR) {
         const currentFrom = holderBalances.get(from) || 0;
         holderBalances.set(from, currentFrom - 1);
       }
       
       // Add to recipient (skip if burn to zero address)
-      if (to !== ZERO_ADDRESS) {
+      if (to !== ZERO_ADDR) {
         const currentTo = holderBalances.get(to) || 0;
         holderBalances.set(to, currentTo + 1);
       }
@@ -464,13 +466,13 @@ async function calculateErc20TokenHolders(transfers: any[], tokenAddress: string
     const transferValue = BigInt(value || '0');
     
     // Subtract from sender (unless mint from zero address)
-    if (from !== ZERO_ADDRESS) {
+    if (from !== ZERO_ADDR) {
       const currentFrom = holderBalances.get(from) || 0n;
       holderBalances.set(from, currentFrom - transferValue);
     }
     
     // Add to recipient (skip if burn to zero address)
-    if (to !== ZERO_ADDRESS) {
+    if (to !== ZERO_ADDR) {
       const currentTo = holderBalances.get(to) || 0n;
       holderBalances.set(to, currentTo + transferValue);
     }
@@ -659,13 +661,20 @@ async function updateTokenWithRealData(tokenAddress: string) {
     console.log('🔗 Database connection confirmed');
     
     // Upsert real transfers in batches
+    // Note: For NFTs, use tokenAddress + tokenId + blockNumber as unique key
+    // because one transaction can have multiple Transfer events (e.g., batch mint)
     const transferBatchSize = 200;
     for (let i = 0; i < transfers.length; i += transferBatchSize) {
       const batch = transfers.slice(i, i + transferBatchSize);
       
       const bulkOps = batch.map(transfer => ({
         updateOne: {
-          filter: { transactionHash: transfer.transactionHash },
+          filter: { 
+            tokenAddress: transfer.tokenAddress,
+            tokenId: transfer.tokenId,
+            blockNumber: transfer.blockNumber,
+            to: transfer.to  // Include 'to' to distinguish mint/burn/transfer of same tokenId in same block
+          },
           update: { $set: transfer },
           upsert: true
         }
@@ -681,11 +690,28 @@ async function updateTokenWithRealData(tokenAddress: string) {
     console.log(`✅ Upserted ${transfers.length} real transfers`);
     
     // Remove old transfers not in the latest set
-    const txHashes = transfers.map(t => t.transactionHash);
-    await db.collection('tokentransfers').deleteMany({
-      tokenAddress: tokenAddress.toLowerCase(),
-      transactionHash: { $nin: txHashes }
+    // Create a unique key set from current transfers
+    const currentTransferKeys = new Set(
+      transfers.map(t => `${t.tokenId}-${t.blockNumber}-${t.to}`)
+    );
+    
+    // Find and remove transfers that are no longer valid
+    const existingTransfers = await db.collection('tokentransfers').find({
+      tokenAddress: tokenAddress.toLowerCase()
+    }).toArray();
+    
+    const transfersToDelete = existingTransfers.filter(t => {
+      const key = `${t.tokenId}-${t.blockNumber}-${t.to}`;
+      return !currentTransferKeys.has(key);
     });
+    
+    if (transfersToDelete.length > 0) {
+      const idsToDelete = transfersToDelete.map(t => t._id);
+      await db.collection('tokentransfers').deleteMany({
+        _id: { $in: idsToDelete }
+      });
+      console.log(`🗑️ Removed ${transfersToDelete.length} outdated transfers`);
+    }
 
     // Upsert real holders in batches
     const holderBatchSize = 200;
