@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 /**
- * Security Middleware
+ * Security Proxy
  *
  * Adds security headers to all responses and handles basic request validation.
+ * Note: In Next.js 16+, middleware has been renamed to proxy.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   // Get response
   const response = NextResponse.next();
 
