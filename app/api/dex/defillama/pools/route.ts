@@ -67,11 +67,38 @@ export async function GET() {
       if (pairsResponse.ok) {
         const pairsData = await pairsResponse.json();
         const pairsArray = pairsData.data?.pairs || pairsData.data || [];
+        const wrappedNativeAddress = pairsData.data?.wrappedNativeAddress?.toLowerCase() || '';
+
+        // Get known stablecoin symbols
+        const STABLECOIN_SYMBOLS = new Set(['USDT', 'USDC', 'DAI', 'BUSD']);
 
         for (const pair of pairsArray) {
-          // Calculate TVL in USD (liquidity is in wei)
-          const liquidityInNative = parseFloat(pair.liquidity || '0') / 1e18;
-          const tvlUsd = liquidityInNative * nativePriceUsd;
+          // Calculate TVL from reserves
+          const reserve0 =
+            Number(BigInt(pair.reserve0 || '0')) / Math.pow(10, pair.baseToken?.decimals || 18);
+          const reserve1 =
+            Number(BigInt(pair.reserve1 || '0')) / Math.pow(10, pair.quoteToken?.decimals || 18);
+
+          let tvlUsd = 0;
+
+          // Check token types
+          const baseIsStablecoin = STABLECOIN_SYMBOLS.has(pair.baseToken?.symbol?.toUpperCase());
+          const quoteIsStablecoin = STABLECOIN_SYMBOLS.has(pair.quoteToken?.symbol?.toUpperCase());
+          const quoteIsNative = pair.quoteToken?.address?.toLowerCase() === wrappedNativeAddress;
+
+          if (baseIsStablecoin) {
+            // Base token is stablecoin, use its reserve * 2
+            tvlUsd = reserve0 * 2;
+          } else if (quoteIsStablecoin) {
+            // Quote token is stablecoin, use its reserve * 2
+            tvlUsd = reserve1 * 2;
+          } else if (quoteIsNative) {
+            // Quote token is wrapped native, calculate from native price
+            tvlUsd = reserve1 * nativePriceUsd * 2;
+          } else {
+            // Fallback: estimate from native price
+            tvlUsd = (reserve0 + reserve1) * nativePriceUsd;
+          }
 
           pools.push({
             pool: `${chainName.toLowerCase()}-${pair.address}`.toLowerCase(),
