@@ -1,6 +1,38 @@
 import fs from 'fs';
 import path from 'path';
 
+/**
+ * Resolve environment variables in config values
+ * Supports ${VAR_NAME} syntax
+ */
+function resolveEnvVariables(obj: unknown): unknown {
+  if (typeof obj === 'string') {
+    // Replace ${VAR_NAME} with environment variable value
+    return obj.replace(/\$\{([^}]+)\}/g, (_, varName) => {
+      const envValue = process.env[varName];
+      if (envValue === undefined) {
+        console.warn(`⚠️ Environment variable ${varName} is not set`);
+        return '';
+      }
+      return envValue;
+    });
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(resolveEnvVariables);
+  }
+
+  if (obj !== null && typeof obj === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = resolveEnvVariables(value);
+    }
+    return result;
+  }
+
+  return obj;
+}
+
 export interface DatabaseConfig {
   uri: string;
   options?: Record<string, unknown>;
@@ -182,19 +214,21 @@ export const readConfig = (): AppConfig => {
   try {
     const configPath = path.join(process.cwd(), 'config.json');
     const exampleConfigPath = path.join(process.cwd(), 'config.example.json');
-    
+
     let configData: Record<string, unknown> = {};
-    
+
     if (fs.existsSync(configPath)) {
-      configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      const rawConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      configData = resolveEnvVariables(rawConfig) as Record<string, unknown>;
       console.log('📄 Loaded configuration from config.json');
     } else if (fs.existsSync(exampleConfigPath)) {
-      configData = JSON.parse(fs.readFileSync(exampleConfigPath, 'utf8'));
+      const rawConfig = JSON.parse(fs.readFileSync(exampleConfigPath, 'utf8'));
+      configData = resolveEnvVariables(rawConfig) as Record<string, unknown>;
       console.log('📄 Loaded configuration from config.example.json');
     } else {
       console.log('📄 No config files found, using defaults');
     }
-    
+
     // Default configuration (Ethereum fallback)
     const defaultConfig: AppConfig = {
       nodeAddr: 'localhost',
@@ -210,7 +244,7 @@ export const readConfig = (): AppConfig => {
       retryDelay: 1000,
       logLevel: 'info',
       web3Provider: {
-        url: 'http://localhost:8545'
+        url: 'http://localhost:8545',
       },
       database: {
         uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/explorerDB',
@@ -221,8 +255,8 @@ export const readConfig = (): AppConfig => {
           connectTimeoutMS: 15000,
           bufferCommands: false,
           autoIndex: false,
-          autoCreate: false
-        }
+          autoCreate: false,
+        },
       },
       // Ethereum-compatible defaults
       currency: {
@@ -230,57 +264,62 @@ export const readConfig = (): AppConfig => {
         symbol: 'ETH',
         unit: 'wei',
         decimals: 18,
-        gasUnit: 'Gwei'
+        gasUnit: 'Gwei',
       },
       network: {
         chainId: 1,
         name: 'Ethereum Mainnet',
         rpcUrl: 'http://localhost:8545',
-        blockTime: 12
+        blockTime: 12,
       },
       dex: {
-        enabled: false
+        enabled: false,
       },
-      miners: {}
+      miners: {},
     };
-    
+
     // Merge config data with defaults
     cachedConfig = { ...defaultConfig, ...configData } as AppConfig;
-    
+
     // Type assertion for nested objects
     const typedConfigData = configData as Partial<AppConfig>;
-    
+
     // Ensure nested objects are properly merged
     if (typedConfigData.web3Provider && cachedConfig) {
-      cachedConfig.web3Provider = { ...defaultConfig.web3Provider, ...typedConfigData.web3Provider };
+      cachedConfig.web3Provider = {
+        ...defaultConfig.web3Provider,
+        ...typedConfigData.web3Provider,
+      };
     }
-    
+
     if (typedConfigData.database && cachedConfig) {
       cachedConfig.database = { ...defaultConfig.database, ...typedConfigData.database };
       if (typedConfigData.database.options) {
-        cachedConfig.database.options = { ...defaultConfig.database.options, ...typedConfigData.database.options };
+        cachedConfig.database.options = {
+          ...defaultConfig.database.options,
+          ...typedConfigData.database.options,
+        };
       }
     }
-    
+
     if (typedConfigData.currency && cachedConfig) {
       cachedConfig.currency = { ...defaultConfig.currency, ...typedConfigData.currency };
     }
-    
+
     if (typedConfigData.miners && cachedConfig) {
       cachedConfig.miners = { ...defaultConfig.miners, ...typedConfigData.miners };
     }
-    
+
     // Ensure cachedConfig is not null before returning
     if (!cachedConfig) {
       cachedConfig = defaultConfig;
     }
-    
+
     return cachedConfig;
-    
   } catch (error) {
     console.error('Error reading config:', error);
     console.log('📄 Using minimal default configuration');
-    
+
     // Return minimal config on error (Ethereum-compatible defaults)
     cachedConfig = {
       nodeAddr: 'localhost',
@@ -296,31 +335,31 @@ export const readConfig = (): AppConfig => {
       retryDelay: 1000,
       logLevel: 'info',
       web3Provider: {
-        url: process.env.WEB3_PROVIDER_URL || 'http://localhost:8545'
+        url: process.env.WEB3_PROVIDER_URL || 'http://localhost:8545',
       },
       database: {
         uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/explorerDB',
-        options: {}
+        options: {},
       },
       currency: {
         name: 'Ethereum',
         symbol: 'ETH',
         unit: 'wei',
         decimals: 18,
-        gasUnit: 'Gwei'
+        gasUnit: 'Gwei',
       },
       network: {
         chainId: 1,
         name: 'Ethereum Mainnet',
         rpcUrl: 'http://localhost:8545',
-        blockTime: 12
+        blockTime: 12,
       },
       dex: {
-        enabled: false
+        enabled: false,
       },
-      miners: {}
+      miners: {},
     };
-    
+
     // Ensure we return the fallback config we just created
     return cachedConfig;
   }
@@ -371,13 +410,15 @@ export const getCurrencyName = (): string => {
  */
 export const getCurrencyConfig = () => {
   const config = readConfig();
-  return config.currency || {
-    name: 'Ethereum',
-    symbol: 'ETH',
-    unit: 'wei',
-    decimals: 18,
-    gasUnit: 'Gwei'
-  };
+  return (
+    config.currency || {
+      name: 'Ethereum',
+      symbol: 'ETH',
+      unit: 'wei',
+      decimals: 18,
+      gasUnit: 'Gwei',
+    }
+  );
 };
 
 /**

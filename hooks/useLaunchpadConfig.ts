@@ -57,7 +57,7 @@ async function fetchConfig(): Promise<LaunchpadConfig> {
       throw new Error('Failed to fetch config');
     }
     const data: ConfigResponse = await response.json();
-    
+
     return {
       enabled: data.launchpad?.enabled ?? defaultConfig.enabled,
       factoryAddress: data.launchpad?.factoryAddress ?? defaultConfig.factoryAddress,

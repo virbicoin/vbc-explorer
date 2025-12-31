@@ -59,7 +59,29 @@
     },
     "contractVerification": {
       "enabled": true,
-      "compilerVersions": ["0.8.30", "0.8.29", "0.8.28", "0.8.27", "0.8.26", "0.8.25", "0.8.24", "0.8.23", "0.8.22", "0.8.21", "0.8.20", "0.8.19", "0.8.18", "0.8.17", "0.8.16", "0.8.15", "0.8.14", "0.8.13", "0.8.12", "0.8.11", "0.8.10"],
+      "compilerVersions": [
+        "0.8.30",
+        "0.8.29",
+        "0.8.28",
+        "0.8.27",
+        "0.8.26",
+        "0.8.25",
+        "0.8.24",
+        "0.8.23",
+        "0.8.22",
+        "0.8.21",
+        "0.8.20",
+        "0.8.19",
+        "0.8.18",
+        "0.8.17",
+        "0.8.16",
+        "0.8.15",
+        "0.8.14",
+        "0.8.13",
+        "0.8.12",
+        "0.8.11",
+        "0.8.10"
+      ],
       "optimizationEnabled": true,
       "maxSourceSize": 50000
     },
@@ -85,7 +107,7 @@
     }
   },
   "database": {
-    "uri": "mongodb://explorer:your_secure_password@localhost:27017/explorerDB?authSource=explorerDB",
+    "uri": "${MONGODB_URI}",
     "options": {
       "maxPoolSize": 50,
       "serverSelectionTimeoutMS": 15000,
@@ -94,7 +116,8 @@
       "bufferCommands": false,
       "autoIndex": false,
       "autoCreate": false
-    }
+    },
+    "_comment": "Use environment variable MONGODB_URI for security. Example: mongodb://user:password@localhost:27017/explorerDB?authSource=explorerDB"
   },
   "logging": {
     "level": "info",
@@ -214,9 +237,24 @@
   },
   "social": {
     "x": "https://x.com/your_project",
+    "twitter": "https://x.com/your_project",
     "discord": "https://discord.gg/your_invite",
     "telegram": "https://t.me/your_channel",
     "github": "https://github.com/your-repo"
+  },
+  "dexInfo": {
+    "name": "Your DEX Name",
+    "description": "Decentralized exchange description",
+    "logo": "https://example.com/logo.png",
+    "url": "https://explorer.example.com/dex",
+    "analyticsUrl": "https://explorer.example.com/dex/analytics",
+    "docsUrl": "https://explorer.example.com/dex/docs",
+    "stablePoolAddress": "0x0000000000000000000000000000000000000000",
+    "stablePoolName": "USDT-WETH LP",
+    "swapFee": "0.3%",
+    "protocolFee": "0.05%",
+    "lpReward": "0.25%",
+    "_comment": "For GeckoTerminal/CoinGecko DEX listing"
   },
   "supply": {
     "blockReward": 2,

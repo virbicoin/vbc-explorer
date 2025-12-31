@@ -22,7 +22,7 @@ let networkCache: {
  */
 export async function initializeCurrencyConfig(): Promise<void> {
   if (currencyCache && networkCache) return;
-  
+
   try {
     const response = await fetch('/api/config/client');
     if (response.ok) {
@@ -74,12 +74,14 @@ export function getCurrencyName(): string {
  * Returns cached value or defaults (Ethereum-compatible)
  */
 export function getCurrencyConfig() {
-  return currencyCache || {
-    symbol: 'ETH',
-    name: 'Ether',
-    decimals: 18,
-    gasUnit: 'Gwei',
-  };
+  return (
+    currencyCache || {
+      symbol: 'ETH',
+      name: 'Ether',
+      decimals: 18,
+      gasUnit: 'Gwei',
+    }
+  );
 }
 
 /**

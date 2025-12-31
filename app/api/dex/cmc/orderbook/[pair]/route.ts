@@ -52,14 +52,11 @@ function calculatePriceImpact(
   return { amountOut, price };
 }
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ pair: string }> }
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ pair: string }> }) {
   try {
     const { pair } = await params;
     const [base, quote] = pair.toUpperCase().split('_');
-    
+
     if (!base || !quote) {
       return NextResponse.json(
         { error: 'Invalid pair format. Use BASE_QUOTE (e.g., VBCG_VBC)' },
@@ -75,7 +72,7 @@ export async function GET(
     for (const [, lpToken] of Object.entries(lpTokens)) {
       const t0 = lpToken.token0 === 'WVBC' ? 'VBC' : lpToken.token0;
       const t1 = lpToken.token1 === 'WVBC' ? 'VBC' : lpToken.token1;
-      
+
       if ((t0 === base && t1 === quote) || (t0 === quote && t1 === base)) {
         matchedPair = {
           address: lpToken.address,
@@ -87,10 +84,7 @@ export async function GET(
     }
 
     if (!matchedPair) {
-      return NextResponse.json(
-        { error: 'Trading pair not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Trading pair not found' }, { status: 404 });
     }
 
     const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
@@ -116,7 +110,7 @@ export async function GET(
     // Determine which token is base and which is quote
     const displaySymbol0 = symbol0 === 'WVBC' ? 'VBC' : symbol0;
     const displaySymbol1 = symbol1 === 'WVBC' ? 'VBC' : symbol1;
-    
+
     const isToken0Base = displaySymbol0 === base;
     const baseReserve = isToken0Base ? reserve0Num : reserve1Num;
     const quoteReserve = isToken0Base ? reserve1Num : reserve0Num;
@@ -163,10 +157,7 @@ export async function GET(
     });
   } catch (error) {
     console.error('CMC Orderbook API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

@@ -16,22 +16,22 @@ const initDB = async () => {
     if (mongoose.connection.readyState === 1) {
       return;
     }
-    
+
     await connectDB();
-    
+
     // Wait for connection to be fully established
     let retries = 0;
     const maxRetries = 30;
     while ((mongoose.connection.readyState as number) !== 1 && retries < maxRetries) {
       console.log('⌛ Waiting for database connection...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       retries++;
     }
-    
+
     if ((mongoose.connection.readyState as number) !== 1) {
       throw new Error('Database connection timeout');
     }
-    
+
     console.log('🔗 Database connection initialized successfully');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);
@@ -44,7 +44,7 @@ const checkMemory = () => {
   const usage = process.memoryUsage();
   const usedMB = Math.round(usage.heapUsed / 1024 / 1024);
   const limitMB = parseInt(process.env.MEMORY_LIMIT_MB || '512'); // Optimized for 2GB instances
-  
+
   if (usedMB > limitMB) {
     console.log(`⚠️  Memory usage: ${usedMB}MB (limit: ${limitMB}MB)`);
     if (global.gc) {
@@ -126,18 +126,22 @@ const updateStats = async (range: number, interval: number, rescan: boolean): Pr
   if (interval >= 10) {
     latestBlock -= latestBlock % interval;
   }
-  
+
   const startBlock = latestBlock - range;
   const endBlock = latestBlock;
-  
+
   // Check which blocks already have statistics
-  const existingStats = await BlockStat.find({ 
-    number: { $gte: startBlock, $lte: endBlock } 
-  }).select('number').lean();
-  
-  const existingStatNumbers = new Set(existingStats.map(s => s.number));
-  console.log(`📊 Found ${existingStats.length} existing block statistics in range ${startBlock}-${endBlock}`);
-  
+  const existingStats = await BlockStat.find({
+    number: { $gte: startBlock, $lte: endBlock },
+  })
+    .select('number')
+    .lean();
+
+  const existingStatNumbers = new Set(existingStats.map((s) => s.number));
+  console.log(
+    `📊 Found ${existingStats.length} existing block statistics in range ${startBlock}-${endBlock}`
+  );
+
   // Process in parallel batches for better performance
   await processStatsInBatches(startBlock, endBlock, interval, rescan, existingStatNumbers);
 };
@@ -154,13 +158,13 @@ const processStatsInBatches = async (
 ): Promise<void> => {
   const BATCH_SIZE = 20; // Reduced for 2GB instances
   const CONCURRENCY_LIMIT = 3; // Reduced concurrent fetches for low memory
-  
+
   console.log(`🚀 Processing stats from block ${startBlock} to ${endBlock} in batches...`);
 
   for (let batchStart = endBlock; batchStart > startBlock; batchStart -= BATCH_SIZE) {
     const batchEnd = Math.max(batchStart - BATCH_SIZE + 1, startBlock);
     const batchBlocks = [];
-    
+
     // Collect blocks that need processing
     for (let blockNum = batchStart; blockNum >= batchEnd; blockNum -= interval) {
       if (rescan || !existingStatNumbers.has(blockNum)) {
@@ -172,7 +176,9 @@ const processStatsInBatches = async (
       continue; // Skip this batch if all stats exist
     }
 
-    console.log(`📈 Processing stats batch ${batchEnd}-${batchStart} (${batchBlocks.length} blocks)`);
+    console.log(
+      `📈 Processing stats batch ${batchEnd}-${batchStart} (${batchBlocks.length} blocks)`
+    );
 
     try {
       // Process blocks in smaller chunks for parallel processing
@@ -182,14 +188,16 @@ const processStatsInBatches = async (
       }
 
       const allStatsData = [];
-      
+
       for (const chunk of chunks) {
         // Fetch blocks in parallel within each chunk
         const blockPromises = chunk.map(async (blockNum) => {
           try {
             const [blockData, nextBlockData] = await Promise.all([
               web3.eth.getBlock(blockNum, true),
-              blockNum < endBlock ? web3.eth.getBlock(blockNum + interval, true) : Promise.resolve(null)
+              blockNum < endBlock
+                ? web3.eth.getBlock(blockNum + interval, true)
+                : Promise.resolve(null),
             ]);
             return { blockNum, blockData, nextBlockData };
           } catch (error) {
@@ -200,10 +208,10 @@ const processStatsInBatches = async (
 
         const chunkResults = await Promise.all(blockPromises);
         allStatsData.push(...chunkResults);
-        
+
         // Small delay between chunks to prevent overwhelming the node
         if (chunks.length > 1) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
 
@@ -215,7 +223,7 @@ const processStatsInBatches = async (
           try {
             // Check if stat already exists
             const existingStat = await BlockStat.findOne({ number: blockNum }).lean();
-            
+
             if (existingStat && !rescan) {
               continue;
             }
@@ -230,7 +238,9 @@ const processStatsInBatches = async (
                 gasUsed: toNumber(blockData.gasUsed),
                 gasLimit: toNumber(blockData.gasLimit),
                 miner: toString(blockData.miner),
-                blockTime: (toNumber(nextBlockData.timestamp) - toNumber(blockData.timestamp)) / (toNumber(nextBlockData.number) - toNumber(blockData.number)),
+                blockTime:
+                  (toNumber(nextBlockData.timestamp) - toNumber(blockData.timestamp)) /
+                  (toNumber(nextBlockData.number) - toNumber(blockData.number)),
                 uncleCount: blockData.uncles.length,
               };
 
@@ -262,13 +272,12 @@ const processStatsInBatches = async (
         if (global.gc) {
           global.gc();
         }
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
       // Progress logging
-      const progress = ((endBlock - batchEnd + 1) / (endBlock - startBlock + 1) * 100).toFixed(1);
+      const progress = (((endBlock - batchEnd + 1) / (endBlock - startBlock + 1)) * 100).toFixed(1);
       console.log(`📊 Stats batch completed: ${batchEnd}-${batchStart} | Progress: ${progress}%`);
-
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.log(`❌ Error processing stats batch ${batchEnd}-${batchStart}: ${errorMessage}`);
@@ -301,7 +310,7 @@ const getStats = async function (
   // メモリ監視を追加
   if (!checkMemory()) {
     console.log('💾 Memory limit reached, pausing stats processing for 5 seconds');
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, 5000));
   }
 
   try {
@@ -309,7 +318,9 @@ const getStats = async function (
     try {
       await web3.eth.getBlockNumber();
     } catch (connectionError) {
-      console.log(`❌ Error: Aborted due to web3 not connected when trying to get block ${blockNumber}`);
+      console.log(
+        `❌ Error: Aborted due to web3 not connected when trying to get block ${blockNumber}`
+      );
       process.exit(9);
       return;
     }
@@ -322,11 +333,24 @@ const getStats = async function (
     }
 
     if (nextBlock) {
-      checkBlockDBExistsThenWrite(blockData, nextBlock, endNumber, interval, rescan, existingStatNumbers);
+      checkBlockDBExistsThenWrite(
+        blockData,
+        nextBlock,
+        endNumber,
+        interval,
+        rescan,
+        existingStatNumbers
+      );
     } else {
-      checkBlockDBExistsThenWrite(blockData, null, endNumber, interval, rescan, existingStatNumbers);
+      checkBlockDBExistsThenWrite(
+        blockData,
+        null,
+        endNumber,
+        interval,
+        rescan,
+        existingStatNumbers
+      );
     }
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.log(`⚠️  Warning: error on getting block with number: ${blockNumber}: ${errorMessage}`);
@@ -346,10 +370,10 @@ const checkBlockDBExistsThenWrite = async function (
 ): Promise<void> {
   try {
     const blockNumber = toNumber(blockData.number);
-    
+
     // Check if block statistics already exist in DB
     const existingStat = await BlockStat.findOne({ number: blockNumber });
-    
+
     if (existingStat && !rescan) {
       getStats(blockNumber - interval, blockData, endNumber, interval, rescan, existingStatNumbers);
       return;
@@ -365,7 +389,9 @@ const checkBlockDBExistsThenWrite = async function (
         gasUsed: toNumber(blockData.gasUsed),
         gasLimit: toNumber(blockData.gasLimit),
         miner: toString(blockData.miner),
-        blockTime: (toNumber(nextBlock.timestamp) - toNumber(blockData.timestamp)) / (toNumber(nextBlock.number) - blockNumber),
+        blockTime:
+          (toNumber(nextBlock.timestamp) - toNumber(blockData.timestamp)) /
+          (toNumber(nextBlock.number) - blockNumber),
         uncleCount: blockData.uncles.length,
       };
 
@@ -378,15 +404,15 @@ const checkBlockDBExistsThenWrite = async function (
       }
 
       getStats(blockNumber - interval, blockData, endNumber, interval, rescan, existingStatNumbers);
-
     } else {
       // Continue processing for blocks without next block data
       getStats(blockNumber - interval, blockData, endNumber, interval, rescan, existingStatNumbers);
     }
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.log(`💥 Error: Aborted due to error on block number ${toNumber(blockData.number)}: ${errorMessage}`);
+    console.log(
+      `💥 Error: Aborted due to error on block number ${toNumber(blockData.number)}: ${errorMessage}`
+    );
     process.exit(9);
   }
 };
@@ -430,7 +456,7 @@ const main = async (): Promise<void> => {
   try {
     // Initialize database connection first
     await initDB();
-    
+
     // Test connection by getting latest block number
     try {
       await web3.eth.getBlockNumber();
@@ -456,7 +482,6 @@ const main = async (): Promise<void> => {
         }
       }, statInterval);
     }
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.log(`💥 Fatal error: ${errorMessage}`);

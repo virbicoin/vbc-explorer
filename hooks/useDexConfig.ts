@@ -68,24 +68,24 @@ export function useDexConfig(): UseDexConfigResult {
       setIsLoading(false);
       return;
     }
-    
+
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const url = forceRefresh ? '/api/dex/config?refresh=true' : '/api/dex/config';
       const response = await fetch(url);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const result = await response.json();
-      
+
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch config');
       }
-      
+
       clientCache = result.data;
       clientCacheTimestamp = Date.now();
       setConfig(result.data);
@@ -114,7 +114,7 @@ export function getContracts(config: DexConfigData | null) {
   return config.contracts;
 }
 
-// Helper to get reward info from config  
+// Helper to get reward info from config
 export function getRewardInfo(config: DexConfigData | null) {
   if (!config) return null;
   return {

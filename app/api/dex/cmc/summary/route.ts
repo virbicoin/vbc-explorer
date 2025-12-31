@@ -11,7 +11,7 @@ export const revalidate = 0;
 const PAIR_ABI = [
   'function getReserves() view returns (uint256, uint256)',
   'function token0() view returns (address)',
-  'function token1() view returns (address)'
+  'function token1() view returns (address)',
 ];
 
 const ERC20_ABI = [
@@ -53,20 +53,23 @@ export async function GET() {
     const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
 
     // Get LP tokens from config
-    const lpTokens = (config.dex?.lpTokens || {}) as Record<string, {
-      address: string;
-      name: string;
-      symbol: string;
-      token0: string;
-      token1: string;
-    }>;
-    
+    const lpTokens = (config.dex?.lpTokens || {}) as Record<
+      string,
+      {
+        address: string;
+        name: string;
+        symbol: string;
+        token0: string;
+        token1: string;
+      }
+    >;
+
     const summary: Record<string, PairSummary> = {};
 
     for (const [key, lpToken] of Object.entries(lpTokens)) {
       try {
         const pairContract = new ethers.Contract(lpToken.address, PAIR_ABI, provider);
-        
+
         // Get reserves
         const reserves = await pairContract.getReserves();
         const reserve0 = reserves[0];
@@ -88,7 +91,7 @@ export async function GET() {
         // Calculate price
         const reserve0Formatted = Number(ethers.formatUnits(reserve0, decimals0));
         const reserve1Formatted = Number(ethers.formatUnits(reserve1, decimals1));
-        
+
         if (reserve0Formatted === 0 || reserve1Formatted === 0) continue;
 
         const price = reserve1Formatted / reserve0Formatted;
@@ -127,10 +130,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error('CMC Summary API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

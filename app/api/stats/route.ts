@@ -30,7 +30,7 @@ function getDefaultStats(gasUnit: string) {
       totalTransactions: 0,
       avgTransactionFee: '0',
       lastBlockTime: null,
-      lastBlockTimestamp: null
+      lastBlockTimestamp: null,
     },
     enhanced: {
       latestBlock: 0,
@@ -44,8 +44,8 @@ function getDefaultStats(gasUnit: string) {
       activeMiners: 0,
       lastBlockTime: null,
       lastBlockTimestamp: null,
-      loading: true // フロントエンドで再フェッチするフラグ
-    }
+      loading: true, // フロントエンドで再フェッチするフラグ
+    },
   };
 }
 
@@ -54,11 +54,11 @@ let isUpdating = false;
 async function updateCacheInBackground() {
   if (isUpdating) return;
   isUpdating = true;
-  
+
   try {
     console.log('[Stats] Background cache update starting...');
     const stats = await getChainStats();
-    
+
     let activeMiners = 0;
     try {
       await connectDB();
@@ -68,7 +68,7 @@ async function updateCacheInBackground() {
         .select('miner')
         .lean()
         .maxTimeMS(30000);
-      
+
       const uniqueMiners = new Set<string>();
       recentBlocks.forEach((block: { miner?: string }) => {
         if (block.miner) {
@@ -79,7 +79,7 @@ async function updateCacheInBackground() {
     } catch (error) {
       console.error('[Stats] Error calculating active miners:', error);
     }
-    
+
     const gasUnit = getGasUnitServer();
     const enhancedStats = {
       latestBlock: stats.latestBlock,
@@ -92,12 +92,12 @@ async function updateCacheInBackground() {
       avgTransactionFee: `${stats.avgTransactionFee} ${gasUnit}`,
       activeMiners: activeMiners,
       lastBlockTime: stats.lastBlockTime,
-      lastBlockTimestamp: stats.lastBlockTimestamp
+      lastBlockTimestamp: stats.lastBlockTimestamp,
     };
-    
+
     statsCache = {
       data: { basic: stats, enhanced: enhancedStats },
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
     console.log('[Stats] Background cache update completed');
   } catch (error) {
@@ -112,10 +112,10 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const enhanced = searchParams.get('enhanced') === 'true';
   const gasUnit = getGasUnitServer();
-  
+
   try {
     const now = Date.now();
-    
+
     // キャッシュが有効な場合はキャッシュを返す
     if (statsCache && now - statsCache.timestamp < STATS_CACHE_DURATION) {
       console.log(`[Stats] Returning cached data (age: ${now - statsCache.timestamp}ms)`);
@@ -124,7 +124,7 @@ export async function GET(request: Request) {
       }
       return NextResponse.json(statsCache.data.enhanced);
     }
-    
+
     // キャッシュが古いが存在する場合: 古いデータを返しつつバックグラウンドで更新
     if (statsCache) {
       console.log('[Stats] Returning stale cache, updating in background');
@@ -134,23 +134,20 @@ export async function GET(request: Request) {
       }
       return NextResponse.json(statsCache.data.enhanced);
     }
-    
+
     // 初回リクエスト: 同期的にデータを取得（タイムアウト付き）
     console.log('[Stats] First request, fetching data with timeout...');
-    
+
     // 15秒タイムアウトで取得を試みる
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Stats fetch timeout')), 15000);
     });
-    
+
     try {
-      const stats = await Promise.race([
-        getChainStats(),
-        timeoutPromise
-      ]);
-      
+      const stats = await Promise.race([getChainStats(), timeoutPromise]);
+
       console.log('[Stats] Stats fetched successfully:', { latestBlock: stats.latestBlock });
-      
+
       // activeMinersは後で計算（バックグラウンドで）
       const enhancedStats = {
         latestBlock: stats.latestBlock,
@@ -163,23 +160,22 @@ export async function GET(request: Request) {
         avgTransactionFee: `${stats.avgTransactionFee} ${gasUnit}`,
         activeMiners: 0, // 初回は0、バックグラウンドで更新
         lastBlockTime: stats.lastBlockTime,
-        lastBlockTimestamp: stats.lastBlockTimestamp
+        lastBlockTimestamp: stats.lastBlockTimestamp,
       };
-      
+
       statsCache = {
         data: { basic: stats, enhanced: enhancedStats },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
-      
+
       // バックグラウンドでactiveMinersを更新
       updateCacheInBackground();
-      
+
       console.log(`[Stats] Request completed in ${Date.now() - startTime}ms`);
       if (!enhanced) {
         return NextResponse.json(stats);
       }
       return NextResponse.json(enhancedStats);
-      
     } catch (timeoutError) {
       console.log('[Stats] Initial fetch timed out, returning default data');
       // タイムアウト時はデフォルトデータを返しつつ、バックグラウンドで更新
@@ -187,13 +183,13 @@ export async function GET(request: Request) {
       const defaultStats = getDefaultStats(gasUnit);
       return NextResponse.json(enhanced ? defaultStats.enhanced : defaultStats.basic);
     }
-    
   } catch (error) {
     console.error('[Stats] API error:', error);
     const defaultStats = getDefaultStats(gasUnit);
     return NextResponse.json(
-      enhanced ? { ...defaultStats.enhanced, error: error instanceof Error ? error.message : 'API error' }
-               : { ...defaultStats.basic, error: error instanceof Error ? error.message : 'API error' },
+      enhanced
+        ? { ...defaultStats.enhanced, error: error instanceof Error ? error.message : 'API error' }
+        : { ...defaultStats.basic, error: error instanceof Error ? error.message : 'API error' },
       { status: 500 }
     );
   }

@@ -33,19 +33,25 @@ const CreateTokenForm = dynamic(
   { ssr: false, loading: () => <LoadingSkeleton /> }
 );
 
-const TokenList = dynamic(
-  () => import('./components/TokenList').then((mod) => mod.TokenList),
-  { ssr: false, loading: () => <LoadingSkeleton /> }
-);
+const TokenList = dynamic(() => import('./components/TokenList').then((mod) => mod.TokenList), {
+  ssr: false,
+  loading: () => <LoadingSkeleton />,
+});
 
-const MyTokens = dynamic(
-  () => import('./components/MyTokens').then((mod) => mod.MyTokens),
-  { ssr: false, loading: () => <LoadingSkeleton /> }
-);
+const MyTokens = dynamic(() => import('./components/MyTokens').then((mod) => mod.MyTokens), {
+  ssr: false,
+  loading: () => <LoadingSkeleton />,
+});
 
 type Tab = 'create' | 'tokens' | 'my-tokens';
 
-function TabNavigation({ activeTab, onTabChange }: { activeTab: Tab; onTabChange: (tab: Tab) => void }) {
+function TabNavigation({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: Tab;
+  onTabChange: (tab: Tab) => void;
+}) {
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     {
       id: 'create',
@@ -61,7 +67,12 @@ function TabNavigation({ activeTab, onTabChange }: { activeTab: Tab; onTabChange
       label: 'All Tokens',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+          />
         </svg>
       ),
     },
@@ -70,7 +81,12 @@ function TabNavigation({ activeTab, onTabChange }: { activeTab: Tab; onTabChange
       label: 'My Tokens',
       icon: (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
         </svg>
       ),
     },
@@ -102,9 +118,12 @@ function LaunchpadPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const tabParam = searchParams.get('tab');
-  
+
   // Initialize tab from URL parameter
-  const initialTab = (tabParam === 'create' || tabParam === 'tokens' || tabParam === 'my-tokens') ? tabParam : 'create';
+  const initialTab =
+    tabParam === 'create' || tabParam === 'tokens' || tabParam === 'my-tokens'
+      ? tabParam
+      : 'create';
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
   // Update URL when tab changes
@@ -137,8 +156,18 @@ function InfoSection() {
       {/* How to Create Token */}
       <div className="bg-gradient-to-b from-gray-800/90 to-gray-900/90 backdrop-blur-xl rounded-3xl p-6 border border-gray-700/50 mb-8">
         <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-          <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <svg
+            className="w-6 h-6 text-purple-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
           </svg>
           How to Create Your Token
         </h2>
@@ -178,8 +207,18 @@ function InfoSection() {
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/30">
           <div className="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center mb-4">
-            <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg
+              className="w-6 h-6 text-green-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
           </div>
           <h3 className="text-lg font-semibold text-white mb-2">Standard ERC20</h3>
@@ -190,8 +229,18 @@ function InfoSection() {
 
         <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/30">
           <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center mb-4">
-            <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            <svg
+              className="w-6 h-6 text-blue-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              />
             </svg>
           </div>
           <h3 className="text-lg font-semibold text-white mb-2">Instant Deployment</h3>
@@ -202,8 +251,18 @@ function InfoSection() {
 
         <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/30">
           <div className="w-12 h-12 bg-yellow-500/20 rounded-xl flex items-center justify-center mb-4">
-            <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg
+              className="w-6 h-6 text-yellow-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
           </div>
           <h3 className="text-lg font-semibold text-white mb-2">Full Ownership</h3>
@@ -217,15 +276,26 @@ function InfoSection() {
       <div className="mt-8 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-6">
         <div className="flex items-start gap-4">
           <div className="w-10 h-10 bg-yellow-500/20 rounded-full flex items-center justify-center flex-shrink-0">
-            <svg className="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <svg
+              className="w-5 h-5 text-yellow-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
             </svg>
           </div>
           <div>
             <h3 className="text-lg font-semibold text-yellow-400 mb-2">Important Notice</h3>
             <p className="text-gray-300 text-sm">
-              Creating a token is a permanent action on the blockchain. Please double-check all details before deployment.
-              Token creation may require a small fee to cover gas costs. Make sure you have enough balance in your wallet.
+              Creating a token is a permanent action on the blockchain. Please double-check all
+              details before deployment. Token creation may require a small fee to cover gas costs.
+              Make sure you have enough balance in your wallet.
             </p>
           </div>
         </div>

@@ -65,18 +65,18 @@ export async function GET() {
     // Add wrapped native token
     const wvbc = config.dex?.wrappedNative;
     if (wvbc) {
-    assets['WVBC'] = {
-      name: wvbc.name,
-      symbol: wvbc.symbol,
-      id: wvbc.symbol,
-      maker_fee: '0.3',
-      taker_fee: '0.3',
-      can_withdraw: 'true',
-      can_deposit: 'true',
-      min_withdraw: '0.001',
-      max_withdraw: '1000000000',
-      contractAddress: wvbc.address,
-    };
+      assets['WVBC'] = {
+        name: wvbc.name,
+        symbol: wvbc.symbol,
+        id: wvbc.symbol,
+        maker_fee: '0.3',
+        taker_fee: '0.3',
+        can_withdraw: 'true',
+        can_deposit: 'true',
+        min_withdraw: '0.001',
+        max_withdraw: '1000000000',
+        contractAddress: wvbc.address,
+      };
     }
 
     // Add configured tokens
@@ -92,10 +92,7 @@ export async function GET() {
 
         // Verify token exists on-chain
         const tokenContract = new ethers.Contract(tokenData.address, ERC20_ABI, provider);
-        const [name, symbol] = await Promise.all([
-          tokenContract.name(),
-          tokenContract.symbol(),
-        ]);
+        const [name, symbol] = await Promise.all([tokenContract.name(), tokenContract.symbol()]);
 
         assets[symbol] = {
           name: name,
@@ -125,10 +122,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error('CMC Assets API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

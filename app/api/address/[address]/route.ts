@@ -4,7 +4,13 @@ import { connectDB } from '../../../../models/index';
 import { getWeb3 } from '../../../../lib/web3';
 import { apiCache, CACHE_TTL } from '../../../../lib/cache';
 import { loadConfig } from '../../../../lib/config';
-import { sanitizeAddress, validatePagination, checkRateLimit, getClientIp, getSecurityHeaders } from '../../../../lib/security';
+import {
+  sanitizeAddress,
+  validatePagination,
+  checkRateLimit,
+  getClientIp,
+  getSecurityHeaders,
+} from '../../../../lib/security';
 
 // Load config for known contract names
 const config = loadConfig();
@@ -13,76 +19,92 @@ const config = loadConfig();
 const web3 = getWeb3();
 
 // Account schema
-const accountSchema = new mongoose.Schema({
-  address: String,
-  balance: String,
-  percentage: Number,
-  rank: Number,
-  type: Number,
-  blockNumber: Number
-}, { collection: 'Account' });
+const accountSchema = new mongoose.Schema(
+  {
+    address: String,
+    balance: String,
+    percentage: Number,
+    rank: Number,
+    type: Number,
+    blockNumber: Number,
+  },
+  { collection: 'Account' }
+);
 
 // Transaction schema
-const transactionSchema = new mongoose.Schema({
-  hash: String,
-  from: String,
-  to: String,
-  value: String,
-  timestamp: Number,
-  blockNumber: Number,
-  input: String,
-  gasUsed: Number,
-  gasPrice: String,
-  status: Number,
-  nonce: Number
-}, { collection: 'Transaction' });
+const transactionSchema = new mongoose.Schema(
+  {
+    hash: String,
+    from: String,
+    to: String,
+    value: String,
+    timestamp: Number,
+    blockNumber: Number,
+    input: String,
+    gasUsed: Number,
+    gasPrice: String,
+    status: Number,
+    nonce: Number,
+  },
+  { collection: 'Transaction' }
+);
 
 // TokenTransferスキーマも定義
-const tokenTransferSchema = new mongoose.Schema({
-  transactionHash: String,
-  from: String,
-  to: String,
-  value: String,
-  tokenAddress: String,
-  timestamp: Date,
-  blockNumber: Number
-}, { collection: 'tokentransfers' });
+const tokenTransferSchema = new mongoose.Schema(
+  {
+    transactionHash: String,
+    from: String,
+    to: String,
+    value: String,
+    tokenAddress: String,
+    timestamp: Date,
+    blockNumber: Number,
+  },
+  { collection: 'tokentransfers' }
+);
 
 // Contract schema
-const contractSchema = new mongoose.Schema({
-  address: String,
-  blockNumber: Number,
-  ERC: Number,
-  creationTransaction: String,
-  contractName: String,
-  tokenName: String,
-  symbol: String,
-  owner: String,
-  decimals: Number,
-  totalSupply: Number,
-  compilerVersion: String,
-  optimization: Boolean,
-  sourceCode: String,
-  abi: String,
-  byteCode: String,
-  verified: Boolean,
-  verifiedAt: Date
-}, { collection: 'Contract' });
+const contractSchema = new mongoose.Schema(
+  {
+    address: String,
+    blockNumber: Number,
+    ERC: Number,
+    creationTransaction: String,
+    contractName: String,
+    tokenName: String,
+    symbol: String,
+    owner: String,
+    decimals: Number,
+    totalSupply: Number,
+    compilerVersion: String,
+    optimization: Boolean,
+    sourceCode: String,
+    abi: String,
+    byteCode: String,
+    verified: Boolean,
+    verifiedAt: Date,
+  },
+  { collection: 'Contract' }
+);
 
 // Block schema
-const blockSchema = new mongoose.Schema({
-  number: Number,
-  hash: String,
-  miner: String,
-  timestamp: Date,
-  transactions: Number,
-  gasUsed: Number,
-  gasLimit: Number
-}, { collection: 'blocks' });
+const blockSchema = new mongoose.Schema(
+  {
+    number: Number,
+    hash: String,
+    miner: String,
+    timestamp: Date,
+    transactions: Number,
+    gasUsed: Number,
+    gasLimit: Number,
+  },
+  { collection: 'blocks' }
+);
 
 const Account = mongoose.models.Account || mongoose.model('Account', accountSchema);
 const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', transactionSchema);
-const TokenTransfer = mongoose.models.TokenTransfer || mongoose.model('TokenTransfer', tokenTransferSchema);
+const TokenTransfer =
+  mongoose.models.TokenTransfer || mongoose.model('TokenTransfer', tokenTransferSchema);
 const Contract = mongoose.models.Contract || mongoose.model('Contract', contractSchema);
 const Block = mongoose.models.Block || mongoose.model('Block', blockSchema);
 
@@ -134,10 +156,10 @@ const METHOD_IDS: Record<string, { type: string; action: string }> = {
 
 // トランザクションタイプを判定する関数
 function getTransactionType(
-  tx: { 
-    from: string; 
-    to: string | null; 
-    value: string; 
+  tx: {
+    from: string;
+    to: string | null;
+    value: string;
     input?: string;
     status?: number;
   },
@@ -149,20 +171,20 @@ function getTransactionType(
   const methodId = input.slice(0, 10).toLowerCase();
   const isFromAddress = tx.from.toLowerCase() === address.toLowerCase();
   const isToAddress = tx.to?.toLowerCase() === address.toLowerCase();
-  
+
   // Direction
   let direction: 'in' | 'out' | 'self' = 'out';
   if (isFromAddress && isToAddress) direction = 'self';
   else if (isToAddress) direction = 'in';
   else direction = 'out';
-  
+
   // Contract creation (no to address)
   if (!tx.to || tx.to === '0x0000000000000000000000000000000000000000') {
     if (tx.from.toLowerCase() === address.toLowerCase()) {
       return { type: 'contract_creation', action: 'Contract Deploy', direction: 'out' };
     }
   }
-  
+
   // Check if this tx is a token transfer
   if (txHash && tokenTransferHashes.has(txHash.toLowerCase())) {
     const method = METHOD_IDS[methodId];
@@ -171,18 +193,18 @@ function getTransactionType(
     }
     return { type: 'token_transfer', action: 'Token Transfer', direction };
   }
-  
+
   // Check method ID
   const method = METHOD_IDS[methodId];
   if (method) {
     return { ...method, direction };
   }
-  
+
   // Contract interaction (has input data)
   if (input && input !== '0x' && input.length > 2) {
     return { type: 'contract_interaction', action: 'Contract Interaction', direction };
   }
-  
+
   // Native transfer
   const value = BigInt(tx.value || '0');
   if (value > 0n) {
@@ -191,7 +213,7 @@ function getTransactionType(
     }
     return { type: 'send', action: 'Send', direction };
   }
-  
+
   return { type: 'unknown', action: 'Unknown', direction };
 }
 
@@ -206,18 +228,24 @@ export async function GET(
     if (!rateLimit.allowed) {
       return NextResponse.json(
         { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        { status: 429, headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) } }
+        {
+          status: 429,
+          headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) },
+        }
       );
     }
 
     await connectDB();
   } catch (dbError) {
     console.error('Database connection error:', dbError);
-    return NextResponse.json({ error: 'Database connection failed' }, { status: 500, headers: getSecurityHeaders() });
+    return NextResponse.json(
+      { error: 'Database connection failed' },
+      { status: 500, headers: getSecurityHeaders() }
+    );
   }
-  
+
   const { address: rawAddress } = await params;
-  
+
   // Validate and sanitize address
   const address = sanitizeAddress(rawAddress);
   if (!address) {
@@ -228,24 +256,33 @@ export async function GET(
   }
 
   // DBからアカウント取得 (use lowercase comparison instead of regex)
-  const account = await Account.findOne({ address: { $regex: new RegExp(`^${address}$`, 'i') } }).lean();
+  const account = await Account.findOne({
+    address: { $regex: new RegExp(`^${address}$`, 'i') },
+  }).lean();
 
   // コントラクト情報を取得
-  const contract = await Contract.findOne({ address: { $regex: new RegExp(`^${address}$`, 'i') } }).lean();
+  const contract = await Contract.findOne({
+    address: { $regex: new RegExp(`^${address}$`, 'i') },
+  }).lean();
 
   // config.jsonから既知のコントラクト名を取得
   const getKnownContractName = (addr: string): { name: string; type: string } | null => {
     const lowerAddr = addr.toLowerCase();
     const cfg = config;
-    
+
     // DEXコントラクト
     if (cfg.dex) {
-      if (cfg.dex.factory?.toLowerCase() === lowerAddr) return { name: 'SimpleFactoryV2', type: 'DEX Factory' };
-      if (cfg.dex.router?.toLowerCase() === lowerAddr) return { name: 'SimpleRouterV2', type: 'DEX Router' };
-      if (cfg.dex.masterChef?.toLowerCase() === lowerAddr) return { name: 'MasterChefV2', type: 'Staking' };
-      if (cfg.dex.wrappedNative?.address?.toLowerCase() === lowerAddr) return { name: cfg.dex.wrappedNative.name || 'WVBC', type: 'Wrapped Token' };
-      if (cfg.dex.rewardToken?.address?.toLowerCase() === lowerAddr) return { name: cfg.dex.rewardToken.name || 'Reward Token', type: 'ERC20' };
-      
+      if (cfg.dex.factory?.toLowerCase() === lowerAddr)
+        return { name: 'SimpleFactoryV2', type: 'DEX Factory' };
+      if (cfg.dex.router?.toLowerCase() === lowerAddr)
+        return { name: 'SimpleRouterV2', type: 'DEX Router' };
+      if (cfg.dex.masterChef?.toLowerCase() === lowerAddr)
+        return { name: 'MasterChefV2', type: 'Staking' };
+      if (cfg.dex.wrappedNative?.address?.toLowerCase() === lowerAddr)
+        return { name: cfg.dex.wrappedNative.name || 'WVBC', type: 'Wrapped Token' };
+      if (cfg.dex.rewardToken?.address?.toLowerCase() === lowerAddr)
+        return { name: cfg.dex.rewardToken.name || 'Reward Token', type: 'ERC20' };
+
       // DEXトークン
       if (cfg.dex.tokens) {
         for (const [, token] of Object.entries(cfg.dex.tokens)) {
@@ -255,7 +292,7 @@ export async function GET(
           }
         }
       }
-      
+
       // LPトークン
       if (cfg.dex.lpTokens) {
         for (const [, lp] of Object.entries(cfg.dex.lpTokens)) {
@@ -266,12 +303,12 @@ export async function GET(
         }
       }
     }
-    
+
     // Launchpad TokenFactory
     if (cfg.launchpad?.factoryAddress?.toLowerCase() === lowerAddr) {
       return { name: 'TokenFactory', type: 'Token Factory' };
     }
-    
+
     return null;
   };
 
@@ -321,19 +358,18 @@ export async function GET(
   const allTransactions = await Transaction.find({
     $or: [
       { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-      { to: { $regex: new RegExp(`^${address}$`, 'i') } }
-    ]
+      { to: { $regex: new RegExp(`^${address}$`, 'i') } },
+    ],
   })
     .sort({ timestamp: -1 })
     .limit(50); // より多くのトランザクションを取得
 
   // 通常のトランザクションとマイニング報酬を分類
-  const regularTransactions = allTransactions.filter(tx => 
-    tx.from !== '0x0000000000000000000000000000000000000000' && 
-    tx.to !== '0x0000000000000000000000000000000000000000'
+  const regularTransactions = allTransactions.filter(
+    (tx) =>
+      tx.from !== '0x0000000000000000000000000000000000000000' &&
+      tx.to !== '0x0000000000000000000000000000000000000000'
   );
-
-
 
   // 表示用のトランザクション（通常のトランザクションのみ、最大10件）
   const displayTransactions = regularTransactions.slice(0, 10);
@@ -342,31 +378,31 @@ export async function GET(
   const regularTransactionCount = await Transaction.countDocuments({
     $or: [
       { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-      { to: { $regex: new RegExp(`^${address}$`, 'i') } }
+      { to: { $regex: new RegExp(`^${address}$`, 'i') } },
     ],
     $and: [
       { from: { $ne: '0x0000000000000000000000000000000000000000' } },
-      { to: { $ne: '0x0000000000000000000000000000000000000000' } }
-    ]
+      { to: { $ne: '0x0000000000000000000000000000000000000000' } },
+    ],
   });
 
   // 全トランザクション数を取得
   const transactionCount = await Transaction.countDocuments({
     $or: [
       { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-      { to: { $regex: new RegExp(`^${address}$`, 'i') } }
-    ]
+      { to: { $regex: new RegExp(`^${address}$`, 'i') } },
+    ],
   });
 
   // 採掘したブロック数を取得
   const blocksMined = await Block.countDocuments({
-    miner: { $regex: new RegExp(`^${address}$`, 'i') }
+    miner: { $regex: new RegExp(`^${address}$`, 'i') },
   });
 
   // 時間フォーマット関数（Unix timestamp対応）
   const getTimeAgo = (timestamp: Date | number | null): string => {
     if (!timestamp) return 'Unknown';
-    
+
     let targetTime: Date;
     if (typeof timestamp === 'number') {
       // Unix timestampの場合（秒単位）
@@ -376,17 +412,17 @@ export async function GET(
     } else {
       targetTime = new Date(timestamp);
     }
-    
+
     const now = new Date();
     const diff = now.getTime() - targetTime.getTime();
-    
+
     // 負の値の場合（未来の日付）は0として扱う
     if (diff < 0) return 'just now';
-    
+
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor(diff / (1000 * 60));
-    
+
     if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
     if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
     if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
@@ -396,7 +432,7 @@ export async function GET(
   // 日付フォーマット関数
   const formatDate = (timestamp: Date | number | null): string => {
     if (!timestamp) return 'Unknown';
-    
+
     let targetTime: Date;
     if (typeof timestamp === 'number') {
       targetTime = new Date(timestamp * 1000);
@@ -405,124 +441,128 @@ export async function GET(
     } else {
       targetTime = new Date(timestamp);
     }
-    
+
     return targetTime.toLocaleString(undefined, { timeZoneName: 'short' });
   };
 
   // マイニング報酬を計算（ブロック報酬 + ガス料金）
   const minedBlocks = await Block.find({
-    miner: { $regex: new RegExp(`^${address}$`, 'i') }
-  }).sort({ timestamp: -1 }).limit(10);
+    miner: { $regex: new RegExp(`^${address}$`, 'i') },
+  })
+    .sort({ timestamp: -1 })
+    .limit(10);
 
   // マイニング報酬トランザクションを生成
-  const miningRewards = await Promise.all(minedBlocks.map(async (block) => {
-    try {
-      // Web3からブロック情報を取得
-      const blockInfo = await web3.eth.getBlock(block.number, true);
-      
-      // 実際の報酬を計算
-      let actualReward = 0;
-      
-      // 1. ブロック報酬（8 VBC固定）
-      const blockReward = 8;
-      
-      // 2. ガス料金の計算（ブロック内の全トランザクションから）
-      let totalGasFees = 0;
-      if (blockInfo.transactions && blockInfo.transactions.length > 0) {
-        for (const tx of blockInfo.transactions) {
-          // 型ガード: txがオブジェクトでgasPriceとgasUsedプロパティを持つかチェック
-          if (typeof tx === 'object' && tx !== null && 'gasPrice' in tx && 'gasUsed' in tx) {
-            const txObj = tx as { gasPrice?: bigint; gasUsed?: bigint };
-            if (typeof txObj.gasPrice === 'bigint' && typeof txObj.gasUsed === 'bigint') {
-              const gasFee = Number(txObj.gasUsed) * Number(txObj.gasPrice) / 1e18;
-              totalGasFees += gasFee;
+  const miningRewards = await Promise.all(
+    minedBlocks.map(async (block) => {
+      try {
+        // Web3からブロック情報を取得
+        const blockInfo = await web3.eth.getBlock(block.number, true);
+
+        // 実際の報酬を計算
+        let actualReward = 0;
+
+        // 1. ブロック報酬（8 VBC固定）
+        const blockReward = 8;
+
+        // 2. ガス料金の計算（ブロック内の全トランザクションから）
+        let totalGasFees = 0;
+        if (blockInfo.transactions && blockInfo.transactions.length > 0) {
+          for (const tx of blockInfo.transactions) {
+            // 型ガード: txがオブジェクトでgasPriceとgasUsedプロパティを持つかチェック
+            if (typeof tx === 'object' && tx !== null && 'gasPrice' in tx && 'gasUsed' in tx) {
+              const txObj = tx as { gasPrice?: bigint; gasUsed?: bigint };
+              if (typeof txObj.gasPrice === 'bigint' && typeof txObj.gasUsed === 'bigint') {
+                const gasFee = (Number(txObj.gasUsed) * Number(txObj.gasPrice)) / 1e18;
+                totalGasFees += gasFee;
+              }
             }
           }
         }
-      }
-      
-      // 3. 実際のバランス変化を取得
-      try {
-        if (block.number > 0) {
-          const balanceBefore = await web3.eth.getBalance(address, block.number - 1);
-          const balanceAfter = await web3.eth.getBalance(address, block.number);
-          const balanceChange = (Number(balanceAfter) - Number(balanceBefore)) / 1e18;
-          
-          // バランス変化が正の値の場合、それを実際の報酬として使用
-          if (balanceChange > 0) {
-            actualReward = balanceChange;
+
+        // 3. 実際のバランス変化を取得
+        try {
+          if (block.number > 0) {
+            const balanceBefore = await web3.eth.getBalance(address, block.number - 1);
+            const balanceAfter = await web3.eth.getBalance(address, block.number);
+            const balanceChange = (Number(balanceAfter) - Number(balanceBefore)) / 1e18;
+
+            // バランス変化が正の値の場合、それを実際の報酬として使用
+            if (balanceChange > 0) {
+              actualReward = balanceChange;
+            } else {
+              // バランス変化が0以下の場合、ブロック報酬とガス料金の合計を使用
+              actualReward = blockReward + totalGasFees;
+            }
           } else {
-            // バランス変化が0以下の場合、ブロック報酬とガス料金の合計を使用
+            // ジェネシスブロックの場合
             actualReward = blockReward + totalGasFees;
           }
-        } else {
-          // ジェネシスブロックの場合
-          actualReward = blockReward + totalGasFees;
-        }
-              } catch {
+        } catch {
           // バランス取得に失敗した場合は計算値を使用
           actualReward = blockReward + totalGasFees;
         }
-      
-      return {
-        hash: block.hash,
-        from: '0x0000000000000000000000000000000000000000',
-        to: address,
-        value: actualReward.toFixed(8),
-        timestamp: block.timestamp,
-        timeAgo: getTimeAgo(block.timestamp),
-        blockNumber: block.number,
-        type: 'mining_reward',
-        status: 'success',
-        details: {
-          blockReward: blockReward,
-          gasFees: totalGasFees.toFixed(8),
-          totalReward: actualReward.toFixed(8)
-        }
-      };
-    } catch {
-      // フォールバック: 固定報酬を使用
-      return {
-        hash: block.hash,
-        from: '0x0000000000000000000000000000000000000000',
-        to: address,
-        value: '8.00000000', // 固定報酬
-        timestamp: block.timestamp,
-        timeAgo: getTimeAgo(block.timestamp),
-        blockNumber: block.number,
-        type: 'mining_reward',
-        status: 'success',
-        details: {
-          blockReward: 8,
-          gasFees: '0.00000000',
-          totalReward: '8.00000000'
-        }
-      };
-    }
-  }));
+
+        return {
+          hash: block.hash,
+          from: '0x0000000000000000000000000000000000000000',
+          to: address,
+          value: actualReward.toFixed(8),
+          timestamp: block.timestamp,
+          timeAgo: getTimeAgo(block.timestamp),
+          blockNumber: block.number,
+          type: 'mining_reward',
+          status: 'success',
+          details: {
+            blockReward: blockReward,
+            gasFees: totalGasFees.toFixed(8),
+            totalReward: actualReward.toFixed(8),
+          },
+        };
+      } catch {
+        // フォールバック: 固定報酬を使用
+        return {
+          hash: block.hash,
+          from: '0x0000000000000000000000000000000000000000',
+          to: address,
+          value: '8.00000000', // 固定報酬
+          timestamp: block.timestamp,
+          timeAgo: getTimeAgo(block.timestamp),
+          blockNumber: block.number,
+          type: 'mining_reward',
+          status: 'success',
+          details: {
+            blockReward: 8,
+            gasFees: '0.00000000',
+            totalReward: '8.00000000',
+          },
+        };
+      }
+    })
+  );
 
   // 最初と最後のトランザクションを取得（通常のトランザクション）
   const firstTx = await Transaction.findOne({
     $or: [
       { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-      { to: { $regex: new RegExp(`^${address}$`, 'i') } }
-    ]
+      { to: { $regex: new RegExp(`^${address}$`, 'i') } },
+    ],
   }).sort({ timestamp: 1 });
 
   const lastTx = await Transaction.findOne({
     $or: [
       { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-      { to: { $regex: new RegExp(`^${address}$`, 'i') } }
-    ]
+      { to: { $regex: new RegExp(`^${address}$`, 'i') } },
+    ],
   }).sort({ timestamp: -1 });
 
   // マイニング報酬の最初と最後を取得
   const firstMiningBlock = await Block.findOne({
-    miner: { $regex: new RegExp(`^${address}$`, 'i') }
+    miner: { $regex: new RegExp(`^${address}$`, 'i') },
   }).sort({ timestamp: 1 });
 
   const lastMiningBlock = await Block.findOne({
-    miner: { $regex: new RegExp(`^${address}$`, 'i') }
+    miner: { $regex: new RegExp(`^${address}$`, 'i') },
   }).sort({ timestamp: -1 });
 
   // 最初の活動日時を決定（通常のトランザクションとマイニングの早い方）
@@ -543,46 +583,61 @@ export async function GET(
 
   // TokenTransferも取得（直接DBアクセス）
   const db = mongoose.connection.db;
-  const tokenTransfers = db ? await db.collection('tokentransfers').find({
-    $or: [
-      { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-      { to: { $regex: new RegExp(`^${address}$`, 'i') } }
-    ]
-  }).sort({ timestamp: -1 }).limit(50).toArray() : [];
+  const tokenTransfers = db
+    ? await db
+        .collection('tokentransfers')
+        .find({
+          $or: [
+            { from: { $regex: new RegExp(`^${address}$`, 'i') } },
+            { to: { $regex: new RegExp(`^${address}$`, 'i') } },
+          ],
+        })
+        .sort({ timestamp: -1 })
+        .limit(50)
+        .toArray()
+    : [];
 
   // トークン転送数を取得
-  const tokenTransferCount = db ? await db.collection('tokentransfers').countDocuments({
-    $or: [
-      { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-      { to: { $regex: new RegExp(`^${address}$`, 'i') } }
-    ]
-  }) : 0;
+  const tokenTransferCount = db
+    ? await db.collection('tokentransfers').countDocuments({
+        $or: [
+          { from: { $regex: new RegExp(`^${address}$`, 'i') } },
+          { to: { $regex: new RegExp(`^${address}$`, 'i') } },
+        ],
+      })
+    : 0;
 
   // トークン情報のマップを作成（高速化のため）
-  const tokenAddresses = [...new Set(tokenTransfers.map((t) => (t as Record<string, unknown>).tokenAddress as string))].filter(Boolean);
-  const tokenInfoMap = new Map<string, { name: string; symbol: string; decimals: number; type: string }>();
-  
+  const tokenAddresses = [
+    ...new Set(tokenTransfers.map((t) => (t as Record<string, unknown>).tokenAddress as string)),
+  ].filter(Boolean);
+  const tokenInfoMap = new Map<
+    string,
+    { name: string; symbol: string; decimals: number; type: string }
+  >();
+
   if (db && tokenAddresses.length > 0) {
     // addressフィールドで検索（tokensコレクションの構造に合わせる）
-    const tokens = await db.collection('tokens').find({
-      address: { $in: tokenAddresses.map(a => new RegExp(`^${a}$`, 'i')) }
-    }).toArray();
-    
+    const tokens = await db
+      .collection('tokens')
+      .find({
+        address: { $in: tokenAddresses.map((a) => new RegExp(`^${a}$`, 'i')) },
+      })
+      .toArray();
+
     for (const token of tokens) {
       const t = token as Record<string, unknown>;
-      const addr = (t.address as string || '').toLowerCase();
+      const addr = ((t.address as string) || '').toLowerCase();
       if (addr) {
         tokenInfoMap.set(addr, {
-          name: t.name as string || 'Unknown Token',
-          symbol: t.symbol as string || '???',
-          decimals: t.decimals as number || 18,
-          type: t.type as string || 'VRC-20'
+          name: (t.name as string) || 'Unknown Token',
+          symbol: (t.symbol as string) || '???',
+          decimals: (t.decimals as number) || 18,
+          type: (t.type as string) || 'VRC-20',
         });
       }
     }
   }
-
-
 
   // バランスフォーマット関数（WeiからVBCに変換）
   const formatBalance = (balance: string) => {
@@ -592,12 +647,12 @@ export async function GET(
       if (numValue > 1000000000000000000) {
         return (numValue / 1000000000000000000).toLocaleString(undefined, {
           minimumFractionDigits: 2,
-          maximumFractionDigits: 8
+          maximumFractionDigits: 8,
         });
       }
       return numValue.toLocaleString(undefined, {
         minimumFractionDigits: 2,
-        maximumFractionDigits: 8
+        maximumFractionDigits: 8,
       });
     } catch {
       return balance;
@@ -612,7 +667,7 @@ export async function GET(
       const nativeValue = numValue / 1000000000000000000;
       return nativeValue.toLocaleString(undefined, {
         minimumFractionDigits: 2,
-        maximumFractionDigits: 8
+        maximumFractionDigits: 8,
       });
     } catch {
       return value;
@@ -620,8 +675,12 @@ export async function GET(
   };
 
   // トークン転送のトランザクションハッシュを収集（タイプ判定用）
-  const tokenTxHashes = new Set(tokenTransfers.map((tx) => String((tx as Record<string, unknown>).transactionHash || '').toLowerCase()));
-  
+  const tokenTxHashes = new Set(
+    tokenTransfers.map((tx) =>
+      String((tx as Record<string, unknown>).transactionHash || '').toLowerCase()
+    )
+  );
+
   // トークントランスファー情報をハッシュでマップ化
   const tokenTransferMap = new Map<string, Array<Record<string, unknown>>>();
   for (const tt of tokenTransfers) {
@@ -664,30 +723,30 @@ export async function GET(
       tokenAddress: string;
     };
   }
-  
+
   const allTxs: FormattedTransaction[] = [];
   const processedHashes = new Set<string>();
-  
+
   // 1. 全トランザクションを処理（通常トランザクション）
   for (const tx of displayTransactions) {
     const txData = tx as Record<string, unknown>;
     const hash = String(txData.hash || '').toLowerCase();
     if (processedHashes.has(hash)) continue;
     processedHashes.add(hash);
-    
+
     const txType = getTransactionType(
       {
         from: txData.from as string,
         to: txData.to as string | null,
         value: txData.value as string,
         input: txData.input as string | undefined,
-        status: txData.status as number | undefined
+        status: txData.status as number | undefined,
       },
       address,
       tokenTxHashes,
       hash
     );
-    
+
     const formatted: FormattedTransaction = {
       hash: txData.hash as string,
       from: txData.from as string,
@@ -703,16 +762,16 @@ export async function GET(
       status: (txData.status as number) === 1 ? 'success' : 'failed',
       gasUsed: txData.gasUsed as number | undefined,
       gasPrice: txData.gasPrice as string | undefined,
-      input: txData.input as string | undefined
+      input: txData.input as string | undefined,
     };
-    
+
     // トークン転送情報があれば追加
     const tokenTransfersForTx = tokenTransferMap.get(hash);
     if (tokenTransfersForTx && tokenTransfersForTx.length > 0) {
       const tt = tokenTransfersForTx[0];
       const tokenAddr = (tt.tokenAddress as string).toLowerCase();
       const tokenInfo = tokenInfoMap.get(tokenAddr);
-      
+
       formatted.tokenInfo = {
         address: tt.tokenAddress as string,
         name: tokenInfo?.name || 'Unknown Token',
@@ -720,43 +779,43 @@ export async function GET(
         decimals: tokenInfo?.decimals || 18,
         type: tokenInfo?.type || 'VRC-20',
         value: tt.value as string,
-        tokenId: tt.tokenId as number | undefined
+        tokenId: tt.tokenId as number | undefined,
       };
-      
+
       // NFTの場合
       if (tt.tokenId !== undefined && tt.tokenId !== null) {
         formatted.nftInfo = {
           tokenId: tt.tokenId as number,
-          tokenAddress: tt.tokenAddress as string
+          tokenAddress: tt.tokenAddress as string,
         };
         formatted.type = 'nft_transfer';
         formatted.action = txType.action === 'Transfer' ? 'NFT Transfer' : txType.action;
       }
     }
-    
+
     allTxs.push(formatted);
   }
-  
+
   // 2. トークントランスファーで、まだ処理されていないものを追加
   for (const tt of tokenTransfers) {
     const t = tt as Record<string, unknown>;
     const hash = String(t.transactionHash || '').toLowerCase();
     if (processedHashes.has(hash)) continue;
     processedHashes.add(hash);
-    
+
     const isFromAddress = (t.from as string).toLowerCase() === address.toLowerCase();
     const isToAddress = (t.to as string).toLowerCase() === address.toLowerCase();
     let direction: 'in' | 'out' | 'self' = 'out';
     if (isFromAddress && isToAddress) direction = 'self';
     else if (isToAddress) direction = 'in';
-    
+
     const tokenAddr = (t.tokenAddress as string).toLowerCase();
     const tokenInfo = tokenInfoMap.get(tokenAddr);
-    
+
     const isNFT = t.tokenId !== undefined && t.tokenId !== null;
     const type = isNFT ? 'nft_transfer' : 'token_transfer';
     const action = isNFT ? 'NFT Transfer' : 'Token Transfer';
-    
+
     const formatted: FormattedTransaction = {
       hash: t.transactionHash as string,
       from: t.from as string,
@@ -777,26 +836,26 @@ export async function GET(
         decimals: tokenInfo?.decimals || 18,
         type: tokenInfo?.type || 'VRC-20',
         value: t.value as string,
-        tokenId: t.tokenId as number | undefined
-      }
+        tokenId: t.tokenId as number | undefined,
+      },
     };
-    
+
     if (isNFT) {
       formatted.nftInfo = {
         tokenId: t.tokenId as number,
-        tokenAddress: t.tokenAddress as string
+        tokenAddress: t.tokenAddress as string,
       };
     }
-    
+
     allTxs.push(formatted);
   }
-  
+
   // 3. マイニング報酬を追加
   for (const tx of miningRewards.slice(0, 10)) {
     const hash = tx.hash?.toLowerCase();
     if (hash && processedHashes.has(hash)) continue;
     if (hash) processedHashes.add(hash);
-    
+
     allTxs.push({
       hash: tx.hash,
       from: tx.from,
@@ -809,14 +868,16 @@ export async function GET(
       type: 'mining_reward',
       action: 'Block Reward',
       direction: 'in',
-      status: tx.status || 'success'
+      status: tx.status || 'success',
     });
   }
-  
+
   // タイムスタンプでソート
   allTxs.sort((a, b) => {
-    const timeA = typeof a.timestamp === 'number' ? a.timestamp * 1000 : new Date(a.timestamp).getTime();
-    const timeB = typeof b.timestamp === 'number' ? b.timestamp * 1000 : new Date(b.timestamp).getTime();
+    const timeA =
+      typeof a.timestamp === 'number' ? a.timestamp * 1000 : new Date(a.timestamp).getTime();
+    const timeB =
+      typeof b.timestamp === 'number' ? b.timestamp * 1000 : new Date(b.timestamp).getTime();
     return timeB - timeA;
   });
 
@@ -837,7 +898,7 @@ export async function GET(
       creationTransaction: contractObj.creationTransaction || '',
       blockNumber: contractObj.blockNumber || 0,
       creator: contractObj.owner || '',
-      isContract: true
+      isContract: true,
     };
   } else if (isContract) {
     // DBにないがコントラクトの場合、config.jsonから既知の名前を取得
@@ -855,7 +916,7 @@ export async function GET(
       creator: '',
       isContract: true,
       bytecodeSize: Math.floor((contractCode.length - 2) / 2), // バイトコードサイズ（バイト単位）
-      knownContract: knownContract !== null // config.jsonで既知のコントラクトかどうか
+      knownContract: knownContract !== null, // config.jsonで既知のコントラクトかどうか
     };
   }
 
@@ -865,12 +926,16 @@ export async function GET(
       balance: formatBalance(realBalance), // 表示用（フォーマット済み）
       balanceRaw: realBalance, // 生の値
       percentage: percent.toFixed(4), // 動的計算値
-      rank,       // DB値そのまま
+      rank, // DB値そのまま
       transactionCount: transactionCount || 0,
       blocksMined: blocksMined || 0,
       tokenTransferCount: tokenTransferCount || 0,
-      firstSeen: firstActivity ? `${formatDate(firstActivity)} (${getTimeAgo(firstActivity)})` : 'Unknown',
-      lastActivity: lastActivity ? `${formatDate(lastActivity)} (${getTimeAgo(lastActivity)})` : 'Unknown'
+      firstSeen: firstActivity
+        ? `${formatDate(firstActivity)} (${getTimeAgo(firstActivity)})`
+        : 'Unknown',
+      lastActivity: lastActivity
+        ? `${formatDate(lastActivity)} (${getTimeAgo(lastActivity)})`
+        : 'Unknown',
     },
     contract: contractInfo,
     transactions: allTxs,
@@ -878,7 +943,7 @@ export async function GET(
     transactionStats: {
       regularCount: regularTransactionCount || 0, // 実際の通常トランザクション数を使用
       miningCount: blocksMined || 0, // 実際のマイニングブロック数を使用
-      totalCount: (regularTransactionCount || 0) + (blocksMined || 0)
-    }
+      totalCount: (regularTransactionCount || 0) + (blocksMined || 0),
+    },
   });
-} 
+}

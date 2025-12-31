@@ -11,7 +11,7 @@ const readConfig = () => {
   try {
     const configPath = path.join(process.cwd(), 'config.json');
     const exampleConfigPath = path.join(process.cwd(), 'config.example.json');
-    
+
     if (fs.existsSync(configPath)) {
       return JSON.parse(fs.readFileSync(configPath, 'utf8'));
     } else if (fs.existsSync(exampleConfigPath)) {
@@ -20,13 +20,13 @@ const readConfig = () => {
   } catch (error) {
     console.error('Error reading config:', error);
   }
-  
+
   // Default configuration
   return {
     nodeAddr: 'localhost',
     port: 8329,
     wsPort: 8330,
-    miners: {}
+    miners: {},
   };
 };
 
@@ -34,12 +34,14 @@ const readConfig = () => {
 const config = readConfig();
 
 // Create Web3 connection
-const web3 = new Web3(new Web3.providers.WebsocketProvider(`ws://${config.nodeAddr}:${config.wsPort}`));
+const web3 = new Web3(
+  new Web3.providers.WebsocketProvider(`ws://${config.nodeAddr}:${config.wsPort}`)
+);
 
 export async function POST(request: NextRequest) {
   try {
     await connectToDatabase();
-    
+
     const body = await request.json();
 
     if ('tx' in body) {
@@ -47,13 +49,13 @@ export async function POST(request: NextRequest) {
 
       let txResponse: Record<string, unknown>;
       let doc;
-      
+
       try {
         doc = await Transaction.findOne({ hash: txHash }).lean(true).exec();
       } catch {
         // Database error, continue to blockchain lookup
       }
-      
+
       if (!doc) {
         // Try to get from blockchain
         try {
@@ -67,10 +69,10 @@ export async function POST(request: NextRequest) {
               return NextResponse.json({ error: true, isBlock: true });
             }
           }
-          
+
           txResponse = tx as Record<string, unknown>;
           txResponse.value = toEther(BigInt(tx.value), 'wei');
-          
+
           // Get transaction receipt
           const receipt = await web3.eth.getTransactionReceipt(txHash);
           if (receipt) {
@@ -82,15 +84,14 @@ export async function POST(request: NextRequest) {
               txResponse.creates = receipt.contractAddress;
             }
           }
-          
+
           // Get timestamp from block
           const block = await web3.eth.getBlock(tx.blockNumber);
           if (block) {
             txResponse.timestamp = block.timestamp;
           }
-          
-          txResponse.isTrace = (txResponse.input !== '0x');
-          
+
+          txResponse.isTrace = txResponse.input !== '0x';
         } catch {
           return NextResponse.json({ error: true });
         }
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest) {
       if (txResponse.confirmations === latestBlock) {
         txResponse.confirmation = 0;
       }
-      
+
       txResponse.gasPriceGwei = toGwei(BigInt(String(txResponse.gasPrice || 0)), 'wei');
       txResponse.gasPriceEther = toEther(BigInt(String(txResponse.gasPrice || 0)), 'wei');
       txResponse.txFee = Number(txResponse.gasPriceEther) * Number(txResponse.gasUsed || 0);
@@ -119,7 +120,6 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json(txResponse);
-      
     } else if ('addr' in body) {
       const addr = body.addr.toLowerCase();
       const { options } = body;
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: true });
         }
       }
-      
+
       if (options.indexOf('count') > -1) {
         try {
           addrData.count = await web3.eth.getTransactionCount(addr);
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: true });
         }
       }
-      
+
       if (options.indexOf('bytecode') > -1) {
         try {
           const code = await web3.eth.getCode(addr);
@@ -153,16 +153,15 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json(addrData);
-      
     } else if ('block' in body) {
       const blockNumber = body.block;
-      
+
       try {
         const block = await web3.eth.getBlock(blockNumber, true);
         if (!block) {
           return NextResponse.json({ error: true });
         }
-        
+
         return NextResponse.json(block);
       } catch {
         return NextResponse.json({ error: true });
@@ -170,8 +169,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ error: true });
-    
   } catch {
     return NextResponse.json({ error: true }, { status: 500 });
   }
-} 
+}

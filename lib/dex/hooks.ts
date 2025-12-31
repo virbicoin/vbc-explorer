@@ -1,9 +1,24 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useReadContract, useWriteContract, useWaitForTransactionReceipt, useAccount, useBalance } from 'wagmi';
+import {
+  useReadContract,
+  useWriteContract,
+  useWaitForTransactionReceipt,
+  useAccount,
+  useBalance,
+} from 'wagmi';
 import { parseEther, formatEther, formatUnits, parseUnits, type Address } from 'viem';
-import { getDexContracts, ROUTER_ABI, FACTORY_ABI, PAIR_ABI, ERC20_ABI, type Token, getNativeToken, getWrappedNativeToken } from './config';
+import {
+  getDexContracts,
+  ROUTER_ABI,
+  FACTORY_ABI,
+  PAIR_ABI,
+  ERC20_ABI,
+  type Token,
+  getNativeToken,
+  getWrappedNativeToken,
+} from './config';
 
 // Generic token exports (lazily evaluated via Proxy to avoid module load errors)
 export const NATIVE_TOKEN = new Proxy({} as Token, {
@@ -26,7 +41,11 @@ export function getTokenAddress(token: Token): Address {
   return isNativeToken(token) ? contracts.wrappedNative : token.address;
 }
 
-export function formatTokenAmount(amount: bigint, decimals: number = 18, displayDecimals: number = 6): string {
+export function formatTokenAmount(
+  amount: bigint,
+  decimals: number = 18,
+  displayDecimals: number = 6
+): string {
   const formatted = formatUnits(amount, decimals);
   const num = parseFloat(formatted);
   if (num === 0) return '0';
@@ -38,7 +57,11 @@ export function formatTokenAmount(amount: bigint, decimals: number = 18, display
 }
 
 // Format token amount for input fields (no comma separators)
-export function formatTokenAmountForInput(amount: bigint, decimals: number = 18, displayDecimals: number = 18): string {
+export function formatTokenAmountForInput(
+  amount: bigint,
+  decimals: number = 18,
+  displayDecimals: number = 18
+): string {
   const formatted = formatUnits(amount, decimals);
   const num = parseFloat(formatted);
   if (num === 0) return '0';
@@ -65,11 +88,11 @@ export function calculatePriceImpact(
   reserveOut: bigint
 ): number {
   if (reserveIn === 0n || reserveOut === 0n || amountIn === 0n) return 0;
-  
+
   const spotPrice = Number(reserveOut) / Number(reserveIn);
   const executionPrice = Number(amountOut) / Number(amountIn);
   const priceImpact = ((spotPrice - executionPrice) / spotPrice) * 100;
-  
+
   return Math.max(0, priceImpact);
 }
 
@@ -112,7 +135,8 @@ export function useTokenAllowance(tokenAddress: Address, owner?: Address, spende
     functionName: 'allowance',
     args: owner && spender ? [owner, spender] : undefined,
     query: {
-      enabled: !!owner && !!spender && tokenAddress !== '0x0000000000000000000000000000000000000000',
+      enabled:
+        !!owner && !!spender && tokenAddress !== '0x0000000000000000000000000000000000000000',
     },
   });
 }
@@ -136,9 +160,7 @@ export function useReserves(tokenA: Address, tokenB: Address) {
   const { data: pairAddress } = usePairAddress(tokenA, tokenB);
   const pair = pairAddress as Address | undefined;
   const enabled =
-    tokenA !== tokenB &&
-    !!pair &&
-    pair !== '0x0000000000000000000000000000000000000000';
+    tokenA !== tokenB && !!pair && pair !== '0x0000000000000000000000000000000000000000';
 
   const { data: token0 } = useReadContract({
     address: pair,
@@ -151,7 +173,7 @@ export function useReserves(tokenA: Address, tokenB: Address) {
     address: pair,
     abi: PAIR_ABI,
     functionName: 'getReserves',
-    query: { 
+    query: {
       enabled,
       refetchInterval: 5000, // Refetch every 5 seconds for live updates
     },
@@ -188,7 +210,7 @@ export function useSwapQuote(amountIn: bigint, path: Address[]) {
 // Get pair info
 export function usePairInfo(pairAddress?: Address) {
   const isEnabled = !!pairAddress && pairAddress !== '0x0000000000000000000000000000000000000000';
-  
+
   const { data: token0 } = useReadContract({
     address: pairAddress,
     abi: PAIR_ABI,
@@ -207,7 +229,7 @@ export function usePairInfo(pairAddress?: Address) {
     address: pairAddress,
     abi: PAIR_ABI,
     functionName: 'getReserves',
-    query: { 
+    query: {
       enabled: isEnabled,
       refetchInterval: 5000, // Refetch every 5 seconds for live updates
     },
@@ -217,7 +239,7 @@ export function usePairInfo(pairAddress?: Address) {
     address: pairAddress,
     abi: PAIR_ABI,
     functionName: 'totalSupply',
-    query: { 
+    query: {
       enabled: isEnabled,
       refetchInterval: 5000, // Refetch every 5 seconds for live updates
     },
@@ -240,7 +262,10 @@ export function useUserLPBalance(pairAddress?: Address, userAddress?: Address) {
     functionName: 'balanceOf',
     args: userAddress ? [userAddress] : undefined,
     query: {
-      enabled: !!pairAddress && !!userAddress && pairAddress !== '0x0000000000000000000000000000000000000000',
+      enabled:
+        !!pairAddress &&
+        !!userAddress &&
+        pairAddress !== '0x0000000000000000000000000000000000000000',
       refetchInterval: 5000, // Refetch every 5 seconds for live updates
     },
   });
@@ -454,7 +479,16 @@ export function useAddLiquidity() {
         address: contracts.router,
         abi: ROUTER_ABI,
         functionName: 'addLiquidity',
-        args: [tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin, to, deadline()],
+        args: [
+          tokenA,
+          tokenB,
+          amountADesired,
+          amountBDesired,
+          amountAMin,
+          amountBMin,
+          to,
+          deadline(),
+        ],
       });
     }
   };
@@ -462,7 +496,16 @@ export function useAddLiquidity() {
   // Legacy alias for backward compatibility
   const addLiquidityVBC = addLiquidityNative;
 
-  return { addLiquidityNative, addLiquidityVBC, addLiquidity, hash, isPending, isConfirming, isSuccess, error };
+  return {
+    addLiquidityNative,
+    addLiquidityVBC,
+    addLiquidity,
+    hash,
+    isPending,
+    isConfirming,
+    isSuccess,
+    error,
+  };
 }
 
 // Transfer LP tokens to pair for burning
@@ -564,7 +607,16 @@ export function useRemoveLiquidity() {
   // Legacy alias for backward compatibility
   const removeLiquidityVBC = removeLiquidityNative;
 
-  return { removeLiquidityNative, removeLiquidityVBC, removeLiquidity, hash, isPending, isConfirming, isSuccess, error };
+  return {
+    removeLiquidityNative,
+    removeLiquidityVBC,
+    removeLiquidity,
+    hash,
+    isPending,
+    isConfirming,
+    isSuccess,
+    error,
+  };
 }
 
 // Approve LP tokens for removal (kept for compatibility but may not work with this contract)

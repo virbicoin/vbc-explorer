@@ -1,9 +1,9 @@
 /**
  * Database Index Optimization Script
- * 
+ *
  * Creates and optimizes indexes for better query performance.
  * Run this script after initial setup or when adding new indexes.
- * 
+ *
  * Usage: npx ts-node --project tsconfig.tools.json tools/optimize-indexes.ts
  */
 
@@ -14,7 +14,8 @@ import path from 'path';
 // Load config
 const configPath = path.join(process.cwd(), 'config.json');
 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-const MONGODB_URI = config.database?.uri || process.env.MONGODB_URI || 'mongodb://localhost:27017/explorerDB';
+const MONGODB_URI =
+  config.database?.uri || process.env.MONGODB_URI || 'mongodb://localhost:27017/explorerDB';
 
 interface IndexDefinition {
   collection: string;
@@ -49,15 +50,15 @@ const INDEX_DEFINITIONS: IndexDefinition[] = [
       { keys: { to: 1, blockNumber: -1 } },
       { keys: { timestamp: -1 } },
       { keys: { from: 1, timestamp: -1 } }, // For address transactions
-      { keys: { to: 1, timestamp: -1 } },   // For address transactions
+      { keys: { to: 1, timestamp: -1 } }, // For address transactions
     ],
   },
   {
     collection: 'Account',
     indexes: [
       { keys: { address: 1 }, options: { unique: true } },
-      { keys: { balance: -1 } },           // For richlist
-      { keys: { type: 1, balance: -1 } },  // For contract list
+      { keys: { balance: -1 } }, // For richlist
+      { keys: { type: 1, balance: -1 } }, // For contract list
     ],
   },
   {
@@ -94,10 +95,7 @@ const INDEX_DEFINITIONS: IndexDefinition[] = [
   },
   {
     collection: 'BlockStat',
-    indexes: [
-      { keys: { timestamp: -1 } },
-      { keys: { number: -1 }, options: { unique: true } },
-    ],
+    indexes: [{ keys: { timestamp: -1 } }, { keys: { number: -1 }, options: { unique: true } }],
   },
 ];
 
@@ -113,15 +111,15 @@ async function createIndexes(): Promise<void> {
 
   for (const def of INDEX_DEFINITIONS) {
     console.log(`📦 Collection: ${def.collection}`);
-    
+
     try {
       const collection = db.collection(def.collection);
-      
+
       for (const index of def.indexes) {
         const indexName = Object.entries(index.keys)
           .map(([k, v]) => `${k}_${v}`)
           .join('_');
-        
+
         try {
           await collection.createIndex(index.keys, {
             ...index.options,
@@ -140,7 +138,7 @@ async function createIndexes(): Promise<void> {
     } catch (err) {
       console.log(`  ⚠️  Collection may not exist yet: ${def.collection}`);
     }
-    
+
     console.log('');
   }
 

@@ -37,7 +37,7 @@ services:
   richlist:
     build: .
     command: npm run rich
-    restart: "no"
+    restart: 'no'
     environment:
       MONGODB_URI: 'mongodb://db/explorerDB'
     depends_on:

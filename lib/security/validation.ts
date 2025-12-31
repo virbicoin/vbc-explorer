@@ -1,6 +1,6 @@
 /**
  * Security Utilities
- * 
+ *
  * Input validation, sanitization, and security helpers.
  */
 
@@ -134,7 +134,7 @@ export function checkRateLimit(
   // Refill tokens based on time passed
   const timePassed = (now - entry.lastRefill) / 1000;
   const tokensToAdd = Math.floor(timePassed * refillRate);
-  
+
   if (tokensToAdd > 0) {
     entry.tokens = Math.min(maxTokens, entry.tokens + tokensToAdd);
     entry.lastRefill = now;

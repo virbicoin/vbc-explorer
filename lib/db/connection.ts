@@ -1,6 +1,6 @@
 /**
  * Database Connection Manager
- * 
+ *
  * Singleton pattern for MongoDB connection to ensure
  * connection reuse across the application.
  */

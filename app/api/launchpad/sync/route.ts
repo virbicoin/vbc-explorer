@@ -67,31 +67,37 @@ const ERC20_ABI = [
 ] as const;
 
 // Define Token schema
-const tokenSchema = new mongoose.Schema({
-  address: String,
-  name: String,
-  symbol: String,
-  decimals: { type: Number, default: 18 },
-  totalSupply: String,
-  holders: { type: Number, default: 0 },
-  type: String,
-  supply: String,
-  verified: { type: Boolean, default: false },
-  createdAt: { type: Date, default: Date.now },
-  createdBy: String,
-  source: String,
-}, { collection: 'tokens' });
+const tokenSchema = new mongoose.Schema(
+  {
+    address: String,
+    name: String,
+    symbol: String,
+    decimals: { type: Number, default: 18 },
+    totalSupply: String,
+    holders: { type: Number, default: 0 },
+    type: String,
+    supply: String,
+    verified: { type: Boolean, default: false },
+    createdAt: { type: Date, default: Date.now },
+    createdBy: String,
+    source: String,
+  },
+  { collection: 'tokens' }
+);
 
 const Token = mongoose.models.Token || mongoose.model('Token', tokenSchema);
 
 // TokenHolder schema
-const tokenHolderSchema = new mongoose.Schema({
-  tokenAddress: String,
-  holderAddress: String,
-  balance: String,
-  rank: { type: Number, default: 1 },
-  percentage: { type: Number, default: 100 },
-}, { collection: 'tokenholders' });
+const tokenHolderSchema = new mongoose.Schema(
+  {
+    tokenAddress: String,
+    holderAddress: String,
+    balance: String,
+    rank: { type: Number, default: 1 },
+    percentage: { type: Number, default: 100 },
+  },
+  { collection: 'tokenholders' }
+);
 
 const TokenHolder = mongoose.models.TokenHolder || mongoose.model('TokenHolder', tokenHolderSchema);
 
@@ -102,17 +108,20 @@ export async function GET(request: NextRequest) {
     const factoryAddress = launchpadConfig?.factoryAddress;
 
     if (!factoryAddress || factoryAddress === '0x0000000000000000000000000000000000000000') {
-      return NextResponse.json({
-        success: false,
-        error: 'TokenFactory not configured'
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'TokenFactory not configured',
+        },
+        { status: 400 }
+      );
     }
 
     await connectDB();
 
     // Get all tokens from factory
     const factory = new web3.eth.Contract(TokenFactoryABI, factoryAddress);
-    const allTokens = await factory.methods.getAllTokens().call() as string[];
+    const allTokens = (await factory.methods.getAllTokens().call()) as string[];
 
     console.log(`Found ${allTokens.length} tokens in TokenFactory`);
 
@@ -121,45 +130,57 @@ export async function GET(request: NextRequest) {
       registered: 0,
       skipped: 0,
       errors: 0,
-      tokens: [] as { address: string; symbol: string; status: string }[]
+      tokens: [] as { address: string; symbol: string; status: string }[],
     };
 
     for (const tokenAddress of allTokens) {
       try {
         // Check if already registered
         const existing = await Token.findOne({
-          address: { $regex: new RegExp(`^${tokenAddress}$`, 'i') }
+          address: { $regex: new RegExp(`^${tokenAddress}$`, 'i') },
         });
 
         if (existing) {
           results.skipped++;
-          results.tokens.push({ address: tokenAddress, symbol: existing.symbol, status: 'skipped' });
+          results.tokens.push({
+            address: tokenAddress,
+            symbol: existing.symbol,
+            status: 'skipped',
+          });
           continue;
         }
 
         // Get token info directly from ERC20 contract
         const tokenContract = new web3.eth.Contract(ERC20_ABI, tokenAddress);
-        
+
         let name = 'Unknown';
         let symbol = 'UNKNOWN';
         let decimals = 18;
         let totalSupply = '0';
 
         try {
-          name = await tokenContract.methods.name().call() as string;
-        } catch (e) { /* ignore */ }
+          name = (await tokenContract.methods.name().call()) as string;
+        } catch (e) {
+          /* ignore */
+        }
 
         try {
-          symbol = await tokenContract.methods.symbol().call() as string;
-        } catch (e) { /* ignore */ }
+          symbol = (await tokenContract.methods.symbol().call()) as string;
+        } catch (e) {
+          /* ignore */
+        }
 
         try {
           decimals = Number(await tokenContract.methods.decimals().call());
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          /* ignore */
+        }
 
         try {
           totalSupply = String(await tokenContract.methods.totalSupply().call());
-        } catch (e) { /* ignore */ }
+        } catch (e) {
+          /* ignore */
+        }
 
         // Create token record
         const newToken = new Token({
@@ -173,7 +194,7 @@ export async function GET(request: NextRequest) {
           type: 'VRC-20',
           verified: false,
           createdAt: new Date(),
-          source: 'launchpad'
+          source: 'launchpad',
         });
 
         await newToken.save();
@@ -181,7 +202,6 @@ export async function GET(request: NextRequest) {
         results.registered++;
         results.tokens.push({ address: tokenAddress, symbol, status: 'registered' });
         console.log(`✅ Registered: ${symbol} (${tokenAddress})`);
-
       } catch (err) {
         results.errors++;
         results.tokens.push({ address: tokenAddress, symbol: 'unknown', status: 'error' });
@@ -192,15 +212,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: `Sync completed: ${results.registered} registered, ${results.skipped} skipped, ${results.errors} errors`,
-      results
+      results,
     });
-
   } catch (error) {
     console.error('Error syncing tokens:', error);
-    return NextResponse.json({
-      success: false,
-      error: 'Failed to sync tokens',
-      details: String(error)
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Failed to sync tokens',
+        details: String(error),
+      },
+      { status: 500 }
+    );
   }
 }

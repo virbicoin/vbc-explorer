@@ -35,7 +35,7 @@ let isUpdating = false;
 
 async function fetchRealtimeData(): Promise<RealtimeData> {
   await connectDB();
-  
+
   // 最新10ブロックと最新10トランザクションを並列取得
   const [blocksResult, transactionsResult] = await Promise.allSettled([
     Block.find({})
@@ -49,33 +49,46 @@ async function fetchRealtimeData(): Promise<RealtimeData> {
       .limit(10)
       .select({ hash: 1, from: 1, to: 1, value: 1, timestamp: 1, _id: 0 })
       .lean()
-      .maxTimeMS(5000) // 5秒タイムアウト
+      .maxTimeMS(5000), // 5秒タイムアウト
   ]);
-  
-  const blocks = blocksResult.status === 'fulfilled' 
-    ? (blocksResult.value as Array<{ number: number; hash: string; timestamp: number; miner: string }>)
-    : [];
-  
-  const transactions = transactionsResult.status === 'fulfilled'
-    ? (transactionsResult.value as Array<{ hash: string; from: string; to: string; value: string; timestamp: number }>)
-    : [];
-  
+
+  const blocks =
+    blocksResult.status === 'fulfilled'
+      ? (blocksResult.value as Array<{
+          number: number;
+          hash: string;
+          timestamp: number;
+          miner: string;
+        }>)
+      : [];
+
+  const transactions =
+    transactionsResult.status === 'fulfilled'
+      ? (transactionsResult.value as Array<{
+          hash: string;
+          from: string;
+          to: string;
+          value: string;
+          timestamp: number;
+        }>)
+      : [];
+
   return {
     latestBlock: blocks[0]?.number || 0,
-    blocks: blocks.map(b => ({
+    blocks: blocks.map((b) => ({
       number: b.number,
       hash: b.hash,
       timestamp: b.timestamp,
-      miner: b.miner
+      miner: b.miner,
     })),
-    transactions: transactions.map(tx => ({
+    transactions: transactions.map((tx) => ({
       hash: tx.hash,
       from: tx.from,
       to: tx.to || '',
       value: tx.value,
-      timestamp: tx.timestamp
+      timestamp: tx.timestamp,
     })),
-    timestamp: Date.now()
+    timestamp: Date.now(),
   };
 }
 
@@ -83,7 +96,7 @@ async function fetchRealtimeData(): Promise<RealtimeData> {
 async function updateCacheInBackground() {
   if (isUpdating) return;
   isUpdating = true;
-  
+
   try {
     const data = await fetchRealtimeData();
     realtimeCache = data;
@@ -97,47 +110,43 @@ async function updateCacheInBackground() {
 
 export async function GET() {
   const now = Date.now();
-  
+
   try {
     // キャッシュが有効な場合は即座に返す
     if (realtimeCache && now - cacheTimestamp < CACHE_DURATION) {
       return NextResponse.json(realtimeCache, {
         headers: {
-          'Cache-Control': 'public, max-age=5, stale-while-revalidate=10'
-        }
+          'Cache-Control': 'public, max-age=5, stale-while-revalidate=10',
+        },
       });
     }
-    
+
     // キャッシュが古いが存在する場合: 古いデータを返しつつバックグラウンドで更新
     if (realtimeCache) {
       updateCacheInBackground();
       return NextResponse.json(realtimeCache, {
         headers: {
-          'Cache-Control': 'public, max-age=5, stale-while-revalidate=10'
-        }
+          'Cache-Control': 'public, max-age=5, stale-while-revalidate=10',
+        },
       });
     }
-    
+
     // 初回リクエスト: 5秒タイムアウトで取得
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Realtime fetch timeout')), 5000);
     });
-    
+
     try {
-      const data = await Promise.race([
-        fetchRealtimeData(),
-        timeoutPromise
-      ]);
-      
+      const data = await Promise.race([fetchRealtimeData(), timeoutPromise]);
+
       realtimeCache = data;
       cacheTimestamp = now;
-      
+
       return NextResponse.json(data, {
         headers: {
-          'Cache-Control': 'public, max-age=5, stale-while-revalidate=10'
-        }
+          'Cache-Control': 'public, max-age=5, stale-while-revalidate=10',
+        },
       });
-      
     } catch {
       // タイムアウト時は空データを返しつつ、バックグラウンドで更新
       updateCacheInBackground();
@@ -146,18 +155,20 @@ export async function GET() {
         blocks: [],
         transactions: [],
         timestamp: now,
-        loading: true
+        loading: true,
       });
     }
-    
   } catch (error) {
     console.error('[Realtime] API error:', error);
-    return NextResponse.json({
-      latestBlock: 0,
-      blocks: [],
-      transactions: [],
-      timestamp: Date.now(),
-      error: error instanceof Error ? error.message : 'API error'
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        latestBlock: 0,
+        blocks: [],
+        transactions: [],
+        timestamp: Date.now(),
+        error: error instanceof Error ? error.message : 'API error',
+      },
+      { status: 500 }
+    );
   }
 }

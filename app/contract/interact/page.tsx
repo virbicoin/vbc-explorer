@@ -49,11 +49,11 @@ export default function ContractInteractPage() {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const address = urlParams.get('address');
-    
+
     if (address) {
       setContractAddress(address);
     }
-    
+
     // Initialize config to get network name
     initializeCurrencyConfig();
   }, []);
@@ -80,9 +80,11 @@ export default function ContractInteractPage() {
     if (!contractAddress) return;
 
     try {
-      const response = await fetch(`/api/contract/interact?address=${contractAddress}&abi=${encodeURIComponent(abi)}`);
+      const response = await fetch(
+        `/api/contract/interact?address=${contractAddress}&abi=${encodeURIComponent(abi)}`
+      );
       const data = await response.json();
-      
+
       if (response.ok) {
         setContractInfo(data);
       } else {
@@ -133,7 +135,7 @@ export default function ContractInteractPage() {
           fromAddress: selectedMethod.type === 'write' ? fromAddress : undefined,
           value: selectedMethod.type === 'write' ? value : '0',
           gasLimit: parseInt(gasLimit),
-          gasPrice
+          gasPrice,
         }),
       });
 
@@ -142,7 +144,7 @@ export default function ContractInteractPage() {
     } catch (error) {
       setResult({
         success: false,
-        error: error instanceof Error ? error.message : 'Execution failed'
+        error: error instanceof Error ? error.message : 'Execution failed',
       });
     } finally {
       setIsLoading(false);
@@ -198,11 +200,13 @@ export default function ContractInteractPage() {
                 {/* Available Methods */}
                 <div>
                   <h3 className="text-lg font-semibold text-gray-100 mb-4">Available Methods</h3>
-                  
+
                   {/* Read Methods */}
                   {contractInfo.methods.read.length > 0 && (
                     <div className="mb-6">
-                      <h4 className="text-md font-medium text-green-400 mb-2">Read Methods (View/Pure)</h4>
+                      <h4 className="text-md font-medium text-green-400 mb-2">
+                        Read Methods (View/Pure)
+                      </h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {contractInfo.methods.read.map((method, index) => (
                           <button
@@ -216,10 +220,9 @@ export default function ContractInteractPage() {
                           >
                             <div className="font-medium">{method.name}</div>
                             <div className="text-xs text-gray-400 mt-1">
-                              {method.inputs.length > 0 
+                              {method.inputs.length > 0
                                 ? `${method.inputs.length} input${method.inputs.length > 1 ? 's' : ''}`
-                                : 'No inputs'
-                              }
+                                : 'No inputs'}
                             </div>
                           </button>
                         ))}
@@ -230,7 +233,9 @@ export default function ContractInteractPage() {
                   {/* Write Methods */}
                   {contractInfo.methods.write.length > 0 && (
                     <div>
-                      <h4 className="text-md font-medium text-orange-400 mb-2">Write Methods (State Changing)</h4>
+                      <h4 className="text-md font-medium text-orange-400 mb-2">
+                        Write Methods (State Changing)
+                      </h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {contractInfo.methods.write.map((method, index) => (
                           <button
@@ -244,10 +249,9 @@ export default function ContractInteractPage() {
                           >
                             <div className="font-medium">{method.name}</div>
                             <div className="text-xs text-gray-400 mt-1">
-                              {method.inputs.length > 0 
+                              {method.inputs.length > 0
                                 ? `${method.inputs.length} input${method.inputs.length > 1 ? 's' : ''}`
-                                : 'No inputs'
-                              }
+                                : 'No inputs'}
                             </div>
                           </button>
                         ))}
@@ -289,7 +293,9 @@ export default function ContractInteractPage() {
                     {/* Transaction Settings for Write Methods */}
                     {selectedMethod.type === 'write' && (
                       <div className="mb-6">
-                        <h4 className="text-sm font-medium text-gray-300 mb-3">Transaction Settings</h4>
+                        <h4 className="text-sm font-medium text-gray-300 mb-3">
+                          Transaction Settings
+                        </h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                           <div>
                             <label className="block text-sm text-gray-400 mb-1">From Address</label>
@@ -321,7 +327,9 @@ export default function ContractInteractPage() {
                             />
                           </div>
                           <div>
-                            <label className="block text-sm text-gray-400 mb-1">Gas Price (Wei)</label>
+                            <label className="block text-sm text-gray-400 mb-1">
+                              Gas Price (Wei)
+                            </label>
                             <input
                               type="text"
                               value={gasPrice}
@@ -358,14 +366,14 @@ export default function ContractInteractPage() {
                 {result && (
                   <div className="bg-gray-750 rounded-lg p-6 border border-gray-600">
                     <h3 className="text-lg font-semibold text-gray-100 mb-4">Result</h3>
-                    <div className={`p-4 rounded-md ${
-                      result.success 
-                        ? 'bg-green-900/20 border border-green-600 text-green-400' 
-                        : 'bg-red-900/20 border border-red-600 text-red-400'
-                    }`}>
-                      <div className="font-medium mb-2">
-                        {result.success ? 'Success' : 'Error'}
-                      </div>
+                    <div
+                      className={`p-4 rounded-md ${
+                        result.success
+                          ? 'bg-green-900/20 border border-green-600 text-green-400'
+                          : 'bg-red-900/20 border border-red-600 text-red-400'
+                      }`}
+                    >
+                      <div className="font-medium mb-2">{result.success ? 'Success' : 'Error'}</div>
                       {result.success ? (
                         <div>
                           {result.type === 'read' ? (
@@ -377,7 +385,9 @@ export default function ContractInteractPage() {
                             </div>
                           ) : (
                             <div>
-                              <div className="text-sm text-gray-300 mb-2">Transaction Prepared:</div>
+                              <div className="text-sm text-gray-300 mb-2">
+                                Transaction Prepared:
+                              </div>
                               <pre className="bg-gray-800 p-3 rounded text-sm overflow-x-auto">
                                 {JSON.stringify(result.transaction, null, 2)}
                               </pre>
@@ -400,4 +410,4 @@ export default function ContractInteractPage() {
       </div>
     </div>
   );
-} 
+}

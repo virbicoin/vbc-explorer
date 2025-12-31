@@ -39,35 +39,39 @@ function isWrappedNativeToken(token: Token): boolean {
 function buildSwapPath(tokenIn: Token, tokenOut: Token): Address[] {
   const contracts = getDexContracts();
   const wrappedNative = contracts.wrappedNative;
-  
+
   const fromAddress = getTokenAddress(tokenIn);
   const toAddress = getTokenAddress(tokenOut);
-  
+
   // If either token is native or wrapped native, direct path
-  if (isNativeToken(tokenIn) || isNativeToken(tokenOut) || 
-      isWrappedNativeToken(tokenIn) || isWrappedNativeToken(tokenOut)) {
+  if (
+    isNativeToken(tokenIn) ||
+    isNativeToken(tokenOut) ||
+    isWrappedNativeToken(tokenIn) ||
+    isWrappedNativeToken(tokenOut)
+  ) {
     return [fromAddress, toAddress];
   }
-  
+
   // For Token → Token (e.g., USDT → VBCG), route through WVBC
   return [fromAddress, wrappedNative, toAddress];
 }
 
 export function SwapContent() {
   const { address, isConnected } = useAccount();
-  
+
   // Fetch tokens from API
   const { tokens: availableTokens, isLoading: isTokensLoading } = useDexTokens();
-  
+
   // Token configuration from config.json
   const { config: tokenConfig } = useTokenConfig();
-  
+
   // State - use function to get current native token
   const [tokenIn, setTokenIn] = useState<Token>(() => getNativeToken());
   const [tokenOut, setTokenOut] = useState<Token | null>(null);
   const [amountIn, setAmountIn] = useState('');
   const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
-  
+
   // Update tokenIn only when tokenIn is still the native token.
   // (Prevents swap-direction toggle from being overwritten back to native.)
   useEffect(() => {
@@ -79,31 +83,30 @@ export function SwapContent() {
     );
     if (!nativeToken) return;
 
-    if (
-      tokenIn.symbol !== nativeToken.symbol ||
-      tokenIn.decimals !== nativeToken.decimals
-    ) {
+    if (tokenIn.symbol !== nativeToken.symbol || tokenIn.decimals !== nativeToken.decimals) {
       setTokenIn(nativeToken);
     }
   }, [availableTokens, tokenIn, tokenIn.symbol, tokenIn.decimals]);
-  
+
   // Track if user has manually set tokenOut
   const [tokenOutInitialized, setTokenOutInitialized] = useState(false);
-  
+
   // Set default tokenOut when tokens are loaded, using config for token filtering
   useEffect(() => {
     if (availableTokens.length > 0 && !tokenOutInitialized && tokenConfig) {
       // Find a non-native/wrapped token for default output
       const nativeSymbol = tokenConfig.native.symbol;
       const wrappedSymbol = tokenConfig.wrapped.symbol;
-      const defaultOut = availableTokens.find(t => 
-        t.symbol !== nativeSymbol && t.symbol !== wrappedSymbol
+      const defaultOut = availableTokens.find(
+        (t) => t.symbol !== nativeSymbol && t.symbol !== wrappedSymbol
       );
-      setTokenOut(defaultOut || (availableTokens.length > 1 ? availableTokens[1] : availableTokens[0]));
+      setTokenOut(
+        defaultOut || (availableTokens.length > 1 ? availableTokens[1] : availableTokens[0])
+      );
       setTokenOutInitialized(true);
     }
   }, [availableTokens, tokenOutInitialized, tokenConfig]);
-  
+
   // Build swap path - use multi-hop for Token↔Token swaps
   const swapPath = useMemo((): Address[] => {
     if (!tokenOut) return [];
@@ -121,7 +124,7 @@ export function SwapContent() {
   }, [amountIn, tokenIn.decimals]);
 
   const { data: quoteData, isLoading: isQuoteLoading } = useSwapQuote(amountInParsed, swapPath);
-  
+
   const amountOut = useMemo(() => {
     if (quoteData && quoteData.length > 1) {
       return quoteData[quoteData.length - 1];
@@ -131,15 +134,10 @@ export function SwapContent() {
 
   // Get reserves for price impact calculation
   const { data: reserves } = useReserves(swapPath[0], swapPath[1]);
-  
+
   const priceImpact = useMemo(() => {
     if (reserves && amountInParsed > 0n && amountOut > 0n) {
-      return calculatePriceImpact(
-        amountInParsed,
-        amountOut,
-        reserves[0],
-        reserves[1]
-      );
+      return calculatePriceImpact(amountInParsed, amountOut, reserves[0], reserves[1]);
     }
     return 0;
   }, [amountInParsed, amountOut, reserves]);
@@ -155,7 +153,7 @@ export function SwapContent() {
     address,
     DEX_CONTRACTS.router
   );
-  
+
   const needsApproval = useMemo(() => {
     if (isNativeToken(tokenIn)) return false;
     if (!allowance) return true;
@@ -200,7 +198,17 @@ export function SwapContent() {
     } catch (error) {
       console.error('Swap error:', error);
     }
-  }, [address, amountInParsed, minAmountOut, swapPath, tokenIn, tokenOut, swapVBCForTokens, swapTokensForVBC, swapTokensForTokens]);
+  }, [
+    address,
+    amountInParsed,
+    minAmountOut,
+    swapPath,
+    tokenIn,
+    tokenOut,
+    swapVBCForTokens,
+    swapTokensForVBC,
+    swapTokensForTokens,
+  ]);
 
   // Handle approve
   const handleApprove = useCallback(async () => {
@@ -215,19 +223,19 @@ export function SwapContent() {
   // Swap tokens in/out
   const handleSwapDirection = useCallback(() => {
     if (!tokenOut) return;
-    
+
     // Store current values before swapping
     const prevTokenIn = tokenIn;
     const prevTokenOut = tokenOut;
     const prevAmountOut = amountOut;
-    
+
     // Swap tokens
     setTokenIn(prevTokenOut);
     setTokenOut(prevTokenIn);
 
     // Ensure defaults never overwrite user-chosen direction
     setTokenOutInitialized(true);
-    
+
     // Set the output amount as the new input amount
     if (prevAmountOut > 0n) {
       setAmountIn(formatTokenAmount(prevAmountOut, prevTokenOut.decimals, 18));
@@ -265,7 +273,20 @@ export function SwapContent() {
     if (isSwapping || isSwapConfirming) return { text: 'Swapping...', disabled: true };
     if (priceImpact > 15) return { text: 'Price Impact Too High', disabled: true };
     return { text: 'Swap', disabled: false, action: 'swap' };
-  }, [isConnected, amountIn, amountInParsed, isQuoteLoading, amountOut, needsApproval, isApproving, isApproveConfirming, isSwapping, isSwapConfirming, priceImpact, tokenIn.symbol]);
+  }, [
+    isConnected,
+    amountIn,
+    amountInParsed,
+    isQuoteLoading,
+    amountOut,
+    needsApproval,
+    isApproving,
+    isApproveConfirming,
+    isSwapping,
+    isSwapConfirming,
+    priceImpact,
+    tokenIn.symbol,
+  ]);
 
   const handleButtonClick = () => {
     if (buttonState.action === 'approve') {
@@ -282,7 +303,7 @@ export function SwapContent() {
         {/* Background Glow */}
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl" />
-        
+
         {/* Header */}
         <div className="flex justify-between items-center mb-6 relative">
           <div>
@@ -311,8 +332,18 @@ export function SwapContent() {
               className="bg-gray-700 hover:bg-gray-600 p-3 rounded-xl border-4 border-gray-900 transition-all hover:scale-110 hover:rotate-180 duration-300 shadow-lg group"
               disabled={!tokenOut}
             >
-              <svg className="w-5 h-5 text-gray-300 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+              <svg
+                className="w-5 h-5 text-gray-300 group-hover:text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
+                />
               </svg>
             </button>
           </div>
@@ -349,12 +380,24 @@ export function SwapContent() {
         {/* Price Impact Warning */}
         {priceImpact > 5 && (
           <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl flex items-start gap-3">
-            <svg className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <svg
+              className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
             </svg>
             <div>
               <p className="text-yellow-400 font-semibold text-sm">High Price Impact</p>
-              <p className="text-yellow-500/80 text-xs mt-1">You may receive significantly less than expected due to low liquidity.</p>
+              <p className="text-yellow-500/80 text-xs mt-1">
+                You may receive significantly less than expected due to low liquidity.
+              </p>
             </div>
           </div>
         )}
@@ -367,19 +410,36 @@ export function SwapContent() {
             buttonState.disabled
               ? 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
               : priceImpact > 5
-              ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg shadow-red-500/25 hover:shadow-red-500/40'
-              : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-[1.02]'
+                ? 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg shadow-red-500/25 hover:shadow-red-500/40'
+                : 'bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:scale-[1.02]'
           }`}
         >
           {(isSwapping || isSwapConfirming || isApproving || isApproveConfirming) && (
             <span className="absolute inset-0 flex items-center justify-center">
               <svg className="animate-spin h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
               </svg>
             </span>
           )}
-          <span className={isSwapping || isSwapConfirming || isApproving || isApproveConfirming ? 'opacity-0' : ''}>
+          <span
+            className={
+              isSwapping || isSwapConfirming || isApproving || isApproveConfirming
+                ? 'opacity-0'
+                : ''
+            }
+          >
             {buttonState.text}
           </span>
         </button>
@@ -388,8 +448,18 @@ export function SwapContent() {
         {isSwapSuccess && swapHash && (
           <div className="mt-4 p-4 bg-green-500/10 border border-green-500/30 rounded-xl flex items-start gap-3">
             <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <svg
+                className="w-5 h-5 text-green-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </div>
             <div className="flex-1">
@@ -402,7 +472,12 @@ export function SwapContent() {
               >
                 View transaction
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                  />
                 </svg>
               </a>
             </div>
@@ -412,8 +487,18 @@ export function SwapContent() {
         {swapError && (
           <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-3">
             <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg
+                className="w-5 h-5 text-red-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </div>
             <div className="flex-1">

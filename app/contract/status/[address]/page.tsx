@@ -21,4 +21,4 @@ export default function ContractStatusPage({ params }: { params: Promise<{ addre
       </div>
     </div>
   );
-} 
+}

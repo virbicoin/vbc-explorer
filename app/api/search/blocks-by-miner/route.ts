@@ -14,13 +14,12 @@ export async function GET(request: Request) {
 
     // Get blocks mined by this address
     const blocks = await Block.find({
-      miner: { $regex: new RegExp(`^${miner}$`, 'i') }
+      miner: { $regex: new RegExp(`^${miner}$`, 'i') },
     })
       .sort({ number: -1 })
       .limit(50)
       .lean();
 
-     
     const formattedBlocks = blocks.map((block: any) => ({
       number: block.number,
       hash: block.hash,
@@ -28,7 +27,7 @@ export async function GET(request: Request) {
       timestamp: block.timestamp,
       transactionCount: block.transactionCount || 0,
       gasUsed: block.gasUsed,
-      gasLimit: block.gasLimit
+      gasLimit: block.gasLimit,
     }));
 
     return NextResponse.json(formattedBlocks);

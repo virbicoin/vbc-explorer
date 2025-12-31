@@ -27,10 +27,7 @@ interface BlockDocument {
   miner: string;
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ hash: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ hash: string }> }) {
   try {
     const { hash } = await params;
     if (!hash) {
@@ -46,12 +43,14 @@ export async function GET(
     }
 
     // Find the transaction by hash
-    const transaction = await Transaction.findOne({ hash: hash }).lean() as TransactionDocument | null;
+    const transaction = (await Transaction.findOne({
+      hash: hash,
+    }).lean()) as TransactionDocument | null;
 
     if (!transaction) {
       // --- Mining Reward Transaction fallback ---
       // Try to find a block with this hash (for mining reward tx)
-      const block = await Block.findOne({ hash: hash }).lean() as BlockDocument | null;
+      const block = (await Block.findOne({ hash: hash }).lean()) as BlockDocument | null;
       if (block) {
         // Generate a pseudo-transaction for mining reward
         const miningRewardTx = {
@@ -90,8 +89,8 @@ export async function GET(
             number: block.number,
             hash: block.hash,
             timestamp: block.timestamp,
-            miner: block.miner
-          }
+            miner: block.miner,
+          },
         };
         return NextResponse.json(miningRewardTx);
       }
@@ -101,9 +100,11 @@ export async function GET(
 
     // Get the actual transaction object (handle both array and single object cases)
     const actualTransaction = Array.isArray(transaction) ? transaction[0] : transaction;
-    
+
     // Find the block that contains this transaction
-    const block = await Block.findOne({ number: actualTransaction.blockNumber }).lean() as BlockDocument | null;
+    const block = (await Block.findOne({
+      number: actualTransaction.blockNumber,
+    }).lean()) as BlockDocument | null;
 
     // Determine transaction type
     const typeInfo = getTransactionTypeGlobal({
@@ -111,7 +112,7 @@ export async function GET(
       to: actualTransaction.to,
       value: actualTransaction.value || '0',
       input: actualTransaction.input,
-      status: actualTransaction.status
+      status: actualTransaction.status,
     });
 
     // Transform the transaction data for frontend
@@ -128,12 +129,14 @@ export async function GET(
       // MetaMask compliant type info
       txType: typeInfo.type,
       txAction: typeInfo.action,
-      block: block ? {
-        number: block.number,
-        hash: block.hash,
-        timestamp: block.timestamp,
-        miner: block.miner
-      } : null
+      block: block
+        ? {
+            number: block.number,
+            hash: block.hash,
+            timestamp: block.timestamp,
+            miner: block.miner,
+          }
+        : null,
     };
 
     return NextResponse.json(transformedTransaction);

@@ -21,7 +21,6 @@ const formatTokenAmount = (amount: string, decimals: number = 18, isNFT: boolean
     }
     const numValue = parseFloat(cleanAmount);
     return numValue.toLocaleString();
-
   } catch {
     const numValue = parseFloat(amount.replace(/,/g, ''));
     return numValue.toLocaleString();
@@ -39,10 +38,7 @@ export async function GET(
     const walletAddress = searchParams.get('wallet');
 
     if (!walletAddress) {
-      return NextResponse.json(
-        { error: 'Wallet address is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 });
     }
 
     const db = mongoose.connection.db;
@@ -52,16 +48,16 @@ export async function GET(
 
     // Get token info for decimals
     const token = await db.collection('tokens').findOne({
-      address: { $regex: new RegExp(`^${address}$`, 'i') }
+      address: { $regex: new RegExp(`^${address}$`, 'i') },
     });
-    
+
     const decimals = token?.decimals || 18;
     const isNFT = token?.type === 'VRC-721' || token?.type === 'VRC-1155';
 
     // Find the holder in tokenholders collection
     const holder = await db.collection('tokenholders').findOne({
       tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
-      holderAddress: { $regex: new RegExp(`^${walletAddress}$`, 'i') }
+      holderAddress: { $regex: new RegExp(`^${walletAddress}$`, 'i') },
     });
 
     if (holder) {
@@ -70,7 +66,7 @@ export async function GET(
         balance: formatTokenAmount(holder.balance as string, decimals, isNFT),
         balanceRaw: holder.balance,
         percentage: typeof holder.percentage === 'number' ? holder.percentage.toFixed(2) : '0.00',
-        rank: holder.rank || null
+        rank: holder.rank || null,
       });
     }
 
@@ -80,14 +76,10 @@ export async function GET(
       balance: '0',
       balanceRaw: '0',
       percentage: '0.00',
-      rank: null
+      rank: null,
     });
-
   } catch (error) {
     console.error('Balance API error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch balance' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch balance' }, { status: 500 });
   }
 }

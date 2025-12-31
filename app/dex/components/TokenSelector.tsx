@@ -14,14 +14,14 @@ interface TokenSelectorProps {
 // Token colors based on symbol
 const getTokenColor = (symbol: string): string => {
   const colors: Record<string, string> = {
-    'VBC': 'from-green-500 to-emerald-600',
-    'WVBC': 'from-green-400 to-teal-500',
-    'TEST': 'from-purple-500 to-pink-500',
-    'VBCG': 'from-yellow-400 to-amber-500',
-    'USDT': 'from-green-400 to-emerald-500',
-    'USDC': 'from-blue-400 to-blue-600',
-    'ETH': 'from-blue-400 to-purple-500',
-    'WETH': 'from-blue-400 to-purple-500',
+    VBC: 'from-green-500 to-emerald-600',
+    WVBC: 'from-green-400 to-teal-500',
+    TEST: 'from-purple-500 to-pink-500',
+    VBCG: 'from-yellow-400 to-amber-500',
+    USDT: 'from-green-400 to-emerald-500',
+    USDC: 'from-blue-400 to-blue-600',
+    ETH: 'from-blue-400 to-purple-500',
+    WETH: 'from-blue-400 to-purple-500',
   };
   return colors[symbol] || 'from-gray-500 to-gray-600';
 };
@@ -48,24 +48,32 @@ const getTokenIcon = (symbol: string): string | null => {
 // Token Icon Component
 function TokenIcon({ token, size = 28 }: { token: Token; size?: number }) {
   const iconPath = getTokenIcon(token.symbol);
-  
+
   if (iconPath) {
     return (
-      <div className={`rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md overflow-hidden`} style={{ width: size, height: size }}>
-        <Image 
-          src={iconPath} 
-          alt={token.symbol} 
-          width={size - 4} 
+      <div
+        className={`rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md overflow-hidden`}
+        style={{ width: size, height: size }}
+      >
+        <Image
+          src={iconPath}
+          alt={token.symbol}
+          width={size - 4}
           height={size - 4}
           className="object-contain"
         />
       </div>
     );
   }
-  
+
   return (
-    <div className={`rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md`} style={{ width: size, height: size }}>
-      <span className="font-bold text-white" style={{ fontSize: size * 0.4 }}>{token.symbol.charAt(0)}</span>
+    <div
+      className={`rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md`}
+      style={{ width: size, height: size }}
+    >
+      <span className="font-bold text-white" style={{ fontSize: size * 0.4 }}>
+        {token.symbol.charAt(0)}
+      </span>
     </div>
   );
 }
@@ -79,21 +87,24 @@ export function TokenSelector({
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const handleSelect = useCallback((token: Token) => {
-    onSelect(token);
-    setIsOpen(false);
-    setSearchQuery('');
-  }, [onSelect]);
+  const handleSelect = useCallback(
+    (token: Token) => {
+      onSelect(token);
+      setIsOpen(false);
+      setSearchQuery('');
+    },
+    [onSelect]
+  );
 
   // Check if native token (VBC) - uses zero address
   const isNativeTokenAddress = (address: string): boolean => {
     return address === '0x0000000000000000000000000000000000000000';
   };
 
-  const availableTokens = tokens.filter(t => {
+  const availableTokens = tokens.filter((t) => {
     // Exclude the exact same token (by address)
     if (t.address === otherToken?.address) return false;
-    
+
     // If other token is native (VBC), exclude wrapped native (WVBC) - they represent the same value
     // Native token has zero address, wrapped native has a real address but symbol starts with 'W'
     if (otherToken && isNativeTokenAddress(otherToken.address)) {
@@ -101,13 +112,13 @@ export function TokenSelector({
       const wrappedSymbol = 'W' + otherToken.symbol;
       if (t.symbol === wrappedSymbol) return false;
     }
-    
+
     // If other token is wrapped native (WVBC), exclude native (VBC)
     if (otherToken && otherToken.symbol.startsWith('W') && isNativeTokenAddress(t.address)) {
       const nativeSymbol = otherToken.symbol.substring(1);
       if (t.symbol === nativeSymbol) return false;
     }
-    
+
     // Search filter
     return (
       t.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -147,17 +158,37 @@ export function TokenSelector({
                 onClick={() => setIsOpen(false)}
                 className="p-1 hover:bg-gray-700 rounded-lg transition-colors"
               >
-                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  className="w-5 h-5 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
-            
+
             {/* Search */}
             <div className="p-3 border-b border-gray-700">
               <div className="relative">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                <svg
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
                 </svg>
                 <input
                   type="text"
@@ -173,16 +204,16 @@ export function TokenSelector({
             {/* Token List */}
             <div className="max-h-72 overflow-y-auto p-2">
               {availableTokens.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                  No tokens found
-                </div>
+                <div className="text-center py-8 text-gray-400">No tokens found</div>
               ) : (
                 availableTokens.map((token) => (
                   <button
                     key={token.address}
                     onClick={() => handleSelect(token)}
                     className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-700/50 transition-all ${
-                      selectedToken.address === token.address ? 'bg-gray-700/50 ring-1 ring-blue-500/50' : ''
+                      selectedToken.address === token.address
+                        ? 'bg-gray-700/50 ring-1 ring-blue-500/50'
+                        : ''
                     }`}
                   >
                     <TokenIcon token={token} size={36} />
@@ -191,8 +222,18 @@ export function TokenSelector({
                       <div className="text-xs text-gray-400">{token.name}</div>
                     </div>
                     {selectedToken.address === token.address && (
-                      <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      <svg
+                        className="w-5 h-5 text-blue-500"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 13l4 4L19 7"
+                        />
                       </svg>
                     )}
                   </button>

@@ -26,4 +26,4 @@ export default async function EthereumRedirect({ params }: Params) {
   redirect('/');
 }
 
-// Add a comment: This page implements EIP-3091 URI redirection for Ethereum explorers. 
+// Add a comment: This page implements EIP-3091 URI redirection for Ethereum explorers.

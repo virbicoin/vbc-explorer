@@ -6,7 +6,7 @@
 let BASE_TO_CURRENCY = 1000000000000000000n; // 10^18
 let BASE_TO_GAS_UNIT = 1000000000n; // 10^9
 let CURRENCY_UNIT = 'ETH';
- 
+
 let BASE_UNIT = 'wei';
 let GAS_UNIT = 'Gwei';
 
@@ -20,13 +20,18 @@ export async function initializeCurrency() {
       const config = await response.json();
       // Safely convert decimals to number first
       const decimalsRaw = config.currency?.decimals;
-      const decimals = typeof decimalsRaw === 'number' ? decimalsRaw : 
-                       typeof decimalsRaw === 'string' ? parseInt(decimalsRaw, 10) : 
-                       typeof decimalsRaw === 'bigint' ? Number(decimalsRaw) : 18;
+      const decimals =
+        typeof decimalsRaw === 'number'
+          ? decimalsRaw
+          : typeof decimalsRaw === 'string'
+            ? parseInt(decimalsRaw, 10)
+            : typeof decimalsRaw === 'bigint'
+              ? Number(decimalsRaw)
+              : 18;
       const unit = config.currency?.unit || 'wei';
       const symbol = config.currency?.symbol || 'ETH';
       const gasUnit = config.currency?.gasUnit || 'Gwei';
-      
+
       BASE_TO_CURRENCY = BigInt(10) ** BigInt(decimals);
       BASE_TO_GAS_UNIT = BigInt(10) ** BigInt(9);
       CURRENCY_UNIT = symbol;
@@ -136,16 +141,22 @@ export function formatCurrency(value: string): string {
 
     // For values less than 1
     if (numValue < 1) {
-      return `${parseFloat(value).toFixed(6).replace(/\.?0+$/, '')} ${CURRENCY_UNIT}`;
+      return `${parseFloat(value)
+        .toFixed(6)
+        .replace(/\.?0+$/, '')} ${CURRENCY_UNIT}`;
     }
 
     // For values less than 1000
     if (numValue < 1000) {
-      return `${parseFloat(value).toFixed(4).replace(/\.?0+$/, '')} ${CURRENCY_UNIT}`;
+      return `${parseFloat(value)
+        .toFixed(4)
+        .replace(/\.?0+$/, '')} ${CURRENCY_UNIT}`;
     }
 
     // For larger values
-    return `${parseFloat(value).toFixed(2).replace(/\.?0+$/, '')} ${CURRENCY_UNIT}`;
+    return `${parseFloat(value)
+      .toFixed(2)
+      .replace(/\.?0+$/, '')} ${CURRENCY_UNIT}`;
   } catch {
     return `0 ${CURRENCY_UNIT}`;
   }

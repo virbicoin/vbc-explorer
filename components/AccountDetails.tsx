@@ -2,12 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import {
-  UserIcon,
-  ClockIcon,
-  ArrowUpIcon,
-  CubeIcon
-} from '@heroicons/react/24/outline';
+import { UserIcon, ClockIcon, ArrowUpIcon, CubeIcon } from '@heroicons/react/24/outline';
 
 interface Config {
   miners: Record<string, string>;
@@ -68,11 +63,11 @@ export default function AccountDetails({ address }: AccountDetailsProps) {
   // プール名を取得する関数
   const getPoolName = (address: string) => {
     if (!address || !config?.miners) return null;
-    
+
     const minerKey = Object.keys(config.miners).find(
-      key => key.toLowerCase() === address.toLowerCase()
+      (key) => key.toLowerCase() === address.toLowerCase()
     );
-    
+
     return minerKey ? config.miners[minerKey] : null;
   };
 
@@ -161,22 +156,22 @@ export default function AccountDetails({ address }: AccountDetailsProps) {
 
   if (loading) {
     return (
-      <div className='bg-gray-800 rounded-lg border border-gray-700 p-8 text-center'>
-        <div className='animate-spin w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full mx-auto mb-4'></div>
-        <p className='text-gray-400'>Loading account details...</p>
+      <div className="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
+        <div className="animate-spin w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full mx-auto mb-4"></div>
+        <p className="text-gray-400">Loading account details...</p>
       </div>
     );
   }
 
   if (error || !accountData) {
     return (
-      <div className='bg-gray-800 rounded-lg border border-gray-700 p-8 text-center'>
-        <p className='text-red-400 mb-4'>{error || 'Account not found'}</p>
+      <div className="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
+        <p className="text-red-400 mb-4">{error || 'Account not found'}</p>
         <Link
-          href='/'
-          className='inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors'
+          href="/"
+          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors"
         >
-          <ArrowUpIcon className='w-4 h-4' />
+          <ArrowUpIcon className="w-4 h-4" />
           Back to Explorer
         </Link>
       </div>
@@ -187,19 +182,19 @@ export default function AccountDetails({ address }: AccountDetailsProps) {
   const poolName = getPoolName(account.address);
 
   return (
-    <div className='space-y-8'>
+    <div className="space-y-8">
       {/* Account Overview */}
-      <section className='bg-gray-800 rounded-lg border border-gray-700 p-6'>
-        <div className='flex items-center justify-between mb-6'>
-          <h2 className='text-xl font-bold text-gray-100 flex items-center gap-2'>
-            <UserIcon className='w-6 h-6 text-blue-400' />
+      <section className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-gray-100 flex items-center gap-2">
+            <UserIcon className="w-6 h-6 text-blue-400" />
             Account Information
           </h2>
           <button
             onClick={copyAddressToClipboard}
             className={`px-3 py-1 text-sm rounded transition-colors ${
-              copiedAddress 
-                ? 'bg-green-600 text-white' 
+              copiedAddress
+                ? 'bg-green-600 text-white'
                 : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
             }`}
           >
@@ -207,60 +202,68 @@ export default function AccountDetails({ address }: AccountDetailsProps) {
           </button>
         </div>
 
-        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
-          <div className='space-y-2'>
-            <p className='text-sm text-gray-400'>Address</p>
-            <p className='font-mono text-sm text-blue-400 break-all'>{account.address}</p>
-            {poolName && (
-              <p className='text-xs text-green-400'>Pool: {poolName}</p>
-            )}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="space-y-2">
+            <p className="text-sm text-gray-400">Address</p>
+            <p className="font-mono text-sm text-blue-400 break-all">{account.address}</p>
+            {poolName && <p className="text-xs text-green-400">Pool: {poolName}</p>}
           </div>
 
-          <div className='space-y-2'>
-            <p className='text-sm text-gray-400'>Balance</p>
-            <p className='text-lg font-mono text-green-400'>{formatValue(account.balance)}</p>
+          <div className="space-y-2">
+            <p className="text-sm text-gray-400">Balance</p>
+            <p className="text-lg font-mono text-green-400">{formatValue(account.balance)}</p>
           </div>
 
-          <div className='space-y-2'>
-            <p className='text-sm text-gray-400'>Percent</p>
-            <p className='text-lg font-mono text-yellow-400'>{account.percentage}%</p>
+          <div className="space-y-2">
+            <p className="text-sm text-gray-400">Percent</p>
+            <p className="text-lg font-mono text-yellow-400">{account.percentage}%</p>
           </div>
 
-          <div className='space-y-2'>
-            <p className='text-sm text-gray-400'>Transaction Count</p>
-            <p className='text-lg font-mono text-orange-400'>{account.transactionCount.toLocaleString()}</p>
+          <div className="space-y-2">
+            <p className="text-sm text-gray-400">Transaction Count</p>
+            <p className="text-lg font-mono text-orange-400">
+              {account.transactionCount.toLocaleString()}
+            </p>
           </div>
 
           {account.rank && (
-            <div className='space-y-2'>
-              <p className='text-sm text-gray-400'>Rank</p>
-              <p className='text-lg font-mono text-purple-400'>#{account.rank.toLocaleString()}</p>
+            <div className="space-y-2">
+              <p className="text-sm text-gray-400">Rank</p>
+              <p className="text-lg font-mono text-purple-400">#{account.rank.toLocaleString()}</p>
             </div>
           )}
 
-          <div className='space-y-2'>
-            <p className='text-sm text-gray-400'>Blocks Mined</p>
-            <p className='text-lg font-mono text-green-400'>{account.blocksMined.toLocaleString()}</p>
+          <div className="space-y-2">
+            <p className="text-sm text-gray-400">Blocks Mined</p>
+            <p className="text-lg font-mono text-green-400">
+              {account.blocksMined.toLocaleString()}
+            </p>
           </div>
 
-          <div className='space-y-2'>
-            <p className='text-sm text-gray-400'>First Seen</p>
-            <div className='flex items-center gap-2'>
-              <ClockIcon className='w-4 h-4 text-gray-400' />
+          <div className="space-y-2">
+            <p className="text-sm text-gray-400">First Seen</p>
+            <div className="flex items-center gap-2">
+              <ClockIcon className="w-4 h-4 text-gray-400" />
               <div>
-                <div className='text-sm text-gray-300'>{getTimeAgo(account.firstSeen)}</div>
-                <div className='text-xs text-gray-500'>{new Date(account.firstSeen).toLocaleString(undefined, { timeZoneName: 'short' })}</div>
+                <div className="text-sm text-gray-300">{getTimeAgo(account.firstSeen)}</div>
+                <div className="text-xs text-gray-500">
+                  {new Date(account.firstSeen).toLocaleString(undefined, { timeZoneName: 'short' })}
+                </div>
               </div>
             </div>
           </div>
 
-          <div className='space-y-2'>
-            <p className='text-sm text-gray-400'>Last Activity</p>
-            <div className='flex items-center gap-2'>
-              <ClockIcon className='w-4 h-4 text-gray-400' />
+          <div className="space-y-2">
+            <p className="text-sm text-gray-400">Last Activity</p>
+            <div className="flex items-center gap-2">
+              <ClockIcon className="w-4 h-4 text-gray-400" />
               <div>
-                <div className='text-sm text-gray-300'>{getTimeAgo(account.lastActivity)}</div>
-                <div className='text-xs text-gray-500'>{new Date(account.lastActivity).toLocaleString(undefined, { timeZoneName: 'short' })}</div>
+                <div className="text-sm text-gray-300">{getTimeAgo(account.lastActivity)}</div>
+                <div className="text-xs text-gray-500">
+                  {new Date(account.lastActivity).toLocaleString(undefined, {
+                    timeZoneName: 'short',
+                  })}
+                </div>
               </div>
             </div>
           </div>
@@ -269,50 +272,52 @@ export default function AccountDetails({ address }: AccountDetailsProps) {
 
       {/* Contract Information */}
       {contract && (
-        <section className='bg-gray-800 rounded-lg border border-gray-700 p-6'>
-          <h2 className='text-xl font-bold text-gray-100 mb-6 flex items-center gap-2'>
-            <CubeIcon className='w-6 h-6 text-green-400' />
+        <section className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+          <h2 className="text-xl font-bold text-gray-100 mb-6 flex items-center gap-2">
+            <CubeIcon className="w-6 h-6 text-green-400" />
             Contract Information
           </h2>
 
-          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
-            <div className='space-y-2'>
-              <p className='text-sm text-gray-400'>Contract Address</p>
-              <p className='font-mono text-sm text-blue-400 break-all'>{contract.address}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="space-y-2">
+              <p className="text-sm text-gray-400">Contract Address</p>
+              <p className="font-mono text-sm text-blue-400 break-all">{contract.address}</p>
             </div>
 
-            <div className='space-y-2'>
-              <p className='text-sm text-gray-400'>Name</p>
-              <p className='text-lg font-mono text-green-400'>{contract.name}</p>
+            <div className="space-y-2">
+              <p className="text-sm text-gray-400">Name</p>
+              <p className="text-lg font-mono text-green-400">{contract.name}</p>
             </div>
 
-            <div className='space-y-2'>
-              <p className='text-sm text-gray-400'>Symbol</p>
-              <p className='text-lg font-mono text-orange-400'>{contract.symbol}</p>
+            <div className="space-y-2">
+              <p className="text-sm text-gray-400">Symbol</p>
+              <p className="text-lg font-mono text-orange-400">{contract.symbol}</p>
             </div>
 
-            <div className='space-y-2'>
-              <p className='text-sm text-gray-400'>Type</p>
-              <p className='text-sm text-gray-300'>{contract.type}</p>
+            <div className="space-y-2">
+              <p className="text-sm text-gray-400">Type</p>
+              <p className="text-sm text-gray-300">{contract.type}</p>
             </div>
 
-            <div className='space-y-2'>
-              <p className='text-sm text-gray-400'>Decimals</p>
-              <p className='text-lg font-mono text-purple-400'>{contract.decimals}</p>
+            <div className="space-y-2">
+              <p className="text-sm text-gray-400">Decimals</p>
+              <p className="text-lg font-mono text-purple-400">{contract.decimals}</p>
             </div>
 
-            <div className='space-y-2'>
-              <p className='text-sm text-gray-400'>Total Supply</p>
-              <p className='text-lg font-mono text-green-400'>{contract.totalSupply}</p>
+            <div className="space-y-2">
+              <p className="text-sm text-gray-400">Total Supply</p>
+              <p className="text-lg font-mono text-green-400">{contract.totalSupply}</p>
             </div>
 
-            <div className='space-y-2'>
-              <p className='text-sm text-gray-400'>Verified</p>
-              <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                contract.verified 
-                  ? 'bg-green-600/20 text-green-400 border border-green-600/50' 
-                  : 'bg-red-600/20 text-red-400 border border-red-600/50'
-              }`}>
+            <div className="space-y-2">
+              <p className="text-sm text-gray-400">Verified</p>
+              <span
+                className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                  contract.verified
+                    ? 'bg-green-600/20 text-green-400 border border-green-600/50'
+                    : 'bg-red-600/20 text-red-400 border border-red-600/50'
+                }`}
+              >
                 {contract.verified ? 'Yes' : 'No'}
               </span>
             </div>
@@ -321,37 +326,37 @@ export default function AccountDetails({ address }: AccountDetailsProps) {
       )}
 
       {/* Transactions */}
-      <section className='bg-gray-800 rounded-lg border border-gray-700 p-6'>
-        <h2 className='text-xl font-bold text-gray-100 mb-6'>
+      <section className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+        <h2 className="text-xl font-bold text-gray-100 mb-6">
           Recent Transactions ({transactions.length})
         </h2>
-        
+
         {transactions.length === 0 ? (
-          <div className='text-center py-8'>
-            <p className='text-gray-400'>No transactions found for this account.</p>
+          <div className="text-center py-8">
+            <p className="text-gray-400">No transactions found for this account.</p>
           </div>
         ) : (
-          <div className='space-y-3'>
+          <div className="space-y-3">
             {transactions.map((tx, index) => (
               <div
                 key={tx.hash || index}
-                className='flex justify-between items-center p-3 bg-gray-700/50 rounded border border-gray-600/50 hover:bg-gray-700 transition-colors'
+                className="flex justify-between items-center p-3 bg-gray-700/50 rounded border border-gray-600/50 hover:bg-gray-700 transition-colors"
               >
-                <div className='flex flex-col gap-1'>
+                <div className="flex flex-col gap-1">
                   <Link
                     href={`/tx/${tx.hash}`}
-                    className='text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors break-all'
+                    className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors break-all"
                     title={tx.hash}
                   >
                     {tx.hash.slice(0, 16)}...{tx.hash.slice(-16)}
                   </Link>
-                  <div className='text-xs text-gray-400'>
-                    From: {tx.from ? formatAddress(tx.from) : 'Unknown'} →
-                    To: {tx.to ? formatAddress(tx.to) : 'Unknown'}
+                  <div className="text-xs text-gray-400">
+                    From: {tx.from ? formatAddress(tx.from) : 'Unknown'} → To:{' '}
+                    {tx.to ? formatAddress(tx.to) : 'Unknown'}
                   </div>
                 </div>
-                <div className='text-right'>
-                  <p className='text-sm text-green-400 font-bold'>
+                <div className="text-right">
+                  <p className="text-sm text-green-400 font-bold">
                     {tx.value ? formatValue(tx.value) : '0 VBC'}
                   </p>
                 </div>
@@ -362,4 +367,4 @@ export default function AccountDetails({ address }: AccountDetailsProps) {
       </section>
     </div>
   );
-} 
+}

@@ -3,7 +3,7 @@ import type { NextRequest } from 'next/server';
 
 /**
  * Security Middleware
- * 
+ *
  * Adds security headers to all responses and handles basic request validation.
  */
 export function middleware(request: NextRequest) {
@@ -16,7 +16,7 @@ export function middleware(request: NextRequest) {
   response.headers.set('X-XSS-Protection', '1; mode=block');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  
+
   // HTTPS upgrade in production
   if (process.env.NODE_ENV === 'production') {
     response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');

@@ -1,11 +1,11 @@
 /**
  * Blockscout-compatible API Endpoint
- * 
+ *
  * This API follows the Blockscout/Etherscan API standard format.
  * All responses are in JSON format with status, message, and result fields.
- * 
+ *
  * Usage: /api?module=<module>&action=<action>&...params
- * 
+ *
  * Supported modules:
  * - account: balance, balancemulti, txlist, tokentx, tokenbalance, getminedblocks, txlistinternal
  * - block: getblockreward, getblocknobytime, eth_block_number
@@ -14,7 +14,7 @@
  * - stats: ethsupply, tokensupply, ethprice, chainsize, dailytx
  * - contract: getabi, getsourcecode, getcontractcreation
  * - logs: getLogs
- * - proxy: eth_blockNumber, eth_getBlockByNumber, eth_getTransactionByHash, 
+ * - proxy: eth_blockNumber, eth_getBlockByNumber, eth_getTransactionByHash,
  *          eth_getTransactionReceipt, eth_call, eth_getCode, eth_gasPrice, eth_estimateGas
  */
 
@@ -40,23 +40,27 @@ interface ConfigWithSupply {
 const configJson = loadConfig() as ConfigWithSupply;
 
 // Define Token schema inline since it's not exported from models/index
-const tokenSchema = new mongoose.Schema({
-  address: String,
-  name: String,
-  symbol: String,
-  decimals: { type: Number, default: 18 },
-  totalSupply: String,
-  holders: { type: Number, default: 0 },
-  type: String,
-  supply: String,
-  verified: { type: Boolean, default: false },
-  logoUrl: { type: String, default: null }
-}, { collection: 'tokens' });
+const tokenSchema = new mongoose.Schema(
+  {
+    address: String,
+    name: String,
+    symbol: String,
+    decimals: { type: Number, default: 18 },
+    totalSupply: String,
+    holders: { type: Number, default: 0 },
+    type: String,
+    supply: String,
+    verified: { type: Boolean, default: false },
+    logoUrl: { type: String, default: null },
+  },
+  { collection: 'tokens' }
+);
 
 const Token = mongoose.models.Token || mongoose.model('Token', tokenSchema);
 
 // RPC Client
-const RPC_URL = configJson.network?.rpcUrl || configJson.web3Provider?.url || 'http://localhost:8329';
+const RPC_URL =
+  configJson.network?.rpcUrl || configJson.web3Provider?.url || 'http://localhost:8329';
 const publicClient = createPublicClient({
   transport: http(RPC_URL, { timeout: 30000 }),
 });
@@ -163,7 +167,7 @@ async function getTokenTx(address: string, contractaddress?: string, page = 1, o
       $or: Array<{ from: { $regex: RegExp } } | { to: { $regex: RegExp } }>;
       contractAddress?: { $regex: RegExp };
     }
-    
+
     const query: TokenTxQuery = {
       $or: [
         { from: { $regex: new RegExp(`^${address}$`, 'i') } },
@@ -217,13 +221,15 @@ async function getTokenTx(address: string, contractaddress?: string, page = 1, o
 async function getTokenBalance(address: string, contractaddress: string) {
   try {
     // ERC20 balanceOf ABI
-    const balanceOfAbi = [{
-      inputs: [{ name: 'account', type: 'address' }],
-      name: 'balanceOf',
-      outputs: [{ name: '', type: 'uint256' }],
-      stateMutability: 'view',
-      type: 'function',
-    }] as const;
+    const balanceOfAbi = [
+      {
+        inputs: [{ name: 'account', type: 'address' }],
+        name: 'balanceOf',
+        outputs: [{ name: '', type: 'uint256' }],
+        stateMutability: 'view',
+        type: 'function',
+      },
+    ] as const;
 
     const balance = await publicClient.readContract({
       address: contractaddress as Address,
@@ -376,9 +382,9 @@ async function getBlockNoByTime(timestamp: string, closest: string = 'before') {
 async function getTxInfo(txhash: string) {
   try {
     await connectDB();
-    const tx = await Transaction.findOne({ 
-      hash: { $regex: new RegExp(`^${txhash}$`, 'i') } 
-    }).lean() as Record<string, unknown> | null;
+    const tx = (await Transaction.findOne({
+      hash: { $regex: new RegExp(`^${txhash}$`, 'i') },
+    }).lean()) as Record<string, unknown> | null;
 
     if (!tx) {
       return errorResponse('Transaction not found');
@@ -414,9 +420,9 @@ async function getTxInfo(txhash: string) {
 async function getTxReceiptStatus(txhash: string) {
   try {
     await connectDB();
-    const tx = await Transaction.findOne({ 
-      hash: { $regex: new RegExp(`^${txhash}$`, 'i') } 
-    }).lean() as Record<string, unknown> | null;
+    const tx = (await Transaction.findOne({
+      hash: { $regex: new RegExp(`^${txhash}$`, 'i') },
+    }).lean()) as Record<string, unknown> | null;
 
     if (!tx) {
       return errorResponse('Transaction not found');
@@ -437,9 +443,9 @@ async function getTxReceiptStatus(txhash: string) {
 async function getTokenInfo(contractaddress: string) {
   try {
     await connectDB();
-    const token = await Token.findOne({
+    const token = (await Token.findOne({
       address: { $regex: new RegExp(`^${contractaddress}$`, 'i') },
-    }).lean() as Record<string, unknown> | null;
+    }).lean()) as Record<string, unknown> | null;
 
     if (!token) {
       return errorResponse('Token not found');
@@ -463,9 +469,9 @@ async function getTokenInfo(contractaddress: string) {
 async function getTokenHolders(contractaddress: string, page = 1, offset = 10) {
   try {
     await connectDB();
-    const token = await Token.findOne({
+    const token = (await Token.findOne({
       address: { $regex: new RegExp(`^${contractaddress}$`, 'i') },
-    }).lean() as Record<string, unknown> | null;
+    }).lean()) as Record<string, unknown> | null;
 
     if (!token) {
       return errorResponse('Token not found');
@@ -483,7 +489,8 @@ async function getTokenHolders(contractaddress: string, page = 1, offset = 10) {
 
     const result = holders.map((holder: Record<string, unknown>) => ({
       address: holder.address,
-      balance: (holder.tokenBalances as Record<string, string>)?.[contractaddress.toLowerCase()] || '0',
+      balance:
+        (holder.tokenBalances as Record<string, string>)?.[contractaddress.toLowerCase()] || '0',
     }));
 
     return successResponse(result);
@@ -501,7 +508,7 @@ async function getEthSupply() {
     const blockNumber = await publicClient.getBlockNumber();
     const blockReward = configJson.supply?.blockReward || 8;
     const premineAmount = configJson.supply?.premineAmount || 1;
-    const totalSupply = (Number(blockNumber) * blockReward) + premineAmount;
+    const totalSupply = Number(blockNumber) * blockReward + premineAmount;
     // Return in wei
     return successResponse((BigInt(Math.floor(totalSupply)) * BigInt(10 ** 18)).toString());
   } catch (error) {
@@ -512,9 +519,9 @@ async function getEthSupply() {
 async function getTokenSupply(contractaddress: string) {
   try {
     await connectDB();
-    const token = await Token.findOne({
+    const token = (await Token.findOne({
       address: { $regex: new RegExp(`^${contractaddress}$`, 'i') },
-    }).lean() as Record<string, unknown> | null;
+    }).lean()) as Record<string, unknown> | null;
 
     if (!token) {
       return errorResponse('Token not found');
@@ -542,10 +549,10 @@ async function getChainSize() {
     await connectDB();
     const blockCount = await Block.countDocuments();
     const txCount = await Transaction.countDocuments();
-    
+
     // Estimate size: ~500 bytes per block, ~300 bytes per tx
-    const estimatedSize = (blockCount * 500) + (txCount * 300);
-    
+    const estimatedSize = blockCount * 500 + txCount * 300;
+
     return successResponse({
       blockCount: String(blockCount),
       transactionCount: String(txCount),
@@ -561,48 +568,48 @@ async function getChainSize() {
 async function getDailyTx(startdate?: string, enddate?: string, sort = 'asc') {
   try {
     await connectDB();
-    
+
     const now = new Date();
     const defaultStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
-    
+
     const start = startdate ? new Date(startdate) : defaultStart;
     const end = enddate ? new Date(enddate) : now;
-    
+
     const startTs = Math.floor(start.getTime() / 1000);
     const endTs = Math.floor(end.getTime() / 1000);
-    
+
     // Aggregate transactions by day
     const sortValue: 1 | -1 = sort === 'asc' ? 1 : -1;
     const pipeline = [
       {
         $match: {
-          timestamp: { $gte: startTs, $lte: endTs }
-        }
+          timestamp: { $gte: startTs, $lte: endTs },
+        },
       },
       {
         $group: {
           _id: {
             $dateToString: {
               format: '%Y-%m-%d',
-              date: { $toDate: { $multiply: ['$timestamp', 1000] } }
-            }
+              date: { $toDate: { $multiply: ['$timestamp', 1000] } },
+            },
           },
-          transactionCount: { $sum: 1 }
-        }
+          transactionCount: { $sum: 1 },
+        },
       },
       {
-        $sort: { _id: sortValue } as Record<string, 1 | -1>
-      }
+        $sort: { _id: sortValue } as Record<string, 1 | -1>,
+      },
     ];
-    
+
     const results = await Transaction.aggregate(pipeline);
-    
+
     const result = results.map((day: { _id: string; transactionCount: number }) => ({
       UTCDate: day._id,
       unixTimeStamp: String(Math.floor(new Date(day._id).getTime() / 1000)),
       transactionCount: day.transactionCount,
     }));
-    
+
     return successResponse(result);
   } catch (error) {
     return errorResponse('Error fetching daily transactions');
@@ -614,13 +621,9 @@ async function getTokenList(page = 1, offset = 100) {
   try {
     await connectDB();
     const skip = (page - 1) * offset;
-    
-    const tokens = await Token.find({})
-      .sort({ holders: -1 })
-      .skip(skip)
-      .limit(offset)
-      .lean();
-    
+
+    const tokens = await Token.find({}).sort({ holders: -1 }).skip(skip).limit(offset).lean();
+
     const result = tokens.map((token: Record<string, unknown>) => ({
       contractAddress: token.address,
       name: token.name || '',
@@ -629,7 +632,7 @@ async function getTokenList(page = 1, offset = 100) {
       totalSupply: token.totalSupply?.toString() || '0',
       type: token.type || 'ERC-20',
     }));
-    
+
     return successResponse(result);
   } catch (error) {
     return errorResponse('Error fetching token list');
@@ -645,13 +648,13 @@ async function getContractCreation(addresses: string) {
   try {
     await connectDB();
     const addressList = addresses.split(',').slice(0, 5); // Max 5 addresses
-    
+
     const results = await Promise.all(
       addressList.map(async (addr) => {
-        const tx = await Transaction.findOne({
+        const tx = (await Transaction.findOne({
           creates: { $regex: new RegExp(`^${addr.trim()}$`, 'i') },
-        }).lean() as Record<string, unknown> | null;
-        
+        }).lean()) as Record<string, unknown> | null;
+
         if (tx) {
           return {
             contractAddress: addr.trim(),
@@ -662,8 +665,8 @@ async function getContractCreation(addresses: string) {
         return null;
       })
     );
-    
-    const filteredResults = results.filter(r => r !== null);
+
+    const filteredResults = results.filter((r) => r !== null);
     return successResponse(filteredResults);
   } catch (error) {
     return errorResponse('Error fetching contract creation info');
@@ -693,18 +696,17 @@ async function getLogs(
       toBlock?: bigint | 'latest';
       topics?: (string | null)[];
     }
-    
+
     const filter: LogFilter = {};
-    
+
     if (address) {
       filter.address = address as Address;
     }
-    
-    filter.fromBlock = fromBlock === 'latest' ? undefined : 
-                       fromBlock ? BigInt(fromBlock) : 'earliest';
-    filter.toBlock = toBlock === 'latest' ? undefined : 
-                     toBlock ? BigInt(toBlock) : 'latest';
-    
+
+    filter.fromBlock =
+      fromBlock === 'latest' ? undefined : fromBlock ? BigInt(fromBlock) : 'earliest';
+    filter.toBlock = toBlock === 'latest' ? undefined : toBlock ? BigInt(toBlock) : 'latest';
+
     // Build topics array
     const topics: (string | null)[] = [];
     if (topic0) topics.push(topic0);
@@ -714,22 +716,22 @@ async function getLogs(
     if (topic2) topics.push(topic2);
     else if (topic3) topics.push(null);
     if (topic3) topics.push(topic3);
-    
+
     if (topics.length > 0) {
       filter.topics = topics;
     }
-    
+
     const logs = await publicClient.getLogs({
       address: filter.address,
       fromBlock: filter.fromBlock,
       toBlock: filter.toBlock,
     });
-    
+
     // Paginate results
     const start = (page - 1) * offset;
     const paginatedLogs = logs.slice(start, start + offset);
-    
-    const result = paginatedLogs.map(log => ({
+
+    const result = paginatedLogs.map((log) => ({
       address: log.address,
       topics: log.topics,
       data: log.data,
@@ -740,9 +742,10 @@ async function getLogs(
       gasUsed: '',
       logIndex: log.logIndex !== undefined ? `0x${log.logIndex.toString(16)}` : '0x0',
       transactionHash: log.transactionHash || '',
-      transactionIndex: log.transactionIndex !== undefined ? `0x${log.transactionIndex.toString(16)}` : '0x0',
+      transactionIndex:
+        log.transactionIndex !== undefined ? `0x${log.transactionIndex.toString(16)}` : '0x0',
     }));
-    
+
     return successResponse(result);
   } catch (error) {
     console.error('[getLogs] Error:', error);
@@ -766,8 +769,14 @@ async function proxyEthBlockNumber() {
 async function proxyEthGetBlockByNumber(tag: string, full = false) {
   try {
     let block;
-    
-    if (tag === 'latest' || tag === 'pending' || tag === 'earliest' || tag === 'safe' || tag === 'finalized') {
+
+    if (
+      tag === 'latest' ||
+      tag === 'pending' ||
+      tag === 'earliest' ||
+      tag === 'safe' ||
+      tag === 'finalized'
+    ) {
       block = await publicClient.getBlock({
         blockTag: tag,
         includeTransactions: full,
@@ -778,11 +787,11 @@ async function proxyEthGetBlockByNumber(tag: string, full = false) {
         includeTransactions: full,
       });
     }
-    
+
     if (!block) {
       return errorResponse('Block not found');
     }
-    
+
     // Format block for Etherscan-style response
     const result = {
       baseFeePerGas: block.baseFeePerGas ? `0x${block.baseFeePerGas.toString(16)}` : '0x0',
@@ -807,7 +816,7 @@ async function proxyEthGetBlockByNumber(tag: string, full = false) {
       transactionsRoot: block.transactionsRoot,
       uncles: block.uncles || [],
     };
-    
+
     return successResponse(result);
   } catch (error) {
     return errorResponse('Error fetching block');
@@ -819,11 +828,11 @@ async function proxyEthGetTransactionByHash(txhash: string) {
     const tx = await publicClient.getTransaction({
       hash: txhash as `0x${string}`,
     });
-    
+
     if (!tx) {
       return errorResponse('Transaction not found');
     }
-    
+
     const result = {
       blockHash: tx.blockHash,
       blockNumber: tx.blockNumber ? `0x${tx.blockNumber.toString(16)}` : null,
@@ -834,13 +843,14 @@ async function proxyEthGetTransactionByHash(txhash: string) {
       input: tx.input,
       nonce: `0x${tx.nonce.toString(16)}`,
       to: tx.to,
-      transactionIndex: tx.transactionIndex !== null ? `0x${tx.transactionIndex.toString(16)}` : null,
+      transactionIndex:
+        tx.transactionIndex !== null ? `0x${tx.transactionIndex.toString(16)}` : null,
       value: `0x${tx.value.toString(16)}`,
       v: tx.v ? `0x${tx.v.toString(16)}` : '0x0',
       r: tx.r || '0x0',
       s: tx.s || '0x0',
     };
-    
+
     return successResponse(result);
   } catch (error) {
     return errorResponse('Error fetching transaction');
@@ -852,20 +862,22 @@ async function proxyEthGetTransactionReceipt(txhash: string) {
     const receipt = await publicClient.getTransactionReceipt({
       hash: txhash as `0x${string}`,
     });
-    
+
     if (!receipt) {
       return errorResponse('Transaction receipt not found');
     }
-    
+
     const result = {
       blockHash: receipt.blockHash,
       blockNumber: `0x${receipt.blockNumber.toString(16)}`,
       contractAddress: receipt.contractAddress,
       cumulativeGasUsed: `0x${receipt.cumulativeGasUsed.toString(16)}`,
-      effectiveGasPrice: receipt.effectiveGasPrice ? `0x${receipt.effectiveGasPrice.toString(16)}` : '0x0',
+      effectiveGasPrice: receipt.effectiveGasPrice
+        ? `0x${receipt.effectiveGasPrice.toString(16)}`
+        : '0x0',
       from: receipt.from,
       gasUsed: `0x${receipt.gasUsed.toString(16)}`,
-      logs: receipt.logs.map(log => ({
+      logs: receipt.logs.map((log) => ({
         address: log.address,
         topics: log.topics,
         data: log.data,
@@ -883,7 +895,7 @@ async function proxyEthGetTransactionReceipt(txhash: string) {
       transactionIndex: `0x${receipt.transactionIndex.toString(16)}`,
       type: receipt.type ? `0x${parseInt(receipt.type).toString(16)}` : '0x0',
     };
-    
+
     return successResponse(result);
   } catch (error) {
     return errorResponse('Error fetching transaction receipt');
@@ -896,7 +908,7 @@ async function proxyEthCall(to: string, data: string, tag = 'latest') {
       to: to as Address,
       data: data as `0x${string}`,
     });
-    
+
     return successResponse(result.data || '0x');
   } catch (error) {
     return errorResponse('Error executing eth_call');
@@ -908,7 +920,7 @@ async function proxyEthGetCode(address: string, tag = 'latest') {
     const code = await publicClient.getCode({
       address: address as Address,
     });
-    
+
     return successResponse(code || '0x');
   } catch (error) {
     return errorResponse('Error fetching code');
@@ -932,7 +944,7 @@ async function proxyEthEstimateGas(to: string, data?: string, value?: string, fr
       value: value ? BigInt(value) : undefined,
       account: from as Address | undefined,
     });
-    
+
     return successResponse(`0x${gas.toString(16)}`);
   } catch (error) {
     return errorResponse('Error estimating gas');
@@ -946,10 +958,10 @@ async function proxyEthEstimateGas(to: string, data?: string, value?: string, fr
 async function getAbi(address: string) {
   try {
     await connectDB();
-    const contract = await Contract.findOne({
+    const contract = (await Contract.findOne({
       address: { $regex: new RegExp(`^${address}$`, 'i') },
       verified: true,
-    }).lean() as Record<string, unknown> | null;
+    }).lean()) as Record<string, unknown> | null;
 
     if (!contract || !contract.abi) {
       return errorResponse('Contract source code not verified');
@@ -964,30 +976,32 @@ async function getAbi(address: string) {
 async function getSourceCode(address: string) {
   try {
     await connectDB();
-    const contract = await Contract.findOne({
+    const contract = (await Contract.findOne({
       address: { $regex: new RegExp(`^${address}$`, 'i') },
       verified: true,
-    }).lean() as Record<string, unknown> | null;
+    }).lean()) as Record<string, unknown> | null;
 
     if (!contract) {
       return errorResponse('Contract source code not verified');
     }
 
-    const result = [{
-      SourceCode: contract.sourceCode || '',
-      ABI: JSON.stringify(contract.abi || []),
-      ContractName: contract.contractName || '',
-      CompilerVersion: contract.compilerVersion || '',
-      OptimizationUsed: contract.optimizationEnabled ? '1' : '0',
-      Runs: String(contract.optimizationRuns || 200),
-      ConstructorArguments: contract.constructorArguments || '',
-      EVMVersion: 'default',
-      Library: '',
-      LicenseType: '',
-      Proxy: '0',
-      Implementation: '',
-      SwarmSource: '',
-    }];
+    const result = [
+      {
+        SourceCode: contract.sourceCode || '',
+        ABI: JSON.stringify(contract.abi || []),
+        ContractName: contract.contractName || '',
+        CompilerVersion: contract.compilerVersion || '',
+        OptimizationUsed: contract.optimizationEnabled ? '1' : '0',
+        Runs: String(contract.optimizationRuns || 200),
+        ConstructorArguments: contract.constructorArguments || '',
+        EVMVersion: 'default',
+        Library: '',
+        LicenseType: '',
+        Proxy: '0',
+        Implementation: '',
+        SwarmSource: '',
+      },
+    ];
 
     return successResponse(result);
   } catch (error) {

@@ -27,13 +27,13 @@ export function useDexTokens(): UseDexTokensResult {
       setError(null);
 
       const response = await fetch('/api/dex/tokens');
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      
+
       if (data.tokens && Array.isArray(data.tokens)) {
         // Ensure proper typing for addresses
         const typedTokens: Token[] = data.tokens.map((token: any) => ({

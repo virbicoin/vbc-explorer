@@ -13,17 +13,20 @@ export async function GET() {
       },
       CACHE_TTL.SHORT / 2 // 5 seconds
     );
-    
+
     return NextResponse.json({
       blockHeight: blockNumber,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   } catch (error) {
     console.error('Error fetching block height:', error);
-    return NextResponse.json({ 
-      error: 'Failed to fetch block height',
-      blockHeight: '0',
-      timestamp: Date.now()
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'Failed to fetch block height',
+        blockHeight: '0',
+        timestamp: Date.now(),
+      },
+      { status: 500 }
+    );
   }
 }

@@ -18,4 +18,4 @@ const DetailCard: React.FC<DetailCardProps> = ({ icon, title, subtitle, children
   </div>
 );
 
-export default DetailCard; 
+export default DetailCard;

@@ -17,7 +17,7 @@ const getMongoDBURI = (): string => {
   } catch {
     console.log('📄 Could not read config.json, using environment variable or default');
   }
-  
+
   // Fallback to environment variable or default
   return process.env.MONGODB_URI || 'mongodb://localhost:27017/explorerDB';
 };
@@ -40,8 +40,9 @@ if (!cached) {
 
 // 軽量化されたMongoDB接続オプション with config.json support
 const getOptimizedOptions = () => {
-  const isLowMemory = process.env.NODE_OPTIONS?.includes('256') || process.env.LOW_MEMORY === 'true';
-  
+  const isLowMemory =
+    process.env.NODE_OPTIONS?.includes('256') || process.env.LOW_MEMORY === 'true';
+
   // Default options
   let options = {
     bufferCommands: false,
@@ -54,7 +55,7 @@ const getOptimizedOptions = () => {
     autoIndex: false,
     autoCreate: false,
   };
-  
+
   // Try to merge with config.json options
   try {
     const configPath = path.join(process.cwd(), 'config.json');
@@ -68,7 +69,7 @@ const getOptimizedOptions = () => {
   } catch {
     console.log('📄 Using default database options');
   }
-  
+
   return options;
 };
 
@@ -98,7 +99,10 @@ async function dbConnect() {
     // Only create new connection if absolutely necessary
     if (mongoose.connection.readyState === mongoose.ConnectionStates.disconnected) {
       const opts = getOptimizedOptions();
-      cached.promise = (mongoose.connect(MONGODB_URI, opts) as unknown) as Promise<mongoose.Connection>;
+      cached.promise = mongoose.connect(
+        MONGODB_URI,
+        opts
+      ) as unknown as Promise<mongoose.Connection>;
       cached.conn = await cached.promise;
     } else {
       // Use existing connection

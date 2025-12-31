@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useAccount, useConnect, useDisconnect, useBalance, useSwitchChain } from 'wagmi';
 import { formatUnits } from 'viem';
 import { useState, useEffect } from 'react';
@@ -24,7 +25,7 @@ interface ChainParams {
 function getChainParams(): ChainParams {
   const chain = getChain();
   const nativeToken = getNativeToken();
-  
+
   return {
     chainId: `0x${chain.id.toString(16)}`,
     chainName: chain.name,
@@ -35,7 +36,7 @@ function getChainParams(): ChainParams {
     },
     rpcUrls: [chain.rpcUrls.default.http[0]],
     blockExplorerUrls: [chain.blockExplorers?.default?.url || ''],
-    iconUrls: []
+    iconUrls: [],
   };
 }
 
@@ -45,10 +46,10 @@ function ConnectWalletButton() {
   const { disconnect } = useDisconnect();
   const { switchChain } = useSwitchChain();
   const { data: balance } = useBalance({ address });
-  
+
   const [chainParams, setChainParams] = useState<ChainParams | null>(null);
   const [expectedChainId, setExpectedChainId] = useState<number | null>(null);
-  
+
   useEffect(() => {
     // Get chain params on client side
     const params = getChainParams();
@@ -67,12 +68,16 @@ function ConnectWalletButton() {
     const injectedConnector = connectors.find((c) => c.id === 'injected');
     if (injectedConnector && chainParams) {
       connect({ connector: injectedConnector });
-      
+
       // Try to add network after connecting
-      const ethereum = (window as unknown as { ethereum?: {
-        request: (params: { method: string; params?: unknown[] }) => Promise<unknown>;
-      } }).ethereum;
-      
+      const ethereum = (
+        window as unknown as {
+          ethereum?: {
+            request: (params: { method: string; params?: unknown[] }) => Promise<unknown>;
+          };
+        }
+      ).ethereum;
+
       if (ethereum) {
         try {
           await ethereum.request({
@@ -98,11 +103,15 @@ function ConnectWalletButton() {
   // Switch to correct network
   const handleSwitchNetwork = async () => {
     if (!chainParams) return;
-    
-    const ethereum = (window as unknown as { ethereum?: {
-      request: (params: { method: string; params?: unknown[] }) => Promise<unknown>;
-    } }).ethereum;
-    
+
+    const ethereum = (
+      window as unknown as {
+        ethereum?: {
+          request: (params: { method: string; params?: unknown[] }) => Promise<unknown>;
+        };
+      }
+    ).ethereum;
+
     if (ethereum) {
       try {
         await ethereum.request({
@@ -134,12 +143,17 @@ function ConnectWalletButton() {
             className="flex items-center gap-2 px-3 py-2 bg-yellow-500/20 border border-yellow-500/50 rounded-xl text-yellow-400 text-sm font-medium hover:bg-yellow-500/30 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
             </svg>
             Switch Network
           </button>
         )}
-        
+
         {/* Balance Display */}
         {!isWrongNetwork && balance && (
           <div className="hidden sm:flex items-center gap-2 px-3 py-2 bg-gray-800/80 rounded-xl border border-gray-700">
@@ -149,7 +163,7 @@ function ConnectWalletButton() {
             </span>
           </div>
         )}
-        
+
         {/* Address & Disconnect */}
         <div className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-gray-800 to-gray-700 rounded-xl border border-gray-600">
           <Image src="/img/MetaMask.svg" alt="MetaMask" width={20} height={20} />
@@ -161,8 +175,18 @@ function ConnectWalletButton() {
             className="ml-1 p-1 hover:bg-gray-600 rounded-lg transition-colors"
             title="Disconnect"
           >
-            <svg className="w-4 h-4 text-gray-400 hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            <svg
+              className="w-4 h-4 text-gray-400 hover:text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+              />
             </svg>
           </button>
         </div>
@@ -184,8 +208,37 @@ function ConnectWalletButton() {
 
 export function DexHeader() {
   return (
-    <div className="max-w-lg mx-auto mb-6">
-      <div className="flex justify-end">
+    <div className="max-w-7xl mx-auto mb-6">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+        {/* Navigation */}
+        <nav className="flex items-center gap-1 bg-gray-800/50 rounded-xl p-1 border border-gray-700/50">
+          <Link
+            href="/dex"
+            className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+          >
+            Trade
+          </Link>
+          <Link
+            href="/dex/pools"
+            className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+          >
+            Pools
+          </Link>
+          <Link
+            href="/dex/analytics"
+            className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+          >
+            Analytics
+          </Link>
+          <Link
+            href="/dex/docs"
+            className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+          >
+            Docs
+          </Link>
+        </nav>
+
+        {/* Wallet Button */}
         <ConnectWalletButton />
       </div>
     </div>

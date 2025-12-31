@@ -23,22 +23,22 @@ const initDB = async () => {
     if (mongoose.connection.readyState === 1) {
       return;
     }
-    
+
     await connectDB();
-    
+
     // Wait for connection to be fully established
     let retries = 0;
     const maxRetries = 30;
     while ((mongoose.connection.readyState as number) !== 1 && retries < maxRetries) {
       console.log('⌛ Waiting for database connection...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       retries++;
     }
-    
+
     if ((mongoose.connection.readyState as number) !== 1) {
       throw new Error('Database connection timeout');
     }
-    
+
     console.log('🔗 Database connection initialized successfully');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);
@@ -51,7 +51,7 @@ const checkMemory = () => {
   const usage = process.memoryUsage();
   const usedMB = Math.round(usage.heapUsed / 1024 / 1024);
   const limitMB = parseInt(process.env.MEMORY_LIMIT_MB || '1024'); // Optimized for 2GB instances
-  
+
   if (usedMB > limitMB) {
     console.log(`⚠️  Memory usage: ${usedMB}MB (limit: ${limitMB}MB)`);
     if (global.gc) {
@@ -97,7 +97,7 @@ const registerContract = async (
 ): Promise<void> => {
   try {
     const normalizedAddress = contractAddress.toLowerCase();
-    
+
     // Check if contract already exists
     const existing = await Contract.findOne({ address: normalizedAddress });
     if (existing) {
@@ -118,17 +118,44 @@ const registerContract = async (
 
     try {
       const erc20ABI = [
-        { constant: true, inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], type: 'function' },
-        { constant: true, inputs: [], name: 'symbol', outputs: [{ name: '', type: 'string' }], type: 'function' },
-        { constant: true, inputs: [], name: 'decimals', outputs: [{ name: '', type: 'uint8' }], type: 'function' }
+        {
+          constant: true,
+          inputs: [],
+          name: 'name',
+          outputs: [{ name: '', type: 'string' }],
+          type: 'function',
+        },
+        {
+          constant: true,
+          inputs: [],
+          name: 'symbol',
+          outputs: [{ name: '', type: 'string' }],
+          type: 'function',
+        },
+        {
+          constant: true,
+          inputs: [],
+          name: 'decimals',
+          outputs: [{ name: '', type: 'uint8' }],
+          type: 'function',
+        },
       ];
       const contract = new web3Instance.eth.Contract(erc20ABI as any, contractAddress);
-      
+
       // Try to call ERC20 methods
       const [name, symbol, decimals] = await Promise.all([
-        contract.methods.name().call().catch(() => null),
-        contract.methods.symbol().call().catch(() => null),
-        contract.methods.decimals().call().catch(() => null)
+        contract.methods
+          .name()
+          .call()
+          .catch(() => null),
+        contract.methods
+          .symbol()
+          .call()
+          .catch(() => null),
+        contract.methods
+          .decimals()
+          .call()
+          .catch(() => null),
       ]);
 
       if (name && symbol) {
@@ -152,10 +179,12 @@ const registerContract = async (
       symbol: tokenSymbol || null,
       owner: creatorAddress.toLowerCase(),
       decimals: tokenDecimals,
-      verified: false
+      verified: false,
     });
 
-    console.log(`📝 Contract registered: ${normalizedAddress}${isERC20 ? ` (${tokenSymbol})` : ''}`);
+    console.log(
+      `📝 Contract registered: ${normalizedAddress}${isERC20 ? ` (${tokenSymbol})` : ''}`
+    );
   } catch (error: any) {
     // Ignore duplicate key errors
     if (error.code !== 11000) {
@@ -181,13 +210,25 @@ const registerKnownContracts = async (web3Instance: Web3): Promise<void> => {
   // DEX Contracts
   if (cfg.dex) {
     if (cfg.dex.factory) {
-      contracts.push({ address: cfg.dex.factory.toLowerCase(), contractName: 'SimpleFactoryV2', type: 'contract' });
+      contracts.push({
+        address: cfg.dex.factory.toLowerCase(),
+        contractName: 'SimpleFactoryV2',
+        type: 'contract',
+      });
     }
     if (cfg.dex.router) {
-      contracts.push({ address: cfg.dex.router.toLowerCase(), contractName: 'SimpleRouterV2', type: 'contract' });
+      contracts.push({
+        address: cfg.dex.router.toLowerCase(),
+        contractName: 'SimpleRouterV2',
+        type: 'contract',
+      });
     }
     if (cfg.dex.masterChef) {
-      contracts.push({ address: cfg.dex.masterChef.toLowerCase(), contractName: 'MasterChef', type: 'contract' });
+      contracts.push({
+        address: cfg.dex.masterChef.toLowerCase(),
+        contractName: 'MasterChef',
+        type: 'contract',
+      });
     }
     if (cfg.dex.wrappedNative?.address) {
       contracts.push({
@@ -196,7 +237,7 @@ const registerKnownContracts = async (web3Instance: Web3): Promise<void> => {
         symbol: cfg.dex.wrappedNative.symbol,
         tokenName: cfg.dex.wrappedNative.name,
         decimals: cfg.dex.wrappedNative.decimals || 18,
-        type: 'token'
+        type: 'token',
       });
     }
     if (cfg.dex.rewardToken?.address) {
@@ -206,7 +247,7 @@ const registerKnownContracts = async (web3Instance: Web3): Promise<void> => {
         symbol: cfg.dex.rewardToken.symbol,
         tokenName: cfg.dex.rewardToken.name,
         decimals: cfg.dex.rewardToken.decimals || 18,
-        type: 'token'
+        type: 'token',
       });
     }
     // DEX Tokens
@@ -220,7 +261,7 @@ const registerKnownContracts = async (web3Instance: Web3): Promise<void> => {
             symbol: t.symbol,
             tokenName: t.name,
             decimals: t.decimals || 18,
-            type: 'token'
+            type: 'token',
           });
         }
       }
@@ -235,7 +276,7 @@ const registerKnownContracts = async (web3Instance: Web3): Promise<void> => {
             contractName: l.name || 'LP Token',
             symbol: l.symbol,
             tokenName: l.name,
-            type: 'token'
+            type: 'token',
           });
         }
       }
@@ -247,7 +288,7 @@ const registerKnownContracts = async (web3Instance: Web3): Promise<void> => {
     contracts.push({
       address: cfg.launchpad.factoryAddress.toLowerCase(),
       contractName: 'TokenFactory',
-      type: 'contract'
+      type: 'contract',
     });
   }
 
@@ -269,7 +310,7 @@ const registerKnownContracts = async (web3Instance: Web3): Promise<void> => {
             tokenName: contract.tokenName,
             decimals: contract.decimals,
             ERC: contract.type === 'token' ? 2 : 0,
-            verified: false
+            verified: false,
           });
           console.log(`  ✅ ${contract.contractName} (${contract.address.slice(0, 10)}...)`);
         }
@@ -414,7 +455,7 @@ const normalizeTX = async (
     input: toString(txData.input || txData.data || '0x'),
     transactionIndex: toNumber(txData.transactionIndex),
     timestamp: toNumber(blockData.timestamp),
-    status: receipt ? toBoolean(receipt.status) : null
+    status: receipt ? toBoolean(receipt.status) : null,
   };
 
   if (txData.to) {
@@ -432,7 +473,10 @@ interface WriteBlockToDB {
   bulkOps?: BlockDocument[];
 }
 
-const writeBlockToDB: WriteBlockToDB = async function (blockData: any | null, flush = false): Promise<void> {
+const writeBlockToDB: WriteBlockToDB = async function (
+  blockData: any | null,
+  flush = false
+): Promise<void> {
   const self = writeBlockToDB;
   if (!self.bulkOps) {
     self.bulkOps = [];
@@ -457,10 +501,10 @@ const writeBlockToDB: WriteBlockToDB = async function (blockData: any | null, fl
       gasLimit: toNumber(blockData.gasLimit),
       gasUsed: toNumber(blockData.gasUsed),
       timestamp: toNumber(blockData.timestamp),
-      transactions: blockData.transactions.map((tx: any) => 
+      transactions: blockData.transactions.map((tx: any) =>
         typeof tx === 'string' ? tx : toString(tx.hash)
       ),
-      uncles: blockData.uncles || []
+      uncles: blockData.uncles || [],
     };
 
     self.bulkOps.push(blockDoc);
@@ -470,7 +514,7 @@ const writeBlockToDB: WriteBlockToDB = async function (blockData: any | null, fl
     }
   }
 
-  if (flush && self.bulkOps.length > 0 || self.bulkOps.length >= config.bulkSize) {
+  if ((flush && self.bulkOps.length > 0) || self.bulkOps.length >= config.bulkSize) {
     const bulk = self.bulkOps;
     self.bulkOps = [];
 
@@ -517,31 +561,35 @@ const writeTransactionsToDB: WriteTransactionsToDB = async function (
         const receipt = await web3.eth.getTransactionReceipt(toString(txData.hash));
         const tx = await normalizeTX(txData, receipt, blockData);
         self.bulkOps.push(tx);
-        
+
         // Detect contract creation and auto-register
         if (receipt && receipt.contractAddress) {
           const contractAddr = toString(receipt.contractAddress);
           const creatorAddr = toString(txData.from);
           const txHash = toString(txData.hash);
           const blockNum = toNumber(blockData.number);
-          
+
           // Register contract asynchronously (don't wait)
           registerContract(contractAddr, creatorAddr, txHash, blockNum, web3).catch(() => {});
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.log(`⚠️ Warning: Failed to get receipt for tx ${toString(txData.hash)}: ${errorMessage}`);
+        console.log(
+          `⚠️ Warning: Failed to get receipt for tx ${toString(txData.hash)}: ${errorMessage}`
+        );
       }
     }
 
     if (!config.quiet) {
-      console.log(`💾 block #${blockData.number}: ${blockData.transactions.length} transactions recorded.`);
+      console.log(
+        `💾 block #${blockData.number}: ${blockData.transactions.length} transactions recorded.`
+      );
     }
   }
 
   self.blocks = (self.blocks || 0) + 1;
 
-  if (flush && (self.blocks || 0) > 0 || (self.bulkOps?.length || 0) >= config.bulkSize) {
+  if ((flush && (self.blocks || 0) > 0) || (self.bulkOps?.length || 0) >= config.bulkSize) {
     const bulk = self.bulkOps || [];
     self.bulkOps = [];
     self.blocks = 0;
@@ -592,21 +640,25 @@ const listenBlocks = function (): void {
 
         // Process new blocks in batches
         const blocksToProcess = Math.min(currentBlock - lastProcessedBlock, 5); // Reduced from 10 to 5
-        
+
         for (let i = 0; i < blocksToProcess; i++) {
           const blockNum = lastProcessedBlock + 1 + i;
-          
+
           try {
             const blockData = await web3.eth.getBlock(blockNum, true);
 
             if (blockData) {
               // Check if block already exists to avoid duplicates with extended timeout
-              const existingBlock = await Block.findOne({ number: blockNum }).lean().maxTimeMS(60000);
-              
+              const existingBlock = await Block.findOne({ number: blockNum })
+                .lean()
+                .maxTimeMS(60000);
+
               if (!existingBlock) {
                 await writeBlockToDB(blockData, true);
                 await writeTransactionsToDB(blockData, true);
-                console.log(`📦 Processed new block: ${blockNum} (${blockData.transactions.length} transactions)`);
+                console.log(
+                  `📦 Processed new block: ${blockNum} (${blockData.transactions.length} transactions)`
+                );
               } else {
                 console.log(`⏭️ Block ${blockNum} already exists, skipping`);
               }
@@ -616,7 +668,7 @@ const listenBlocks = function (): void {
             // If timeout error, wait and continue - don't fail
             if (errorMessage.includes('time limit') || errorMessage.includes('timeout')) {
               console.log(`⏳ Block ${blockNum} query timeout, will retry later`);
-              await new Promise(resolve => setTimeout(resolve, 5000));
+              await new Promise((resolve) => setTimeout(resolve, 5000));
             } else {
               console.log(`❌ Error processing block ${blockNum}: ${errorMessage}`);
             }
@@ -634,15 +686,16 @@ const listenBlocks = function (): void {
   };
 
   // Get initial block number
-  web3.eth.getBlockNumber()
-    .then(blockNumberBigInt => {
+  web3.eth
+    .getBlockNumber()
+    .then((blockNumberBigInt) => {
       lastProcessedBlock = toNumber(blockNumberBigInt);
       console.log(`🔍 Real-time listener starting from block: ${lastProcessedBlock}`);
 
       // Start polling
       setInterval(poll, pollInterval);
     })
-    .catch(err => {
+    .catch((err) => {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.log(`Error getting initial block number: ${errorMessage}`);
     });
@@ -658,18 +711,25 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
   }
   if (!endBlock) {
     const latestBlockBigInt = await web3.eth.getBlockNumber();
-    endBlock = config.endBlock ? Math.min(config.endBlock, toNumber(latestBlockBigInt)) : toNumber(latestBlockBigInt);
+    endBlock = config.endBlock
+      ? Math.min(config.endBlock, toNumber(latestBlockBigInt))
+      : toNumber(latestBlockBigInt);
   }
 
   console.log(`🔄 Syncing blocks from ${startBlock} to ${endBlock}...`);
 
   // Check which blocks already exist in database with timeout
-  const existingBlocks = await Block.find({ 
-    number: { $gte: startBlock, $lte: endBlock } 
-  }).select('number').lean().maxTimeMS(120000);
-  
-  const existingBlockNumbers = new Set(existingBlocks.map(b => b.number));
-  console.log(`🔍 Found ${existingBlocks.length} existing blocks in range ${startBlock}-${endBlock}`);
+  const existingBlocks = await Block.find({
+    number: { $gte: startBlock, $lte: endBlock },
+  })
+    .select('number')
+    .lean()
+    .maxTimeMS(120000);
+
+  const existingBlockNumbers = new Set(existingBlocks.map((b) => b.number));
+  console.log(
+    `🔍 Found ${existingBlocks.length} existing blocks in range ${startBlock}-${endBlock}`
+  );
 
   let processedCount = 0;
   let skippedCount = 0;
@@ -680,7 +740,7 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
   for (let batchStart = startBlock; batchStart <= endBlock; batchStart += BATCH_SIZE) {
     const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, endBlock);
     const batchNumbers = [];
-    
+
     // Collect block numbers that need processing
     for (let blockNum = batchStart; blockNum <= batchEnd; blockNum++) {
       if (!existingBlockNumbers.has(blockNum)) {
@@ -694,7 +754,9 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
       continue; // Skip this batch if all blocks exist
     }
 
-    console.log(`🚀 Processing batch ${batchStart}-${batchEnd} (${batchNumbers.length} new blocks)`);
+    console.log(
+      `🚀 Processing batch ${batchStart}-${batchEnd} (${batchNumbers.length} new blocks)`
+    );
 
     try {
       // Process blocks in smaller chunks to avoid overwhelming the node
@@ -704,7 +766,7 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
       }
 
       const allBlocksData = [];
-      
+
       for (const chunk of chunks) {
         // Fetch blocks in parallel within each chunk
         const blockPromises = chunk.map(async (blockNum) => {
@@ -719,10 +781,10 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
 
         const chunkResults = await Promise.all(blockPromises);
         allBlocksData.push(...chunkResults);
-        
+
         // Small delay between chunks to prevent overwhelming the node
         if (chunks.length > 1) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
 
@@ -751,15 +813,25 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
             gasLimit: toNumber(blockData.gasLimit),
             gasUsed: toNumber(blockData.gasUsed),
             timestamp: toNumber(blockData.timestamp),
-            transactions: blockData.transactions ? blockData.transactions.map((tx: any) => toString(tx.hash || tx)) : [],
+            transactions: blockData.transactions
+              ? blockData.transactions.map((tx: any) => toString(tx.hash || tx))
+              : [],
             uncles: blockData.uncles || [],
             baseFeePerGas: blockData.baseFeePerGas ? toString(blockData.baseFeePerGas) : undefined,
             mixHash: blockData.mixHash ? toString(blockData.mixHash) : undefined,
             withdrawals: (blockData as any).withdrawals || [],
-            withdrawalsRoot: (blockData as any).withdrawalsRoot ? toString((blockData as any).withdrawalsRoot) : undefined,
-            blobGasUsed: (blockData as any).blobGasUsed ? toNumber((blockData as any).blobGasUsed) : undefined,
-            excessBlobGas: (blockData as any).excessBlobGas ? toNumber((blockData as any).excessBlobGas) : undefined,
-            parentBeaconBlockRoot: (blockData as any).parentBeaconBlockRoot ? toString((blockData as any).parentBeaconBlockRoot) : undefined
+            withdrawalsRoot: (blockData as any).withdrawalsRoot
+              ? toString((blockData as any).withdrawalsRoot)
+              : undefined,
+            blobGasUsed: (blockData as any).blobGasUsed
+              ? toNumber((blockData as any).blobGasUsed)
+              : undefined,
+            excessBlobGas: (blockData as any).excessBlobGas
+              ? toNumber((blockData as any).excessBlobGas)
+              : undefined,
+            parentBeaconBlockRoot: (blockData as any).parentBeaconBlockRoot
+              ? toString((blockData as any).parentBeaconBlockRoot)
+              : undefined,
           };
 
           blocksToInsert.push(blockDoc);
@@ -774,7 +846,9 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
                   const receipt = await web3.eth.getTransactionReceipt(toString(tx.hash));
                   return { tx, receipt };
                 } catch (error) {
-                  console.log(`⚠️ Warning: Failed to get receipt for tx ${toString(tx.hash)}: ${error}`);
+                  console.log(
+                    `⚠️ Warning: Failed to get receipt for tx ${toString(tx.hash)}: ${error}`
+                  );
                   return { tx, receipt: null };
                 }
               });
@@ -808,20 +882,24 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
                 accessList: tx.accessList || [],
                 chainId: tx.chainId ? toNumber(tx.chainId) : null,
                 maxFeePerGas: tx.maxFeePerGas ? toString(tx.maxFeePerGas) : null,
-                maxPriorityFeePerGas: tx.maxPriorityFeePerGas ? toString(tx.maxPriorityFeePerGas) : null,
-                maxFeePerBlobGas: (tx as any).maxFeePerBlobGas ? toString((tx as any).maxFeePerBlobGas) : null,
+                maxPriorityFeePerGas: tx.maxPriorityFeePerGas
+                  ? toString(tx.maxPriorityFeePerGas)
+                  : null,
+                maxFeePerBlobGas: (tx as any).maxFeePerBlobGas
+                  ? toString((tx as any).maxFeePerBlobGas)
+                  : null,
                 blobVersionedHashes: (tx as any).blobVersionedHashes || [],
-                yParity: (tx as any).yParity ? toString((tx as any).yParity) : null
+                yParity: (tx as any).yParity ? toString((tx as any).yParity) : null,
               };
               transactionsToInsert.push(txDoc);
-              
+
               // Detect contract creation and auto-register
               if (receipt && receipt.contractAddress) {
                 const contractAddr = toString(receipt.contractAddress);
                 const creatorAddr = toString(tx.from);
                 const txHash = toString(tx.hash);
                 const blockNum = toNumber(blockData.number);
-                
+
                 // Register contract asynchronously (don't block sync)
                 registerContract(contractAddr, creatorAddr, txHash, blockNum, web3).catch(() => {});
               }
@@ -853,13 +931,16 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
         if (global.gc) {
           global.gc();
         }
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
       // Progress logging
-      const progress = ((batchEnd - startBlock + 1) / (endBlock - startBlock + 1) * 100).toFixed(1);
-      console.log(`📦 Batch completed: ${batchStart}-${batchEnd} | Progress: ${progress}% | Processed: ${processedCount}, Skipped: ${skippedCount}`);
-
+      const progress = (((batchEnd - startBlock + 1) / (endBlock - startBlock + 1)) * 100).toFixed(
+        1
+      );
+      console.log(
+        `📦 Batch completed: ${batchStart}-${batchEnd} | Progress: ${progress}% | Processed: ${processedCount}, Skipped: ${skippedCount}`
+      );
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.log(`❌ Error processing batch ${batchStart}-${batchEnd}: ${errorMessage}`);
@@ -877,7 +958,9 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
 const prepareSync = async (): Promise<void> => {
   try {
     // Find the latest block in database
-    const latestBlockDoc = await Block.findOne({}, { number: 1 }).sort({ number: -1 }).maxTimeMS(60000);
+    const latestBlockDoc = await Block.findOne({}, { number: 1 })
+      .sort({ number: -1 })
+      .maxTimeMS(60000);
 
     if (latestBlockDoc) {
       const dbLatestBlock = latestBlockDoc.number;
@@ -916,7 +999,6 @@ const hybridSync = async (): Promise<void> => {
     // Start background sync for past blocks
     console.log('📚 Starting background sync for past blocks...');
     await prepareSync();
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.log(`❌ Error in hybrid sync: ${errorMessage}`);
@@ -937,8 +1019,8 @@ const main = async (): Promise<void> => {
         console.log('📄 config.json found.');
         if (configData.database && configData.database.uri) {
           process.env.MONGODB_URI = configData.database.uri;
-    console.log('📄 MongoDB URI set from config.json');
-  }
+          console.log('📄 MongoDB URI set from config.json');
+        }
       } else {
         // Fallback to config.example.json
         const exampleConfigPath = path.join(__dirname, '..', 'config.example.json');
@@ -960,10 +1042,10 @@ const main = async (): Promise<void> => {
 
     // Initialize database connection ONCE
     await initDB();
-    
+
     // Register known contracts from config.json
     await registerKnownContracts(web3);
-    
+
     // Test connection by getting latest block number
     try {
       await web3.eth.getBlockNumber();
@@ -984,20 +1066,19 @@ const main = async (): Promise<void> => {
       // Use hybrid sync by default
       await hybridSync();
     }
-
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
+
     // Check if it's a timeout error - these are recoverable
     if (errorMessage.includes('timed out') || errorMessage.includes('timeout')) {
       console.log(`⌛ Timeout error occurred: ${errorMessage}`);
       console.log('⌛ Waiting 60 seconds before retry...');
-      await new Promise(resolve => setTimeout(resolve, 60000));
+      await new Promise((resolve) => setTimeout(resolve, 60000));
       // Don't exit - let PM2 restart the process
       console.log('🔄 Restarting sync process...');
       return main();
     }
-    
+
     console.log(`💥 Fatal error: ${errorMessage}`);
     process.exit(1);
   }
@@ -1015,15 +1096,15 @@ process.on('SIGINT', async () => {
 // Richlist wrapper function
 const runRichlist = async () => {
   console.log('🚀 Starting richlist calculation...');
-  
+
   // Ensure database connection first
   await initDB();
-  
+
   const web3 = new Web3(new Web3.providers.HttpProvider(getWeb3ProviderURL()));
   const latestBlock = await web3.eth.getBlockNumber();
   const blockNumber = Number(latestBlock);
   const BATCH_SIZE = 50;
-  
+
   console.log(`📦 Processing richlist for block ${blockNumber}`);
   await makeRichList(blockNumber, BATCH_SIZE);
 };
@@ -1032,36 +1113,30 @@ const runAll = async () => {
   // 最初にデータベース接続を確立
   console.log('🔗 Initializing database connection for all tasks...');
   await initDB();
-  
+
   // 接続が確立されるまで待機
   let retries = 0;
   const maxRetries = 10;
   while (mongoose.connection.readyState !== 1 && retries < maxRetries) {
     console.log('⌛ Waiting for database connection...');
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     retries++;
   }
-  
+
   if (mongoose.connection.readyState !== 1) {
     console.error('❌ Failed to establish database connection');
     process.exit(1);
   }
-  
+
   console.log('✅ Database connection established, starting all tasks...');
-  
+
   // 各mainを順次実行（データベース接続の競合を防ぐ）
   try {
     // まずstatsとrichlistを並行実行
-    await Promise.all([
-      statsMain(),
-      runRichlist()
-    ]);
-    
+    await Promise.all([statsMain(), runRichlist()]);
+
     // その後、syncとtokensを実行
-    await Promise.all([
-      main(),
-      tokensMain()
-    ]);
+    await Promise.all([main(), tokensMain()]);
   } catch (error) {
     console.error('❌ Error in runAll:', error);
   }

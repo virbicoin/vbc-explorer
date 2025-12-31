@@ -34,7 +34,7 @@ let currencyConfig = {
   name: 'VirBiCoin',
   symbol: 'VBC',
   unit: 'niku',
-  decimals: 18
+  decimals: 18,
 };
 
 // Function to update currency configuration
@@ -44,7 +44,7 @@ export function updateCurrencyConfig(config: CurrencyConfig) {
       name: config.currency.name || 'Ether',
       symbol: config.currency.symbol || 'ETH',
       unit: config.currency.unit || 'wei',
-      decimals: config.currency.decimals || 18
+      decimals: config.currency.decimals || 18,
     };
   }
 }
@@ -52,15 +52,16 @@ export function updateCurrencyConfig(config: CurrencyConfig) {
 const createCurrencyUnits = (): CurrencyUnits => {
   // Ensure decimals is a number before using
   const rawDecimals = currencyConfig.decimals;
-  const decimals = typeof rawDecimals === 'bigint' 
-    ? Number(rawDecimals) 
-    : typeof rawDecimals === 'string'
-    ? parseInt(rawDecimals, 10)
-    : typeof rawDecimals === 'number'
-    ? rawDecimals
-    : 18;
+  const decimals =
+    typeof rawDecimals === 'bigint'
+      ? Number(rawDecimals)
+      : typeof rawDecimals === 'string'
+        ? parseInt(rawDecimals, 10)
+        : typeof rawDecimals === 'number'
+          ? rawDecimals
+          : 18;
   const mainUnitValue = BigInt(10) ** BigInt(decimals);
-  
+
   return {
     unitMap: {
       // Currency-specific naming
@@ -71,30 +72,30 @@ const createCurrencyUnits = (): CurrencyUnits => {
       [currencyConfig.symbol.toLowerCase()]: mainUnitValue.toString(),
 
       // Legacy Ethereum-compatible names for compatibility
-      'wei': '1',
-      'kwei': '1000',
-      'ada': '1000',
-      'femtoether': '1000',
-      'mwei': '1000000',
-      'babbage': '1000000',
-      'picoether': '1000000',
-      'gwei': '1000000000',
-      'shannon': '1000000000',
-      'nanoether': '1000000000',
-      'nano': '1000000000',
-      'szabo': '1000000000000',
-      'microether': '1000000000000',
-      'micro': '1000000000000',
-      'finney': '1000000000000000',
-      'milliether': '1000000000000000',
-      'milli': '1000000000000000',
-      'ether': mainUnitValue.toString(),
-      'kether': (mainUnitValue * 1000n).toString(),
-      'grand': (mainUnitValue * 1000n).toString(),
-      'einstein': (mainUnitValue * 1000n).toString(),
-      'mether': (mainUnitValue * 1000000000n).toString(),
-      'gether': (mainUnitValue * 1000000000000000n).toString(),
-      'tether': (mainUnitValue * 1000000000000000000000n).toString(),
+      wei: '1',
+      kwei: '1000',
+      ada: '1000',
+      femtoether: '1000',
+      mwei: '1000000',
+      babbage: '1000000',
+      picoether: '1000000',
+      gwei: '1000000000',
+      shannon: '1000000000',
+      nanoether: '1000000000',
+      nano: '1000000000',
+      szabo: '1000000000000',
+      microether: '1000000000000',
+      micro: '1000000000000',
+      finney: '1000000000000000',
+      milliether: '1000000000000000',
+      milli: '1000000000000000',
+      ether: mainUnitValue.toString(),
+      kether: (mainUnitValue * 1000n).toString(),
+      grand: (mainUnitValue * 1000n).toString(),
+      einstein: (mainUnitValue * 1000n).toString(),
+      mether: (mainUnitValue * 1000000000n).toString(),
+      gether: (mainUnitValue * 1000000000000000n).toString(),
+      tether: (mainUnitValue * 1000000000000000000000n).toString(),
     },
 
     currencyName: currencyConfig.name,
@@ -107,7 +108,9 @@ const createCurrencyUnits = (): CurrencyUnits => {
       unit = unit ? unit.toLowerCase() : this.mainUnit;
       const unitValue = this.unitMap[unit];
       if (unitValue === undefined) {
-        throw new Error(`Invalid unit: ${unit}. Supported units: ${JSON.stringify(this.unitMap, null, 2)}`);
+        throw new Error(
+          `Invalid unit: ${unit}. Supported units: ${JSON.stringify(this.unitMap, null, 2)}`
+        );
       }
       return BigInt(unitValue);
     },
@@ -116,7 +119,8 @@ const createCurrencyUnits = (): CurrencyUnits => {
       const baseValue = BigInt(this.toBaseUnit(number, unit));
       const mainValue = baseValue / this.getValueOfUnit(this.mainUnit);
       // Ensure decimals is a number for Math.pow
-      const dec = typeof this.decimals === 'bigint' ? Number(this.decimals) : Number(this.decimals) || 18;
+      const dec =
+        typeof this.decimals === 'bigint' ? Number(this.decimals) : Number(this.decimals) || 18;
       return (Number(mainValue) / Math.pow(10, dec)).toString();
     },
 
@@ -134,7 +138,7 @@ const createCurrencyUnits = (): CurrencyUnits => {
 
     toWei(number: string | number | bigint, unit?: string): string {
       return this.toBaseUnit(number, unit);
-    }
+    },
   };
 };
 
@@ -173,7 +177,7 @@ const lazyUnits = new Proxy({} as CurrencyUnits, {
       return value.bind(units);
     }
     return value;
-  }
+  },
 });
 
 export default lazyUnits;

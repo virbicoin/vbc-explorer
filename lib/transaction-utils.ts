@@ -59,10 +59,10 @@ export interface TransactionTypeResult {
  * トランザクションタイプを判定する関数（アドレスコンテキストあり）
  */
 export function getTransactionType(
-  tx: { 
-    from: string; 
-    to: string | null; 
-    value: string; 
+  tx: {
+    from: string;
+    to: string | null;
+    value: string;
     input?: string;
     status?: number;
   },
@@ -74,20 +74,20 @@ export function getTransactionType(
   const methodId = input.slice(0, 10).toLowerCase();
   const isFromAddress = tx.from.toLowerCase() === address.toLowerCase();
   const isToAddress = tx.to?.toLowerCase() === address.toLowerCase();
-  
+
   // Direction
   let direction: 'in' | 'out' | 'self' = 'out';
   if (isFromAddress && isToAddress) direction = 'self';
   else if (isToAddress) direction = 'in';
   else direction = 'out';
-  
+
   // Contract creation (no to address)
   if (!tx.to || tx.to === '0x0000000000000000000000000000000000000000') {
     if (tx.from.toLowerCase() === address.toLowerCase()) {
       return { type: 'contract_creation', action: 'Contract Deploy', direction: 'out' };
     }
   }
-  
+
   // Check if this tx is a token transfer
   if (txHash && tokenTransferHashes?.has(txHash.toLowerCase())) {
     const method = METHOD_IDS[methodId];
@@ -96,18 +96,18 @@ export function getTransactionType(
     }
     return { type: 'token_transfer', action: 'Token Transfer', direction };
   }
-  
+
   // Check method ID
   const method = METHOD_IDS[methodId];
   if (method) {
     return { ...method, direction };
   }
-  
+
   // Contract interaction (has input data)
   if (input && input !== '0x' && input.length > 2) {
     return { type: 'contract_interaction', action: 'Contract Interaction', direction };
   }
-  
+
   // Native transfer
   const value = BigInt(tx.value || '0');
   if (value > 0n) {
@@ -116,61 +116,72 @@ export function getTransactionType(
     }
     return { type: 'send', action: 'Send', direction: 'out' };
   }
-  
+
   return { type: 'contract_interaction', action: 'Contract Call', direction };
 }
 
 /**
  * トランザクションタイプを判定する関数（アドレスコンテキストなし - グローバル用）
  */
-export function getTransactionTypeGlobal(
-  tx: { 
-    from: string; 
-    to: string | null; 
-    value: string; 
-    input?: string;
-    status?: number;
-  }
-): TransactionTypeResult {
+export function getTransactionTypeGlobal(tx: {
+  from: string;
+  to: string | null;
+  value: string;
+  input?: string;
+  status?: number;
+}): TransactionTypeResult {
   const input = tx.input || '0x';
   const methodId = input.slice(0, 10).toLowerCase();
-  
+
   // Contract creation (no to address)
   if (!tx.to || tx.to === '0x0000000000000000000000000000000000000000') {
     return { type: 'contract_creation', action: 'Contract Deploy' };
   }
-  
+
   // Check method ID
   const method = METHOD_IDS[methodId];
   if (method) {
     return { ...method };
   }
-  
+
   // Contract interaction (has input data)
   if (input && input !== '0x' && input.length > 2) {
     return { type: 'contract_interaction', action: 'Contract Interaction' };
   }
-  
+
   // Native transfer
   const value = BigInt(tx.value || '0');
   if (value > 0n) {
     return { type: 'send', action: 'Transfer' };
   }
-  
+
   return { type: 'contract_interaction', action: 'Contract Call' };
 }
 
 // トランザクションタイプに対応する表示設定
-export const TRANSACTION_TYPE_CONFIG: Record<string, { 
-  label: string; 
-  bgColor: string; 
-  textColor: string;
-  icon: string;
-}> = {
+export const TRANSACTION_TYPE_CONFIG: Record<
+  string,
+  {
+    label: string;
+    bgColor: string;
+    textColor: string;
+    icon: string;
+  }
+> = {
   send: { label: 'Send', bgColor: 'bg-red-100', textColor: 'text-red-700', icon: '↑' },
   receive: { label: 'Receive', bgColor: 'bg-green-100', textColor: 'text-green-700', icon: '↓' },
-  token_transfer: { label: 'Token Transfer', bgColor: 'bg-purple-100', textColor: 'text-purple-700', icon: '⇆' },
-  nft_transfer: { label: 'NFT Transfer', bgColor: 'bg-pink-100', textColor: 'text-pink-700', icon: '🖼' },
+  token_transfer: {
+    label: 'Token Transfer',
+    bgColor: 'bg-purple-100',
+    textColor: 'text-purple-700',
+    icon: '⇆',
+  },
+  nft_transfer: {
+    label: 'NFT Transfer',
+    bgColor: 'bg-pink-100',
+    textColor: 'text-pink-700',
+    icon: '🖼',
+  },
   approve: { label: 'Approve', bgColor: 'bg-yellow-100', textColor: 'text-yellow-700', icon: '✓' },
   swap: { label: 'Swap', bgColor: 'bg-blue-100', textColor: 'text-blue-700', icon: '⇋' },
   liquidity: { label: 'Liquidity', bgColor: 'bg-cyan-100', textColor: 'text-cyan-700', icon: '💧' },
@@ -179,9 +190,24 @@ export const TRANSACTION_TYPE_CONFIG: Record<string, {
   harvest: { label: 'Harvest', bgColor: 'bg-lime-100', textColor: 'text-lime-700', icon: '🌾' },
   mint: { label: 'Mint', bgColor: 'bg-emerald-100', textColor: 'text-emerald-700', icon: '✨' },
   burn: { label: 'Burn', bgColor: 'bg-red-200', textColor: 'text-red-800', icon: '🔥' },
-  contract_creation: { label: 'Contract Creation', bgColor: 'bg-indigo-100', textColor: 'text-indigo-700', icon: '📄' },
-  contract_interaction: { label: 'Contract', bgColor: 'bg-violet-100', textColor: 'text-violet-700', icon: '📝' },
-  mining_reward: { label: 'Mining Reward', bgColor: 'bg-yellow-100', textColor: 'text-yellow-700', icon: '⛏️' },
+  contract_creation: {
+    label: 'Contract Creation',
+    bgColor: 'bg-indigo-100',
+    textColor: 'text-indigo-700',
+    icon: '📄',
+  },
+  contract_interaction: {
+    label: 'Contract',
+    bgColor: 'bg-violet-100',
+    textColor: 'text-violet-700',
+    icon: '📝',
+  },
+  mining_reward: {
+    label: 'Mining Reward',
+    bgColor: 'bg-yellow-100',
+    textColor: 'text-yellow-700',
+    icon: '⛏️',
+  },
 };
 
 /**

@@ -1,12 +1,12 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /* Links */
 a {
-	color: #66bfff;
+  color: #66bfff;
 }
 a:hover {
-	color: #89cff0;
-	text-decoration: none;
+  color: #89cff0;
+  text-decoration: none;
 }
 
 /* Custom styles from old app.css, adapted for Next.js */
@@ -17,7 +17,12 @@ a:hover {
     margin-bottom: 0;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply text-white;
   }
 }
@@ -85,7 +90,12 @@ a:hover {
     margin-bottom: 0;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply text-white;
   }
 }
@@ -163,7 +173,10 @@ a:hover {
   .nav-link {
     @apply px-3 py-2;
     color: inherit !important;
-    transition: background 0.2s, border-radius 0.2s, color 0.2s;
+    transition:
+      background 0.2s,
+      border-radius 0.2s,
+      color 0.2s;
   }
 
   .nav-link:hover {

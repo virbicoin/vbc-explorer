@@ -10,18 +10,22 @@ export const metadata: Metadata = {
   description: `Decentralized exchange for ${networkName}`,
 };
 
-export default function DexLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function DexLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Page Header */}
       <div className="bg-gray-800 border-b border-gray-700">
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center gap-3">
-            <svg className="w-8 h-8 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              className="w-8 h-8 text-blue-400"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M16 3h5v5" />
               <path d="M8 3H3v5" />
               <path d="M21 3l-7 7" />
@@ -38,9 +42,7 @@ export default function DexLayout({
           </div>
         </div>
       </div>
-      <main className="container mx-auto px-4 py-8">
-        {children}
-      </main>
+      <main className="container mx-auto px-4 py-8">{children}</main>
     </div>
   );
 }

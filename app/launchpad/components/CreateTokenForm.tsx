@@ -1,7 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAccount, useChainId, useSwitchChain, useBalance, useWaitForTransactionReceipt } from 'wagmi';
+import {
+  useAccount,
+  useChainId,
+  useSwitchChain,
+  useBalance,
+  useWaitForTransactionReceipt,
+} from 'wagmi';
 import { parseUnits, formatUnits, parseEventLogs, type Address } from 'viem';
 import { useWriteContract, useReadContract } from 'wagmi';
 import { TokenFactoryV2ABI } from '@/abi/TokenFactoryV2ABI';
@@ -14,19 +20,19 @@ export function CreateTokenForm() {
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
   const { config, isLoading: isConfigLoading, activeFactoryAddress } = useLaunchpadConfig();
-  
+
   // Form state - Basic
   const [tokenName, setTokenName] = useState('');
   const [tokenSymbol, setTokenSymbol] = useState('');
   const [decimals, setDecimals] = useState('18');
   const [totalSupply, setTotalSupply] = useState('');
-  
+
   // Form state - Metadata (V2 only)
   const [logoUrl, setLogoUrl] = useState('');
   const [description, setDescription] = useState('');
   const [website, setWebsite] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
-  
+
   // UI state
   const [showSuccess, setShowSuccess] = useState(false);
   const [deployedAddress, setDeployedAddress] = useState<string | null>(null);
@@ -34,7 +40,7 @@ export function CreateTokenForm() {
   // Determine which ABI to use based on V2 flag
   const isV2 = config?.useV2 ?? true;
   const factoryABI = isV2 ? TokenFactoryV2ABI : TokenFactoryABI;
-  
+
   // Get user balance
   const { data: balance } = useBalance({
     address,
@@ -54,7 +60,7 @@ export function CreateTokenForm() {
   });
 
   // Write contract hook
-  const { 
+  const {
     data: txHash,
     isPending,
     writeContract,
@@ -63,7 +69,7 @@ export function CreateTokenForm() {
   } = useWriteContract();
 
   // Wait for transaction
-  const { 
+  const {
     isLoading: isConfirming,
     isSuccess: isConfirmed,
     data: receipt,
@@ -98,12 +104,17 @@ export function CreateTokenForm() {
   // Handle transaction confirmation
   useEffect(() => {
     if (isConfirmed && receipt) {
-      console.log('Transaction receipt:', JSON.stringify(receipt, (key, value) =>
-        typeof value === 'bigint' ? value.toString() : value
-      , 2));
-      
+      console.log(
+        'Transaction receipt:',
+        JSON.stringify(
+          receipt,
+          (key, value) => (typeof value === 'bigint' ? value.toString() : value),
+          2
+        )
+      );
+
       let foundTokenAddress: string | null = null;
-      
+
       // Use viem's parseEventLogs to decode the TokenCreated event
       try {
         // Try TokenCreatedWithMetadata first (V2)
@@ -116,13 +127,16 @@ export function CreateTokenForm() {
             });
             if (parsedLogsV2.length > 0) {
               foundTokenAddress = parsedLogsV2[0].args.token;
-              console.log('Extracted token address from TokenCreatedWithMetadata:', foundTokenAddress);
+              console.log(
+                'Extracted token address from TokenCreatedWithMetadata:',
+                foundTokenAddress
+              );
             }
           } catch {
             // Try regular TokenCreated
           }
         }
-        
+
         // Fall back to TokenCreated
         if (!foundTokenAddress) {
           const parsedLogs = parseEventLogs({
@@ -130,22 +144,24 @@ export function CreateTokenForm() {
             logs: receipt.logs,
             eventName: 'TokenCreated',
           });
-          
+
           console.log('Parsed TokenCreated events:', parsedLogs);
-          
+
           if (parsedLogs.length > 0) {
             foundTokenAddress = parsedLogs[0].args.token;
             console.log('Extracted token address:', foundTokenAddress);
           }
         }
-        
+
         // Fallback: Find any log from a new contract (not factory)
         if (!foundTokenAddress) {
           console.log('No TokenCreated event found, trying fallback...');
           for (const log of receipt.logs) {
-            if (log.address && 
-                log.address.toLowerCase() !== activeFactoryAddress?.toLowerCase() &&
-                log.address !== '0x0000000000000000000000000000000000000000') {
+            if (
+              log.address &&
+              log.address.toLowerCase() !== activeFactoryAddress?.toLowerCase() &&
+              log.address !== '0x0000000000000000000000000000000000000000'
+            ) {
               console.log('Using log address as fallback:', log.address);
               foundTokenAddress = log.address;
               break;
@@ -156,16 +172,18 @@ export function CreateTokenForm() {
         console.error('Failed to parse logs:', parseError);
         // Fallback to manual extraction
         for (const log of receipt.logs) {
-          if (log.address && 
-              log.address.toLowerCase() !== activeFactoryAddress?.toLowerCase() &&
-              log.address !== '0x0000000000000000000000000000000000000000') {
+          if (
+            log.address &&
+            log.address.toLowerCase() !== activeFactoryAddress?.toLowerCase() &&
+            log.address !== '0x0000000000000000000000000000000000000000'
+          ) {
             console.log('Using log address as fallback:', log.address);
             foundTokenAddress = log.address;
             break;
           }
         }
       }
-      
+
       // Set deployed address and register to database
       if (foundTokenAddress) {
         console.log('[CreateToken] Token address found:', foundTokenAddress);
@@ -180,20 +198,21 @@ export function CreateTokenForm() {
       } else {
         console.error('[CreateToken] Failed to extract token address from receipt');
       }
-      
+
       setShowSuccess(true);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConfirmed, receipt, activeFactoryAddress, address, isV2]);
 
   // Validation
-  const isValidForm = tokenName.trim().length > 0 && 
-                      tokenName.trim().length <= 50 &&
-                      tokenSymbol.trim().length > 0 && 
-                      tokenSymbol.trim().length <= 11 &&
-                      parseInt(decimals) >= 0 && 
-                      parseInt(decimals) <= 18 &&
-                      parseFloat(totalSupply) > 0;
+  const isValidForm =
+    tokenName.trim().length > 0 &&
+    tokenName.trim().length <= 50 &&
+    tokenSymbol.trim().length > 0 &&
+    tokenSymbol.trim().length <= 11 &&
+    parseInt(decimals) >= 0 &&
+    parseInt(decimals) <= 18 &&
+    parseFloat(totalSupply) > 0;
 
   // URL validation
   const isValidUrl = (url: string) => {
@@ -225,7 +244,7 @@ export function CreateTokenForm() {
       isMetadataValid,
       creationFee: creationFee?.toString(),
     });
-    
+
     if (!isConnected) {
       console.error('[CreateToken] Wallet not connected');
       return;
@@ -246,7 +265,7 @@ export function CreateTokenForm() {
     try {
       const supplyWithDecimals = parseUnits(totalSupply, parseInt(decimals));
       console.log('[CreateToken] Creating token with supply:', supplyWithDecimals.toString());
-      
+
       if (isV2 && hasMetadata) {
         // Use createTokenWithMetadata for V2 with metadata
         writeContract({
@@ -254,9 +273,9 @@ export function CreateTokenForm() {
           abi: TokenFactoryV2ABI,
           functionName: 'createTokenWithMetadata',
           args: [
-            tokenName, 
-            tokenSymbol.toUpperCase(), 
-            parseInt(decimals), 
+            tokenName,
+            tokenSymbol.toUpperCase(),
+            parseInt(decimals),
             supplyWithDecimals,
             logoUrl.trim(),
             description.trim(),
@@ -297,9 +316,8 @@ export function CreateTokenForm() {
   // Add token to MetaMask
   const addToMetaMask = async () => {
     if (!deployedAddress || typeof window === 'undefined' || !window.ethereum) return;
-    
+
     try {
-       
       await (window.ethereum as any).request({
         method: 'wallet_watchAsset',
         params: {
@@ -321,8 +339,8 @@ export function CreateTokenForm() {
   const formattedFee = creationFee ? formatUnits(creationFee, 18) : '0';
 
   // Check if factory is deployed
-  const isFactoryDeployed = activeFactoryAddress && 
-    activeFactoryAddress !== '0x0000000000000000000000000000000000000000';
+  const isFactoryDeployed =
+    activeFactoryAddress && activeFactoryAddress !== '0x0000000000000000000000000000000000000000';
 
   if (isConfigLoading) {
     return (
@@ -345,8 +363,18 @@ export function CreateTokenForm() {
       <div className="max-w-2xl mx-auto">
         <div className="bg-gradient-to-b from-gray-800/90 to-gray-900/90 backdrop-blur-xl rounded-3xl p-8 shadow-xl border border-yellow-500/30 text-center">
           <div className="w-20 h-20 bg-yellow-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg className="w-10 h-10 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            <svg
+              className="w-10 h-10 text-yellow-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
             </svg>
           </div>
           <h2 className="text-xl font-bold text-white mb-2">Coming Soon</h2>
@@ -365,20 +393,30 @@ export function CreateTokenForm() {
         <div className="bg-gradient-to-b from-gray-800/90 to-gray-900/90 backdrop-blur-xl rounded-3xl p-8 shadow-xl border border-green-500/30">
           <div className="text-center">
             <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-10 h-10 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <svg
+                className="w-10 h-10 text-green-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">Token Created Successfully!</h2>
             <p className="text-gray-400 mb-6">Your token has been deployed to the blockchain</p>
-            
+
             {/* Token Info Card */}
             <div className="bg-gray-800/50 rounded-xl p-4 mb-4">
               <div className="flex items-center gap-4">
                 {logoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img 
-                    src={logoUrl} 
+                  <img
+                    src={logoUrl}
                     alt={tokenName}
                     className="w-12 h-12 rounded-full object-cover"
                     onError={(e) => {
@@ -406,8 +444,18 @@ export function CreateTokenForm() {
                   className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors"
                   title="Copy address"
                 >
-                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  <svg
+                    className="w-4 h-4 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                    />
                   </svg>
                 </button>
               </div>
@@ -419,8 +467,18 @@ export function CreateTokenForm() {
               className="w-full py-3 px-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-xl transition-colors mb-4 flex items-center justify-center gap-2"
             >
               <svg className="w-5 h-5" viewBox="0 0 35 33" fill="none">
-                <path d="M32.9582 1L19.8241 10.7183L22.2665 4.99099L32.9582 1Z" fill="#E17726" stroke="#E17726" strokeWidth="0.25"/>
-                <path d="M2.04858 1L15.0707 10.809L12.7396 4.99098L2.04858 1Z" fill="#E27625" stroke="#E27625" strokeWidth="0.25"/>
+                <path
+                  d="M32.9582 1L19.8241 10.7183L22.2665 4.99099L32.9582 1Z"
+                  fill="#E17726"
+                  stroke="#E17726"
+                  strokeWidth="0.25"
+                />
+                <path
+                  d="M2.04858 1L15.0707 10.809L12.7396 4.99098L2.04858 1Z"
+                  fill="#E27625"
+                  stroke="#E27625"
+                  strokeWidth="0.25"
+                />
               </svg>
               Add to MetaMask
             </button>
@@ -431,7 +489,12 @@ export function CreateTokenForm() {
               className="w-full py-3 px-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl transition-colors mb-4 flex items-center justify-center gap-2"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                />
               </svg>
               Verify Contract
             </a>
@@ -461,8 +524,18 @@ export function CreateTokenForm() {
       <div className="bg-gradient-to-b from-gray-800/90 to-gray-900/90 backdrop-blur-xl rounded-3xl p-6 shadow-xl border border-gray-700/50">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            <svg
+              className="w-6 h-6 text-purple-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
             </svg>
             Create New Token
           </h2>
@@ -471,9 +544,7 @@ export function CreateTokenForm() {
         <div className="space-y-4">
           {/* Token Name */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Token Name *
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Token Name *</label>
             <input
               type="text"
               value={tokenName}
@@ -487,9 +558,7 @@ export function CreateTokenForm() {
 
           {/* Token Symbol */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Token Symbol *
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Token Symbol *</label>
             <input
               type="text"
               value={tokenSymbol}
@@ -504,9 +573,7 @@ export function CreateTokenForm() {
           {/* Decimals & Total Supply - Side by Side */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Decimals *
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Decimals *</label>
               <input
                 type="number"
                 value={decimals}
@@ -519,9 +586,7 @@ export function CreateTokenForm() {
               <p className="text-xs text-gray-500 mt-1">0-18</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Total Supply *
-              </label>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Total Supply *</label>
               <input
                 type="number"
                 value={totalSupply}
@@ -542,18 +607,33 @@ export function CreateTokenForm() {
               className="w-full py-3 px-4 bg-gray-700/30 hover:bg-gray-700/50 border border-gray-600 rounded-xl text-gray-300 flex items-center justify-between transition-colors"
             >
               <span className="flex items-center gap-2">
-                <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                <svg
+                  className="w-5 h-5 text-purple-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+                  />
                 </svg>
                 Token Metadata (Optional)
               </span>
-              <svg 
-                className={`w-5 h-5 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} 
-                fill="none" 
-                stroke="currentColor" 
+              <svg
+                className={`w-5 h-5 transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
                 viewBox="0 0 24 24"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
               </svg>
             </button>
           )}
@@ -564,12 +644,10 @@ export function CreateTokenForm() {
               <p className="text-xs text-gray-400 mb-2">
                 📝 Add metadata to make your token more discoverable. You can edit these later.
               </p>
-              
+
               {/* Logo URL */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Logo URL
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Logo URL</label>
                 <input
                   type="url"
                   value={logoUrl}
@@ -586,9 +664,7 @@ export function CreateTokenForm() {
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Description
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
@@ -602,9 +678,7 @@ export function CreateTokenForm() {
 
               {/* Website */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Website
-                </label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Website</label>
                 <input
                   type="url"
                   value={website}
@@ -635,11 +709,11 @@ export function CreateTokenForm() {
           {writeError && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
               <p className="text-red-400 text-sm">
-                {writeError.message.includes('User rejected') 
+                {writeError.message.includes('User rejected')
                   ? 'Transaction was rejected'
                   : writeError.message.includes('insufficient funds')
-                  ? 'Insufficient balance for creation fee'
-                  : 'Failed to create token. Please try again.'}
+                    ? 'Insufficient balance for creation fee'
+                    : 'Failed to create token. Please try again.'}
               </p>
             </div>
           )}
@@ -648,13 +722,19 @@ export function CreateTokenForm() {
           {isConnected && isCorrectChain && !isValidForm && (
             <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
               <p className="text-yellow-400 text-sm">
-                {!tokenName.trim() ? 'Please enter a token name' :
-                 tokenName.trim().length > 50 ? 'Token name must be 50 characters or less' :
-                 !tokenSymbol.trim() ? 'Please enter a token symbol' :
-                 tokenSymbol.trim().length > 11 ? 'Token symbol must be 11 characters or less' :
-                 parseInt(decimals) < 0 || parseInt(decimals) > 18 ? 'Decimals must be between 0 and 18' :
-                 parseFloat(totalSupply) <= 0 || !totalSupply ? 'Please enter a valid total supply' :
-                 'Please fill in all required fields'}
+                {!tokenName.trim()
+                  ? 'Please enter a token name'
+                  : tokenName.trim().length > 50
+                    ? 'Token name must be 50 characters or less'
+                    : !tokenSymbol.trim()
+                      ? 'Please enter a token symbol'
+                      : tokenSymbol.trim().length > 11
+                        ? 'Token symbol must be 11 characters or less'
+                        : parseInt(decimals) < 0 || parseInt(decimals) > 18
+                          ? 'Decimals must be between 0 and 18'
+                          : parseFloat(totalSupply) <= 0 || !totalSupply
+                            ? 'Please enter a valid total supply'
+                            : 'Please fill in all required fields'}
               </p>
             </div>
           )}
@@ -689,16 +769,40 @@ export function CreateTokenForm() {
               {isPending ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                      fill="none"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
                   </svg>
                   Confirm in Wallet...
                 </span>
               ) : isConfirming ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                      fill="none"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
                   </svg>
                   Deploying Token...
                 </span>
@@ -717,8 +821,8 @@ export function CreateTokenForm() {
               <div className="flex items-center gap-4">
                 {logoUrl && isValidUrl(logoUrl) ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img 
-                    src={logoUrl} 
+                  <img
+                    src={logoUrl}
                     alt={tokenName}
                     className="w-12 h-12 rounded-full object-cover"
                     onError={(e) => {
@@ -750,14 +854,19 @@ export function CreateTokenForm() {
               </div>
               {website && isValidUrl(website) && (
                 <div className="mt-3 pt-3 border-t border-gray-700">
-                  <a 
-                    href={website} 
-                    target="_blank" 
+                  <a
+                    href={website}
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="text-sm text-purple-400 hover:text-purple-300 flex items-center gap-1"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      />
                     </svg>
                     {website}
                   </a>

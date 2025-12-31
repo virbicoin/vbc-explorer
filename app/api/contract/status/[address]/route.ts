@@ -10,7 +10,7 @@ const readConfig = () => {
   try {
     const configPath = path.join(process.cwd(), 'config.json');
     const exampleConfigPath = path.join(process.cwd(), 'config.example.json');
-    
+
     if (fs.existsSync(configPath)) {
       return JSON.parse(fs.readFileSync(configPath, 'utf8'));
     } else if (fs.existsSync(exampleConfigPath)) {
@@ -19,22 +19,25 @@ const readConfig = () => {
   } catch (error) {
     console.error('Error reading config:', error);
   }
-  
+
   return {
     nodeAddr: 'localhost',
-    port: 8329
+    port: 8329,
   };
 };
 
 // Transaction schema for querying creation tx
-const transactionSchema = new mongoose.Schema({
-  hash: String,
-  from: String,
-  to: String,
-  creates: String,
-  blockNumber: Number,
-  timestamp: Number
-}, { collection: 'Transaction' });
+const transactionSchema = new mongoose.Schema(
+  {
+    hash: String,
+    from: String,
+    to: String,
+    creates: String,
+    blockNumber: Number,
+    timestamp: Number,
+  },
+  { collection: 'Transaction' }
+);
 
 const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', transactionSchema);
 
@@ -50,10 +53,7 @@ export async function GET(
     const { address } = await params;
 
     if (!address) {
-      return NextResponse.json(
-        { error: 'Contract address is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Contract address is required' }, { status: 400 });
     }
 
     // Get bytecode from blockchain
@@ -68,15 +68,15 @@ export async function GET(
     let creationTxData: { hash?: string; from?: string; blockNumber?: number } | null = null;
     try {
       const creationTx = await Transaction.findOne({
-        creates: { $regex: new RegExp(`^${address}$`, 'i') }
+        creates: { $regex: new RegExp(`^${address}$`, 'i') },
       }).lean();
-      
+
       if (creationTx) {
         const txDoc = Array.isArray(creationTx) ? creationTx[0] : creationTx;
         creationTxData = {
           hash: (txDoc as Record<string, unknown>).hash as string,
           from: (txDoc as Record<string, unknown>).from as string,
-          blockNumber: (txDoc as Record<string, unknown>).blockNumber as number
+          blockNumber: (txDoc as Record<string, unknown>).blockNumber as number,
         };
       }
     } catch {
@@ -84,8 +84,8 @@ export async function GET(
     }
 
     // Find contract in database (case-insensitive search)
-    const contract = await Contract.findOne({ 
-      address: { $regex: new RegExp(`^${address}$`, 'i') }
+    const contract = await Contract.findOne({
+      address: { $regex: new RegExp(`^${address}$`, 'i') },
     }).lean();
 
     const contractDoc = Array.isArray(contract) ? contract[0] : contract;
@@ -99,7 +99,7 @@ export async function GET(
         // Include creation info from transaction if available
         creationTransaction: creationTxData?.hash || null,
         creator: creationTxData?.from || null,
-        blockNumber: creationTxData?.blockNumber || null
+        blockNumber: creationTxData?.blockNumber || null,
       });
     }
 
@@ -121,14 +121,10 @@ export async function GET(
       blockNumber: contractDoc.blockNumber || creationTxData?.blockNumber || null,
       creationTransaction: contractDoc.creationTransaction || creationTxData?.hash || null,
       owner: contractDoc.owner || creationTxData?.from || null,
-      message: contractDoc.verified ? 'Contract is verified' : 'Contract is not verified'
+      message: contractDoc.verified ? 'Contract is verified' : 'Contract is not verified',
     });
-
   } catch (error) {
     console.error('Contract status check error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-} 
+}

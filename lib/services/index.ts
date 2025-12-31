@@ -1,6 +1,6 @@
 /**
  * Services barrel export
- * 
+ *
  * Central export point for all service modules.
  * Import services from here instead of individual files.
  */

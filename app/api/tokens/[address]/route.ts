@@ -1,13 +1,24 @@
- 
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { getChainStats } from '../../../../lib/stats';
 import { connectDB } from '../../../../models/index';
-import { getNftOwnershipFromDb, groupTokensByHolder, paginateNftItems, ZERO_ADDR, DEAD_ADDR } from '../../../../lib/services/nft.service';
+import {
+  getNftOwnershipFromDb,
+  groupTokensByHolder,
+  paginateNftItems,
+  ZERO_ADDR,
+  DEAD_ADDR,
+} from '../../../../lib/services/nft.service';
 import { getWeb3 } from '../../../../lib/web3';
 import { apiCache, CACHE_TTL } from '../../../../lib/cache';
 import { loadConfig } from '../../../../lib/config';
-import { sanitizeAddress, validatePagination, checkRateLimit, getClientIp, getSecurityHeaders } from '../../../../lib/security';
+import {
+  sanitizeAddress,
+  validatePagination,
+  checkRateLimit,
+  getClientIp,
+  getSecurityHeaders,
+} from '../../../../lib/security';
 
 // Get shared Web3 instance
 const web3 = getWeb3();
@@ -18,55 +29,55 @@ const config = loadConfig();
 // Standard ERC721 ABI for tokenURI function
 const ERC721_ABI = [
   {
-    "inputs": [{"name": "tokenId", "type": "uint256"}],
-    "name": "tokenURI", 
-    "outputs": [{"name": "", "type": "string"}],
-    "stateMutability": "view",
-    "type": "function"
-  }
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    name: 'tokenURI',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const;
 
 // Standard ERC20 ABI for basic token info
 const ERC20_ABI = [
   {
-    "inputs": [],
-    "name": "name",
-    "outputs": [{"name": "", "type": "string"}],
-    "stateMutability": "view",
-    "type": "function"
+    inputs: [],
+    name: 'name',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
   },
   {
-    "inputs": [],
-    "name": "symbol",
-    "outputs": [{"name": "", "type": "string"}],
-    "stateMutability": "view",
-    "type": "function"
+    inputs: [],
+    name: 'symbol',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
   },
   {
-    "inputs": [],
-    "name": "decimals",
-    "outputs": [{"name": "", "type": "uint8"}],
-    "stateMutability": "view",
-    "type": "function"
+    inputs: [],
+    name: 'decimals',
+    outputs: [{ name: '', type: 'uint8' }],
+    stateMutability: 'view',
+    type: 'function',
   },
   {
-    "inputs": [],
-    "name": "totalSupply",
-    "outputs": [{"name": "", "type": "uint256"}],
-    "stateMutability": "view",
-    "type": "function"
-  }
+    inputs: [],
+    name: 'totalSupply',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const;
 
 // Launchpad V2 Token ABI for logoUrl
 const LAUNCHPAD_V2_ABI = [
   {
-    "inputs": [],
-    "name": "logoUrl",
-    "outputs": [{"name": "", "type": "string"}],
-    "stateMutability": "view",
-    "type": "function"
-  }
+    inputs: [],
+    name: 'logoUrl',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const;
 
 // Function to fetch logoUrl from Launchpad V2 token contract
@@ -90,14 +101,26 @@ async function fetchERC20Info(tokenAddress: string): Promise<{
 }> {
   try {
     const contract = new web3.eth.Contract(ERC20_ABI, tokenAddress);
-    
+
     const [name, symbol, decimals, totalSupply] = await Promise.all([
-      contract.methods.name().call().catch(() => null),
-      contract.methods.symbol().call().catch(() => null),
-      contract.methods.decimals().call().catch(() => null),
-      contract.methods.totalSupply().call().catch(() => null),
+      contract.methods
+        .name()
+        .call()
+        .catch(() => null),
+      contract.methods
+        .symbol()
+        .call()
+        .catch(() => null),
+      contract.methods
+        .decimals()
+        .call()
+        .catch(() => null),
+      contract.methods
+        .totalSupply()
+        .call()
+        .catch(() => null),
     ]);
-    
+
     return {
       name: name as string | null,
       symbol: symbol as string | null,
@@ -111,7 +134,10 @@ async function fetchERC20Info(tokenAddress: string): Promise<{
 }
 
 // Function to fetch NFT metadata from tokenURI
-async function fetchNFTMetadata(tokenAddress: string, tokenId: number): Promise<{ metadata: any; tokenURI: string | null }> {
+async function fetchNFTMetadata(
+  tokenAddress: string,
+  tokenId: number
+): Promise<{ metadata: any; tokenURI: string | null }> {
   try {
     // Check if web3 is properly initialized
     if (!web3 || !web3.eth) {
@@ -127,19 +153,19 @@ async function fetchNFTMetadata(tokenAddress: string, tokenId: number): Promise<
     } catch (uriError) {
       console.error('Error calling tokenURI:', uriError);
     }
-    
+
     if (tokenURI && tokenURI !== '') {
       // If it's an HTTP URL, fetch the metadata
       if (tokenURI.startsWith('http://') || tokenURI.startsWith('https://')) {
         try {
           const response = await fetch(tokenURI, {
             headers: {
-              'User-Agent': 'VBC-Explorer/1.0'
+              'User-Agent': 'VBC-Explorer/1.0',
             },
             // Add timeout to prevent hanging requests
-            signal: AbortSignal.timeout(5000) // 5 second timeout
+            signal: AbortSignal.timeout(5000), // 5 second timeout
           });
-          
+
           if (response.ok) {
             const metadata = await response.json();
             return { metadata, tokenURI };
@@ -152,7 +178,7 @@ async function fetchNFTMetadata(tokenAddress: string, tokenId: number): Promise<
               try {
                 const fallbackResponse = await fetch(fallbackURI, {
                   headers: { 'User-Agent': 'VBC-Explorer/1.0' },
-                  signal: AbortSignal.timeout(5000)
+                  signal: AbortSignal.timeout(5000),
                 });
                 if (fallbackResponse.ok) {
                   const metadata = await fallbackResponse.json();
@@ -172,7 +198,7 @@ async function fetchNFTMetadata(tokenAddress: string, tokenId: number): Promise<
             try {
               const fallbackResponse = await fetch(fallbackURI, {
                 headers: { 'User-Agent': 'VBC-Explorer/1.0' },
-                signal: AbortSignal.timeout(5000)
+                signal: AbortSignal.timeout(5000),
               });
               if (fallbackResponse.ok) {
                 const metadata = await fallbackResponse.json();
@@ -187,15 +213,13 @@ async function fetchNFTMetadata(tokenAddress: string, tokenId: number): Promise<
       // Return tokenURI even if it's not an HTTP URL or fetch failed
       return { metadata: null, tokenURI };
     }
-    
+
     return { metadata: null, tokenURI };
   } catch (error) {
     console.error('Error fetching NFT metadata:', error);
     return { metadata: null, tokenURI: null };
   }
 }
-
-
 
 // Format token amount with proper decimal handling
 const formatTokenAmount = (amount: string, decimals: number = 18, isNFT: boolean = false) => {
@@ -220,7 +244,7 @@ const formatTokenAmount = (amount: string, decimals: number = 18, isNFT: boolean
     const divisor = BigInt(10 ** decimals);
     const integerPart = value / divisor;
     const fractionalPart = value % divisor;
-    
+
     // Format with proper decimal places
     if (fractionalPart === BigInt(0)) {
       return Number(integerPart).toLocaleString();
@@ -234,7 +258,6 @@ const formatTokenAmount = (amount: string, decimals: number = 18, isNFT: boolean
       parts[0] = Number(parts[0]).toLocaleString();
       return parts.join('.');
     }
-
   } catch {
     // Fallback to direct parsing
     const numValue = parseFloat(amount.replace(/,/g, ''));
@@ -243,32 +266,39 @@ const formatTokenAmount = (amount: string, decimals: number = 18, isNFT: boolean
 };
 
 // Token schema - use existing schema from tools/addTestTokens.js
-const tokenSchema = new mongoose.Schema({
-  symbol: String,
-  name: String,
-  address: String,
-  holders: Number,
-  supply: String,
-  type: String,
-  decimals: { type: Number, default: 18 },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
-}, { collection: 'tokens' });
+const tokenSchema = new mongoose.Schema(
+  {
+    symbol: String,
+    name: String,
+    address: String,
+    holders: Number,
+    supply: String,
+    type: String,
+    decimals: { type: Number, default: 18 },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+  },
+  { collection: 'tokens' }
+);
 
 // Token transfer schema
-const tokenTransferSchema = new mongoose.Schema({
-  transactionHash: String,
-  blockNumber: Number,
-  from: String,
-  to: String,
-  value: String,
-  tokenAddress: String,
-  timestamp: Date,
-  tokenId: Number // Add tokenId field for NFT tokens
-}, { collection: 'tokentransfers' });
+const tokenTransferSchema = new mongoose.Schema(
+  {
+    transactionHash: String,
+    blockNumber: Number,
+    from: String,
+    to: String,
+    value: String,
+    tokenAddress: String,
+    timestamp: Date,
+    tokenId: Number, // Add tokenId field for NFT tokens
+  },
+  { collection: 'tokentransfers' }
+);
 
 const Token = mongoose.models.Token || mongoose.model('Token', tokenSchema);
-const TokenTransfer = mongoose.models.TokenTransfer || mongoose.model('TokenTransfer', tokenTransferSchema);
+const TokenTransfer =
+  mongoose.models.TokenTransfer || mongoose.model('TokenTransfer', tokenTransferSchema);
 
 // Define a strict type for our token data to be used in this API route
 interface ApiToken {
@@ -297,13 +327,16 @@ export async function GET(
     if (!rateLimit.allowed) {
       return NextResponse.json(
         { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        { status: 429, headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) } }
+        {
+          status: 429,
+          headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) },
+        }
       );
     }
 
     await connectDB();
     const { address: rawAddress } = await params;
-    
+
     // Validate and sanitize address
     const address = sanitizeAddress(rawAddress);
     if (!address) {
@@ -315,12 +348,21 @@ export async function GET(
 
     const { searchParams } = new URL(request.url);
     const tokenId = searchParams.get('tokenId');
-    
+
     // Pagination parameters with validation
-    const holdersParams = validatePagination(searchParams.get('holdersPage'), searchParams.get('holdersLimit'));
-    const transfersParams = validatePagination(searchParams.get('transfersPage'), searchParams.get('transfersLimit'));
-    const nftsParams = validatePagination(searchParams.get('nftsPage'), searchParams.get('nftsLimit'));
-    
+    const holdersParams = validatePagination(
+      searchParams.get('holdersPage'),
+      searchParams.get('holdersLimit')
+    );
+    const transfersParams = validatePagination(
+      searchParams.get('transfersPage'),
+      searchParams.get('transfersLimit')
+    );
+    const nftsParams = validatePagination(
+      searchParams.get('nftsPage'),
+      searchParams.get('nftsLimit')
+    );
+
     const holdersPage = holdersParams.page;
     const holdersLimit = holdersParams.limit;
     const transfersPage = transfersParams.page;
@@ -332,14 +374,18 @@ export async function GET(
     if (tokenId) {
       const tokenIdNum = parseInt(tokenId);
       if (isNaN(tokenIdNum)) {
-        return NextResponse.json(
-          { error: 'Invalid tokenId format' },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: 'Invalid tokenId format' }, { status: 400 });
       }
 
       // contractSource with flexible types
-      const contractSource: { verified?: boolean; compiler?: any; language?: string | null; name?: any; sourceCode?: any; bytecode?: any } | null = null;
+      const contractSource: {
+        verified?: boolean;
+        compiler?: any;
+        language?: string | null;
+        name?: any;
+        sourceCode?: any;
+        bytecode?: any;
+      } | null = null;
       try {
         const { metadata: fetchedMetadata, tokenURI } = await fetchNFTMetadata(address, tokenIdNum);
         let metadata: any;
@@ -351,87 +397,98 @@ export async function GET(
             image: '',
             attributes: [],
             tokenURI: tokenURI,
-            createdAt: null
+            createdAt: null,
           };
         } else {
           // メタデータが取得できた場合、tokenURIを追加
           metadata = {
             ...fetchedMetadata,
-            tokenURI: tokenURI
+            tokenURI: tokenURI,
           };
         }
         // コントラクト作成Tx
         const db = mongoose.connection.db;
-        if (!db) { throw new Error('Database connection not established'); }
-        const contractCreateTx = await db.collection('tokentransfers').findOne({
-          to: { $regex: new RegExp(`^${address}$`, 'i') },
-          value: { $in: [0, '0', '0x0', '0x00'] },
-          $or: [
-            { tokenId: { $exists: false } },
-            { tokenId: null },
-            { tokenId: '' }
-          ]
-        }, { sort: { timestamp: 1 } });
+        if (!db) {
+          throw new Error('Database connection not established');
+        }
+        const contractCreateTx = await db.collection('tokentransfers').findOne(
+          {
+            to: { $regex: new RegExp(`^${address}$`, 'i') },
+            value: { $in: [0, '0', '0x0', '0x00'] },
+            $or: [{ tokenId: { $exists: false } }, { tokenId: null }, { tokenId: '' }],
+          },
+          { sort: { timestamp: 1 } }
+        );
 
         // Transfer履歴（tokenId一致のみ）
-        const tokenTransfers = await db.collection('tokentransfers').find({
-          tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
-          tokenId: tokenIdNum
-        }).sort({ timestamp: 1 }).toArray();
+        const tokenTransfers = await db
+          .collection('tokentransfers')
+          .find({
+            tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+            tokenId: tokenIdNum,
+          })
+          .sort({ timestamp: 1 })
+          .toArray();
         // 各Txの詳細情報も取得
-        const txHashes = tokenTransfers.map(tx => tx.transactionHash);
-        const txDetails = await db.collection('transactions').find({ hash: { $in: txHashes } }).toArray();
-        const txDetailMap = Object.fromEntries(txDetails.map(tx => [tx.hash, tx]));
+        const txHashes = tokenTransfers.map((tx) => tx.transactionHash);
+        const txDetails = await db
+          .collection('transactions')
+          .find({ hash: { $in: txHashes } })
+          .toArray();
+        const txDetailMap = Object.fromEntries(txDetails.map((tx) => [tx.hash, tx]));
         // transfers生成
-        let transfers = await Promise.all(tokenTransfers.map(async tx => {
-          const detail = txDetailMap[tx.transactionHash] || {};
-          // blockNumberを多段で取得
-          const blockNumber = detail.blockNumber ?? tx.blockNumber ?? tx.block_number ?? tx.block ?? null;
-          let blockDetail = null;
-          if (detail.block) {
-            blockDetail = {
-              number: detail.block.number,
-              hash: detail.block.hash,
-              timestamp: detail.block.timestamp,
-              miner: detail.block.miner,
-              size: detail.block.size,
-              difficulty: detail.block.difficulty
-            };
-          } else if (blockNumber !== null && blockNumber !== undefined) {
-            // blockがnullの場合はblockNumberからblocksコレクションを参照
-            const block = await db.collection('blocks').findOne({ number: blockNumber });
-            if (block) {
+        let transfers = await Promise.all(
+          tokenTransfers.map(async (tx) => {
+            const detail = txDetailMap[tx.transactionHash] || {};
+            // blockNumberを多段で取得
+            const blockNumber =
+              detail.blockNumber ?? tx.blockNumber ?? tx.block_number ?? tx.block ?? null;
+            let blockDetail = null;
+            if (detail.block) {
               blockDetail = {
-                number: block.number,
-                hash: block.hash,
-                timestamp: block.timestamp,
-                miner: block.miner,
-                size: block.size,
-                difficulty: block.difficulty
+                number: detail.block.number,
+                hash: detail.block.hash,
+                timestamp: detail.block.timestamp,
+                miner: detail.block.miner,
+                size: detail.block.size,
+                difficulty: detail.block.difficulty,
               };
+            } else if (blockNumber !== null && blockNumber !== undefined) {
+              // blockがnullの場合はblockNumberからblocksコレクションを参照
+              const block = await db.collection('blocks').findOne({ number: blockNumber });
+              if (block) {
+                blockDetail = {
+                  number: block.number,
+                  hash: block.hash,
+                  timestamp: block.timestamp,
+                  miner: block.miner,
+                  size: block.size,
+                  difficulty: block.difficulty,
+                };
+              }
             }
-          }
-          return {
-            hash: tx.transactionHash,
-            from: tx.from,
-            to: tx.to,
-            value: tx.value,
-            timestamp: tx.timestamp,
-            blockNumber: blockNumber,
-            blockHash: detail.blockHash,
-            status: detail.status,
-            gas: detail.gas,
-            gasUsed: detail.gasUsed,
-            gasPrice: detail.gasPrice,
-            input: detail.input,
-            logs: detail.logs,
-            isContractCreation: detail.isContractCreation,
-            internalTransactions: detail.internalTransactions,
-            contractAddress: detail.contractAddress,
-            tokenId: tx.tokenId,
-            block: blockDetail
-          };
-        }));
+            return {
+              hash: tx.transactionHash,
+              from: tx.from,
+              to: tx.to,
+              value: tx.value,
+              timestamp: tx.timestamp,
+              blockNumber: blockNumber,
+              blockHash: detail.blockHash,
+              status: detail.status,
+              gas: detail.gas,
+              gasUsed: detail.gasUsed,
+              gasPrice: detail.gasPrice,
+              input: detail.input,
+              logs: detail.logs,
+              isContractCreation: detail.isContractCreation,
+              internalTransactions: detail.internalTransactions,
+              contractAddress: detail.contractAddress,
+              tokenId: tx.tokenId,
+              block: blockDetail,
+            };
+          })
+        );
         // Createイベントを履歴の先頭に
         if (contractCreateTx) {
           const detail = txDetailMap[contractCreateTx.transactionHash] || {};
@@ -443,29 +500,32 @@ export async function GET(
               timestamp: detail.block.timestamp,
               miner: detail.block.miner,
               size: detail.block.size,
-              difficulty: detail.block.difficulty
+              difficulty: detail.block.difficulty,
             };
           }
-          transfers = [{
-            hash: contractCreateTx.transactionHash,
-            from: contractCreateTx.from,
-            to: contractCreateTx.to,
-            value: contractCreateTx.value,
-            timestamp: contractCreateTx.timestamp,
-            blockNumber: detail.blockNumber,
-            blockHash: detail.blockHash,
-            status: detail.status,
-            gas: detail.gas,
-            gasUsed: detail.gasUsed,
-            gasPrice: detail.gasPrice,
-            input: detail.input,
-            logs: detail.logs,
-            isContractCreation: detail.isContractCreation,
-            internalTransactions: detail.internalTransactions,
-            contractAddress: detail.contractAddress,
-            tokenId: '',
-            block: blockDetail
-          }, ...transfers];
+          transfers = [
+            {
+              hash: contractCreateTx.transactionHash,
+              from: contractCreateTx.from,
+              to: contractCreateTx.to,
+              value: contractCreateTx.value,
+              timestamp: contractCreateTx.timestamp,
+              blockNumber: detail.blockNumber,
+              blockHash: detail.blockHash,
+              status: detail.status,
+              gas: detail.gas,
+              gasUsed: detail.gasUsed,
+              gasPrice: detail.gasPrice,
+              input: detail.input,
+              logs: detail.logs,
+              isContractCreation: detail.isContractCreation,
+              internalTransactions: detail.internalTransactions,
+              contractAddress: detail.contractAddress,
+              tokenId: '',
+              block: blockDetail,
+            },
+            ...transfers,
+          ];
         }
         // owner/creator/createdAtのセット
         let owner = null;
@@ -481,7 +541,9 @@ export async function GET(
                 creator = txDetail.from; // ZERO_ADDR 以外なら採用
               }
             }
-            createdAt = txDetail.timestamp ? new Date(Number(txDetail.timestamp) * 1000).toISOString() : null;
+            createdAt = txDetail.timestamp
+              ? new Date(Number(txDetail.timestamp) * 1000).toISOString()
+              : null;
             transfers[0].from = txDetail.from;
             transfers[0].to = txDetail.to;
           } else {
@@ -498,13 +560,18 @@ export async function GET(
         /* ---------- 推測ロジックでcreatorを補完 ---------- */
         if (!creator) {
           // ContractコレクションからbyteCode取得
-          const contractDoc = await db.collection('Contract').findOne({ address: { $regex: new RegExp(`^${address}$`, 'i') } });
+          const contractDoc = await db
+            .collection('Contract')
+            .findOne({ address: { $regex: new RegExp(`^${address}$`, 'i') } });
           if (contractDoc && contractDoc.byteCode) {
             // to:null のトランザクションを取得
-            const txs = await db.collection('transactions').find({ to: null, input: { $exists: true } }).toArray();
+            const txs = await db
+              .collection('transactions')
+              .find({ to: null, input: { $exists: true } })
+              .toArray();
             const normalize = (hex: string) => (hex || '').toLowerCase().replace(/^0x/, '');
             const codeNorm = normalize(contractDoc.byteCode as string);
-            const matchTx = txs.find(tx => {
+            const matchTx = txs.find((tx) => {
               const inp = normalize(tx.input as string);
               const len = Math.min(codeNorm.length, inp.length, 300);
               return codeNorm.slice(0, len) === inp.slice(0, len);
@@ -514,7 +581,12 @@ export async function GET(
             }
           }
           // Fallback: コントラクト作成Txのfrom
-          if (( !creator || creator === ZERO_ADDR ) && contractCreateTx && contractCreateTx.from && contractCreateTx.from !== ZERO_ADDR) {
+          if (
+            (!creator || creator === ZERO_ADDR) &&
+            contractCreateTx &&
+            contractCreateTx.from &&
+            contractCreateTx.from !== ZERO_ADDR
+          ) {
             creator = contractCreateTx.from;
           }
         }
@@ -528,7 +600,7 @@ export async function GET(
             const firstNonZeroTx = await db.collection(col).findOne(
               {
                 to: { $regex: new RegExp(`^${address}$`, 'i') },
-                from: { $ne: ZERO_ADDR }
+                from: { $ne: ZERO_ADDR },
               },
               { sort: { blockNumber: 1 } }
             );
@@ -544,7 +616,7 @@ export async function GET(
               {
                 isContractCreation: true,
                 input: { $exists: true },
-                from: { $ne: ZERO_ADDR }
+                from: { $ne: ZERO_ADDR },
               },
               { sort: { blockNumber: 1 } }
             );
@@ -558,18 +630,21 @@ export async function GET(
         /* ---------- 推測ロジック終了 ---------- */
 
         // Token情報も取得
-        const foundTokenArr = await Token.find({ address: { $regex: new RegExp(`^${address}$`, 'i') } }).lean();
-        const foundToken = Array.isArray(foundTokenArr) && foundTokenArr.length > 0 ? foundTokenArr[0] : null;
-        
+        const foundTokenArr = await Token.find({
+          address: { $regex: new RegExp(`^${address}$`, 'i') },
+        }).lean();
+        const foundToken =
+          Array.isArray(foundTokenArr) && foundTokenArr.length > 0 ? foundTokenArr[0] : null;
+
         // Get contract verification status
         let isVerified = false;
-        const contractDoc = await db.collection('Contract').findOne({ 
-          address: { $regex: new RegExp(`^${address}$`, 'i') }
+        const contractDoc = await db.collection('Contract').findOne({
+          address: { $regex: new RegExp(`^${address}$`, 'i') },
         });
         if (contractDoc) {
           isVerified = contractDoc.verified || false;
         }
-        
+
         // console.log removed (debug)
         return NextResponse.json({
           tokenId: tokenIdNum,
@@ -579,14 +654,14 @@ export async function GET(
             type: foundToken?.type ?? null,
             symbol: foundToken?.symbol ?? null,
             totalSupply: foundToken?.totalSupply ?? foundToken?.supply ?? null,
-             
+
             verified: isVerified,
-            contractAddress: foundToken?.address || address || null
+            contractAddress: foundToken?.address || address || null,
           },
           owner: owner,
           creator: creator,
           createdAt: createdAt,
-          transfers: transfers
+          transfers: transfers,
         });
       } catch (e) {
         console.error('Error fetching metadata:', e);
@@ -599,12 +674,12 @@ export async function GET(
             image: '',
             attributes: [],
             tokenURI: null,
-            createdAt: null
+            createdAt: null,
           },
           owner: null,
           creator: null,
           createdAt: null,
-          transfers: []
+          transfers: [],
         });
       }
     }
@@ -640,10 +715,10 @@ export async function GET(
       };
     } else {
       // Get token info from DB for other tokens
-          const foundToken = await Token.findOne({
-      address: { $regex: new RegExp(`^${address}$`, 'i') }
-    }).lean() as Record<string, unknown> | null;
-      
+      const foundToken = (await Token.findOne({
+        address: { $regex: new RegExp(`^${address}$`, 'i') },
+      }).lean()) as Record<string, unknown> | null;
+
       if (foundToken) {
         token = foundToken as unknown as ApiToken;
       }
@@ -652,7 +727,7 @@ export async function GET(
     // If token still not found, try to fetch from blockchain
     if (!token) {
       const erc20Info = await fetchERC20Info(address);
-      
+
       if (erc20Info.name || erc20Info.symbol) {
         // Successfully fetched ERC20 info from blockchain
         token = {
@@ -665,7 +740,7 @@ export async function GET(
           holders: 0,
           type: 'VRC-20',
           createdAt: new Date(),
-          updatedAt: new Date()
+          updatedAt: new Date(),
         };
       } else {
         // Fallback to dummy data
@@ -678,24 +753,28 @@ export async function GET(
           holders: 0,
           type: 'Unknown',
           createdAt: new Date('2023-01-01T00:00:00Z'), // Set a more realistic creation date
-          updatedAt: new Date()
+          updatedAt: new Date(),
         };
       }
     }
 
     // If token has current date as createdAt, try to find actual creation date from transfers
-    if (token.createdAt && Math.abs(Date.now() - new Date(token.createdAt as string | number | Date).getTime()) < 24 * 60 * 60 * 1000) {
+    if (
+      token.createdAt &&
+      Math.abs(Date.now() - new Date(token.createdAt as string | number | Date).getTime()) <
+        24 * 60 * 60 * 1000
+    ) {
       // Try to find the earliest transfer or mint transaction
       const firstTransfer = await TokenTransfer.findOne({
-        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
+        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
       }).sort({ timestamp: 1 });
-      
+
       // Also try to find mint transactions (from zero address)
       const firstMint = await TokenTransfer.findOne({
         tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
-        from: '0x0000000000000000000000000000000000000000'
+        from: '0x0000000000000000000000000000000000000000',
       }).sort({ timestamp: 1 });
-      
+
       // Use the earliest of the two
       let earliestTimestamp = null;
       if (firstTransfer && firstTransfer.timestamp) {
@@ -707,7 +786,7 @@ export async function GET(
           earliestTimestamp = mintTimestamp;
         }
       }
-      
+
       if (earliestTimestamp) {
         token.createdAt = earliestTimestamp;
       }
@@ -731,17 +810,19 @@ export async function GET(
     if (!db) {
       throw new Error('Database connection not established');
     }
-    
+
     // Get total holders count for pagination (exclude zero address and dead address)
     const totalHolders = await db.collection('tokenholders').countDocuments({
       tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
-      holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] }
+      holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] },
     });
-    
-    const holders = await db.collection('tokenholders').find({
-      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
-      holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] }
-    })
+
+    const holders = await db
+      .collection('tokenholders')
+      .find({
+        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+        holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] },
+      })
       .sort({ rank: 1 })
       .skip((holdersPage - 1) * holdersLimit)
       .limit(holdersLimit)
@@ -750,7 +831,7 @@ export async function GET(
     // 各holderの所有tokenId配列をtokentransfersから集計してセット
     // NFTサービスを使用して所有権を計算（トークンの現在の所有者を正確に計算）
     const { ownership: tokenOwnership } = await getNftOwnershipFromDb(db, address);
-    
+
     // 各ホルダーの所有tokenIdを設定
     const { holderTokens } = groupTokensByHolder(tokenOwnership);
     for (const holder of holders) {
@@ -760,12 +841,14 @@ export async function GET(
     // Get recent transfers - use case-insensitive match with alternative field names
     // First get total count for pagination
     const totalTransfers = await db.collection('tokentransfers').countDocuments({
-      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
+      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
     });
-    
-    let transfers = await db.collection('tokentransfers').find({
-      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
-    })
+
+    let transfers = await db
+      .collection('tokentransfers')
+      .find({
+        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+      })
       .sort({ timestamp: -1 })
       .skip((transfersPage - 1) * transfersLimit)
       .limit(transfersLimit)
@@ -773,12 +856,14 @@ export async function GET(
 
     // If no transfers found, try alternative field names
     if (transfers.length === 0) {
-      transfers = await db.collection('tokentransfers').find({
-        $or: [
-          { token: { $regex: new RegExp(`^${address}$`, 'i') } },
-          { contractAddress: { $regex: new RegExp(`^${address}$`, 'i') } }
-        ]
-      })
+      transfers = await db
+        .collection('tokentransfers')
+        .find({
+          $or: [
+            { token: { $regex: new RegExp(`^${address}$`, 'i') } },
+            { contractAddress: { $regex: new RegExp(`^${address}$`, 'i') } },
+          ],
+        })
         .sort({ timestamp: -1 })
         .skip((transfersPage - 1) * transfersLimit)
         .limit(transfersLimit)
@@ -788,14 +873,16 @@ export async function GET(
     // If still no transfers found, try a broader search
     if (transfers.length === 0) {
       // Try searching with the address in any field
-      transfers = await db.collection('tokentransfers').find({
-        $or: [
-          { tokenAddress: { $regex: new RegExp(address, 'i') } },
-          { token: { $regex: new RegExp(address, 'i') } },
-          { contractAddress: { $regex: new RegExp(address, 'i') } },
-          { address: { $regex: new RegExp(address, 'i') } }
-        ]
-      })
+      transfers = await db
+        .collection('tokentransfers')
+        .find({
+          $or: [
+            { tokenAddress: { $regex: new RegExp(address, 'i') } },
+            { token: { $regex: new RegExp(address, 'i') } },
+            { contractAddress: { $regex: new RegExp(address, 'i') } },
+            { address: { $regex: new RegExp(address, 'i') } },
+          ],
+        })
         .sort({ timestamp: -1 })
         .skip((transfersPage - 1) * transfersLimit)
         .limit(transfersLimit)
@@ -812,7 +899,7 @@ export async function GET(
       // Get actual holder count (exclude zero address and dead address)
       realHolders = await db.collection('tokenholders').countDocuments({
         tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
-        holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] }
+        holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] },
       });
       // Get actual transfer count with alternative field names
       realTransfers = await db.collection('tokentransfers').countDocuments({
@@ -820,8 +907,8 @@ export async function GET(
           { tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') } },
           { token: { $regex: new RegExp(`^${address}$`, 'i') } },
           { contractAddress: { $regex: new RegExp(`^${address}$`, 'i') } },
-          { address: { $regex: new RegExp(`^${address}$`, 'i') } }
-        ]
+          { address: { $regex: new RegExp(`^${address}$`, 'i') } },
+        ],
       });
 
       // For VRC-20 tokens, fetch real-time totalSupply from blockchain
@@ -843,7 +930,7 @@ export async function GET(
         try {
           mintCount = await db.collection('tokentransfers').countDocuments({
             tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
-            from: '0x0000000000000000000000000000000000000000'
+            from: '0x0000000000000000000000000000000000000000',
           });
           if (token.totalSupply && token.totalSupply !== '0') {
             realSupply = token.totalSupply;
@@ -868,11 +955,18 @@ export async function GET(
     console.log(`[Age Debug] Token type: ${token.type}, address: ${address}`);
     if (token.type !== 'Native') {
       // For all token types, use db.collection directly for reliable query
-      const earliestTransfer = await db.collection('tokentransfers').findOne({
-        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') }
-      }, { sort: { timestamp: 1 } });
-      
-      console.log(`[Age Debug] Earliest transfer found:`, earliestTransfer ? 'YES' : 'NO', earliestTransfer?.timestamp);
+      const earliestTransfer = await db.collection('tokentransfers').findOne(
+        {
+          tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+        },
+        { sort: { timestamp: 1 } }
+      );
+
+      console.log(
+        `[Age Debug] Earliest transfer found:`,
+        earliestTransfer ? 'YES' : 'NO',
+        earliestTransfer?.timestamp
+      );
 
       if (earliestTransfer && earliestTransfer.timestamp) {
         const earliestTime = new Date(earliestTransfer.timestamp).getTime();
@@ -889,9 +983,9 @@ export async function GET(
         { tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') } },
         { token: { $regex: new RegExp(`^${address}$`, 'i') } },
         { contractAddress: { $regex: new RegExp(`^${address}$`, 'i') } },
-        { address: { $regex: new RegExp(`^${address}$`, 'i') } }
+        { address: { $regex: new RegExp(`^${address}$`, 'i') } },
       ],
-      timestamp: { $gte: yesterday }
+      timestamp: { $gte: yesterday },
     });
 
     // Calculate floor price and volume (mock data for now)
@@ -900,71 +994,74 @@ export async function GET(
 
     // Get contract source information from database
     const dbContractInfo = await db.collection('Contract').findOne({
-      address: { $regex: new RegExp(`^${address}$`, 'i') }
+      address: { $regex: new RegExp(`^${address}$`, 'i') },
     });
-    contractSource = dbContractInfo ? {
-      verified: dbContractInfo.verified || false,
-      compiler: dbContractInfo.compilerVersion || 'Unknown',
-      language: 'Solidity',
-      name: dbContractInfo.contractName || 'Contract',
-      sourceCode: dbContractInfo.sourceCode || null,
-      bytecode: dbContractInfo.byteCode || null
-    } : {
-      verified: false,
-      compiler: null,
-      language: null,
-      name: 'Contract',
-      sourceCode: null,
-      bytecode: null
-    };
+    contractSource = dbContractInfo
+      ? {
+          verified: dbContractInfo.verified || false,
+          compiler: dbContractInfo.compilerVersion || 'Unknown',
+          language: 'Solidity',
+          name: dbContractInfo.contractName || 'Contract',
+          sourceCode: dbContractInfo.sourceCode || null,
+          bytecode: dbContractInfo.byteCode || null,
+        }
+      : {
+          verified: false,
+          compiler: null,
+          language: null,
+          name: 'Contract',
+          sourceCode: null,
+          bytecode: null,
+        };
 
     // コントラクト作成トランザクションを取得
-    const contractCreateTx = await db.collection('tokentransfers').findOne({
-      to: { $regex: new RegExp(`^${address}$`, 'i') },
-      value: { $in: [0, '0', '0x0', '0x00'] },
-      $or: [
-        { tokenId: { $exists: false } },
-        { tokenId: null },
-        { tokenId: '' }
-      ]
-    }, { sort: { timestamp: 1 } });
+    const contractCreateTx = await db.collection('tokentransfers').findOne(
+      {
+        to: { $regex: new RegExp(`^${address}$`, 'i') },
+        value: { $in: [0, '0', '0x0', '0x00'] },
+        $or: [{ tokenId: { $exists: false } }, { tokenId: null }, { tokenId: '' }],
+      },
+      { sort: { timestamp: 1 } }
+    );
 
     // 推測的にコントラクト作成Txを特定しCreatorを取得
     let creator = null;
     // --- ここからバイトコード推測ロジック ---
     // まずContract（大文字）を優先
-    const contractDoc = await db.collection('Contract').findOne({ address: { $regex: new RegExp(`^${address}$`, 'i') } });
+    const contractDoc = await db
+      .collection('Contract')
+      .findOne({ address: { $regex: new RegExp(`^${address}$`, 'i') } });
     // console.log('contractDoc:', contractDoc); // ここでbyteCodeが必ず入る
     if (contractDoc && contractDoc.byteCode) {
-      let txs = await db.collection('transactions').find({
-        $or: [
-          { to: null },
-          { to: { $exists: false } },
-          { to: '' }
-        ],
-        input: { $exists: true }
-      }).toArray();
+      let txs = await db
+        .collection('transactions')
+        .find({
+          $or: [{ to: null }, { to: { $exists: false } }, { to: '' }],
+          input: { $exists: true },
+        })
+        .toArray();
       if (!txs || txs.length === 0) {
-        txs = await db.collection('Transaction').find({
-          $or: [
-            { to: null },
-            { to: { $exists: false } },
-            { to: '' }
-          ],
-          input: { $exists: true }
-        }).toArray();
+        txs = await db
+          .collection('Transaction')
+          .find({
+            $or: [{ to: null }, { to: { $exists: false } }, { to: '' }],
+            input: { $exists: true },
+          })
+          .toArray();
       }
       const normalizeHex = (hex: string): string => (hex || '').toLowerCase().replace(/^0x/, '');
       const contractCode = normalizeHex(contractDoc.byteCode as string);
-      let matchTx = txs.find(tx => {
+      let matchTx = txs.find((tx) => {
         const txInput = normalizeHex(tx.input as string);
         // 比較長さを短くして柔軟にマッチ
         const minLen = 40; // 20 bytes * 2 hex chars
-        return contractCode.slice(0, minLen) === txInput.slice(0, minLen) ||
-               txInput.slice(0, minLen) === contractCode.slice(0, minLen);
+        return (
+          contractCode.slice(0, minLen) === txInput.slice(0, minLen) ||
+          txInput.slice(0, minLen) === contractCode.slice(0, minLen)
+        );
       });
       if (!matchTx) {
-        matchTx = txs.find(tx => {
+        matchTx = txs.find((tx) => {
           const txInput = normalizeHex(tx.input);
           return contractCode.includes(txInput) || txInput.includes(contractCode);
         });
@@ -973,7 +1070,7 @@ export async function GET(
         // console.log('推測マッチTx:', matchTx);
         creator = matchTx.from; // ←ここで必ず上書き
       } else {
-        const nonZeroFromTx = txs.find(tx => tx.from && tx.from !== ZERO_ADDR);
+        const nonZeroFromTx = txs.find((tx) => tx.from && tx.from !== ZERO_ADDR);
         if (nonZeroFromTx) {
           creator = nonZeroFromTx.from;
         }
@@ -981,10 +1078,13 @@ export async function GET(
       // console.log('推測creator:', creator);
       // 追加のfallback: to:null かつ from != ZERO_ADDR の最古Tx
       if (!creator) {
-        const deployTx = await db.collection('transactions').findOne({
-          to: null,
-          from: { $ne: ZERO_ADDR }
-        }, { sort: { blockNumber: 1 } });
+        const deployTx = await db.collection('transactions').findOne(
+          {
+            to: null,
+            from: { $ne: ZERO_ADDR },
+          },
+          { sort: { blockNumber: 1 } }
+        );
         if (deployTx && deployTx.from) {
           creator = deployTx.from as string;
         }
@@ -993,7 +1093,12 @@ export async function GET(
     // --- ここまでバイトコード推測ロジック ---
 
     // contractCreateTxのfromをCreatorとして採用（まだ設定されていない場合）
-    if (( !creator || creator === ZERO_ADDR ) && contractCreateTx && contractCreateTx.from && contractCreateTx.from !== ZERO_ADDR) {
+    if (
+      (!creator || creator === ZERO_ADDR) &&
+      contractCreateTx &&
+      contractCreateTx.from &&
+      contractCreateTx.from !== ZERO_ADDR
+    ) {
       creator = contractCreateTx.from;
     }
     // console.log('推測creator最終:', creator);
@@ -1006,7 +1111,7 @@ export async function GET(
         const firstNonZeroTx = await db.collection(col).findOne(
           {
             to: { $regex: new RegExp(`^${address}$`, 'i') },
-            from: { $ne: ZERO_ADDR }
+            from: { $ne: ZERO_ADDR },
           },
           { sort: { blockNumber: 1 } }
         );
@@ -1020,7 +1125,7 @@ export async function GET(
       if (!creator) {
         const deployTx = await db.collection('Transaction').findOne({
           creates: { $regex: new RegExp(`^${address}$`, 'i') },
-          from: { $ne: ZERO_ADDR }
+          from: { $ne: ZERO_ADDR },
         });
         if (deployTx?.from) {
           creator = deployTx.from as string;
@@ -1037,10 +1142,14 @@ export async function GET(
     let ownerAddress = null;
     if (tokenIdParam) {
       // tokenId一致の全トランスファーを昇順で取得
-      const tokenTransfers = await db.collection('tokentransfers').find({
-        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
-        tokenId: tokenIdParam
-      }).sort({ timestamp: 1 }).toArray();
+      const tokenTransfers = await db
+        .collection('tokentransfers')
+        .find({
+          tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+          tokenId: tokenIdParam,
+        })
+        .sort({ timestamp: 1 })
+        .toArray();
       if (tokenTransfers.length === 1) {
         ownerAddress = tokenTransfers[0].from;
       } else if (tokenTransfers.length > 1) {
@@ -1051,32 +1160,43 @@ export async function GET(
     // For NFT tokens, add NFT-specific information
     if (token.type === 'VRC-721' || token.type === 'VRC-1155') {
       // Transfer履歴の先頭にコントラクト作成Txを追加
-      let nftTransfers = transfers.length > 0 ? transfers.map((transfer: Record<string, unknown>) => {
-        return {
-          hash: (transfer.hash || transfer.transactionHash || transfer.txHash) as string,
-          from: (transfer.from as string) === ZERO_ADDR ? 'System' : transfer.from as string,
-          to: transfer.to as string,
-          value: '1',
-          valueRaw: '1',
-          tokenId: transfer.tokenId,
-          timestamp: transfer.timestamp as Date,
-          timeAgo: getTimeAgo(transfer.timestamp as Date),
-          status: transfer.status as number | string | boolean | undefined,
-          gasUsed: transfer.gasUsed,
-          blockNumber: transfer.blockNumber,
-          blockHash: transfer.blockHash,
-          contractAddress: transfer.contractAddress,
-          input: transfer.input,
-          logs: transfer.logs,
-          block: transfer.block
-        };
-      }) : [];
+      let nftTransfers =
+        transfers.length > 0
+          ? transfers.map((transfer: Record<string, unknown>) => {
+              return {
+                hash: (transfer.hash || transfer.transactionHash || transfer.txHash) as string,
+                from:
+                  (transfer.from as string) === ZERO_ADDR ? 'System' : (transfer.from as string),
+                to: transfer.to as string,
+                value: '1',
+                valueRaw: '1',
+                tokenId: transfer.tokenId,
+                timestamp: transfer.timestamp as Date,
+                timeAgo: getTimeAgo(transfer.timestamp as Date),
+                status: transfer.status as number | string | boolean | undefined,
+                gasUsed: transfer.gasUsed,
+                blockNumber: transfer.blockNumber,
+                blockHash: transfer.blockHash,
+                contractAddress: transfer.contractAddress,
+                input: transfer.input,
+                logs: transfer.logs,
+                block: transfer.block,
+              };
+            })
+          : [];
       if (contractCreateTx) {
         // Tx detail for contract creation
-        interface TxLite { status?: string | number | boolean; gasUsed?: string | number; blockNumber?: number; blockHash?: string; }
+        interface TxLite {
+          status?: string | number | boolean;
+          gasUsed?: string | number;
+          blockNumber?: number;
+          blockHash?: string;
+        }
         let createTxDetail: TxLite | null = null;
         try {
-          const txDoc: any = await db.collection('transactions').findOne({ hash: contractCreateTx.transactionHash });
+          const txDoc: any = await db
+            .collection('transactions')
+            .findOne({ hash: contractCreateTx.transactionHash });
           if (txDoc) {
             createTxDetail = {
               status: (txDoc as any).status,
@@ -1103,9 +1223,9 @@ export async function GET(
             contractAddress: undefined,
             input: undefined,
             logs: undefined,
-            block: undefined
+            block: undefined,
           },
-          ...nftTransfers
+          ...nftTransfers,
         ];
       }
       const isNFT = token.type === 'VRC-721' || token.type === 'VRC-1155';
@@ -1130,17 +1250,13 @@ export async function GET(
         return {
           rank: holder.rank as number,
           address: holder.holderAddress as string,
-          balance: formatTokenAmount(
-            balanceRaw,
-            Number(token.decimals ?? (isNFT ? 0 : 18)),
-            isNFT
-          ),
+          balance: formatTokenAmount(balanceRaw, Number(token.decimals ?? (isNFT ? 0 : 18)), isNFT),
           balanceRaw: balanceRaw,
           percentage: percentage,
-          tokenIds: holder.tokenIds as number[] || [] // DB値そのまま返す
+          tokenIds: (holder.tokenIds as number[]) || [], // DB値そのまま返す
         };
       });
-      
+
       // tokenOwnershipマップから全NFTアイテムを取得（ページネーションに依存しない）
       const allNftItems: Array<{ tokenId: number; owner: string }> = [];
       for (const [tokenId, owner] of tokenOwnership.entries()) {
@@ -1148,18 +1264,15 @@ export async function GET(
       }
       // tokenId降順でソート
       allNftItems.sort((a, b) => b.tokenId - a.tokenId);
-      
+
       const totalNftItems = allNftItems.length;
-      
+
       // NFTアイテムのページネーション
-      const paginatedNftItems = allNftItems.slice(
-        (nftsPage - 1) * nftsLimit,
-        nftsPage * nftsLimit
-      );
-      
+      const paginatedNftItems = allNftItems.slice((nftsPage - 1) * nftsLimit, nftsPage * nftsLimit);
+
       // 実際のNFT供給量（バーンを考慮）
       const actualNftSupply = totalNftItems.toString();
-      
+
       const nftData = {
         token: {
           address: token.address,
@@ -1176,7 +1289,7 @@ export async function GET(
           isNFT: true,
           createdAt: contractCreateTx ? new Date(contractCreateTx.timestamp) : null,
           contractCreateTxHash: contractCreateTx ? contractCreateTx.transactionHash : null,
-          owner: ownerAddress
+          owner: ownerAddress,
         },
         contract: contractSource,
         statistics: {
@@ -1184,7 +1297,7 @@ export async function GET(
           totalTransfers: realTransfers || transfers.length || 0,
           transfers24h: transfers24h || 0,
           age: ageInDays,
-          marketCap: 'N/A' // Will need external API for price data
+          marketCap: 'N/A', // Will need external API for price data
         },
         holders: mappedHolders,
         transfers: nftTransfers,
@@ -1194,21 +1307,21 @@ export async function GET(
             page: holdersPage,
             limit: holdersLimit,
             total: totalHolders,
-            totalPages: Math.ceil(totalHolders / holdersLimit)
+            totalPages: Math.ceil(totalHolders / holdersLimit),
           },
           transfers: {
             page: transfersPage,
             limit: transfersLimit,
             total: totalTransfers,
-            totalPages: Math.ceil(totalTransfers / transfersLimit)
+            totalPages: Math.ceil(totalTransfers / transfersLimit),
           },
           nfts: {
             page: nftsPage,
             limit: nftsLimit,
             total: totalNftItems,
-            totalPages: Math.ceil(totalNftItems / nftsLimit)
-          }
-        }
+            totalPages: Math.ceil(totalNftItems / nftsLimit),
+          },
+        },
       };
 
       // console.log('API return (NFT) creator3:', creator);
@@ -1217,17 +1330,17 @@ export async function GET(
 
     // For non-NFT tokens, return standard token data
     const isNFT = token.type === 'VRC-721' || token.type === 'VRC-1155';
-    
+
     // Get verification status for the contract
     let verified = false;
     let contractInfo = null;
     if (token.type !== 'Native') {
       try {
-        const contract = await db.collection('Contract').findOne({ 
-          address: { $regex: new RegExp(`^${address}$`, 'i') }
+        const contract = await db.collection('Contract').findOne({
+          address: { $regex: new RegExp(`^${address}$`, 'i') },
         });
         verified = contract?.verified || false;
-        
+
         // Add contract information to response
         if (contract) {
           contractInfo = {
@@ -1238,7 +1351,7 @@ export async function GET(
             sourceCode: contract.sourceCode || null,
             bytecode: contract.byteCode || null,
             compilerVersion: contract.compilerVersion,
-            metadataVersion: contract.metadataVersion
+            metadataVersion: contract.metadataVersion,
           };
         }
       } catch {
@@ -1250,7 +1363,7 @@ export async function GET(
     const tokenLogos = (config as { tokenLogos?: Record<string, string> }).tokenLogos || {};
     const tokenAddressLower = (token.address as string)?.toLowerCase() || '';
     let logoUrl = token.logoUrl || tokenLogos[tokenAddressLower] || null;
-    
+
     // If no logoUrl found, try to fetch from onchain (Launchpad V2 token)
     if (!logoUrl && !isNFT) {
       const onchainLogoUrl = await fetchLaunchpadLogoUrl(token.address as string);
@@ -1267,83 +1380,102 @@ export async function GET(
         type: token.type,
         isNFT: isNFT,
         decimals: Number(token.decimals ?? (isNFT ? 0 : 18)),
-        totalSupply: realSupply ? formatTokenAmount(String(realSupply), Number(token.decimals ?? (isNFT ? 0 : 18)), isNFT) : '0',
+        totalSupply: realSupply
+          ? formatTokenAmount(String(realSupply), Number(token.decimals ?? (isNFT ? 0 : 18)), isNFT)
+          : '0',
         totalSupplyRaw: realSupply || '0',
         verified: verified,
-        logoUrl: logoUrl
+        logoUrl: logoUrl,
       },
       contract: contractInfo,
       statistics: {
         holders: token.type === 'Native' ? token.holders : realHolders,
-        transfers: token.type === 'Native'
-          ? (typeof chainStats === 'object' && chainStats !== null && 'totalTransactions' in chainStats
+        transfers:
+          token.type === 'Native'
+            ? typeof chainStats === 'object' &&
+              chainStats !== null &&
+              'totalTransactions' in chainStats
               ? (chainStats as { totalTransactions: number }).totalTransactions
-              : 0)
-          : (realTransfers || transfers.length || 0),
+              : 0
+            : realTransfers || transfers.length || 0,
         age: ageInDays,
-        marketCap: 'N/A' // Will need external API for price data
+        marketCap: 'N/A', // Will need external API for price data
       },
-      holders: token.type === 'Native' ? [] : holders.map((holder: Record<string, unknown>) => {
-        const balanceRaw = holder.balance as string;
-        // Calculate percentage based on realSupply (from blockchain)
-        let percentage = '0.00';
-        const supplyStr = String(realSupply || '0');
-        if (supplyStr && supplyStr !== '0') {
-          try {
-            const balance = BigInt(balanceRaw);
-            const supply = BigInt(supplyStr);
-            if (supply > 0n) {
-              // Calculate percentage with 4 decimal precision then round to 2
-              const pct = Number((balance * 10000n) / supply) / 100;
-              percentage = pct.toFixed(2);
-            }
-          } catch (_e) {
-            percentage = '0.00';
-          }
-        }
-        return {
-          rank: holder.rank as number,
-          address: holder.holderAddress as string,
-          balance: formatTokenAmount(balanceRaw, token.decimals != null ? Number(token.decimals) : (isNFT ? 0 : 18), isNFT),
-          balanceRaw: balanceRaw,
-          percentage: percentage,
-          tokenIds: holder.tokenIds as number[] || [] // DB値そのまま返す
-        };
-      }),
-      transfers: token.type === 'Native' ? [] : transfers.map((transfer: Record<string, unknown>) => ({
-        hash: (transfer.transactionHash || transfer.hash || transfer.txHash) as string,
-        // If from is zero address, show as 'System' for frontend display
-        from: (transfer.from as string) === '0x0000000000000000000000000000000000000000' ? 'System' : transfer.from as string,
-        to: transfer.to as string,
-        value: formatTokenAmount(transfer.value as string, token.decimals != null ? Number(token.decimals) : (isNFT ? 0 : 18), isNFT),
-        valueRaw: transfer.value as string,
-        timestamp: transfer.timestamp as Date,
-        timeAgo: getTimeAgo(transfer.timestamp as Date),
-        tokenId: transfer.tokenId // ← DB値をそのまま返す
-      })),
+      holders:
+        token.type === 'Native'
+          ? []
+          : holders.map((holder: Record<string, unknown>) => {
+              const balanceRaw = holder.balance as string;
+              // Calculate percentage based on realSupply (from blockchain)
+              let percentage = '0.00';
+              const supplyStr = String(realSupply || '0');
+              if (supplyStr && supplyStr !== '0') {
+                try {
+                  const balance = BigInt(balanceRaw);
+                  const supply = BigInt(supplyStr);
+                  if (supply > 0n) {
+                    // Calculate percentage with 4 decimal precision then round to 2
+                    const pct = Number((balance * 10000n) / supply) / 100;
+                    percentage = pct.toFixed(2);
+                  }
+                } catch (_e) {
+                  percentage = '0.00';
+                }
+              }
+              return {
+                rank: holder.rank as number,
+                address: holder.holderAddress as string,
+                balance: formatTokenAmount(
+                  balanceRaw,
+                  token.decimals != null ? Number(token.decimals) : isNFT ? 0 : 18,
+                  isNFT
+                ),
+                balanceRaw: balanceRaw,
+                percentage: percentage,
+                tokenIds: (holder.tokenIds as number[]) || [], // DB値そのまま返す
+              };
+            }),
+      transfers:
+        token.type === 'Native'
+          ? []
+          : transfers.map((transfer: Record<string, unknown>) => ({
+              hash: (transfer.transactionHash || transfer.hash || transfer.txHash) as string,
+              // If from is zero address, show as 'System' for frontend display
+              from:
+                (transfer.from as string) === '0x0000000000000000000000000000000000000000'
+                  ? 'System'
+                  : (transfer.from as string),
+              to: transfer.to as string,
+              value: formatTokenAmount(
+                transfer.value as string,
+                token.decimals != null ? Number(token.decimals) : isNFT ? 0 : 18,
+                isNFT
+              ),
+              valueRaw: transfer.value as string,
+              timestamp: transfer.timestamp as Date,
+              timeAgo: getTimeAgo(transfer.timestamp as Date),
+              tokenId: transfer.tokenId, // ← DB値をそのまま返す
+            })),
       pagination: {
         holders: {
           page: holdersPage,
           limit: holdersLimit,
           total: totalHolders,
-          totalPages: Math.ceil(totalHolders / holdersLimit)
+          totalPages: Math.ceil(totalHolders / holdersLimit),
         },
         transfers: {
           page: transfersPage,
           limit: transfersLimit,
           total: totalTransfers,
-          totalPages: Math.ceil(totalTransfers / transfersLimit)
-        }
-      }
+          totalPages: Math.ceil(totalTransfers / transfersLimit),
+        },
+      },
     };
 
     return NextResponse.json(response);
   } catch (error) {
     console.error('Token API error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch token data' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch token data' }, { status: 500 });
   }
 }
 
@@ -1362,5 +1494,4 @@ function getTimeAgo(timestamp: Date): string {
   }
   const minutes = Math.floor(diff / (1000 * 60));
   return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
-
 }

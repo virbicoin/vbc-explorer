@@ -81,7 +81,7 @@ async function fetchBlocksData(page: number, limit: number): Promise<BlocksRespo
       logsBloom: 1,
       sha3Uncles: 1,
       uncles: 1,
-      _id: 0
+      _id: 0,
     })
     .lean()
     .maxTimeMS(30000);
@@ -106,7 +106,7 @@ async function fetchBlocksData(page: number, limit: number): Promise<BlocksRespo
     transactionsRoot: String(block.transactionsRoot ?? ''),
     logsBloom: String(block.logsBloom ?? ''),
     sha3Uncles: String(block.sha3Uncles ?? ''),
-    uncles: Array.isArray(block.uncles) ? block.uncles.map((u: unknown) => String(u ?? '')) : []
+    uncles: Array.isArray(block.uncles) ? block.uncles.map((u: unknown) => String(u ?? '')) : [],
   }));
 
   return {
@@ -115,8 +115,8 @@ async function fetchBlocksData(page: number, limit: number): Promise<BlocksRespo
       currentPage: page,
       totalPages,
       total: totalBlocks,
-      limit
-    }
+      limit,
+    },
   };
 }
 
@@ -124,7 +124,7 @@ async function fetchBlocksData(page: number, limit: number): Promise<BlocksRespo
 async function updateCacheInBackground(cacheKey: string, page: number, limit: number) {
   if (updateInProgress.has(cacheKey)) return;
   updateInProgress.add(cacheKey);
-  
+
   try {
     const data = await fetchBlocksData(page, limit);
     blocksCache.set(cacheKey, { data, timestamp: Date.now() });
@@ -137,7 +137,7 @@ async function updateCacheInBackground(cacheKey: string, page: number, limit: nu
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
-  
+
   try {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
@@ -146,21 +146,21 @@ export async function GET(request: NextRequest) {
     const cacheKey = `blocks_${page}_${limit}`;
     const now = Date.now();
     const cached = blocksCache.get(cacheKey);
-    
+
     // ページ1はリアルタイム性重視で短いキャッシュ
     const cacheDuration = page === 1 ? CACHE_DURATION_PAGE1 : CACHE_DURATION_OTHER;
-    
+
     // キャッシュが有効な場合は返す
     if (cached && now - cached.timestamp < cacheDuration) {
       console.log(`[Blocks] Cache hit (page: ${page}, age: ${now - cached.timestamp}ms)`);
       return NextResponse.json(cached.data, {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate',
-          'Pragma': 'no-cache'
-        }
+          Pragma: 'no-cache',
+        },
       });
     }
-    
+
     // ページ1の場合: キャッシュが古い場合は必ず新しいデータを取得
     // ページ2以降: 古いキャッシュを返しつつバックグラウンドで更新
     if (cached && page !== 1) {
@@ -169,33 +169,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(cached.data, {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate',
-          'Pragma': 'no-cache'
-        }
+          Pragma: 'no-cache',
+        },
       });
     }
 
     // 初回リクエストまたはページ1の更新: タイムアウト付きで取得
     console.log(`[Blocks] Fetching fresh data (page: ${page})...`);
-    
+
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Blocks fetch timeout')), 15000);
     });
-    
+
     try {
-      const data = await Promise.race([
-        fetchBlocksData(page, limit),
-        timeoutPromise
-      ]);
-      
+      const data = await Promise.race([fetchBlocksData(page, limit), timeoutPromise]);
+
       blocksCache.set(cacheKey, { data, timestamp: now });
       console.log(`[Blocks] Request completed in ${Date.now() - startTime}ms`);
       return NextResponse.json(data, {
         headers: {
           'Cache-Control': 'no-store, no-cache, must-revalidate',
-          'Pragma': 'no-cache'
-        }
+          Pragma: 'no-cache',
+        },
       });
-      
     } catch (timeoutError) {
       console.log('[Blocks] Fetch timed out, returning cached or empty data');
       // タイムアウト時は古いキャッシュがあれば返す
@@ -204,25 +200,24 @@ export async function GET(request: NextRequest) {
         return NextResponse.json(cached.data, {
           headers: {
             'Cache-Control': 'no-store, no-cache, must-revalidate',
-            'Pragma': 'no-cache'
-          }
+            Pragma: 'no-cache',
+          },
         });
       }
       updateCacheInBackground(cacheKey, page, limit);
       return NextResponse.json({
         blocks: [],
         pagination: { currentPage: page, totalPages: 0, total: 0, limit },
-        loading: true
+        loading: true,
       });
     }
-
   } catch (error) {
     console.error('Error fetching blocks:', error);
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to fetch blocks',
         blocks: [],
-        pagination: { currentPage: 1, totalPages: 0, total: 0, limit: 25 }
+        pagination: { currentPage: 1, totalPages: 0, total: 0, limit: 25 },
       },
       { status: 500 }
     );

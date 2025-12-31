@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { 
+import {
   DocumentTextIcon,
   CubeIcon,
   ArrowsRightLeftIcon,
@@ -13,7 +13,7 @@ import {
   CodeBracketIcon,
   MagnifyingGlassIcon,
   ClipboardDocumentIcon,
-  CheckIcon
+  CheckIcon,
 } from '@heroicons/react/24/outline';
 
 interface ApiEndpoint {
@@ -36,7 +36,8 @@ const apiCategories: ApiCategory[] = [
   {
     name: 'Blockscout API - Account',
     icon: <WalletIcon className="w-6 h-6" />,
-    description: 'Blockscout/Etherscan compatible Account API. Use ?module=account&action=<action> format.',
+    description:
+      'Blockscout/Etherscan compatible Account API. Use ?module=account&action=<action> format.',
     endpoints: [
       {
         method: 'GET',
@@ -44,203 +45,240 @@ const apiCategories: ApiCategory[] = [
         description: 'Get native token balance for address',
         params: ['address (required) - Account address'],
         response: '{"status":"1","message":"OK","result":"1000000000000000000"}',
-        example: 'curl "https://explorer.digitalregion.jp/api?module=account&action=balance&address=0x950302976387b43e042aea242ae8dab8e5c204d1"'
+        example:
+          'curl "https://explorer.digitalregion.jp/api?module=account&action=balance&address=0x950302976387b43e042aea242ae8dab8e5c204d1"',
       },
       {
         method: 'GET',
         path: '/api?module=account&action=balancemulti&address=0x...,0x...',
         description: 'Get balance for multiple addresses (max 20)',
         params: ['address (required) - Comma separated addresses'],
-        response: '{"status":"1","message":"OK","result":[{"account":"0x...","balance":"..."}]}'
+        response: '{"status":"1","message":"OK","result":[{"account":"0x...","balance":"..."}]}',
       },
       {
         method: 'GET',
         path: '/api?module=account&action=txlist&address=0x...',
         description: 'Get transactions for address',
-        params: ['address (required)', 'page (optional)', 'offset (optional)', 'sort (optional: asc/desc)'],
-        response: '{"status":"1","message":"OK","result":[{...tx data...}]}'
+        params: [
+          'address (required)',
+          'page (optional)',
+          'offset (optional)',
+          'sort (optional: asc/desc)',
+        ],
+        response: '{"status":"1","message":"OK","result":[{...tx data...}]}',
       },
       {
         method: 'GET',
         path: '/api?module=account&action=txlistinternal&address=0x...',
         description: 'Get internal transactions for address',
         params: ['address (optional)', 'txhash (optional)', 'page (optional)', 'offset (optional)'],
-        response: '{"status":"1","message":"OK","result":[{...internal tx data...}]}'
+        response: '{"status":"1","message":"OK","result":[{...internal tx data...}]}',
       },
       {
         method: 'GET',
         path: '/api?module=account&action=tokentx&address=0x...',
         description: 'Get token transfers for address',
-        params: ['address (required)', 'contractaddress (optional)', 'page (optional)', 'offset (optional)'],
-        response: '{"status":"1","message":"OK","result":[{...token tx data...}]}'
+        params: [
+          'address (required)',
+          'contractaddress (optional)',
+          'page (optional)',
+          'offset (optional)',
+        ],
+        response: '{"status":"1","message":"OK","result":[{...token tx data...}]}',
       },
       {
         method: 'GET',
         path: '/api?module=account&action=tokenbalance&address=0x...&contractaddress=0x...',
         description: 'Get specific token balance for address',
         params: ['address (required)', 'contractaddress (required)'],
-        response: '{"status":"1","message":"OK","result":"1000000000000000000"}'
+        response: '{"status":"1","message":"OK","result":"1000000000000000000"}',
       },
       {
         method: 'GET',
         path: '/api?module=account&action=getminedblocks&address=0x...',
         description: 'Get blocks mined by address',
         params: ['address (required)', 'page (optional)', 'offset (optional)'],
-        response: '{"status":"1","message":"OK","result":[{"blockNumber":"12345","timeStamp":"...","blockReward":"..."}]}'
-      }
-    ]
+        response:
+          '{"status":"1","message":"OK","result":[{"blockNumber":"12345","timeStamp":"...","blockReward":"..."}]}',
+      },
+    ],
   },
   {
     name: 'Blockscout API - Block',
     icon: <CubeIcon className="w-6 h-6" />,
-    description: 'Blockscout/Etherscan compatible Block API. Use ?module=block&action=<action> format.',
+    description:
+      'Blockscout/Etherscan compatible Block API. Use ?module=block&action=<action> format.',
     endpoints: [
       {
         method: 'GET',
         path: '/api?module=block&action=getblockreward&blockno=12345',
         description: 'Get block reward information',
         params: ['blockno (required) - Block number'],
-        response: '{"status":"1","message":"OK","result":{"blockNumber":"12345","blockReward":"8000000000000000000",...}}'
+        response:
+          '{"status":"1","message":"OK","result":{"blockNumber":"12345","blockReward":"8000000000000000000",...}}',
       },
       {
         method: 'GET',
         path: '/api?module=block&action=getblocknobytime&timestamp=1609459200',
         description: 'Get block number by timestamp',
         params: ['timestamp (required) - Unix timestamp', 'closest (optional: before/after)'],
-        response: '{"status":"1","message":"OK","result":"12345"}'
-      }
-    ]
+        response: '{"status":"1","message":"OK","result":"12345"}',
+      },
+    ],
   },
   {
     name: 'Blockscout API - Transaction',
     icon: <ArrowsRightLeftIcon className="w-6 h-6" />,
-    description: 'Blockscout/Etherscan compatible Transaction API. Use ?module=transaction&action=<action> format.',
+    description:
+      'Blockscout/Etherscan compatible Transaction API. Use ?module=transaction&action=<action> format.',
     endpoints: [
       {
         method: 'GET',
         path: '/api?module=transaction&action=gettxinfo&txhash=0x...',
         description: 'Get transaction details',
         params: ['txhash (required) - Transaction hash'],
-        response: '{"status":"1","message":"OK","result":{...tx data...}}'
+        response: '{"status":"1","message":"OK","result":{...tx data...}}',
       },
       {
         method: 'GET',
         path: '/api?module=transaction&action=gettxreceiptstatus&txhash=0x...',
         description: 'Get transaction receipt status',
         params: ['txhash (required) - Transaction hash'],
-        response: '{"status":"1","message":"OK","result":{"status":"1"}}'
-      }
-    ]
+        response: '{"status":"1","message":"OK","result":{"status":"1"}}',
+      },
+    ],
   },
   {
     name: 'Blockscout API - Token',
     icon: <CircleStackIcon className="w-6 h-6" />,
-    description: 'Blockscout/Etherscan compatible Token API. Use ?module=token&action=<action> format.',
+    description:
+      'Blockscout/Etherscan compatible Token API. Use ?module=token&action=<action> format.',
     endpoints: [
       {
         method: 'GET',
         path: '/api?module=token&action=gettoken&contractaddress=0x...',
         description: 'Get token information',
         params: ['contractaddress (required) - Token contract address'],
-        response: '{"status":"1","message":"OK","result":{"name":"Token","symbol":"TKN","decimals":"18",...}}'
+        response:
+          '{"status":"1","message":"OK","result":{"name":"Token","symbol":"TKN","decimals":"18",...}}',
       },
       {
         method: 'GET',
         path: '/api?module=token&action=gettokenholders&contractaddress=0x...',
         description: 'Get token holders list',
         params: ['contractaddress (required)', 'page (optional)', 'offset (optional)'],
-        response: '{"status":"1","message":"OK","result":[{"address":"0x...","balance":"..."}]}'
+        response: '{"status":"1","message":"OK","result":[{"address":"0x...","balance":"..."}]}',
       },
       {
         method: 'GET',
         path: '/api?module=token&action=tokenlist',
         description: 'Get all tokens list',
         params: ['page (optional)', 'offset (optional, default: 100)'],
-        response: '{"status":"1","message":"OK","result":[{"contractAddress":"0x...","name":"...","symbol":"...",...}]}'
-      }
-    ]
+        response:
+          '{"status":"1","message":"OK","result":[{"contractAddress":"0x...","name":"...","symbol":"...",...}]}',
+      },
+    ],
   },
   {
     name: 'Blockscout API - Stats',
     icon: <ChartBarIcon className="w-6 h-6" />,
-    description: 'Blockscout/Etherscan compatible Stats API. Use ?module=stats&action=<action> format.',
+    description:
+      'Blockscout/Etherscan compatible Stats API. Use ?module=stats&action=<action> format.',
     endpoints: [
       {
         method: 'GET',
         path: '/api?module=stats&action=ethsupply',
         description: 'Get total native coin supply (in wei)',
         response: '{"status":"1","message":"OK","result":"10193657000000000000000000"}',
-        example: 'curl "https://explorer.digitalregion.jp/api?module=stats&action=ethsupply"'
+        example: 'curl "https://explorer.digitalregion.jp/api?module=stats&action=ethsupply"',
       },
       {
         method: 'GET',
         path: '/api?module=stats&action=tokensupply&contractaddress=0x...',
         description: 'Get token total supply',
         params: ['contractaddress (required) - Token contract address'],
-        response: '{"status":"1","message":"OK","result":"1000000000000000000000000"}'
+        response: '{"status":"1","message":"OK","result":"1000000000000000000000000"}',
       },
       {
         method: 'GET',
         path: '/api?module=stats&action=ethprice',
         description: 'Get native coin price (placeholder)',
-        response: '{"status":"1","message":"OK","result":{"ethbtc":"0","ethusd":"0",...}}'
+        response: '{"status":"1","message":"OK","result":{"ethbtc":"0","ethusd":"0",...}}',
       },
       {
         method: 'GET',
         path: '/api?module=stats&action=chainsize',
         description: 'Get chain size statistics',
-        response: '{"status":"1","message":"OK","result":{"blockCount":"...","transactionCount":"...","chainSizeMB":"..."}}'
+        response:
+          '{"status":"1","message":"OK","result":{"blockCount":"...","transactionCount":"...","chainSizeMB":"..."}}',
       },
       {
         method: 'GET',
         path: '/api?module=stats&action=dailytx',
         description: 'Get daily transaction count',
-        params: ['startdate (optional: YYYY-MM-DD)', 'enddate (optional: YYYY-MM-DD)', 'sort (optional: asc/desc)'],
-        response: '{"status":"1","message":"OK","result":[{"UTCDate":"2025-01-01","transactionCount":123}]}'
-      }
-    ]
+        params: [
+          'startdate (optional: YYYY-MM-DD)',
+          'enddate (optional: YYYY-MM-DD)',
+          'sort (optional: asc/desc)',
+        ],
+        response:
+          '{"status":"1","message":"OK","result":[{"UTCDate":"2025-01-01","transactionCount":123}]}',
+      },
+    ],
   },
   {
     name: 'Blockscout API - Contract',
     icon: <CodeBracketIcon className="w-6 h-6" />,
-    description: 'Blockscout/Etherscan compatible Contract API. Use ?module=contract&action=<action> format.',
+    description:
+      'Blockscout/Etherscan compatible Contract API. Use ?module=contract&action=<action> format.',
     endpoints: [
       {
         method: 'GET',
         path: '/api?module=contract&action=getabi&address=0x...',
         description: 'Get contract ABI (verified contracts only)',
         params: ['address (required) - Contract address'],
-        response: '{"status":"1","message":"OK","result":"[{...ABI...}]"}'
+        response: '{"status":"1","message":"OK","result":"[{...ABI...}]"}',
       },
       {
         method: 'GET',
         path: '/api?module=contract&action=getsourcecode&address=0x...',
         description: 'Get contract source code (verified contracts only)',
         params: ['address (required) - Contract address'],
-        response: '{"status":"1","message":"OK","result":[{"SourceCode":"...","ABI":"...","ContractName":"...",...}]}'
+        response:
+          '{"status":"1","message":"OK","result":[{"SourceCode":"...","ABI":"...","ContractName":"...",...}]}',
       },
       {
         method: 'GET',
         path: '/api?module=contract&action=getcontractcreation&contractaddresses=0x...,0x...',
         description: 'Get contract creation info (max 5)',
         params: ['contractaddresses (required) - Comma separated addresses'],
-        response: '{"status":"1","message":"OK","result":[{"contractAddress":"...","contractCreator":"...","txHash":"..."}]}'
-      }
-    ]
+        response:
+          '{"status":"1","message":"OK","result":[{"contractAddress":"...","contractCreator":"...","txHash":"..."}]}',
+      },
+    ],
   },
   {
     name: 'Blockscout API - Logs',
     icon: <DocumentTextIcon className="w-6 h-6" />,
-    description: 'Blockscout/Etherscan compatible Logs API. Use ?module=logs&action=<action> format.',
+    description:
+      'Blockscout/Etherscan compatible Logs API. Use ?module=logs&action=<action> format.',
     endpoints: [
       {
         method: 'GET',
         path: '/api?module=logs&action=getLogs',
         description: 'Get event logs',
-        params: ['address (optional)', 'fromBlock (optional)', 'toBlock (optional)', 'topic0-3 (optional)', 'page (optional)', 'offset (optional)'],
-        response: '{"status":"1","message":"OK","result":[{"address":"...","topics":[...],"data":"...","blockNumber":"...",...}]}'
-      }
-    ]
+        params: [
+          'address (optional)',
+          'fromBlock (optional)',
+          'toBlock (optional)',
+          'topic0-3 (optional)',
+          'page (optional)',
+          'offset (optional)',
+        ],
+        response:
+          '{"status":"1","message":"OK","result":[{"address":"...","topics":[...],"data":"...","blockNumber":"...",...}]}',
+      },
+    ],
   },
   {
     name: 'Blockscout API - Proxy (JSON-RPC)',
@@ -251,84 +289,88 @@ const apiCategories: ApiCategory[] = [
         method: 'GET',
         path: '/api?module=proxy&action=eth_blockNumber',
         description: 'Get current block number (hex)',
-        response: '{"status":"1","message":"OK","result":"0x136f0f"}'
+        response: '{"status":"1","message":"OK","result":"0x136f0f"}',
       },
       {
         method: 'GET',
         path: '/api?module=proxy&action=eth_getBlockByNumber&tag=latest&boolean=true',
         description: 'Get block by number',
-        params: ['tag (required: block number or latest/earliest/pending)', 'boolean (optional: include tx details)'],
-        response: '{"status":"1","message":"OK","result":{...block data...}}'
+        params: [
+          'tag (required: block number or latest/earliest/pending)',
+          'boolean (optional: include tx details)',
+        ],
+        response: '{"status":"1","message":"OK","result":{...block data...}}',
       },
       {
         method: 'GET',
         path: '/api?module=proxy&action=eth_getTransactionByHash&txhash=0x...',
         description: 'Get transaction by hash',
         params: ['txhash (required)'],
-        response: '{"status":"1","message":"OK","result":{...tx data...}}'
+        response: '{"status":"1","message":"OK","result":{...tx data...}}',
       },
       {
         method: 'GET',
         path: '/api?module=proxy&action=eth_getTransactionReceipt&txhash=0x...',
         description: 'Get transaction receipt',
         params: ['txhash (required)'],
-        response: '{"status":"1","message":"OK","result":{...receipt data...}}'
+        response: '{"status":"1","message":"OK","result":{...receipt data...}}',
       },
       {
         method: 'GET',
         path: '/api?module=proxy&action=eth_call&to=0x...&data=0x...',
         description: 'Execute contract call (read-only)',
         params: ['to (required)', 'data (required)', 'tag (optional: latest)'],
-        response: '{"status":"1","message":"OK","result":"0x..."}'
+        response: '{"status":"1","message":"OK","result":"0x..."}',
       },
       {
         method: 'GET',
         path: '/api?module=proxy&action=eth_getCode&address=0x...',
         description: 'Get contract bytecode',
         params: ['address (required)', 'tag (optional: latest)'],
-        response: '{"status":"1","message":"OK","result":"0x..."}'
+        response: '{"status":"1","message":"OK","result":"0x..."}',
       },
       {
         method: 'GET',
         path: '/api?module=proxy&action=eth_gasPrice',
         description: 'Get current gas price (hex)',
-        response: '{"status":"1","message":"OK","result":"0x3b9aca00"}'
+        response: '{"status":"1","message":"OK","result":"0x3b9aca00"}',
       },
       {
         method: 'GET',
         path: '/api?module=proxy&action=eth_estimateGas&to=0x...',
         description: 'Estimate gas for transaction',
         params: ['to (required)', 'data (optional)', 'value (optional)', 'from (optional)'],
-        response: '{"status":"1","message":"OK","result":"0x5208"}'
-      }
-    ]
+        response: '{"status":"1","message":"OK","result":"0x5208"}',
+      },
+    ],
   },
   {
     name: 'Supply APIs',
     icon: <CurrencyDollarIcon className="w-6 h-6" />,
-    description: 'CoinGecko / CoinMarketCap compatible supply endpoints. Returns plain text numbers.',
+    description:
+      'CoinGecko / CoinMarketCap compatible supply endpoints. Returns plain text numbers.',
     endpoints: [
       {
         method: 'GET',
         path: '/api/total_supply',
         description: 'Total supply of VBC (plain text number)',
         response: '10193657',
-        example: 'curl https://explorer.digitalregion.jp/api/total_supply'
+        example: 'curl https://explorer.digitalregion.jp/api/total_supply',
       },
       {
         method: 'GET',
         path: '/api/circulating_supply',
         description: 'Circulating supply of VBC (plain text number)',
         response: '10193657',
-        example: 'curl https://explorer.digitalregion.jp/api/circulating_supply'
+        example: 'curl https://explorer.digitalregion.jp/api/circulating_supply',
       },
       {
         method: 'GET',
         path: '/api/total_supply?debug=true',
         description: 'Detailed supply information (JSON)',
-        response: '{"blockNumber": "1274207", "totalSupply": 10193657, ...}'
-      }
-    ]
+        response: '{"blockNumber": "1274207", "totalSupply": 10193657, ...}',
+      },
+    ],
   },
   {
     name: 'Statistics APIs',
@@ -339,15 +381,15 @@ const apiCategories: ApiCategory[] = [
         method: 'GET',
         path: '/api/stats',
         description: 'Basic network statistics (blocks, transactions, difficulty)',
-        response: '{"latestBlock": 1274207, "avgBlockTime": "13.41", ...}'
+        response: '{"latestBlock": 1274207, "avgBlockTime": "13.41", ...}',
       },
       {
         method: 'GET',
         path: '/api/blockheight',
         description: 'Current blockchain height',
-        response: '{"height": 1274207}'
-      }
-    ]
+        response: '{"height": 1274207}',
+      },
+    ],
   },
   {
     name: 'Block APIs',
@@ -359,16 +401,16 @@ const apiCategories: ApiCategory[] = [
         path: '/api/blocks',
         description: 'Latest blocks with pagination',
         params: ['page (optional)', 'limit (optional, default: 15)'],
-        response: '{"blocks": [...], "total": 1274207}'
+        response: '{"blocks": [...], "total": 1274207}',
       },
       {
         method: 'GET',
         path: '/api/block/[number]',
         description: 'Specific block details by number',
         params: ['number (required)'],
-        example: 'curl https://explorer.digitalregion.jp/api/block/1274207'
-      }
-    ]
+        example: 'curl https://explorer.digitalregion.jp/api/block/1274207',
+      },
+    ],
   },
   {
     name: 'Transaction APIs',
@@ -380,16 +422,16 @@ const apiCategories: ApiCategory[] = [
         path: '/api/transactions',
         description: 'Latest transactions with pagination',
         params: ['page (optional)', 'limit (optional, default: 15)'],
-        response: '{"transactions": [...], "total": 12345}'
+        response: '{"transactions": [...], "total": 12345}',
       },
       {
         method: 'GET',
         path: '/api/tx/[hash]',
         description: 'Transaction details by hash',
         params: ['hash (required)'],
-        example: 'curl https://explorer.digitalregion.jp/api/tx/0x...'
-      }
-    ]
+        example: 'curl https://explorer.digitalregion.jp/api/tx/0x...',
+      },
+    ],
   },
   {
     name: 'Address APIs',
@@ -401,27 +443,27 @@ const apiCategories: ApiCategory[] = [
         path: '/api/address/[address]',
         description: 'Address details, balance, and transaction history',
         params: ['address (required)'],
-        response: '{"address": "0x...", "balance": "1000000000000000000", ...}'
+        response: '{"address": "0x...", "balance": "1000000000000000000", ...}',
       },
       {
         method: 'GET',
         path: '/api/address/[address]/transactions',
         description: 'Transaction history for an address',
-        params: ['address (required)', 'page (optional)', 'limit (optional)']
+        params: ['address (required)', 'page (optional)', 'limit (optional)'],
       },
       {
         method: 'GET',
         path: '/api/address/[address]/mining',
         description: 'Mining history for an address',
-        params: ['address (required)']
+        params: ['address (required)'],
       },
       {
         method: 'GET',
         path: '/api/richlist',
         description: 'Wealth distribution and top addresses',
-        params: ['page (optional)', 'limit (optional, default: 50)']
-      }
-    ]
+        params: ['page (optional)', 'limit (optional, default: 50)'],
+      },
+    ],
   },
   {
     name: 'Token APIs',
@@ -433,21 +475,21 @@ const apiCategories: ApiCategory[] = [
         path: '/api/tokens',
         description: 'List all tracked tokens',
         params: ['type (optional: erc20, erc721, erc1155)'],
-        response: '{"tokens": [...], "total": 50}'
+        response: '{"tokens": [...], "total": 50}',
       },
       {
         method: 'GET',
         path: '/api/tokens/[address]',
         description: 'Token details, metadata, and holder information',
-        params: ['address (required)']
+        params: ['address (required)'],
       },
       {
         method: 'GET',
         path: '/api/tokens/[address]/balance',
         description: 'Token balance for a specific address',
-        params: ['address (required)', 'holder (required)']
-      }
-    ]
+        params: ['address (required)', 'holder (required)'],
+      },
+    ],
   },
   {
     name: 'Contract APIs',
@@ -458,27 +500,27 @@ const apiCategories: ApiCategory[] = [
         method: 'GET',
         path: '/api/contract/[address]',
         description: 'Contract details and ABI',
-        params: ['address (required)']
+        params: ['address (required)'],
       },
       {
         method: 'GET',
         path: '/api/contract/status/[address]',
         description: 'Contract verification status',
-        params: ['address (required)']
+        params: ['address (required)'],
       },
       {
         method: 'POST',
         path: '/api/contract/verify',
         description: 'Submit contract source code for verification',
-        params: ['address', 'sourceCode', 'compilerVersion', 'optimizationEnabled']
+        params: ['address', 'sourceCode', 'compilerVersion', 'optimizationEnabled'],
       },
       {
         method: 'POST',
         path: '/api/contract/interact',
         description: 'Execute contract function calls (read-only)',
-        params: ['address', 'abi', 'functionName', 'args']
-      }
-    ]
+        params: ['address', 'abi', 'functionName', 'args'],
+      },
+    ],
   },
   {
     name: 'DEX APIs',
@@ -488,25 +530,25 @@ const apiCategories: ApiCategory[] = [
       {
         method: 'GET',
         path: '/api/dex/config',
-        description: 'DEX configuration (router, factory, tokens)'
+        description: 'DEX configuration (router, factory, tokens)',
       },
       {
         method: 'GET',
         path: '/api/dex/pairs',
-        description: 'List all trading pairs with reserves'
+        description: 'List all trading pairs with reserves',
       },
       {
         method: 'GET',
         path: '/api/dex/tokens',
-        description: 'List all DEX-tradable tokens'
+        description: 'List all DEX-tradable tokens',
       },
       {
         method: 'GET',
         path: '/api/dex/chart/[pair]',
         description: 'Price chart data for a trading pair',
-        params: ['pair (required)', 'interval (optional)']
-      }
-    ]
+        params: ['pair (required)', 'interval (optional)'],
+      },
+    ],
   },
   {
     name: 'CMC DEX APIs',
@@ -516,31 +558,31 @@ const apiCategories: ApiCategory[] = [
       {
         method: 'GET',
         path: '/api/dex/cmc/summary',
-        description: 'DEX summary with 24h volume and liquidity'
+        description: 'DEX summary with 24h volume and liquidity',
       },
       {
         method: 'GET',
         path: '/api/dex/cmc/ticker',
-        description: 'All trading pairs with price and volume'
+        description: 'All trading pairs with price and volume',
       },
       {
         method: 'GET',
         path: '/api/dex/cmc/assets',
-        description: 'All assets listed on DEX'
+        description: 'All assets listed on DEX',
       },
       {
         method: 'GET',
         path: '/api/dex/cmc/orderbook/[pair]',
         description: 'Order book for a trading pair (AMM simulation)',
-        params: ['pair (required)', 'depth (optional)']
+        params: ['pair (required)', 'depth (optional)'],
       },
       {
         method: 'GET',
         path: '/api/dex/cmc/trades/[pair]',
         description: 'Recent trades for a trading pair',
-        params: ['pair (required)']
-      }
-    ]
+        params: ['pair (required)'],
+      },
+    ],
   },
   {
     name: 'Search APIs',
@@ -551,9 +593,9 @@ const apiCategories: ApiCategory[] = [
         method: 'GET',
         path: '/api/search/blocks-by-miner',
         description: 'Search blocks mined by specific address',
-        params: ['miner (required)', 'page (optional)', 'limit (optional)']
-      }
-    ]
+        params: ['miner (required)', 'page (optional)', 'limit (optional)'],
+      },
+    ],
   },
   {
     name: 'Utility APIs',
@@ -563,27 +605,27 @@ const apiCategories: ApiCategory[] = [
       {
         method: 'GET',
         path: '/api/config',
-        description: 'Explorer configuration'
+        description: 'Explorer configuration',
       },
       {
         method: 'GET',
         path: '/api/config/client',
-        description: 'Client-side configuration (safe to expose)'
+        description: 'Client-side configuration (safe to expose)',
       },
       {
         method: 'POST',
         path: '/api/web3relay',
         description: 'Web3 RPC relay for blockchain queries',
-        params: ['method', 'params']
+        params: ['method', 'params'],
       },
       {
         method: 'POST',
         path: '/api/compile',
         description: 'Compile Solidity source code',
-        params: ['sourceCode', 'compilerVersion', 'optimizationEnabled']
-      }
-    ]
-  }
+        params: ['sourceCode', 'compilerVersion', 'optimizationEnabled'],
+      },
+    ],
+  },
 ];
 
 function CopyButton({ text }: { text: string }) {
@@ -617,25 +659,24 @@ function EndpointCard({ endpoint }: { endpoint: ApiEndpoint }) {
 
   return (
     <div className="bg-gray-800/50 rounded-lg p-4 hover:bg-gray-800/70 transition-colors">
-      <div 
-        className="flex items-start gap-3 cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <span className={`px-2 py-1 rounded text-xs font-bold ${
-          endpoint.method === 'GET' 
-            ? 'bg-green-500/20 text-green-400' 
-            : 'bg-blue-500/20 text-blue-400'
-        }`}>
+      <div className="flex items-start gap-3 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <span
+          className={`px-2 py-1 rounded text-xs font-bold ${
+            endpoint.method === 'GET'
+              ? 'bg-green-500/20 text-green-400'
+              : 'bg-blue-500/20 text-blue-400'
+          }`}
+        >
           {endpoint.method}
         </span>
         <div className="flex-1 min-w-0">
           <code className="text-purple-400 text-sm break-all">{endpoint.path}</code>
           <p className="text-gray-400 text-sm mt-1">{endpoint.description}</p>
         </div>
-        <svg 
+        <svg
           className={`w-5 h-5 text-gray-500 transition-transform ${expanded ? 'rotate-180' : ''}`}
-          fill="none" 
-          stroke="currentColor" 
+          fill="none"
+          stroke="currentColor"
           viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -651,7 +692,9 @@ function EndpointCard({ endpoint }: { endpoint: ApiEndpoint }) {
                 {endpoint.params.map((param, i) => (
                   <li key={i} className="text-sm text-gray-300">
                     <code className="text-yellow-400">{param.split(' ')[0]}</code>
-                    <span className="text-gray-500 ml-2">{param.includes('(') ? param.substring(param.indexOf('(')) : ''}</span>
+                    <span className="text-gray-500 ml-2">
+                      {param.includes('(') ? param.substring(param.indexOf('(')) : ''}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -692,8 +735,18 @@ function EndpointCard({ endpoint }: { endpoint: ApiEndpoint }) {
                     className="p-1 hover:bg-gray-700 rounded transition-colors"
                     title="Open in new tab"
                   >
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    <svg
+                      className="w-4 h-4 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                      />
                     </svg>
                   </a>
                 )}
@@ -711,16 +764,18 @@ export default function ApiDocsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const filteredCategories = apiCategories
-    .map(category => ({
+    .map((category) => ({
       ...category,
-      endpoints: category.endpoints.filter(endpoint =>
-        endpoint.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        endpoint.description.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+      endpoints: category.endpoints.filter(
+        (endpoint) =>
+          endpoint.path.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          endpoint.description.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
     }))
-    .filter(category => 
-      (selectedCategory === null || category.name === selectedCategory) &&
-      (searchQuery === '' || category.endpoints.length > 0)
+    .filter(
+      (category) =>
+        (selectedCategory === null || category.name === selectedCategory) &&
+        (searchQuery === '' || category.endpoints.length > 0)
     );
 
   return (
@@ -737,7 +792,7 @@ export default function ApiDocsPage() {
               <p className="text-gray-400 mt-1">VirBiCoin Explorer REST API Reference</p>
             </div>
           </div>
-          
+
           <div className="flex flex-wrap gap-4 mt-6">
             <div className="flex-1 min-w-64">
               <div className="relative">
@@ -773,20 +828,20 @@ export default function ApiDocsPage() {
                 <button
                   onClick={() => setSelectedCategory(null)}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                    selectedCategory === null 
-                      ? 'bg-purple-500/20 text-purple-400' 
+                    selectedCategory === null
+                      ? 'bg-purple-500/20 text-purple-400'
                       : 'text-gray-400 hover:bg-gray-800 hover:text-white'
                   }`}
                 >
                   All Endpoints
                 </button>
-                {apiCategories.map(category => (
+                {apiCategories.map((category) => (
                   <button
                     key={category.name}
                     onClick={() => setSelectedCategory(category.name)}
                     className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors flex items-center gap-2 ${
-                      selectedCategory === category.name 
-                        ? 'bg-purple-500/20 text-purple-400' 
+                      selectedCategory === category.name
+                        ? 'bg-purple-500/20 text-purple-400'
                         : 'text-gray-400 hover:bg-gray-800 hover:text-white'
                     }`}
                   >
@@ -805,9 +860,9 @@ export default function ApiDocsPage() {
                   <Link href="/" className="block text-purple-400 hover:text-purple-300">
                     ← Back to Explorer
                   </Link>
-                  <a 
-                    href="https://github.com/virbicoin/vbc-explorer" 
-                    target="_blank" 
+                  <a
+                    href="https://github.com/virbicoin/vbc-explorer"
+                    target="_blank"
                     rel="noopener noreferrer"
                     className="block text-gray-400 hover:text-white"
                   >
@@ -820,18 +875,16 @@ export default function ApiDocsPage() {
 
           {/* Content */}
           <div className="flex-1 space-y-8">
-            {filteredCategories.map(category => (
+            {filteredCategories.map((category) => (
               <div key={category.name} id={category.name.toLowerCase().replace(/\s+/g, '-')}>
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-gray-800 rounded-lg text-purple-400">
-                    {category.icon}
-                  </div>
+                  <div className="p-2 bg-gray-800 rounded-lg text-purple-400">{category.icon}</div>
                   <div>
                     <h2 className="text-xl font-bold text-white">{category.name}</h2>
                     <p className="text-gray-500 text-sm">{category.description}</p>
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   {category.endpoints.map((endpoint, i) => (
                     <EndpointCard key={i} endpoint={endpoint} />
@@ -843,7 +896,9 @@ export default function ApiDocsPage() {
             {filteredCategories.length === 0 && (
               <div className="text-center py-12">
                 <MagnifyingGlassIcon className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                <p className="text-gray-400">No endpoints found matching &quot;{searchQuery}&quot;</p>
+                <p className="text-gray-400">
+                  No endpoints found matching &quot;{searchQuery}&quot;
+                </p>
               </div>
             )}
           </div>
@@ -855,7 +910,9 @@ export default function ApiDocsPage() {
         <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6">
           <h3 className="text-blue-400 font-semibold mb-2">📝 Notes</h3>
           <ul className="text-gray-400 text-sm space-y-2">
-            <li>• All endpoints return JSON unless otherwise specified (Supply APIs return plain text)</li>
+            <li>
+              • All endpoints return JSON unless otherwise specified (Supply APIs return plain text)
+            </li>
             <li>• Rate limiting: 100 requests per 15 minutes</li>
             <li>• CORS is enabled for all endpoints</li>
             <li>• Timestamps are in Unix format (seconds since epoch)</li>

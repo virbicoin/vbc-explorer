@@ -1,10 +1,17 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import Link from "next/link";
-import Image from "next/image";
-import { ClipboardDocumentIcon, CubeIcon, UsersIcon, ClockIcon, CodeBracketIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import Image from 'next/image';
+import {
+  ClipboardDocumentIcon,
+  CubeIcon,
+  UsersIcon,
+  ClockIcon,
+  CodeBracketIcon,
+  CheckCircleIcon,
+} from '@heroicons/react/24/outline';
 
 interface TokenMetadata {
   name?: string;
@@ -82,12 +89,20 @@ export default function TokenIdDetailPage() {
   // Add NFT to MetaMask
   const addNFTToMetaMask = async () => {
     // Wait for ethereum to be injected
-    let ethereum = (window as unknown as { ethereum?: { request: (args: { method: string; params: unknown }) => Promise<boolean> } }).ethereum;
+    let ethereum = (
+      window as unknown as {
+        ethereum?: { request: (args: { method: string; params: unknown }) => Promise<boolean> };
+      }
+    ).ethereum;
     if (!ethereum) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      ethereum = (window as unknown as { ethereum?: { request: (args: { method: string; params: unknown }) => Promise<boolean> } }).ethereum;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      ethereum = (
+        window as unknown as {
+          ethereum?: { request: (args: { method: string; params: unknown }) => Promise<boolean> };
+        }
+      ).ethereum;
     }
-    
+
     if (!ethereum) {
       const confirmed = confirm('No Web3 wallet detected. Would you like to install MetaMask?');
       if (confirmed) {
@@ -95,7 +110,7 @@ export default function TokenIdDetailPage() {
       }
       return;
     }
-    
+
     try {
       await ethereum.request({
         method: 'wallet_watchAsset',
@@ -129,23 +144,55 @@ export default function TokenIdDetailPage() {
         }
       } catch {
         if (!cancelled) {
-          setError("Failed to fetch data");
+          setError('Failed to fetch data');
           setLoading(false);
         }
       }
     };
     fetchData();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [address, id]);
 
   if (loading) {
-    return <div className="min-h-screen bg-gray-900 text-white"><div className="flex justify-center items-center h-64"><div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div></div></div>;
+    return (
+      <div className="min-h-screen bg-gray-900 text-white">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-500"></div>
+        </div>
+      </div>
+    );
   }
   if (error) {
-    return <div className="min-h-screen bg-gray-900 text-white"><div className="container mx-auto px-4 py-8"><div className="bg-red-800 border border-red-600 text-red-100 px-4 py-3 rounded mb-4"><strong className="font-bold">Error:</strong><span className="block sm:inline"> {error}</span></div><Link href='/' className='inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors'><CubeIcon className='w-4 h-4' />Back to Explorer</Link></div></div>;
+    return (
+      <div className="min-h-screen bg-gray-900 text-white">
+        <div className="container mx-auto px-4 py-8">
+          <div className="bg-red-800 border border-red-600 text-red-100 px-4 py-3 rounded mb-4">
+            <strong className="font-bold">Error:</strong>
+            <span className="block sm:inline"> {error}</span>
+          </div>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors"
+          >
+            <CubeIcon className="w-4 h-4" />
+            Back to Explorer
+          </Link>
+        </div>
+      </div>
+    );
   }
   if (!tokenDetail) {
-    return <div className="min-h-screen bg-gray-900 text-white"><div className="container mx-auto px-4 py-8"><div className="bg-red-800 border border-red-600 text-red-100 px-4 py-3 rounded mb-4">Error: No metadata found</div></div></div>;
+    return (
+      <div className="min-h-screen bg-gray-900 text-white">
+        <div className="container mx-auto px-4 py-8">
+          <div className="bg-red-800 border border-red-600 text-red-100 px-4 py-3 rounded mb-4">
+            Error: No metadata found
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // owner calculation removed (unused)
@@ -153,7 +200,9 @@ export default function TokenIdDetailPage() {
   // summaryStats constant removed (unused)
 
   // Transfer履歴をtokenId降順でソート
-  const sortedTransfers = tokenDetail?.transfers ? [...tokenDetail.transfers].sort((a, b) => Number(b.tokenId) - Number(a.tokenId)) : [];
+  const sortedTransfers = tokenDetail?.transfers
+    ? [...tokenDetail.transfers].sort((a, b) => Number(b.tokenId) - Number(a.tokenId))
+    : [];
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
@@ -164,27 +213,64 @@ export default function TokenIdDetailPage() {
             <CubeIcon className="w-8 h-8 text-green-400" />
             <h1 className="text-3xl font-bold text-gray-100">NFT Token Details</h1>
           </div>
-          <p className="text-gray-400">Token ID: <span className="text-white font-mono">{id}</span> details</p>
+          <p className="text-gray-400">
+            Token ID: <span className="text-white font-mono">{id}</span> details
+          </p>
         </div>
       </div>
       <main className="container mx-auto px-4 py-8">
         {/* Summary cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-gray-700/50 rounded-lg p-4 border border-gray-600/50 flex flex-col items-start">
-            <div className="flex items-center gap-2 mb-2"><CubeIcon className='w-5 h-5 text-green-400' /><span className='font-semibold text-green-400'>Token ID</span></div>
+            <div className="flex items-center gap-2 mb-2">
+              <CubeIcon className="w-5 h-5 text-green-400" />
+              <span className="font-semibold text-green-400">Token ID</span>
+            </div>
             <span className="text-green-400 text-3xl font-bold break-all">#{id}</span>
           </div>
           <div className="bg-gray-700/50 rounded-lg p-4 border border-gray-600/50 flex flex-col items-start">
-            <div className="flex items-center gap-2 mb-2"><UsersIcon className='w-5 h-5 text-blue-400' /><span className='font-semibold text-blue-400'>Holder</span></div>
-            {tokenDetail?.owner ? <Link href={`/address/${tokenDetail.owner}`} className="text-blue-400 hover:underline font-mono break-all">{tokenDetail.owner}</Link> : <span className="text-white font-mono break-all">-</span>}
+            <div className="flex items-center gap-2 mb-2">
+              <UsersIcon className="w-5 h-5 text-blue-400" />
+              <span className="font-semibold text-blue-400">Holder</span>
+            </div>
+            {tokenDetail?.owner ? (
+              <Link
+                href={`/address/${tokenDetail.owner}`}
+                className="text-blue-400 hover:underline font-mono break-all"
+              >
+                {tokenDetail.owner}
+              </Link>
+            ) : (
+              <span className="text-white font-mono break-all">-</span>
+            )}
           </div>
           <div className="bg-gray-700/50 rounded-lg p-4 border border-gray-600/50 flex flex-col items-start">
-            <div className="flex items-center gap-2 mb-2"><CubeIcon className='w-5 h-5 text-orange-400' /><span className='font-semibold text-orange-400'>Collection</span></div>
-            {tokenDetail?.metadata?.collection || tokenDetail?.metadata?.name ? <span className="text-orange-400 font-mono">{tokenDetail?.metadata?.collection || tokenDetail?.metadata?.name}</span> : <span className="text-white font-mono break-all">-</span>}
+            <div className="flex items-center gap-2 mb-2">
+              <CubeIcon className="w-5 h-5 text-orange-400" />
+              <span className="font-semibold text-orange-400">Collection</span>
+            </div>
+            {tokenDetail?.metadata?.collection || tokenDetail?.metadata?.name ? (
+              <span className="text-orange-400 font-mono">
+                {tokenDetail?.metadata?.collection || tokenDetail?.metadata?.name}
+              </span>
+            ) : (
+              <span className="text-white font-mono break-all">-</span>
+            )}
           </div>
           <div className="bg-gray-700/50 rounded-lg p-4 border border-gray-600/50 flex flex-col items-start">
-            <div className="flex items-center gap-2 mb-2"><ClockIcon className='w-5 h-5 text-yellow-400' /><span className='font-semibold text-yellow-400'>Created</span></div>
-            {tokenDetail?.createdAt ? <span className="text-yellow-400 font-mono">{new Date(tokenDetail.createdAt).toLocaleString(undefined, { timeZoneName: 'short' })}</span> : <span className="text-white font-mono break-all">-</span>}
+            <div className="flex items-center gap-2 mb-2">
+              <ClockIcon className="w-5 h-5 text-yellow-400" />
+              <span className="font-semibold text-yellow-400">Created</span>
+            </div>
+            {tokenDetail?.createdAt ? (
+              <span className="text-yellow-400 font-mono">
+                {new Date(tokenDetail.createdAt).toLocaleString(undefined, {
+                  timeZoneName: 'short',
+                })}
+              </span>
+            ) : (
+              <span className="text-white font-mono break-all">-</span>
+            )}
           </div>
         </div>
         {/* Image and metadata */}
@@ -205,42 +291,65 @@ export default function TokenIdDetailPage() {
                 alt={tokenDetail.metadata.name || `Token #${id}`}
                 width={160}
                 height={160}
-                style={{ objectFit: "cover", width: '100%', height: '100%' }}
+                style={{ objectFit: 'cover', width: '100%', height: '100%' }}
                 className="w-48 h-48 object-cover rounded-lg"
                 unoptimized
               />
             </div>
           ) : (
-            <div className="w-48 h-48 flex items-center justify-center bg-gray-900 text-gray-500 rounded-lg flex-shrink-0">No image</div>
+            <div className="w-48 h-48 flex items-center justify-center bg-gray-900 text-gray-500 rounded-lg flex-shrink-0">
+              No image
+            </div>
           )}
           <div className="flex-1 flex flex-col gap-4">
             {/* name/description */}
             <div>
-              <h2 className="text-3xl font-bold text-green-400 mb-2">{tokenDetail?.metadata?.name || `Token #${id}`}</h2>
+              <h2 className="text-3xl font-bold text-green-400 mb-2">
+                {tokenDetail?.metadata?.name || `Token #${id}`}
+              </h2>
               <p className="text-gray-300 mb-4">{tokenDetail?.metadata?.description || '-'}</p>
               {/* 追加情報 */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
                 <div className="text-sm text-gray-400 flex items-center gap-2">
                   <span className="font-bold">Token Type:</span>
                   {tokenDetail?.metadata?.type ? (
-                    <span className="px-3 py-1 rounded text-sm font-medium bg-purple-500/20 text-purple-400">{tokenDetail.metadata.type}</span>
+                    <span className="px-3 py-1 rounded text-sm font-medium bg-purple-500/20 text-purple-400">
+                      {tokenDetail.metadata.type}
+                    </span>
                   ) : (
                     <span className="text-white">-</span>
                   )}
                 </div>
                 <div className="text-sm text-gray-400 flex items-center gap-2">
-                  <span className="font-bold">Symbol:</span> <span className="text-white">{tokenDetail?.metadata?.symbol || '-'}</span>
+                  <span className="font-bold">Symbol:</span>{' '}
+                  <span className="text-white">{tokenDetail?.metadata?.symbol || '-'}</span>
                 </div>
                 <div className="text-sm text-gray-400 flex items-center gap-2">
-                  <span className="font-bold">Total Supply:</span> <span className="text-yellow-400 font-bold">{tokenDetail?.metadata?.totalSupply || '-'}</span>
+                  <span className="font-bold">Total Supply:</span>{' '}
+                  <span className="text-yellow-400 font-bold">
+                    {tokenDetail?.metadata?.totalSupply || '-'}
+                  </span>
                 </div>
                 <div className="text-sm text-gray-400 flex items-center gap-2">
-                  <span className="font-bold">Contract Verified:</span> <span className={tokenDetail?.metadata?.verified ? 'text-green-400' : 'text-red-400'}>{tokenDetail?.metadata?.verified ? 'Yes' : 'No'}</span>
+                  <span className="font-bold">Contract Verified:</span>{' '}
+                  <span
+                    className={tokenDetail?.metadata?.verified ? 'text-green-400' : 'text-red-400'}
+                  >
+                    {tokenDetail?.metadata?.verified ? 'Yes' : 'No'}
+                  </span>
                 </div>
               </div>
               {tokenDetail?.metadata?.tokenURI && (
                 <div className="text-sm text-gray-400 mb-2">
-                  tokenURI: <a href={tokenDetail.metadata.tokenURI} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline break-all">{tokenDetail.metadata.tokenURI}</a>
+                  tokenURI:{' '}
+                  <a
+                    href={tokenDetail.metadata.tokenURI}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:underline break-all"
+                  >
+                    {tokenDetail.metadata.tokenURI}
+                  </a>
                 </div>
               )}
               {tokenDetail?.metadata?.attributes && tokenDetail.metadata.attributes.length > 0 && (
@@ -248,22 +357,52 @@ export default function TokenIdDetailPage() {
                   <div className="text-xs text-gray-500 font-medium mb-1">Attributes:</div>
                   <div className="flex flex-wrap gap-2">
                     {tokenDetail.metadata.attributes.map((attr, idx) => (
-                      <span key={idx} className="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded">{attr.trait_type}: {attr.value}</span>
+                      <span
+                        key={idx}
+                        className="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded"
+                      >
+                        {attr.trait_type}: {attr.value}
+                      </span>
                     ))}
                   </div>
                 </div>
               )}
-              {Object.entries(tokenDetail.metadata ?? {}).map(([key, value]) => (
-                !['name','description','image','createdAt','attributes','tokenURI','collection','type','symbol','totalSupply','contractAddress'].includes(key) && value ? (
-                  <div key={key} className="text-sm text-gray-400"><span className="font-bold">{key}:</span> <span className="text-white break-all">{String(value)}</span></div>
+              {Object.entries(tokenDetail.metadata ?? {}).map(([key, value]) =>
+                ![
+                  'name',
+                  'description',
+                  'image',
+                  'createdAt',
+                  'attributes',
+                  'tokenURI',
+                  'collection',
+                  'type',
+                  'symbol',
+                  'totalSupply',
+                  'contractAddress',
+                ].includes(key) && value ? (
+                  <div key={key} className="text-sm text-gray-400">
+                    <span className="font-bold">{key}:</span>{' '}
+                    <span className="text-white break-all">{String(value)}</span>
+                  </div>
                 ) : null
-              ))}
+              )}
             </div>
             <div className="flex flex-col gap-2 mt-2">
               <div className="text-sm text-gray-400">
-                Contract: <Link href={`/address/${tokenDetail?.address}`} className="text-blue-400 hover:underline font-mono">{tokenDetail?.address}</Link>
+                Contract:{' '}
+                <Link
+                  href={`/address/${tokenDetail?.address}`}
+                  className="text-blue-400 hover:underline font-mono"
+                >
+                  {tokenDetail?.address}
+                </Link>
                 <button
-                  onClick={() => {navigator.clipboard.writeText(tokenDetail?.address || ''); setCopied(true); setTimeout(()=>setCopied(false), 1500);}}
+                  onClick={() => {
+                    navigator.clipboard.writeText(tokenDetail?.address || '');
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  }}
                   className="ml-2 p-1 text-gray-400 hover:text-blue-400 transition-colors"
                   title="Copy address"
                 >
@@ -272,13 +411,34 @@ export default function TokenIdDetailPage() {
                 {copied && <span className="text-green-400 text-xs ml-2">Copied!</span>}
               </div>
               {tokenDetail?.creator && (
-                <div className="text-sm text-gray-400">Creator: <Link href={`/address/${tokenDetail.creator}`} className="text-blue-400 hover:underline font-mono">{tokenDetail.creator}</Link></div>
+                <div className="text-sm text-gray-400">
+                  Creator:{' '}
+                  <Link
+                    href={`/address/${tokenDetail.creator}`}
+                    className="text-blue-400 hover:underline font-mono"
+                  >
+                    {tokenDetail.creator}
+                  </Link>
+                </div>
               )}
               {tokenDetail?.owner && (
-                <div className="text-sm text-gray-400">Holder: <Link href={`/address/${tokenDetail.owner}`} className="text-blue-400 hover:underline font-mono">{tokenDetail.owner}</Link></div>
+                <div className="text-sm text-gray-400">
+                  Holder:{' '}
+                  <Link
+                    href={`/address/${tokenDetail.owner}`}
+                    className="text-blue-400 hover:underline font-mono"
+                  >
+                    {tokenDetail.owner}
+                  </Link>
+                </div>
               )}
               {tokenDetail?.createdAt && (
-                <div className="text-sm text-gray-400">Created: {new Date(tokenDetail.createdAt).toLocaleString(undefined, { timeZoneName: 'short' })}</div>
+                <div className="text-sm text-gray-400">
+                  Created:{' '}
+                  {new Date(tokenDetail.createdAt).toLocaleString(undefined, {
+                    timeZoneName: 'short',
+                  })}
+                </div>
               )}
             </div>
           </div>
@@ -291,7 +451,9 @@ export default function TokenIdDetailPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-600">
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Tx Hash</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                      Tx Hash
+                    </th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Type</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">From</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">To</th>
@@ -303,60 +465,72 @@ export default function TokenIdDetailPage() {
                     // Calculate time ago
                     const getTimeAgo = (timestamp: string) => {
                       if (!timestamp) return '-';
-                      const seconds = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000);
+                      const seconds = Math.floor(
+                        (Date.now() - new Date(timestamp).getTime()) / 1000
+                      );
                       if (seconds < 0) return 'Just now';
                       if (seconds < 60) return `${seconds}s ago`;
                       if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
                       if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
                       return `${Math.floor(seconds / 86400)}d ago`;
                     };
-                    
+
                     const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
                     const DEAD_ADDR = '0x000000000000000000000000000000000000dead';
-                    const isFromSystem = tx.from === ZERO_ADDR || tx.from?.toLowerCase() === ZERO_ADDR;
-                    const isToSystem = tx.to === ZERO_ADDR || tx.to?.toLowerCase() === ZERO_ADDR || tx.to?.toLowerCase() === DEAD_ADDR;
-                    
+                    const isFromSystem =
+                      tx.from === ZERO_ADDR || tx.from?.toLowerCase() === ZERO_ADDR;
+                    const isToSystem =
+                      tx.to === ZERO_ADDR ||
+                      tx.to?.toLowerCase() === ZERO_ADDR ||
+                      tx.to?.toLowerCase() === DEAD_ADDR;
+
                     // Get transfer type badge
                     const getTransferTypeBadge = () => {
                       if (isFromSystem) {
                         return (
-                          <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 shadow-sm'>
-                            <span className='text-sm'>✨</span>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 shadow-sm">
+                            <span className="text-sm">✨</span>
                             <span>Mint</span>
                           </span>
                         );
                       }
                       if (isToSystem) {
                         return (
-                          <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 shadow-sm'>
-                            <span className='text-sm'>🔥</span>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 shadow-sm">
+                            <span className="text-sm">🔥</span>
                             <span>Burn</span>
                           </span>
                         );
                       }
                       return (
-                        <span className='inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 shadow-sm'>
-                          <span className='text-sm'>⇆</span>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 shadow-sm">
+                          <span className="text-sm">⇆</span>
                           <span>Transfer</span>
                         </span>
                       );
                     };
-                    
+
                     return (
                       <tr key={tx.hash + idx} className="hover:bg-gray-700/50 transition-colors">
                         <td className="py-3 px-4">
-                          <Link href={`/tx/${tx.hash}`} className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors" title={tx.hash}>
+                          <Link
+                            href={`/tx/${tx.hash}`}
+                            className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors"
+                            title={tx.hash}
+                          >
                             {tx.hash.slice(0, 10)}...{tx.hash.slice(-6)}
                           </Link>
                         </td>
-                        <td className="py-3 px-4">
-                          {getTransferTypeBadge()}
-                        </td>
+                        <td className="py-3 px-4">{getTransferTypeBadge()}</td>
                         <td className="py-3 px-4">
                           {isFromSystem ? (
                             <span className="text-emerald-400 text-sm">System (Mint)</span>
                           ) : (
-                            <Link href={`/address/${tx.from}`} className="text-green-400 hover:text-green-300 font-mono text-sm transition-colors" title={tx.from}>
+                            <Link
+                              href={`/address/${tx.from}`}
+                              className="text-green-400 hover:text-green-300 font-mono text-sm transition-colors"
+                              title={tx.from}
+                            >
                               {tx.from.slice(0, 8)}...{tx.from.slice(-6)}
                             </Link>
                           )}
@@ -365,7 +539,11 @@ export default function TokenIdDetailPage() {
                           {isToSystem ? (
                             <span className="text-red-400 text-sm">Burn Address</span>
                           ) : (
-                            <Link href={`/address/${tx.to}`} className="text-purple-400 hover:text-purple-300 font-mono text-sm transition-colors" title={tx.to}>
+                            <Link
+                              href={`/address/${tx.to}`}
+                              className="text-purple-400 hover:text-purple-300 font-mono text-sm transition-colors"
+                              title={tx.to}
+                            >
                               {tx.to.slice(0, 8)}...{tx.to.slice(-6)}
                             </Link>
                           )}
@@ -374,8 +552,16 @@ export default function TokenIdDetailPage() {
                           <div className="flex items-center gap-2">
                             <ClockIcon className="w-4 h-4 text-gray-500" />
                             <div>
-                              <div className="text-sm text-gray-300">{getTimeAgo(tx.timestamp)}</div>
-                              <div className="text-xs text-gray-500">{tx.timestamp ? new Date(tx.timestamp).toLocaleString(undefined, { timeZoneName: 'short' }) : '-'}</div>
+                              <div className="text-sm text-gray-300">
+                                {getTimeAgo(tx.timestamp)}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {tx.timestamp
+                                  ? new Date(tx.timestamp).toLocaleString(undefined, {
+                                      timeZoneName: 'short',
+                                    })
+                                  : '-'}
+                              </div>
                             </div>
                           </div>
                         </td>
@@ -392,31 +578,65 @@ export default function TokenIdDetailPage() {
         {/* Contract information */}
         {tokenDetail?.contract && (
           <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8">
-            <h2 className="text-xl font-semibold text-gray-100 mb-4 flex items-center gap-2"><CodeBracketIcon className="w-6 h-6 text-blue-400" />Contract Information</h2>
+            <h2 className="text-xl font-semibold text-gray-100 mb-4 flex items-center gap-2">
+              <CodeBracketIcon className="w-6 h-6 text-blue-400" />
+              Contract Information
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <div className="text-sm text-gray-400 mb-1">Contract Name</div>
                 <div className="text-white font-mono mb-2">{tokenDetail.contract.name}</div>
                 <div className="text-sm text-gray-400 mb-1">Compiler</div>
-                <div className="text-white font-mono mb-2">{tokenDetail.contract.compiler || '-'}</div>
+                <div className="text-white font-mono mb-2">
+                  {tokenDetail.contract.compiler || '-'}
+                </div>
                 <div className="text-sm text-gray-400 mb-1">Language</div>
-                <div className="text-white font-mono mb-2">{tokenDetail.contract.language || '-'}</div>
+                <div className="text-white font-mono mb-2">
+                  {tokenDetail.contract.language || '-'}
+                </div>
                 <div className="text-sm text-gray-400 mb-1">Verified</div>
                 {tokenDetail.contract.verified ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs font-medium w-fit"><CheckCircleIcon className="w-4 h-4" />Verified</span>
+                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs font-medium w-fit">
+                    <CheckCircleIcon className="w-4 h-4" />
+                    Verified
+                  </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-500/20 text-gray-400 rounded text-xs font-medium w-fit">Unverified</span>
+                  <span className="inline-flex items-center gap-1 px-2 py-1 bg-gray-500/20 text-gray-400 rounded text-xs font-medium w-fit">
+                    Unverified
+                  </span>
                 )}
               </div>
               <div>
                 <div className="text-sm text-gray-400 mb-1">Source Code</div>
-                <div className="text-white font-mono mb-2 break-all">{tokenDetail.contract.sourceCode ? <span className="text-green-400">Available</span> : <span className="text-red-400">Not Available</span>}</div>
+                <div className="text-white font-mono mb-2 break-all">
+                  {tokenDetail.contract.sourceCode ? (
+                    <span className="text-green-400">Available</span>
+                  ) : (
+                    <span className="text-red-400">Not Available</span>
+                  )}
+                </div>
                 <div className="text-sm text-gray-400 mb-1">Bytecode</div>
-                <div className="text-white font-mono mb-2 break-all">{tokenDetail.contract.bytecode ? <span className="text-green-400">Available</span> : <span className="text-red-400">Not Available</span>}</div>
+                <div className="text-white font-mono mb-2 break-all">
+                  {tokenDetail.contract.bytecode ? (
+                    <span className="text-green-400">Available</span>
+                  ) : (
+                    <span className="text-red-400">Not Available</span>
+                  )}
+                </div>
                 <div className="text-sm text-gray-400 mb-1">Contract Address</div>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-white font-mono">{address}</span>
-                  <button onClick={() => {navigator.clipboard.writeText(address); setCopied(true); setTimeout(()=>setCopied(false), 1500);}} className="p-1 text-gray-400 hover:text-blue-400 transition-colors" title="Copy address"><ClipboardDocumentIcon className="w-4 h-4 inline" /></button>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(address);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    }}
+                    className="p-1 text-gray-400 hover:text-blue-400 transition-colors"
+                    title="Copy address"
+                  >
+                    <ClipboardDocumentIcon className="w-4 h-4 inline" />
+                  </button>
                   {copied && <span className="text-green-400 text-xs ml-2">Copied!</span>}
                 </div>
               </div>
@@ -426,4 +646,4 @@ export default function TokenIdDetailPage() {
       </main>
     </div>
   );
-} 
+}

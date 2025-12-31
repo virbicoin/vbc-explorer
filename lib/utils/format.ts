@@ -1,6 +1,6 @@
 /**
  * Format Utilities
- * 
+ *
  * Common formatting functions for displaying blockchain data.
  */
 
@@ -9,10 +9,7 @@ import { formatUnits } from 'ethers';
 /**
  * Format token balance with proper decimals
  */
-export function formatTokenBalance(
-  rawBalance: string | bigint,
-  decimals: number = 18
-): string {
+export function formatTokenBalance(rawBalance: string | bigint, decimals: number = 18): string {
   try {
     const balance = BigInt(rawBalance);
     return formatUnits(balance, decimals);
@@ -66,10 +63,10 @@ export function timeAgo(timestamp: number | Date): string {
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   if (days < 30) return `${days}d ago`;
-  
+
   const months = Math.floor(days / 30);
   if (months < 12) return `${months}mo ago`;
-  
+
   const years = Math.floor(months / 12);
   return `${years}y ago`;
 }
@@ -77,10 +74,7 @@ export function timeAgo(timestamp: number | Date): string {
 /**
  * Format percentage
  */
-export function formatPercentage(
-  value: number | string,
-  decimals: number = 2
-): string {
+export function formatPercentage(value: number | string, decimals: number = 2): string {
   const n = typeof value === 'string' ? parseFloat(value) : value;
   if (isNaN(n)) return '0%';
   return `${n.toFixed(decimals)}%`;
@@ -110,11 +104,11 @@ export function formatHashrate(hashrate: string | number): string {
  */
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 Bytes';
-  
+
   const k = 1024;
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
 }
 

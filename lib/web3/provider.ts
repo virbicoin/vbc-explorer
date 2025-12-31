@@ -1,6 +1,6 @@
 /**
  * Web3 Provider Singleton
- * 
+ *
  * Shared Web3 instance to avoid creating multiple connections.
  * Uses lazy initialization for better startup performance.
  */
@@ -18,7 +18,8 @@ let providerUrl: string | null = null;
 export function getWeb3(): Web3 {
   if (!web3Instance) {
     const config = loadConfig();
-    providerUrl = config.web3Provider?.url || process.env.WEB3_PROVIDER_URL || 'http://localhost:8545';
+    providerUrl =
+      config.web3Provider?.url || process.env.WEB3_PROVIDER_URL || 'http://localhost:8545';
     web3Instance = new Web3(providerUrl);
   }
   return web3Instance;
@@ -30,7 +31,8 @@ export function getWeb3(): Web3 {
 export function getProviderUrl(): string {
   if (!providerUrl) {
     const config = loadConfig();
-    providerUrl = config.web3Provider?.url || process.env.WEB3_PROVIDER_URL || 'http://localhost:8545';
+    providerUrl =
+      config.web3Provider?.url || process.env.WEB3_PROVIDER_URL || 'http://localhost:8545';
   }
   return providerUrl;
 }

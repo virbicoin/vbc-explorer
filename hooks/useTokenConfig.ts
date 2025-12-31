@@ -34,16 +34,16 @@ const DEFAULT_COLOR = 'from-gray-500 to-gray-600';
 
 // Well-known token colors
 const TOKEN_COLORS: Record<string, string> = {
-  'USDT': 'from-green-400 to-emerald-500',
-  'USDC': 'from-blue-400 to-blue-600',
-  'ETH': 'from-blue-400 to-purple-500',
-  'BTC': 'from-orange-400 to-orange-600',
-  'DAI': 'from-yellow-400 to-yellow-600',
+  USDT: 'from-green-400 to-emerald-500',
+  USDC: 'from-blue-400 to-blue-600',
+  ETH: 'from-blue-400 to-purple-500',
+  BTC: 'from-orange-400 to-orange-600',
+  DAI: 'from-yellow-400 to-yellow-600',
 };
 
 // Well-known token icons
 const TOKEN_ICONS: Record<string, string> = {
-  'USDT': '/img/USDT.svg',
+  USDT: '/img/USDT.svg',
 };
 
 // Cache for client-side
@@ -63,22 +63,22 @@ export function useTokenConfig(): UseTokenConfigResult {
       setIsLoading(false);
       return;
     }
-    
+
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const response = await fetch('/api/config/client');
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       // Build additional tokens from config
       const additionalTokens: Record<string, TokenIconConfig> = {};
-      
+
       if (data.dex?.tokens) {
         for (const [key, tokenData] of Object.entries(data.dex.tokens as Record<string, any>)) {
           additionalTokens[tokenData.symbol] = {
@@ -90,7 +90,7 @@ export function useTokenConfig(): UseTokenConfigResult {
           };
         }
       }
-      
+
       // Build token config from API response
       const tokenConfig: TokenConfigData = {
         native: {
@@ -107,16 +107,18 @@ export function useTokenConfig(): UseTokenConfigResult {
           color: data.dex?.wrappedNative?.color || data.currency?.color || DEFAULT_COLOR,
           decimals: data.dex?.wrappedNative?.decimals || 18,
         },
-        reward: data.dex?.rewardToken ? {
-          symbol: data.dex.rewardToken.symbol,
-          name: data.dex.rewardToken.name,
-          icon: data.dex.rewardToken.icon || null,
-          color: data.dex.rewardToken.color || DEFAULT_COLOR,
-          decimals: data.dex.rewardToken.decimals || 18,
-        } : null,
+        reward: data.dex?.rewardToken
+          ? {
+              symbol: data.dex.rewardToken.symbol,
+              name: data.dex.rewardToken.name,
+              icon: data.dex.rewardToken.icon || null,
+              color: data.dex.rewardToken.color || DEFAULT_COLOR,
+              decimals: data.dex.rewardToken.decimals || 18,
+            }
+          : null,
         additionalTokens,
       };
-      
+
       clientCache = tokenConfig;
       clientCacheTimestamp = Date.now();
       setConfig(tokenConfig);
@@ -133,98 +135,110 @@ export function useTokenConfig(): UseTokenConfigResult {
   }, [fetchConfig]);
 
   // Get token icon path for a symbol
-  const getTokenIcon = useCallback((symbol: string): string | null => {
-    if (!config) {
+  const getTokenIcon = useCallback(
+    (symbol: string): string | null => {
+      if (!config) {
+        // Fallback to well-known icons
+        return TOKEN_ICONS[symbol] || null;
+      }
+
+      // Check if it's native token
+      if (symbol === config.native.symbol) {
+        return config.native.icon;
+      }
+      // Check if it's wrapped token (also use native icon)
+      if (symbol === config.wrapped.symbol) {
+        return config.wrapped.icon;
+      }
+      // Check if it's reward token
+      if (config.reward && symbol === config.reward.symbol) {
+        return config.reward.icon;
+      }
+      // Check additional tokens
+      if (config.additionalTokens[symbol]) {
+        return config.additionalTokens[symbol].icon;
+      }
       // Fallback to well-known icons
       return TOKEN_ICONS[symbol] || null;
-    }
-    
-    // Check if it's native token
-    if (symbol === config.native.symbol) {
-      return config.native.icon;
-    }
-    // Check if it's wrapped token (also use native icon)
-    if (symbol === config.wrapped.symbol) {
-      return config.wrapped.icon;
-    }
-    // Check if it's reward token
-    if (config.reward && symbol === config.reward.symbol) {
-      return config.reward.icon;
-    }
-    // Check additional tokens
-    if (config.additionalTokens[symbol]) {
-      return config.additionalTokens[symbol].icon;
-    }
-    // Fallback to well-known icons
-    return TOKEN_ICONS[symbol] || null;
-  }, [config]);
+    },
+    [config]
+  );
 
   // Get token color for a symbol
-  const getTokenColor = useCallback((symbol: string): string => {
-    if (!config) {
+  const getTokenColor = useCallback(
+    (symbol: string): string => {
+      if (!config) {
+        return TOKEN_COLORS[symbol] || DEFAULT_COLOR;
+      }
+
+      if (symbol === config.native.symbol) {
+        return config.native.color;
+      }
+      if (symbol === config.wrapped.symbol) {
+        return config.wrapped.color;
+      }
+      if (config.reward && symbol === config.reward.symbol) {
+        return config.reward.color;
+      }
+      if (config.additionalTokens[symbol]) {
+        return config.additionalTokens[symbol].color;
+      }
+
       return TOKEN_COLORS[symbol] || DEFAULT_COLOR;
-    }
-    
-    if (symbol === config.native.symbol) {
-      return config.native.color;
-    }
-    if (symbol === config.wrapped.symbol) {
-      return config.wrapped.color;
-    }
-    if (config.reward && symbol === config.reward.symbol) {
-      return config.reward.color;
-    }
-    if (config.additionalTokens[symbol]) {
-      return config.additionalTokens[symbol].color;
-    }
-    
-    return TOKEN_COLORS[symbol] || DEFAULT_COLOR;
-  }, [config]);
+    },
+    [config]
+  );
 
   // Get token decimals for a symbol
-  const getTokenDecimals = useCallback((symbol: string): number => {
-    if (!config) {
-      // Well-known decimals (USDT, USDC are 6 decimals)
+  const getTokenDecimals = useCallback(
+    (symbol: string): number => {
+      if (!config) {
+        // Well-known decimals (USDT, USDC are 6 decimals)
+        if (symbol === 'USDT' || symbol === 'USDC') return 6;
+        return 18;
+      }
+
+      if (symbol === config.native.symbol) {
+        return config.native.decimals || 18;
+      }
+      if (symbol === config.wrapped.symbol) {
+        return config.wrapped.decimals || 18;
+      }
+      if (config.reward && symbol === config.reward.symbol) {
+        return config.reward.decimals || 18;
+      }
+      if (config.additionalTokens[symbol]) {
+        return config.additionalTokens[symbol].decimals || 18;
+      }
+
+      // Well-known decimals
       if (symbol === 'USDT' || symbol === 'USDC') return 6;
       return 18;
-    }
-    
-    if (symbol === config.native.symbol) {
-      return config.native.decimals || 18;
-    }
-    if (symbol === config.wrapped.symbol) {
-      return config.wrapped.decimals || 18;
-    }
-    if (config.reward && symbol === config.reward.symbol) {
-      return config.reward.decimals || 18;
-    }
-    if (config.additionalTokens[symbol]) {
-      return config.additionalTokens[symbol].decimals || 18;
-    }
-    
-    // Well-known decimals
-    if (symbol === 'USDT' || symbol === 'USDC') return 6;
-    return 18;
-  }, [config]);
+    },
+    [config]
+  );
 
   // Display native symbol instead of wrapped (e.g., show VBC instead of WVBC)
-  const displaySymbol = useCallback((symbol: string): string => {
-    if (!config) return symbol;
-    
-    // If symbol matches wrapped token, return native symbol
-    if (symbol === config.wrapped.symbol) {
-      return config.native.symbol;
-    }
-    
-    return symbol;
-  }, [config]);
+  const displaySymbol = useCallback(
+    (symbol: string): string => {
+      if (!config) return symbol;
 
-  return { 
-    config, 
-    isLoading, 
-    error, 
-    getTokenIcon, 
-    getTokenColor, 
+      // If symbol matches wrapped token, return native symbol
+      if (symbol === config.wrapped.symbol) {
+        return config.native.symbol;
+      }
+
+      return symbol;
+    },
+    [config]
+  );
+
+  return {
+    config,
+    isLoading,
+    error,
+    getTokenIcon,
+    getTokenColor,
     displaySymbol,
     getTokenDecimals,
   };

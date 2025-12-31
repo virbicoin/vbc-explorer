@@ -511,6 +511,55 @@ Stores native currency price data (updated via tools/price.ts):
 - `source`: Price data source (e.g., "coingecko", "coinmarketcap")
 - `currency`: Price currency (typically "USD")
 
+## 🔒 Security
+
+### Environment Variables
+
+For security, sensitive configuration values should be set via environment variables:
+
+```bash
+# Copy the example environment file
+cp .env.example .env.local
+
+# Edit with your values (DO NOT commit .env.local)
+vi .env.local
+```
+
+**Required environment variables:**
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `MONGODB_URI` | MongoDB connection string | `mongodb://user:pass@localhost:27017/db` |
+
+**Optional environment variables:**
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `WEB3_PROVIDER_URL` | Web3 RPC endpoint | `http://localhost:8545` |
+| `NODE_ENV` | Environment mode | `development` |
+
+### Using Environment Variables in config.json
+
+You can reference environment variables in `config.json` using `${VAR_NAME}` syntax:
+
+```json
+{
+  "database": {
+    "uri": "${MONGODB_URI}"
+  }
+}
+```
+
+### Security Best Practices
+
+1. **Never commit credentials** - Use `.env.local` for sensitive values
+2. **Configure CORS** - Restrict origins in production
+3. **Enable rate limiting** - Protect API endpoints from abuse
+4. **Use HTTPS** - Enable Strict-Transport-Security in production
+5. **Regular audits** - Run `npm audit` periodically
+
+For detailed security information, see [SECURITY.md](SECURITY.md).
+
 ## Quick Start with PM2 (Recommended)
 
 ### Prerequisites

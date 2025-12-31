@@ -12,14 +12,20 @@ import { initializeDexConfig, isConfigLoaded, getMinimalConfig } from '@/lib/dex
 function createWagmiConfig() {
   const chain = getChain();
   const rpcUrl = chain.rpcUrls.default.http[0];
-  
-  console.log('[createWagmiConfig] Creating config with chain:', chain.id, chain.name, 'rpc:', rpcUrl);
-  
+
+  console.log(
+    '[createWagmiConfig] Creating config with chain:',
+    chain.id,
+    chain.name,
+    'rpc:',
+    rpcUrl
+  );
+
   // Verify we're not using localhost
   if (rpcUrl.includes('localhost') || rpcUrl.includes('127.0.0.1')) {
     console.error('[createWagmiConfig] ERROR: Still using localhost RPC!', rpcUrl);
   }
-  
+
   return createConfig({
     connectors: [
       // Disable shimDisconnect to prevent auto-reconnect issues
@@ -51,36 +57,39 @@ export function Web3Provider({ children }: { children: ReactNode }) {
         // Load config from API first
         console.log('[Web3Provider] Loading config from API...');
         const loadedConfig = await initializeDexConfig();
-        
+
         console.log('[Web3Provider] Config loaded:', {
           chainId: loadedConfig.chainId,
           rpcUrl: loadedConfig.rpcUrl,
           isLoaded: isConfigLoaded(),
         });
-        
+
         // Verify config was loaded correctly (allow localhost for development)
         if (!isConfigLoaded()) {
           throw new Error('Failed to load config from API');
         }
-        
+
         // Warn if using localhost but don't fail
-        if (loadedConfig.rpcUrl.includes('localhost') || loadedConfig.rpcUrl.includes('127.0.0.1')) {
+        if (
+          loadedConfig.rpcUrl.includes('localhost') ||
+          loadedConfig.rpcUrl.includes('127.0.0.1')
+        ) {
           console.warn('[Web3Provider] Using localhost RPC - this may not work in production');
         }
-        
+
         // Reset the chain to use new config
         resetChain();
-        
+
         // Create wagmi config with loaded settings
         const wagmiConfig = createWagmiConfig();
         setConfig(wagmiConfig);
-        
+
         // Manually trigger reconnection after config is set
         // This ensures reconnection uses the correct RPC
         setTimeout(() => {
           reconnect(wagmiConfig);
         }, 100);
-        
+
         console.log('[Web3Provider] Wagmi config created successfully');
       } catch (err) {
         console.error('[Web3Provider] Failed to initialize:', err);
@@ -108,8 +117,8 @@ export function Web3Provider({ children }: { children: ReactNode }) {
         <div className="text-red-400">
           <p>Failed to load DEX configuration</p>
           <p className="text-sm text-gray-500 mt-2">{error || 'Unknown error'}</p>
-          <button 
-            onClick={() => window.location.reload()} 
+          <button
+            onClick={() => window.location.reload()}
             className="mt-4 px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700"
           >
             Retry
@@ -121,9 +130,7 @@ export function Web3Provider({ children }: { children: ReactNode }) {
 
   return (
     <WagmiProvider config={config}>
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </WagmiProvider>
   );
 }

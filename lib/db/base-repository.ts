@@ -1,9 +1,9 @@
 /**
  * Base Repository
- * 
+ *
  * Abstract base class providing common database operations.
  * All entity-specific repositories should extend this class.
- * 
+ *
  * Note: This uses generic types that work with Mongoose 9+
  */
 
@@ -21,10 +21,8 @@ export interface PaginatedResult<T> {
   pagination: PaginationInfo;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type FilterType = Record<string, any>;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type UpdateType = Record<string, any>;
+type FilterType = Record<string, unknown>;
+type UpdateType = Record<string, unknown>;
 
 export abstract class BaseRepository<T extends Document> {
   protected model: Model<T>;
@@ -54,12 +52,9 @@ export abstract class BaseRepository<T extends Document> {
   /**
    * Find multiple documents by filter
    */
-  async find(
-    filter: FilterType = {},
-    options?: QueryOptions
-  ): Promise<T[]> {
+  async find(filter: FilterType = {}, options?: QueryOptions): Promise<T[]> {
     let query = this.model.find(filter);
-    
+
     if (options?.sort) {
       query = query.sort(options.sort);
     }
@@ -87,13 +82,7 @@ export abstract class BaseRepository<T extends Document> {
     const sort = options.sort || { _id: -1 };
 
     const [data, total] = await Promise.all([
-      this.model
-        .find(filter)
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .lean()
-        .exec(),
+      this.model.find(filter).sort(sort).skip(skip).limit(limit).lean().exec(),
       this.model.countDocuments(filter).exec(),
     ]);
 
@@ -143,38 +132,23 @@ export abstract class BaseRepository<T extends Document> {
   /**
    * Update a document by ID
    */
-  async updateById(
-    id: string | mongoose.Types.ObjectId,
-    update: UpdateType
-  ): Promise<T | null> {
-    const result = await this.model
-      .findByIdAndUpdate(id, update, { new: true })
-      .lean()
-      .exec();
+  async updateById(id: string | mongoose.Types.ObjectId, update: UpdateType): Promise<T | null> {
+    const result = await this.model.findByIdAndUpdate(id, update, { new: true }).lean().exec();
     return result as T | null;
   }
 
   /**
    * Update a single document by filter
    */
-  async updateOne(
-    filter: FilterType,
-    update: UpdateType
-  ): Promise<T | null> {
-    const result = await this.model
-      .findOneAndUpdate(filter, update, { new: true })
-      .lean()
-      .exec();
+  async updateOne(filter: FilterType, update: UpdateType): Promise<T | null> {
+    const result = await this.model.findOneAndUpdate(filter, update, { new: true }).lean().exec();
     return result as T | null;
   }
 
   /**
    * Update multiple documents
    */
-  async updateMany(
-    filter: FilterType,
-    update: UpdateType
-  ): Promise<number> {
+  async updateMany(filter: FilterType, update: UpdateType): Promise<number> {
     const result = await this.model.updateMany(filter, update).exec();
     return result.modifiedCount;
   }
@@ -213,7 +187,6 @@ export abstract class BaseRepository<T extends Document> {
   /**
    * Bulk write operations
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async bulkWrite(operations: any[]): Promise<mongoose.mongo.BulkWriteResult> {
     return this.model.bulkWrite(operations);
   }

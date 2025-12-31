@@ -1,9 +1,9 @@
 /**
  * Supply API Library for VirBiCoin
- * 
+ *
  * Provides Total Supply and Circulating Supply calculations
  * for CoinGecko and CoinMarketCap integration.
- * 
+ *
  * Calculation Logic:
  * - Total Supply = (Block Height × Block Reward) + Pre-mine Amount
  * - Circulating Supply = Total Supply - (Sum of Excluded Wallet Balances)
@@ -96,7 +96,7 @@ function isCacheValid<T>(entry: CacheEntry<T> | null): boolean {
   if (!entry) return false;
   const now = Date.now();
   const cacheDurationMs = supplyConfig.cacheDuration * 1000;
-  return (now - entry.timestamp) < cacheDurationMs;
+  return now - entry.timestamp < cacheDurationMs;
 }
 
 // ============================================
@@ -114,23 +114,23 @@ export async function getBlockNumber(): Promise<bigint> {
 
   try {
     const blockNumber = await publicClient.getBlockNumber();
-    
+
     // Update cache
     cache.blockNumber = {
       data: blockNumber,
       timestamp: Date.now(),
     };
-    
+
     return blockNumber;
   } catch (error) {
     console.error('[Supply] Error fetching block number:', error);
-    
+
     // Return cached value if available, even if expired
     if (cache.blockNumber) {
       console.warn('[Supply] Using expired cache for block number');
       return cache.blockNumber.data;
     }
-    
+
     throw new Error('Failed to fetch block number');
   }
 }
@@ -160,25 +160,25 @@ export async function getExcludedBalances(): Promise<Map<string, bigint>> {
   }
 
   const balances = new Map<string, bigint>();
-  
+
   // Fetch all balances in parallel
   const promises = supplyConfig.excludedAddresses.map(async ({ address, label }) => {
     const balance = await getAddressBalance(address);
     return { address, label, balance };
   });
-  
+
   const results = await Promise.all(promises);
-  
+
   for (const { address, balance } of results) {
     balances.set(address.toLowerCase(), balance);
   }
-  
+
   // Update cache
   cache.excludedBalances = {
     data: balances,
     timestamp: Date.now(),
   };
-  
+
   return balances;
 }
 
@@ -195,16 +195,16 @@ export async function calculateTotalSupply(): Promise<number> {
   const blockNumber = await getBlockNumber();
   const blockReward = supplyConfig.blockReward;
   const premineAmount = supplyConfig.premineAmount;
-  
+
   // Calculate: (blockNumber * blockReward) + premineAmount
-  const totalSupply = (Number(blockNumber) * blockReward) + premineAmount;
-  
+  const totalSupply = Number(blockNumber) * blockReward + premineAmount;
+
   // Update cache
   cache.totalSupply = {
     data: totalSupply,
     timestamp: Date.now(),
   };
-  
+
   return totalSupply;
 }
 
@@ -223,25 +223,25 @@ export async function calculateCirculatingSupply(): Promise<number> {
     calculateTotalSupply(),
     getExcludedBalances(),
   ]);
-  
+
   // Sum up all excluded balances
   let totalExcluded = 0n;
   for (const balance of excludedBalances.values()) {
     totalExcluded += balance;
   }
-  
+
   // Convert excluded balance from wei to VBC (divide by 10^18)
   const excludedInVBC = Number(formatEther(totalExcluded));
-  
+
   // Calculate circulating supply
   const circulatingSupply = totalSupply - excludedInVBC;
-  
+
   // Update cache
   cache.circulatingSupply = {
     data: circulatingSupply,
     timestamp: Date.now(),
   };
-  
+
   return Math.max(0, circulatingSupply); // Ensure non-negative
 }
 
@@ -269,13 +269,13 @@ export async function getSupplyDetails(): Promise<{
   const totalSupply = await calculateTotalSupply();
   const circulatingSupply = await calculateCirculatingSupply();
   const excludedBalances = await getExcludedBalances();
-  
+
   const excludedAddressDetails = supplyConfig.excludedAddresses.map(({ address, label }) => ({
     address,
     label,
     balance: formatEther(excludedBalances.get(address.toLowerCase()) || 0n),
   }));
-  
+
   return {
     blockNumber: blockNumber.toString(),
     blockReward: supplyConfig.blockReward,

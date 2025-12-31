@@ -10,43 +10,45 @@ import { useTokenConfig } from '@/hooks/useTokenConfig';
 const DEFAULT_COLOR = 'from-gray-500 to-gray-600';
 
 // Token Icon Component - uses config for icons/colors
-function FarmTokenIcon({ 
-  symbol, 
+function FarmTokenIcon({
+  symbol,
   size = 32,
   getIcon,
-  getColor
-}: { 
-  symbol: string; 
+  getColor,
+}: {
+  symbol: string;
   size?: number;
   getIcon: (symbol: string) => string | null;
   getColor: (symbol: string) => string;
 }) {
   const iconPath = getIcon(symbol);
   const color = getColor(symbol);
-  
+
   if (iconPath) {
     return (
-      <div 
-        className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center border-2 border-gray-800 overflow-hidden`} 
+      <div
+        className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center border-2 border-gray-800 overflow-hidden`}
         style={{ width: size, height: size }}
       >
-        <Image 
-          src={iconPath} 
-          alt={symbol} 
-          width={size - 4} 
+        <Image
+          src={iconPath}
+          alt={symbol}
+          width={size - 4}
           height={size - 4}
           className="object-contain"
         />
       </div>
     );
   }
-  
+
   return (
-    <div 
-      className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center border-2 border-gray-800`} 
+    <div
+      className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center border-2 border-gray-800`}
       style={{ width: size, height: size }}
     >
-      <span className="font-bold text-white" style={{ fontSize: size * 0.4 }}>{symbol.charAt(0)}</span>
+      <span className="font-bold text-white" style={{ fontSize: size * 0.4 }}>
+        {symbol.charAt(0)}
+      </span>
     </div>
   );
 }
@@ -86,8 +88,11 @@ function FarmPoolCard({
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
 
-  const needsApproval = allowance === 0n || (depositAmount && parseFloat(depositAmount) > 0 && 
-    ethers.parseEther(depositAmount || '0') > allowance);
+  const needsApproval =
+    allowance === 0n ||
+    (depositAmount &&
+      parseFloat(depositAmount) > 0 &&
+      ethers.parseEther(depositAmount || '0') > allowance);
 
   const handleDeposit = () => {
     if (depositAmount && parseFloat(depositAmount) > 0) {
@@ -107,7 +112,7 @@ function FarmPoolCard({
   // When LP value is too small with 18 decimals, display with 9 decimals as "nLP" (nano LP)
   const formatLPAmount = (rawAmount: bigint): string => {
     if (rawAmount === 0n) return '0';
-    
+
     const ethValue = Number(rawAmount) / 1e18;
     if (ethValue >= 0.0001) {
       // Normal display with 18 decimals
@@ -142,12 +147,24 @@ function FarmPoolCard({
         <div className="flex items-center gap-3">
           {/* Token Pair Icons - same style as Pool */}
           <div className="flex -space-x-2">
-            <FarmTokenIcon symbol={pool.token0Symbol} size={32} getIcon={getTokenIcon} getColor={getTokenColor} />
-            <FarmTokenIcon symbol={pool.token1Symbol} size={32} getIcon={getTokenIcon} getColor={getTokenColor} />
+            <FarmTokenIcon
+              symbol={pool.token0Symbol}
+              size={32}
+              getIcon={getTokenIcon}
+              getColor={getTokenColor}
+            />
+            <FarmTokenIcon
+              symbol={pool.token1Symbol}
+              size={32}
+              getIcon={getTokenIcon}
+              getColor={getTokenColor}
+            />
           </div>
           <div>
             {/* Use / separator like Pool, display native symbol instead of wrapped */}
-            <h3 className="font-semibold text-white">{displaySymbol(pool.token0Symbol)}/{displaySymbol(pool.token1Symbol)} Pool</h3>
+            <h3 className="font-semibold text-white">
+              {displaySymbol(pool.token0Symbol)}/{displaySymbol(pool.token1Symbol)} Pool
+            </h3>
             <p className="text-xs text-gray-500">Farm #{pool.pid}</p>
           </div>
         </div>
@@ -157,13 +174,24 @@ function FarmPoolCard({
       <div className="grid grid-cols-3 gap-4 p-3 bg-gray-800/50 rounded-xl">
         <div>
           <p className="text-xs text-gray-500">APR</p>
-          <p className="font-semibold text-green-400" title={pool.apr < 0 ? 'Insufficient liquidity for APR calculation' : undefined}>
-            {pool.apr < 0 ? '—' : pool.apr >= 9999 ? '>9999%' : pool.apr < 0.01 && pool.apr >= 0 ? '<0.01%' : `${pool.apr.toFixed(2)}%`}
+          <p
+            className="font-semibold text-green-400"
+            title={pool.apr < 0 ? 'Insufficient liquidity for APR calculation' : undefined}
+          >
+            {pool.apr < 0
+              ? '—'
+              : pool.apr >= 9999
+                ? '>9999%'
+                : pool.apr < 0.01 && pool.apr >= 0
+                  ? '<0.01%'
+                  : `${pool.apr.toFixed(2)}%`}
           </p>
         </div>
         <div>
           <p className="text-xs text-gray-500">Total Staked</p>
-          <p className="font-semibold text-white">{formatLPAmount(pool.totalStaked)} {getLPUnit(pool.totalStaked)}</p>
+          <p className="font-semibold text-white">
+            {formatLPAmount(pool.totalStaked)} {getLPUnit(pool.totalStaked)}
+          </p>
         </div>
         <div>
           <p className="text-xs text-gray-500">Pending Reward</p>
@@ -176,11 +204,15 @@ function FarmPoolCard({
         <div className="grid grid-cols-2 gap-4 p-3 bg-gray-800/50 rounded-xl">
           <div>
             <p className="text-xs text-gray-500">Your Staked</p>
-            <p className="text-white font-semibold">{formatLPAmount(userStaked)} {getLPUnit(userStaked)}</p>
+            <p className="text-white font-semibold">
+              {formatLPAmount(userStaked)} {getLPUnit(userStaked)}
+            </p>
           </div>
           <div>
             <p className="text-xs text-gray-500">LP Balance</p>
-            <p className="text-white font-semibold">{formatLPAmount(lpBalance)} {getLPUnit(lpBalance)}</p>
+            <p className="text-white font-semibold">
+              {formatLPAmount(lpBalance)} {getLPUnit(lpBalance)}
+            </p>
           </div>
         </div>
       )}
@@ -202,7 +234,9 @@ function FarmPoolCard({
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-400">Deposit LP</span>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">Balance: {formatLPAmount(lpBalance)} {getLPUnit(lpBalance)}</span>
+              <span className="text-xs text-gray-500">
+                Balance: {formatLPAmount(lpBalance)} {getLPUnit(lpBalance)}
+              </span>
               <button
                 onClick={() => setDepositAmount(ethers.formatEther(lpBalance / 2n))}
                 className="text-xs text-blue-400 hover:text-blue-300 font-medium px-2 py-0.5 bg-blue-500/10 rounded"
@@ -250,7 +284,9 @@ function FarmPoolCard({
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-400">Withdraw LP</span>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">Staked: {formatLPAmount(userStaked)} {getLPUnit(userStaked)}</span>
+              <span className="text-xs text-gray-500">
+                Staked: {formatLPAmount(userStaked)} {getLPUnit(userStaked)}
+              </span>
               <button
                 onClick={() => setWithdrawAmount(ethers.formatEther(userStaked / 2n))}
                 className="text-xs text-blue-400 hover:text-blue-300 font-medium px-2 py-0.5 bg-blue-500/10 rounded"
@@ -309,13 +345,13 @@ export default function FarmContent() {
     refresh,
     clearError,
   } = useFarming();
-  
+
   // Token configuration from config.json
-  const { 
-    getTokenIcon, 
-    getTokenColor, 
+  const {
+    getTokenIcon,
+    getTokenColor,
     displaySymbol,
-    isLoading: tokenConfigLoading 
+    isLoading: tokenConfigLoading,
   } = useTokenConfig();
 
   // Loading state while config is being loaded
@@ -333,7 +369,7 @@ export default function FarmContent() {
   }
 
   // Check if there are any pending rewards
-  const hasPendingRewards = Array.from(userPools.values()).some(u => u.pendingReward > 0n);
+  const hasPendingRewards = Array.from(userPools.values()).some((u) => u.pendingReward > 0n);
 
   return (
     <div className="max-w-lg mx-auto">
@@ -358,7 +394,9 @@ export default function FarmContent() {
           <div className="mb-4 p-4 bg-red-500/20 border border-red-500/50 rounded-xl">
             <div className="flex items-center justify-between">
               <p className="text-red-400 text-sm">{error}</p>
-              <button onClick={clearError} className="text-red-400 hover:text-red-300">✕</button>
+              <button onClick={clearError} className="text-red-400 hover:text-red-300">
+                ✕
+              </button>
             </div>
           </div>
         )}
@@ -367,8 +405,18 @@ export default function FarmContent() {
         {!isConnected ? (
           <div className="text-center py-12">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              <svg
+                className="w-8 h-8 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                />
               </svg>
             </div>
             <p className="text-gray-400 mb-4">Connect your wallet to start farming</p>
@@ -383,8 +431,18 @@ export default function FarmContent() {
         ) : pools.length === 0 ? (
           <div className="text-center py-12">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-700 flex items-center justify-center">
-              <svg className="w-8 h-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                className="w-8 h-8 text-gray-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
             </div>
             <p className="text-gray-400">No farming pools found</p>
@@ -429,8 +487,18 @@ export default function FarmContent() {
             disabled={loading}
             className="text-sm text-gray-400 hover:text-white disabled:opacity-50 transition-colors inline-flex items-center gap-2"
           >
-            <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            <svg
+              className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
             </svg>
             {loading ? 'Refreshing...' : 'Refresh'}
           </button>

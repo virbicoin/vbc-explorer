@@ -10,7 +10,9 @@ const InfoTable: React.FC<InfoTableProps> = ({ data, className }) => (
     <tbody>
       {data.map((row, idx) => (
         <tr key={idx} className="border-b border-gray-700 last:border-0">
-          <td className="py-2 pr-4 font-medium text-gray-400 whitespace-nowrap w-1/3">{row.label}</td>
+          <td className="py-2 pr-4 font-medium text-gray-400 whitespace-nowrap w-1/3">
+            {row.label}
+          </td>
           <td className="py-2 break-all">{row.value}</td>
         </tr>
       ))}
@@ -18,4 +20,4 @@ const InfoTable: React.FC<InfoTableProps> = ({ data, className }) => (
   </table>
 );
 
-export default InfoTable; 
+export default InfoTable;

@@ -37,14 +37,11 @@ interface Trade {
   type: 'buy' | 'sell';
 }
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ pair: string }> }
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ pair: string }> }) {
   try {
     const { pair } = await params;
     const [base, quote] = pair.toUpperCase().split('_');
-    
+
     if (!base || !quote) {
       return NextResponse.json(
         { error: 'Invalid pair format. Use BASE_QUOTE (e.g., VBCG_VBC)' },
@@ -60,7 +57,7 @@ export async function GET(
     for (const [, lpToken] of Object.entries(lpTokens)) {
       const t0 = lpToken.token0 === 'WVBC' ? 'VBC' : lpToken.token0;
       const t1 = lpToken.token1 === 'WVBC' ? 'VBC' : lpToken.token1;
-      
+
       if ((t0 === base && t1 === quote) || (t0 === quote && t1 === base)) {
         matchedPair = {
           address: lpToken.address,
@@ -72,10 +69,7 @@ export async function GET(
     }
 
     if (!matchedPair) {
-      return NextResponse.json(
-        { error: 'Trading pair not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Trading pair not found' }, { status: 404 });
     }
 
     const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
@@ -100,19 +94,20 @@ export async function GET(
 
     // Get recent trades from database
     await dbConnect();
-    
+
     // Wait for DB to be ready
     if (!mongoose.connection.db) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-    
+
     const db = mongoose.connection.db;
-    
+
     if (!db) {
       throw new Error('Database connection not available');
     }
 
-    const swaps = await db.collection('dex_swaps')
+    const swaps = await db
+      .collection('dex_swaps')
       .find({
         pair: matchedPair.address.toLowerCase(),
       })
@@ -129,7 +124,7 @@ export async function GET(
         let tradeType: 'buy' | 'sell';
 
         const tokenInIsToken0 = swap.tokenIn?.toLowerCase() === token0Address.toLowerCase();
-        
+
         if (isToken0Base) {
           if (tokenInIsToken0) {
             // Selling base (token0) for quote (token1)
@@ -158,7 +153,7 @@ export async function GET(
 
         if (baseVolume > 0) {
           const price = quoteVolume / baseVolume;
-          
+
           trades.push({
             trade_id: swap.txHash || swap._id.toString(),
             price: price.toFixed(18),
@@ -181,10 +176,7 @@ export async function GET(
     });
   } catch (error) {
     console.error('CMC Trades API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 

@@ -100,118 +100,118 @@ export interface IMarket extends Document {
 // Schema definitions
 const BlockSchema = new Schema<IBlock>(
   {
-    'number': { type: Number, index: { unique: true } },
-    'hash': String,
-    'parentHash': String,
-    'nonce': String,
-    'sha3Uncles': String,
-    'logsBloom': String,
-    'transactionsRoot': String,
-    'stateRoot': String,
-    'receiptRoot': String,
-    'miner': { type: String, lowercase: true },
-    'difficulty': String,
-    'totalDifficulty': String,
-    'size': Number,
-    'extraData': String,
-    'gasLimit': Number,
-    'gasUsed': Number,
-    'timestamp': Number,
-    'blockTime': Number,
-    'uncles': [String],
-  }, 
+    number: { type: Number, index: { unique: true } },
+    hash: String,
+    parentHash: String,
+    nonce: String,
+    sha3Uncles: String,
+    logsBloom: String,
+    transactionsRoot: String,
+    stateRoot: String,
+    receiptRoot: String,
+    miner: { type: String, lowercase: true },
+    difficulty: String,
+    totalDifficulty: String,
+    size: Number,
+    extraData: String,
+    gasLimit: Number,
+    gasUsed: Number,
+    timestamp: Number,
+    blockTime: Number,
+    uncles: [String],
+  },
   { collection: 'Block' }
 );
 
 const AccountSchema = new Schema<IAccount>(
   {
-    'address': { type: String, index: { unique: true } },
-    'balance': Number,
-    'blockNumber': Number,
-    'type': { type: Number, default: 0 }, // address: 0x0, contract: 0x1
-  }, 
+    address: { type: String, index: { unique: true } },
+    balance: Number,
+    blockNumber: Number,
+    type: { type: Number, default: 0 }, // address: 0x0, contract: 0x1
+  },
   { collection: 'Account' }
 );
 
 const ContractSchema = new Schema<IContract>(
   {
-    'address': { type: String, index: { unique: true } },
-    'blockNumber': Number,
-    'ERC': { type: Number, index: true }, // 0:normal contract, 2:ERC20, 3:ERC223
-    'creationTransaction': String,
-    'contractName': String,
-    'tokenName': String,
-    'symbol': String,
-    'owner': String,
-    'decimals': Number,
-    'totalSupply': Number,
-    'compilerVersion': String,
-    'optimization': Boolean,
-    'sourceCode': String,
-    'abi': String,
-    'byteCode': String,
-  }, 
+    address: { type: String, index: { unique: true } },
+    blockNumber: Number,
+    ERC: { type: Number, index: true }, // 0:normal contract, 2:ERC20, 3:ERC223
+    creationTransaction: String,
+    contractName: String,
+    tokenName: String,
+    symbol: String,
+    owner: String,
+    decimals: Number,
+    totalSupply: Number,
+    compilerVersion: String,
+    optimization: Boolean,
+    sourceCode: String,
+    abi: String,
+    byteCode: String,
+  },
   { collection: 'Contract' }
 );
 
 const TransactionSchema = new Schema<ITransaction>(
   {
-    'hash': { type: String, index: { unique: true }, lowercase: true },
-    'nonce': Number,
-    'blockHash': String,
-    'blockNumber': Number,
-    'transactionIndex': Number,
-    'status': Number,
-    'from': { type: String, lowercase: true },
-    'to': { type: String, lowercase: true },
-    'creates': { type: String, lowercase: true },
-    'value': String,
-    'gas': Number,
-    'gasUsed': Number,
-    'gasPrice': String,
-    'timestamp': Number,
-    'input': String,
-  }, 
+    hash: { type: String, index: { unique: true }, lowercase: true },
+    nonce: Number,
+    blockHash: String,
+    blockNumber: Number,
+    transactionIndex: Number,
+    status: Number,
+    from: { type: String, lowercase: true },
+    to: { type: String, lowercase: true },
+    creates: { type: String, lowercase: true },
+    value: String,
+    gas: Number,
+    gasUsed: Number,
+    gasPrice: String,
+    timestamp: Number,
+    input: String,
+  },
   { collection: 'Transaction' }
 );
 
 const TokenTransferSchema = new Schema<ITokenTransfer>(
   {
-    'hash': { type: String, index: { unique: true }, lowercase: true },
-    'blockNumber': Number,
-    'method': String,
-    'from': { type: String, lowercase: true },
-    'to': { type: String, lowercase: true },
-    'contract': { type: String, lowercase: true },
-    'value': String,
-    'timestamp': Number,
-  }, 
+    hash: { type: String, index: { unique: true }, lowercase: true },
+    blockNumber: Number,
+    method: String,
+    from: { type: String, lowercase: true },
+    to: { type: String, lowercase: true },
+    contract: { type: String, lowercase: true },
+    value: String,
+    timestamp: Number,
+  },
   { collection: 'TokenTransfer' }
 );
 
 const BlockStatSchema = new Schema<IBlockStat>(
   {
-    'number': { type: Number, index: { unique: true } },
-    'timestamp': Number,
-    'difficulty': String,
-    'hashrate': String,
-    'txCount': Number,
-    'gasUsed': Number,
-    'gasLimit': Number,
-    'miner': String,
-    'blockTime': Number,
-    'uncleCount': Number,
-  }, 
+    number: { type: Number, index: { unique: true } },
+    timestamp: Number,
+    difficulty: String,
+    hashrate: String,
+    txCount: Number,
+    gasUsed: Number,
+    gasLimit: Number,
+    miner: String,
+    blockTime: Number,
+    uncleCount: Number,
+  },
   { collection: 'BlockStat' }
 );
 
 const MarketSchema = new Schema<IMarket>(
   {
-    'symbol': String,
-    'timestamp': Number,
-    'quoteBTC': Number,
-    'quoteUSD': Number,
-  }, 
+    symbol: String,
+    timestamp: Number,
+    quoteBTC: Number,
+    quoteUSD: Number,
+  },
   { collection: 'Market' }
 );
 
@@ -234,12 +234,18 @@ TokenTransferSchema.index({ contract: 1, blockNumber: -1 });
 
 // Create models with existence check to prevent OverwriteModelError
 export const Block = mongoose.models.Block || mongoose.model<IBlock>('Block', BlockSchema);
-export const Account = mongoose.models.Account || mongoose.model<IAccount>('Account', AccountSchema);
-export const Contract = mongoose.models.Contract || mongoose.model<IContract>('Contract', ContractSchema);
-export const Transaction = mongoose.models.Transaction || mongoose.model<ITransaction>('Transaction', TransactionSchema);
-export const TokenTransfer = mongoose.models.TokenTransfer || mongoose.model<ITokenTransfer>('TokenTransfer', TokenTransferSchema);
-export const BlockStat = mongoose.models.BlockStat || mongoose.model<IBlockStat>('BlockStat', BlockStatSchema);
+export const Account =
+  mongoose.models.Account || mongoose.model<IAccount>('Account', AccountSchema);
+export const Contract =
+  mongoose.models.Contract || mongoose.model<IContract>('Contract', ContractSchema);
+export const Transaction =
+  mongoose.models.Transaction || mongoose.model<ITransaction>('Transaction', TransactionSchema);
+export const TokenTransfer =
+  mongoose.models.TokenTransfer ||
+  mongoose.model<ITokenTransfer>('TokenTransfer', TokenTransferSchema);
+export const BlockStat =
+  mongoose.models.BlockStat || mongoose.model<IBlockStat>('BlockStat', BlockStatSchema);
 export const Market = mongoose.models.Market || mongoose.model<IMarket>('Market', MarketSchema);
 
 // Mongoose 7対応の設定
-mongoose.set('strictQuery', false); 
+mongoose.set('strictQuery', false);

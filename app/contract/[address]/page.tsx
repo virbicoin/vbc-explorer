@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, use } from 'react';
-import { 
-  CheckCircleIcon, 
-  XCircleIcon, 
-  CodeBracketIcon, 
+import {
+  CheckCircleIcon,
+  XCircleIcon,
+  CodeBracketIcon,
   ClockIcon,
   CubeIcon,
   ArrowPathIcon,
@@ -13,7 +13,7 @@ import {
   DocumentTextIcon,
   ArrowTopRightOnSquareIcon,
   ShieldCheckIcon,
-  ShieldExclamationIcon
+  ShieldExclamationIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
@@ -52,7 +52,7 @@ interface Transaction {
 export default function ContractPage({ params }: { params: Promise<{ address: string }> }) {
   const resolvedParams = use(params);
   const address = resolvedParams.address;
-  
+
   const [contract, setContract] = useState<ContractData | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,7 +95,8 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
         balance: addressData.account?.balance || '0',
         transactionCount: addressData.account?.transactionCount || 0,
         creator: statusData.owner || addressData.contract?.creator || '',
-        creationTx: statusData.creationTransaction || addressData.contract?.creationTransaction || '',
+        creationTx:
+          statusData.creationTransaction || addressData.contract?.creationTransaction || '',
         blockNumber: statusData.blockNumber || addressData.contract?.blockNumber || 0,
       });
 
@@ -166,12 +167,14 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
       contract_interaction: { bg: 'bg-violet-100', text: 'text-violet-700', icon: '📝' },
       mining_reward: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '⛏️' },
     };
-    
+
     const config = typeConfig[type || 'contract_interaction'] || typeConfig.contract_interaction;
     const displayAction = action || type || 'Transaction';
-    
+
     return (
-      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}>
+      <span
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}
+      >
         <span>{config.icon}</span>
         <span>{displayAction}</span>
       </span>
@@ -216,10 +219,10 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
   return (
     <>
       {/* Page Header */}
-      <div className='page-header-container'>
-        <div className='container mx-auto px-4 py-8'>
-          <h1 className='text-3xl font-bold mb-2 text-gray-100'>Contract Details</h1>
-          <p className='text-gray-400'>
+      <div className="page-header-container">
+        <div className="container mx-auto px-4 py-8">
+          <h1 className="text-3xl font-bold mb-2 text-gray-100">Contract Details</h1>
+          <p className="text-gray-400">
             Smart contract information and source code for {contract?.name || 'this contract'}
           </p>
         </div>
@@ -235,7 +238,9 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
           </div>
           <div className="bg-gray-700/50 rounded-lg p-4 border border-gray-600/50">
             <h3 className="text-sm font-medium text-gray-300 mb-2">Transactions</h3>
-            <p className="text-2xl font-bold text-purple-400">{(contract?.transactionCount || 0).toLocaleString()}</p>
+            <p className="text-2xl font-bold text-purple-400">
+              {(contract?.transactionCount || 0).toLocaleString()}
+            </p>
             <p className="text-xs text-gray-400">Total interactions</p>
           </div>
           <div className="bg-gray-700/50 rounded-lg p-4 border border-gray-600/50">
@@ -292,7 +297,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
               </button>
             </div>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             {/* Contract Address - 2 columns */}
             <div className="md:col-span-2">
@@ -319,7 +324,9 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
             {/* Contract Name */}
             <div>
               <div className="text-sm font-medium text-gray-300 mb-2">Contract Name</div>
-              <div className="text-orange-400 text-lg font-semibold">{contract?.name || 'Unverified Contract'}</div>
+              <div className="text-orange-400 text-lg font-semibold">
+                {contract?.name || 'Unverified Contract'}
+              </div>
             </div>
 
             {/* Verification Badge */}
@@ -341,15 +348,21 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
             {/* Compiler Version */}
             <div>
               <div className="text-sm font-medium text-gray-300 mb-2">Compiler Version</div>
-              <div className="text-blue-400 text-lg font-bold">{contract?.compilerVersion || '-'}</div>
+              <div className="text-blue-400 text-lg font-bold">
+                {contract?.compilerVersion || '-'}
+              </div>
             </div>
 
             {/* Optimization */}
             <div>
               <div className="text-sm font-medium text-gray-300 mb-2">Optimization</div>
-              <div className={`text-lg font-bold ${contract?.optimization ? 'text-green-400' : 'text-gray-400'}`}>
-                {contract?.optimization !== undefined 
-                  ? (contract.optimization ? `Enabled (${contract.optimizationRuns || 200} runs)` : 'Disabled')
+              <div
+                className={`text-lg font-bold ${contract?.optimization ? 'text-green-400' : 'text-gray-400'}`}
+              >
+                {contract?.optimization !== undefined
+                  ? contract.optimization
+                    ? `Enabled (${contract.optimizationRuns || 200} runs)`
+                    : 'Disabled'
                   : '-'}
               </div>
             </div>
@@ -357,7 +370,9 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
             {/* EVM Version */}
             <div>
               <div className="text-sm font-medium text-gray-300 mb-2">EVM Version</div>
-              <div className="text-purple-400 text-lg font-bold">{contract?.evmVersion || 'default'}</div>
+              <div className="text-purple-400 text-lg font-bold">
+                {contract?.evmVersion || 'default'}
+              </div>
             </div>
 
             {/* License */}
@@ -375,7 +390,9 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
             {/* Transaction Count */}
             <div>
               <div className="text-sm font-medium text-gray-300 mb-2">Transactions</div>
-              <div className="text-purple-400 text-lg font-bold">{(contract?.transactionCount || 0).toLocaleString()}</div>
+              <div className="text-purple-400 text-lg font-bold">
+                {(contract?.transactionCount || 0).toLocaleString()}
+              </div>
             </div>
 
             {/* Creator - only show if data exists */}
@@ -423,7 +440,11 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                 <div className="text-sm font-medium text-gray-300 mb-2">Verified At</div>
                 <div className="flex items-center gap-2 text-gray-300">
                   <ClockIcon className="w-4 h-4 text-gray-500" />
-                  <span>{new Date(contract.verifiedAt).toLocaleString(undefined, { timeZoneName: 'short' })}</span>
+                  <span>
+                    {new Date(contract.verifiedAt).toLocaleString(undefined, {
+                      timeZoneName: 'short',
+                    })}
+                  </span>
                 </div>
               </div>
             )}
@@ -466,27 +487,37 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                     <div className="space-y-3">
                       <div className="flex justify-between">
                         <span className="text-gray-400">Name:</span>
-                        <span className="text-gray-200 font-medium">{contract?.name || 'Unverified Contract'}</span>
+                        <span className="text-gray-200 font-medium">
+                          {contract?.name || 'Unverified Contract'}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-400">Compiler:</span>
-                        <span className="text-gray-200 font-medium">{contract?.compilerVersion || '-'}</span>
+                        <span className="text-gray-200 font-medium">
+                          {contract?.compilerVersion || '-'}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-400">Optimization:</span>
                         <span className="text-gray-200 font-medium">
-                          {contract?.optimization !== undefined 
-                            ? (contract.optimization ? `Yes (${contract.optimizationRuns || 200} runs)` : 'No')
+                          {contract?.optimization !== undefined
+                            ? contract.optimization
+                              ? `Yes (${contract.optimizationRuns || 200} runs)`
+                              : 'No'
                             : '-'}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-400">EVM Version:</span>
-                        <span className="text-gray-200 font-medium">{contract?.evmVersion || 'default'}</span>
+                        <span className="text-gray-200 font-medium">
+                          {contract?.evmVersion || 'default'}
+                        </span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-400">License:</span>
-                        <span className="text-gray-200 font-medium">{contract?.license || 'None'}</span>
+                        <span className="text-gray-200 font-medium">
+                          {contract?.license || 'None'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -496,7 +527,10 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       {contract?.creator && (
                         <div className="flex justify-between">
                           <span className="text-gray-400">Creator:</span>
-                          <Link href={`/address/${contract.creator}`} className="text-blue-400 hover:text-blue-300 font-mono text-sm">
+                          <Link
+                            href={`/address/${contract.creator}`}
+                            className="text-blue-400 hover:text-blue-300 font-mono text-sm"
+                          >
                             {formatAddress(contract.creator)}
                           </Link>
                         </div>
@@ -504,7 +538,10 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       {contract?.creationTx && (
                         <div className="flex justify-between">
                           <span className="text-gray-400">Creation Tx:</span>
-                          <Link href={`/tx/${contract.creationTx}`} className="text-blue-400 hover:text-blue-300 font-mono text-sm">
+                          <Link
+                            href={`/tx/${contract.creationTx}`}
+                            className="text-blue-400 hover:text-blue-300 font-mono text-sm"
+                          >
                             {formatAddress(contract.creationTx)}
                           </Link>
                         </div>
@@ -512,7 +549,10 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       {contract?.blockNumber ? (
                         <div className="flex justify-between">
                           <span className="text-gray-400">Block:</span>
-                          <Link href={`/block/${contract.blockNumber}`} className="text-blue-400 hover:text-blue-300">
+                          <Link
+                            href={`/block/${contract.blockNumber}`}
+                            className="text-blue-400 hover:text-blue-300"
+                          >
                             {contract.blockNumber.toLocaleString()}
                           </Link>
                         </div>
@@ -520,12 +560,21 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       {contract?.verified && contract?.verifiedAt && (
                         <div className="flex justify-between">
                           <span className="text-gray-400">Verified At:</span>
-                          <span className="text-gray-200">{new Date(contract.verifiedAt).toLocaleString(undefined, { timeZoneName: 'short' })}</span>
+                          <span className="text-gray-200">
+                            {new Date(contract.verifiedAt).toLocaleString(undefined, {
+                              timeZoneName: 'short',
+                            })}
+                          </span>
                         </div>
                       )}
-                      {!contract?.creator && !contract?.creationTx && !contract?.blockNumber && !contract?.verifiedAt && (
-                        <div className="text-gray-500 text-sm">No deployment information available</div>
-                      )}
+                      {!contract?.creator &&
+                        !contract?.creationTx &&
+                        !contract?.blockNumber &&
+                        !contract?.verifiedAt && (
+                          <div className="text-gray-500 text-sm">
+                            No deployment information available
+                          </div>
+                        )}
                     </div>
                   </div>
                 </div>
@@ -547,7 +596,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                           <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                           <span className="text-green-400 font-medium">Contract Verified</span>
                         </div>
-                        <Link 
+                        <Link
                           href={`/contract/status/${address}`}
                           className="text-xs text-blue-400 hover:text-blue-300 underline"
                         >
@@ -558,17 +607,23 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                         <div className="bg-gray-800 rounded p-3">
                           <div className="text-gray-400 text-sm">Contract Name</div>
-                          <div className="text-gray-200 font-medium">{contract.name || 'Unknown'}</div>
+                          <div className="text-gray-200 font-medium">
+                            {contract.name || 'Unknown'}
+                          </div>
                         </div>
                         <div className="bg-gray-800 rounded p-3">
                           <div className="text-gray-400 text-sm">Compiler</div>
-                          <div className="text-gray-200 font-medium">{contract.compilerVersion || '-'}</div>
+                          <div className="text-gray-200 font-medium">
+                            {contract.compilerVersion || '-'}
+                          </div>
                         </div>
                         <div className="bg-gray-800 rounded p-3">
                           <div className="text-gray-400 text-sm">Optimization</div>
                           <div className="text-gray-200 font-medium">
-                            {contract.optimization !== undefined 
-                              ? (contract.optimization ? `Enabled (${contract.optimizationRuns || 200} runs)` : 'Disabled')
+                            {contract.optimization !== undefined
+                              ? contract.optimization
+                                ? `Enabled (${contract.optimizationRuns || 200} runs)`
+                                : 'Disabled'
                               : '-'}
                           </div>
                         </div>
@@ -577,7 +632,9 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       {/* Contract Source Code */}
                       <div className="bg-gray-950 rounded border border-gray-700 overflow-hidden">
                         <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
-                          <span className="text-sm font-medium text-gray-300">Contract Source Code</span>
+                          <span className="text-sm font-medium text-gray-300">
+                            Contract Source Code
+                          </span>
                         </div>
                         <pre className="p-4 overflow-x-auto text-sm text-gray-300 max-h-96 overflow-y-auto">
                           <code className="whitespace-pre-wrap break-all">
@@ -596,7 +653,10 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                             <code className="whitespace-pre-wrap break-all">
                               {(() => {
                                 try {
-                                  const parsed = typeof contract.abi === 'string' ? JSON.parse(contract.abi) : contract.abi;
+                                  const parsed =
+                                    typeof contract.abi === 'string'
+                                      ? JSON.parse(contract.abi)
+                                      : contract.abi;
                                   return JSON.stringify(parsed, null, 2);
                                 } catch {
                                   return contract.abi;
@@ -611,7 +671,9 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       {contract.byteCode && (
                         <div className="bg-gray-950 rounded border border-gray-700 overflow-hidden">
                           <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
-                            <span className="text-sm font-medium text-gray-300">Contract Bytecode</span>
+                            <span className="text-sm font-medium text-gray-300">
+                              Contract Bytecode
+                            </span>
                           </div>
                           <pre className="p-4 overflow-x-auto text-sm text-gray-300 max-h-96 overflow-y-auto">
                             <code className="whitespace-pre-wrap break-all">
@@ -631,9 +693,13 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       {/* Always show bytecode */}
                       <div className="bg-gray-950 rounded border border-gray-700 overflow-hidden">
                         <div className="bg-gray-800 px-4 py-2 border-b border-gray-700 flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-300">Contract Bytecode</span>
+                          <span className="text-sm font-medium text-gray-300">
+                            Contract Bytecode
+                          </span>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400">Contract Address: {address.slice(0, 10)}...{address.slice(-8)}</span>
+                            <span className="text-xs text-gray-400">
+                              Contract Address: {address.slice(0, 10)}...{address.slice(-8)}
+                            </span>
                           </div>
                         </div>
                         <pre className="p-4 overflow-x-auto text-sm text-gray-300 max-h-96 overflow-y-auto">
@@ -647,21 +713,24 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       <div className="bg-gray-800 rounded-lg p-6 border border-gray-600">
                         <div className="text-center">
                           <CodeBracketIcon className="w-12 h-12 text-gray-500 mx-auto mb-4" />
-                          <h3 className="text-lg font-semibold text-gray-100 mb-2">Verify Contract Source Code</h3>
+                          <h3 className="text-lg font-semibold text-gray-100 mb-2">
+                            Verify Contract Source Code
+                          </h3>
                           <p className="text-gray-400 text-sm mb-6">
-                            Verify and publish the source code for this contract to make it readable and auditable.
+                            Verify and publish the source code for this contract to make it readable
+                            and auditable.
                           </p>
-                          
+
                           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                            <Link 
+                            <Link
                               href={`/contract/verify?address=${address}`}
                               className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
                             >
                               <CodeBracketIcon className="w-5 h-5" />
                               Verify & Push
                             </Link>
-                            
-                            <Link 
+
+                            <Link
                               href={`/contract/interact?address=${address}`}
                               className="inline-flex items-center gap-2 px-6 py-3 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
                             >
@@ -669,7 +738,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                               Interact
                             </Link>
                           </div>
-                          
+
                           <div className="mt-4 text-xs text-gray-500">
                             <p>• Verify the source code to make it readable</p>
                             <p>• Interact with the contract functions</p>
@@ -690,20 +759,37 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-gray-600">
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Tx Hash</th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Type</th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Block</th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">From</th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">To</th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Value</th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Age</th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                            Tx Hash
+                          </th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                            Type
+                          </th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                            Block
+                          </th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                            From
+                          </th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                            To
+                          </th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                            Value
+                          </th>
+                          <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                            Age
+                          </th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-700">
                         {transactions.slice(0, 25).map((tx) => (
                           <tr key={tx.hash} className="hover:bg-gray-700/50 transition-colors">
                             <td className="py-3 px-4">
-                              <Link href={`/tx/${tx.hash}`} className="text-blue-400 hover:text-blue-300 font-mono text-sm">
+                              <Link
+                                href={`/tx/${tx.hash}`}
+                                className="text-blue-400 hover:text-blue-300 font-mono text-sm"
+                              >
                                 {formatAddress(tx.hash)}
                               </Link>
                             </td>
@@ -711,18 +797,27 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                               {getTransactionTypeBadge(tx.type, tx.action)}
                             </td>
                             <td className="py-3 px-4">
-                              <Link href={`/block/${tx.blockNumber}`} className="text-blue-400 hover:text-blue-300">
+                              <Link
+                                href={`/block/${tx.blockNumber}`}
+                                className="text-blue-400 hover:text-blue-300"
+                              >
                                 {tx.blockNumber}
                               </Link>
                             </td>
                             <td className="py-3 px-4">
-                              <Link href={`/address/${tx.from}`} className="text-green-400 hover:text-green-300 font-mono text-sm">
+                              <Link
+                                href={`/address/${tx.from}`}
+                                className="text-green-400 hover:text-green-300 font-mono text-sm"
+                              >
                                 {formatAddress(tx.from)}
                               </Link>
                             </td>
                             <td className="py-3 px-4">
                               {tx.to ? (
-                                <Link href={`/address/${tx.to}`} className="text-red-400 hover:text-red-300 font-mono text-sm">
+                                <Link
+                                  href={`/address/${tx.to}`}
+                                  className="text-red-400 hover:text-red-300 font-mono text-sm"
+                                >
                                   {formatAddress(tx.to)}
                                 </Link>
                               ) : (
@@ -734,8 +829,12 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                               <div className="flex items-center gap-2">
                                 <ClockIcon className="w-4 h-4 text-gray-500" />
                                 <div>
-                                  <div className="text-sm text-gray-300">{getTimeAgo(tx.timestamp)}</div>
-                                  <div className="text-xs text-gray-500">{formatTimestamp(tx.timestamp)}</div>
+                                  <div className="text-sm text-gray-300">
+                                    {getTimeAgo(tx.timestamp)}
+                                  </div>
+                                  <div className="text-xs text-gray-500">
+                                    {formatTimestamp(tx.timestamp)}
+                                  </div>
                                 </div>
                               </div>
                             </td>
@@ -752,7 +851,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                 )}
                 {transactions.length > 25 && (
                   <div className="mt-4 text-center">
-                    <Link 
+                    <Link
                       href={`/address/${address}/transactions`}
                       className="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1"
                     >

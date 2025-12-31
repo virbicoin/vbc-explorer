@@ -25,36 +25,38 @@ export async function GET(request: Request) {
   try {
     // Load configuration from config.json
     const appConfig = loadConfig();
-    
+
     // Check if DEX is enabled
     if (!appConfig.dex?.enabled) {
       return NextResponse.json(
-        { 
-          success: false, 
+        {
+          success: false,
           error: 'DEX feature is not enabled',
           message: 'Set dex.enabled to true in config.json to enable DEX features',
         },
         { status: 404 }
       );
     }
-    
+
     // Set minimal config from config.json
     setMinimalConfig({
       chainId: appConfig.network?.chainId || 1,
       rpcUrl: appConfig.network?.rpcUrl || appConfig.web3Provider?.url || 'http://localhost:8545',
       explorer: appConfig.network?.explorer || appConfig.explorer?.url || 'https://etherscan.io',
-      routerV2: (appConfig.dex?.router || '0x0000000000000000000000000000000000000000') as `0x${string}`,
-      masterChefV2: (appConfig.dex?.masterChef || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+      routerV2: (appConfig.dex?.router ||
+        '0x0000000000000000000000000000000000000000') as `0x${string}`,
+      masterChefV2: (appConfig.dex?.masterChef ||
+        '0x0000000000000000000000000000000000000000') as `0x${string}`,
     });
-    
+
     const { searchParams } = new URL(request.url);
     const refresh = searchParams.get('refresh') === 'true';
-    
+
     const config = await fetchDexConfig(refresh);
-    
+
     // Get native token info from config
     const nativeToken = getNativeToken(appConfig.currency);
-    
+
     // Get wrapped native token info from config or blockchain
     const wrappedNativeConfig = appConfig.dex?.wrappedNative;
     const wrappedNative = {
@@ -63,7 +65,7 @@ export async function GET(request: Request) {
       symbol: wrappedNativeConfig?.symbol || `W${nativeToken.symbol}`,
       decimals: wrappedNativeConfig?.decimals || 18,
     };
-    
+
     // Build response with all DEX info
     const responseData = {
       success: true,
@@ -94,13 +96,13 @@ export async function GET(request: Request) {
         lastUpdated: config.lastUpdated,
       },
     };
-    
+
     return NextResponse.json(serializeForJson(responseData));
   } catch (error) {
     console.error('Error fetching DEX config:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: 'Failed to fetch DEX configuration',
         message: error instanceof Error ? error.message : 'Unknown error',
       },

@@ -12,7 +12,7 @@ const readConfig = () => {
   try {
     const configPath = path.join(process.cwd(), 'config.json');
     const exampleConfigPath = path.join(process.cwd(), 'config.example.json');
-    
+
     if (fs.existsSync(configPath)) {
       return JSON.parse(fs.readFileSync(configPath, 'utf8'));
     } else if (fs.existsSync(exampleConfigPath)) {
@@ -25,25 +25,28 @@ const readConfig = () => {
 };
 
 // Contract Schema (simplified for this script)
-const ContractSchema = new mongoose.Schema({
-  address: { type: String, index: { unique: true } },
-  blockNumber: Number,
-  ERC: { type: Number, index: true },
-  creationTransaction: String,
-  contractName: String,
-  tokenName: String,
-  symbol: String,
-  owner: String,
-  decimals: Number,
-  totalSupply: Number,
-  compilerVersion: String,
-  optimization: Boolean,
-  sourceCode: String,
-  abi: String,
-  byteCode: String,
-  verified: { type: Boolean, default: false },
-  verifiedAt: { type: Date },
-}, { collection: 'Contract' });
+const ContractSchema = new mongoose.Schema(
+  {
+    address: { type: String, index: { unique: true } },
+    blockNumber: Number,
+    ERC: { type: Number, index: true },
+    creationTransaction: String,
+    contractName: String,
+    tokenName: String,
+    symbol: String,
+    owner: String,
+    decimals: Number,
+    totalSupply: Number,
+    compilerVersion: String,
+    optimization: Boolean,
+    sourceCode: String,
+    abi: String,
+    byteCode: String,
+    verified: { type: Boolean, default: false },
+    verifiedAt: { type: Date },
+  },
+  { collection: 'Contract' }
+);
 
 async function registerContracts() {
   const config = readConfig();
@@ -75,24 +78,24 @@ async function registerContracts() {
       contracts.push({
         address: config.dex.factory.toLowerCase(),
         contractName: 'SimpleFactoryV2',
-        type: 'contract'
+        type: 'contract',
       });
     }
     if (config.dex.router) {
       contracts.push({
         address: config.dex.router.toLowerCase(),
         contractName: 'SimpleRouterV2',
-        type: 'contract'
+        type: 'contract',
       });
     }
     if (config.dex.masterChef) {
       contracts.push({
         address: config.dex.masterChef.toLowerCase(),
         contractName: 'MasterChef',
-        type: 'contract'
+        type: 'contract',
       });
     }
-    
+
     // Wrapped Native Token
     if (config.dex.wrappedNative) {
       contracts.push({
@@ -101,10 +104,10 @@ async function registerContracts() {
         symbol: config.dex.wrappedNative.symbol,
         tokenName: config.dex.wrappedNative.name,
         decimals: config.dex.wrappedNative.decimals || 18,
-        type: 'token'
+        type: 'token',
       });
     }
-    
+
     // Reward Token
     if (config.dex.rewardToken) {
       contracts.push({
@@ -113,10 +116,10 @@ async function registerContracts() {
         symbol: config.dex.rewardToken.symbol,
         tokenName: config.dex.rewardToken.name,
         decimals: config.dex.rewardToken.decimals || 18,
-        type: 'token'
+        type: 'token',
       });
     }
-    
+
     // Other DEX Tokens
     if (config.dex.tokens) {
       for (const [key, token] of Object.entries(config.dex.tokens)) {
@@ -128,12 +131,12 @@ async function registerContracts() {
             symbol: t.symbol,
             tokenName: t.name,
             decimals: t.decimals || 18,
-            type: 'token'
+            type: 'token',
           });
         }
       }
     }
-    
+
     // LP Tokens
     if (config.dex.lpTokens) {
       for (const [key, lp] of Object.entries(config.dex.lpTokens)) {
@@ -144,7 +147,7 @@ async function registerContracts() {
             contractName: l.name || key,
             symbol: l.symbol,
             tokenName: l.name,
-            type: 'token'
+            type: 'token',
           });
         }
       }
@@ -156,7 +159,7 @@ async function registerContracts() {
     contracts.push({
       address: config.launchpad.factoryAddress.toLowerCase(),
       contractName: 'TokenFactory',
-      type: 'contract'
+      type: 'contract',
     });
   }
 
@@ -167,7 +170,7 @@ async function registerContracts() {
     try {
       // Check if contract already exists
       const existing = await Contract.findOne({ address: contract.address });
-      
+
       if (existing) {
         // Update only if not verified (don't overwrite verified contracts)
         if (!existing.verified) {
@@ -179,13 +182,15 @@ async function registerContracts() {
                 symbol: contract.symbol,
                 tokenName: contract.tokenName,
                 decimals: contract.decimals,
-                ERC: contract.type === 'token' ? 2 : 0
-              }
+                ERC: contract.type === 'token' ? 2 : 0,
+              },
             }
           );
           console.log(`📝 Updated: ${contract.contractName} (${contract.address})`);
         } else {
-          console.log(`⏭️  Skipped (already verified): ${contract.contractName} (${contract.address})`);
+          console.log(
+            `⏭️  Skipped (already verified): ${contract.contractName} (${contract.address})`
+          );
         }
       } else {
         // Create new entry
@@ -196,7 +201,7 @@ async function registerContracts() {
           tokenName: contract.tokenName,
           decimals: contract.decimals,
           ERC: contract.type === 'token' ? 2 : 0, // 2 = ERC20
-          verified: false
+          verified: false,
         });
         console.log(`✅ Created: ${contract.contractName} (${contract.address})`);
       }
@@ -210,7 +215,7 @@ async function registerContracts() {
   }
 
   console.log('\n✅ Contract registration complete!');
-  
+
   // Show summary
   const totalContracts = await Contract.countDocuments();
   const verifiedContracts = await Contract.countDocuments({ verified: true });

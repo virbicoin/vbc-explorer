@@ -1,9 +1,9 @@
 /**
  * Total Supply API Endpoint
- * 
+ *
  * Returns the total supply of VirBiCoin as plain text (number only).
  * Required format for CoinGecko and CoinMarketCap integration.
- * 
+ *
  * GET /api/total_supply
  * Response: Plain text number (e.g., "330000000")
  */
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     // Check for debug mode (returns JSON with details)
     const { searchParams } = new URL(request.url);
     const debug = searchParams.get('debug') === 'true';
-    
+
     if (debug) {
       const details = await getSupplyDetails();
       return NextResponse.json(details, {
@@ -31,10 +31,10 @@ export async function GET(request: NextRequest) {
         },
       });
     }
-    
+
     // Calculate total supply
     const totalSupply = await calculateTotalSupply();
-    
+
     // Return as plain text (number only) - required format for CoinGecko/CMC
     return new NextResponse(totalSupply.toString(), {
       status: 200,
@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('[Total Supply API] Error:', error);
-    
+
     // Return error as plain text to maintain format consistency
     return new NextResponse('Error calculating total supply', {
       status: 500,

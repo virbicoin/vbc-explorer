@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     resolveAlias: {
       // WalletConnect/pino依存関係を無視
-      'pino': { browser: './node_modules/pino/browser.js' },
+      pino: { browser: './node_modules/pino/browser.js' },
     },
   },
 
@@ -66,25 +66,27 @@ const nextConfig: NextConfig = {
     // lightningcssのネイティブモジュールを完全に無視
     config.externals = config.externals || [];
     config.externals.push({
-      'lightningcss': 'lightningcss',
+      lightningcss: 'lightningcss',
     });
 
     // lightningcssのネイティブモジュールを空のオブジェクトに置き換え
     config.resolve.alias = {
       ...config.resolve.alias,
-      'lightningcss': false,
+      lightningcss: false,
     };
 
     // lightningcssのネイティブモジュールを無視するプラグインを追加
     config.plugins.push(
-      new webpack.IgnorePlugin({ // require()をwebpackインスタンスに変更
+      new webpack.IgnorePlugin({
+        // require()をwebpackインスタンスに変更
         resourceRegExp: /lightningcss\.linux-x64-gnu\.node$/,
       })
     );
 
     // lightningcssのネイティブモジュールを無視するプラグインを追加
     config.plugins.push(
-      new webpack.IgnorePlugin({ // require()をwebpackインスタンスに変更
+      new webpack.IgnorePlugin({
+        // require()をwebpackインスタンスに変更
         resourceRegExp: /lightningcss/,
       })
     );
@@ -120,7 +122,7 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'gateway.pinata.cloud',
         pathname: '/ipfs/**',
-      }
+      },
     ],
   },
   /* config options here */

@@ -1,6 +1,6 @@
 /**
  * Centralized Type Definitions
- * 
+ *
  * Single source of truth for all TypeScript interfaces used across the application.
  * Import from here instead of defining types in multiple places.
  */
@@ -58,7 +58,7 @@ export interface Account {
 
 export enum AccountType {
   Address = 0,
-  Contract = 1
+  Contract = 1,
 }
 
 // ============================================================================
@@ -89,14 +89,21 @@ export enum ERCType {
   Normal = 0,
   ERC20 = 2,
   ERC721 = 3,
-  ERC1155 = 4
+  ERC1155 = 4,
 }
 
 // ============================================================================
 // Token Types
 // ============================================================================
 
-export type TokenType = 'VRC-20' | 'VRC-721' | 'VRC-1155' | 'ERC20' | 'ERC721' | 'ERC1155' | 'Native';
+export type TokenType =
+  | 'VRC-20'
+  | 'VRC-721'
+  | 'VRC-1155'
+  | 'ERC20'
+  | 'ERC721'
+  | 'ERC1155'
+  | 'Native';
 
 export interface Token {
   address: string;

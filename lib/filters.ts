@@ -1,5 +1,5 @@
 import currencyUnits, { updateCurrencyConfig, updateCurrencyUnits } from './etherUnits';
- 
+
 const RLP = require('rlp');
 
 interface Transaction {
@@ -54,15 +54,15 @@ function initializeCurrency(config: CurrencyConfig) {
  * Filter an array of transactions for display
  */
 function filterTX(txs: Transaction[]): unknown[] {
-  return txs.map(tx => [
-    tx.hash, 
-    tx.blockNumber, 
-    tx.from, 
-    tx.to, 
-    currencyUnits.toMainUnit(tx.value.toString(), currencyUnits.baseUnit), 
-    tx.gas, 
-    tx.timestamp, 
-    tx.creates
+  return txs.map((tx) => [
+    tx.hash,
+    tx.blockNumber,
+    tx.from,
+    tx.to,
+    currencyUnits.toMainUnit(tx.value.toString(), currencyUnits.baseUnit),
+    tx.gas,
+    tx.timestamp,
+    tx.creates,
   ]);
 }
 
@@ -74,14 +74,15 @@ function filterTrace(txs: TraceTransaction[]): unknown[] {
     const t = { ...tx };
     if (t.type == 'suicide') {
       if (t.action.address) t.from = t.action.address;
-      if (t.action.balance) t.value = currencyUnits.toMainUnit(t.action.balance.toString(), currencyUnits.baseUnit);
+      if (t.action.balance)
+        t.value = currencyUnits.toMainUnit(t.action.balance.toString(), currencyUnits.baseUnit);
       if (t.action.refundAddress) t.to = t.action.refundAddress;
     } else {
       if (t.action.to) t.to = t.action.to;
       t.from = t.action.from;
       if (t.action.gas) t.gas = Number(t.action.gas);
-      if ((t.result) && (t.result.gasUsed)) t.gasUsed = Number(t.result.gasUsed);
-      if ((t.result) && (t.result.address)) t.to = t.result.address;
+      if (t.result && t.result.gasUsed) t.gasUsed = Number(t.result.gasUsed);
+      if (t.result && t.result.address) t.to = t.result.address;
       t.value = currencyUnits.toMainUnit(t.action.value.toString(), currencyUnits.baseUnit);
     }
     return t;
@@ -97,7 +98,7 @@ interface Block {
  */
 function filterBlocks(blocks: Block[], value?: number): Block[] {
   if (typeof value !== 'undefined') {
-    return blocks.filter(block => block.number >= value);
+    return blocks.filter((block) => block.number >= value);
   }
   return blocks;
 }
@@ -110,14 +111,15 @@ function filterInternalTx(txs: TraceTransaction[]): unknown[] {
     const t = { ...tx };
     if (t.type == 'suicide') {
       if (t.action.address) t.from = t.action.address;
-      if (t.action.balance) t.value = currencyUnits.toMainUnit(t.action.balance.toString(), currencyUnits.baseUnit);
+      if (t.action.balance)
+        t.value = currencyUnits.toMainUnit(t.action.balance.toString(), currencyUnits.baseUnit);
       if (t.action.refundAddress) t.to = t.action.refundAddress;
     } else {
       if (t.action.to) t.to = t.action.to;
       t.from = t.action.from;
       if (t.action.gas) t.gas = Number(t.action.gas);
-      if ((t.result) && (t.result.gasUsed)) t.gasUsed = Number(t.result.gasUsed);
-      if ((t.result) && (t.result.address)) t.to = t.result.address;
+      if (t.result && t.result.gasUsed) t.gasUsed = Number(t.result.gasUsed);
+      if (t.result && t.result.address) t.to = t.result.address;
       t.value = currencyUnits.toMainUnit(t.action.value.toString(), currencyUnits.baseUnit);
     }
     return t;
@@ -153,5 +155,5 @@ export {
   formatCurrency,
   formatValue,
   formatGasPrice,
-  initializeCurrency
-}; 
+  initializeCurrency,
+};

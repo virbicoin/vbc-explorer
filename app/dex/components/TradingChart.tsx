@@ -1,7 +1,15 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, CandlestickData, Time, ColorType, CandlestickSeries, ISeriesApi } from 'lightweight-charts';
+import {
+  createChart,
+  IChartApi,
+  CandlestickData,
+  Time,
+  ColorType,
+  CandlestickSeries,
+  ISeriesApi,
+} from 'lightweight-charts';
 import Image from 'next/image';
 
 interface PriceData {
@@ -35,13 +43,13 @@ interface TradingPair {
 // Token color mapping
 const getTokenColor = (symbol: string): string => {
   const colors: Record<string, string> = {
-    'VBC': 'from-green-500 to-emerald-600',
-    'WVBC': 'from-green-500 to-emerald-600',
-    'VBCG': 'from-yellow-500 to-amber-600',
-    'USDT': 'from-emerald-500 to-teal-600',
-    'USDC': 'from-blue-500 to-indigo-600',
-    'ETH': 'from-purple-500 to-indigo-600',
-    'WETH': 'from-purple-500 to-indigo-600',
+    VBC: 'from-green-500 to-emerald-600',
+    WVBC: 'from-green-500 to-emerald-600',
+    VBCG: 'from-yellow-500 to-amber-600',
+    USDT: 'from-emerald-500 to-teal-600',
+    USDC: 'from-blue-500 to-indigo-600',
+    ETH: 'from-purple-500 to-indigo-600',
+    WETH: 'from-purple-500 to-indigo-600',
   };
   return colors[symbol] || 'from-gray-500 to-gray-600';
 };
@@ -63,24 +71,32 @@ const getTokenIcon = (symbol: string): string | null => {
 // Token Icon Component
 function TokenIcon({ symbol, size = 24 }: { symbol: string; size?: number }) {
   const iconPath = getTokenIcon(symbol);
-  
+
   if (iconPath) {
     return (
-      <div className={`rounded-full bg-gradient-to-br ${getTokenColor(symbol)} flex items-center justify-center shadow-md overflow-hidden`} style={{ width: size, height: size }}>
-        <Image 
-          src={iconPath} 
-          alt={symbol} 
-          width={size - 4} 
+      <div
+        className={`rounded-full bg-gradient-to-br ${getTokenColor(symbol)} flex items-center justify-center shadow-md overflow-hidden`}
+        style={{ width: size, height: size }}
+      >
+        <Image
+          src={iconPath}
+          alt={symbol}
+          width={size - 4}
           height={size - 4}
           className="object-contain"
         />
       </div>
     );
   }
-  
+
   return (
-    <div className={`rounded-full bg-gradient-to-br ${getTokenColor(symbol)} flex items-center justify-center shadow-md`} style={{ width: size, height: size }}>
-      <span className="font-bold text-white" style={{ fontSize: size * 0.4 }}>{symbol.charAt(0)}</span>
+    <div
+      className={`rounded-full bg-gradient-to-br ${getTokenColor(symbol)} flex items-center justify-center shadow-md`}
+      style={{ width: size, height: size }}
+    >
+      <span className="font-bold text-white" style={{ fontSize: size * 0.4 }}>
+        {symbol.charAt(0)}
+      </span>
     </div>
   );
 }
@@ -100,26 +116,22 @@ async function fetchChartData(pairAddress: string, timeframe: string): Promise<P
   try {
     const response = await fetch(`/api/dex/chart/${pairAddress}?timeframe=${timeframe}&count=100`);
     const data = await response.json();
-    
+
     if (!data.success || !data.data?.candles) {
       console.warn('Failed to fetch chart data:', data.error);
       return [];
     }
-    
+
     // Convert API response to chart format
-    return data.data.candles.map((candle: {
-      time: number;
-      open: number;
-      high: number;
-      low: number;
-      close: number;
-    }) => ({
-      time: candle.time as Time,
-      open: candle.open,
-      high: candle.high,
-      low: candle.low,
-      close: candle.close,
-    }));
+    return data.data.candles.map(
+      (candle: { time: number; open: number; high: number; low: number; close: number }) => ({
+        time: candle.time as Time,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+      })
+    );
   } catch (error) {
     console.error('Error fetching chart data:', error);
     return [];
@@ -130,13 +142,16 @@ export function TradingChart() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  
+
   const [pairs, setPairs] = useState<TradingPair[]>([]);
   const [selectedPair, setSelectedPair] = useState<TradingPair | null>(null);
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('1h');
   const [priceData, setPriceData] = useState<PriceData[]>([]);
   const [currentPrice, setCurrentPrice] = useState<number>(0);
-  const [priceChange, setPriceChange] = useState<{ value: number; percent: number }>({ value: 0, percent: 0 });
+  const [priceChange, setPriceChange] = useState<{ value: number; percent: number }>({
+    value: 0,
+    percent: 0,
+  });
   const [highLow, setHighLow] = useState<{ high: number; low: number }>({ high: 0, low: 0 });
   const [showPairSelector, setShowPairSelector] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -149,14 +164,14 @@ export function TradingChart() {
       try {
         setLoading(true);
         setError(null);
-        
+
         const response = await fetch('/api/dex/pairs');
         const data = await response.json();
-        
+
         if (!data.success) {
           throw new Error(data.error || 'Failed to fetch pairs');
         }
-        
+
         if (data.data.pairs && data.data.pairs.length > 0) {
           setPairs(data.data.pairs);
           setSelectedPair(data.data.pairs[0]);
@@ -170,9 +185,9 @@ export function TradingChart() {
         setLoading(false);
       }
     };
-    
+
     fetchPairs();
-    
+
     // Refresh pairs every 30 seconds
     const interval = setInterval(fetchPairs, 30000);
     return () => clearInterval(interval);
@@ -181,28 +196,28 @@ export function TradingChart() {
   // Update price data when pair or timeframe changes
   useEffect(() => {
     if (!selectedPair) return;
-    
+
     let cancelled = false;
-    
+
     const loadChartData = async () => {
       const historyData = await fetchChartData(selectedPair.address, timeFrame);
-      
+
       if (cancelled) return;
-      
+
       if (historyData.length > 0) {
         setPriceData(historyData);
-        
+
         const price = selectedPair.price;
         setCurrentPrice(price);
-        
+
         const oldest = historyData[0];
         const newest = historyData[historyData.length - 1];
         const change = newest.close - oldest.open;
         const changePercent = oldest.open !== 0 ? (change / oldest.open) * 100 : 0;
         setPriceChange({ value: change, percent: changePercent });
-        
-        const high = Math.max(...historyData.map(d => d.high));
-        const low = Math.min(...historyData.map(d => d.low));
+
+        const high = Math.max(...historyData.map((d) => d.high));
+        const low = Math.min(...historyData.map((d) => d.low));
         setHighLow({ high, low });
       } else {
         // If no data from API, set current price info only
@@ -211,9 +226,9 @@ export function TradingChart() {
         setHighLow({ high: selectedPair.price, low: selectedPair.price });
       }
     };
-    
+
     loadChartData();
-    
+
     return () => {
       cancelled = true;
     };
@@ -284,22 +299,19 @@ export function TradingChart() {
       },
     });
 
-    const candlestickSeries = chart.addSeries(
-      CandlestickSeries,
-      {
-        upColor: '#22c55e',
-        downColor: '#ef4444',
-        borderUpColor: '#22c55e',
-        borderDownColor: '#ef4444',
-        wickUpColor: '#22c55e',
-        wickDownColor: '#ef4444',
-        priceFormat: {
-          type: 'price',
-          precision: 6,
-          minMove: 0.000001,
-        },
-      }
-    );
+    const candlestickSeries = chart.addSeries(CandlestickSeries, {
+      upColor: '#22c55e',
+      downColor: '#ef4444',
+      borderUpColor: '#22c55e',
+      borderDownColor: '#ef4444',
+      wickUpColor: '#22c55e',
+      wickDownColor: '#ef4444',
+      priceFormat: {
+        type: 'price',
+        precision: 6,
+        minMove: 0.000001,
+      },
+    });
 
     chartRef.current = chart;
     candlestickSeriesRef.current = candlestickSeries;
@@ -309,9 +321,9 @@ export function TradingChart() {
       const el = chartContainerRef.current;
       const api = chartRef.current;
       if (!el || !api) return;
-      api.applyOptions({ 
-        width: Math.max(1, el.clientWidth), 
-        height: Math.max(1, el.clientHeight) 
+      api.applyOptions({
+        width: Math.max(1, el.clientWidth),
+        height: Math.max(1, el.clientHeight),
       });
     };
 
@@ -362,15 +374,15 @@ export function TradingChart() {
         </div>
       );
     }
-    
+
     if (error) {
       return <div className="text-red-400">{error}</div>;
     }
-    
+
     if (!selectedPair) {
       return <div className="text-gray-400">No trading pairs available</div>;
     }
-    
+
     return (
       <>
         <div className="flex items-center justify-between flex-wrap gap-4">
@@ -384,11 +396,19 @@ export function TradingChart() {
                 <TokenIcon symbol={selectedPair.baseToken.symbol} size={24} />
                 <TokenIcon symbol={selectedPair.quoteToken.symbol} size={24} />
               </div>
-              <span className="font-bold text-white">
-                {selectedPair.name}
-              </span>
-              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              <span className="font-bold text-white">{selectedPair.name}</span>
+              <svg
+                className="w-4 h-4 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
               </svg>
             </button>
 
@@ -420,8 +440,11 @@ export function TradingChart() {
             <div className="hidden sm:flex items-center gap-4 text-sm">
               <div>
                 <span className="text-gray-400">24h Change</span>
-                <p className={`font-semibold ${priceChange.percent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {priceChange.percent >= 0 ? '+' : ''}{priceChange.percent.toFixed(2)}%
+                <p
+                  className={`font-semibold ${priceChange.percent >= 0 ? 'text-green-400' : 'text-red-400'}`}
+                >
+                  {priceChange.percent >= 0 ? '+' : ''}
+                  {priceChange.percent.toFixed(2)}%
                 </p>
               </div>
               <div>
@@ -452,7 +475,7 @@ export function TradingChart() {
             </button>
           ))}
           <div className="flex-1" />
-          <button 
+          <button
             onClick={async () => {
               if (selectedPair) {
                 const historyData = await fetchChartData(selectedPair.address, timeFrame);
@@ -465,7 +488,12 @@ export function TradingChart() {
             title="Refresh"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
             </svg>
           </button>
         </div>
@@ -476,13 +504,11 @@ export function TradingChart() {
   return (
     <div className="bg-gray-900/90 rounded-3xl border border-gray-700/50 overflow-hidden">
       {/* Header */}
-      <div className="p-4 border-b border-gray-700/50">
-        {renderHeader()}
-      </div>
+      <div className="p-4 border-b border-gray-700/50">{renderHeader()}</div>
 
       {/* Chart Area */}
-      <div 
-        ref={chartContainerRef} 
+      <div
+        ref={chartContainerRef}
         className="w-full"
         style={{ height: '400px', minHeight: '400px' }}
       />

@@ -44,7 +44,7 @@ export interface FarmingConfig {
   network: NetworkConfig;
   contracts: {
     masterChef: `0x${string}`;
-    wrappedNative: `0x${string}`;  // Generic wrapped native token (WETH, WVBC, WBNB, etc.)
+    wrappedNative: `0x${string}`; // Generic wrapped native token (WETH, WVBC, WBNB, etc.)
     factoryV2: `0x${string}`;
     routerV2: `0x${string}`;
   };
@@ -66,17 +66,17 @@ export interface FarmingConfig {
 // Default network configuration (Ethereum mainnet as fallback)
 // These values are overridden by config.json at runtime
 export const DEFAULT_NETWORK_CONFIG: NetworkConfig = {
-  name: "Ethereum",
+  name: 'Ethereum',
   chainId: 1,
-  rpcUrl: "http://localhost:8545",
-  explorer: "https://etherscan.io",
-  blockTime: 12  // Ethereum average block time
+  rpcUrl: 'http://localhost:8545',
+  explorer: 'https://etherscan.io',
+  blockTime: 12, // Ethereum average block time
 };
 
 // Default empty contracts (to be populated from config.json)
 export const DEFAULT_STATIC_CONTRACTS: MinimalContracts = {
-  router: "0x0000000000000000000000000000000000000000" as `0x${string}`,
-  masterChef: "0x0000000000000000000000000000000000000000" as `0x${string}`,
+  router: '0x0000000000000000000000000000000000000000' as `0x${string}`,
+  masterChef: '0x0000000000000000000000000000000000000000' as `0x${string}`,
 };
 
 // Runtime mutable configuration (will be set from config.json)
@@ -142,23 +142,23 @@ export function createFarmingConfig(): FarmingConfig {
     network: NETWORK_CONFIG,
     contracts: {
       masterChef: STATIC_CONTRACTS.masterChef,
-      wrappedNative: "0x0000000000000000000000000000000000000000" as `0x${string}`, // Fetched dynamically
-      factoryV2: "0x0000000000000000000000000000000000000000" as `0x${string}`, // Fetched dynamically
-      routerV2: STATIC_CONTRACTS.router
+      wrappedNative: '0x0000000000000000000000000000000000000000' as `0x${string}`, // Fetched dynamically
+      factoryV2: '0x0000000000000000000000000000000000000000' as `0x${string}`, // Fetched dynamically
+      routerV2: STATIC_CONTRACTS.router,
     },
     rewardToken: {
-      address: "0x0000000000000000000000000000000000000000" as `0x${string}`, // Fetched dynamically
-      name: "Unknown",
-      symbol: "???",
-      decimals: 18
+      address: '0x0000000000000000000000000000000000000000' as `0x${string}`, // Fetched dynamically
+      name: 'Unknown',
+      symbol: '???',
+      decimals: 18,
     },
     pools: [], // Fetched dynamically from MasterChef
     settings: {
-      rewardPerBlock: "0", // Fetched dynamically
-      rewardPerBlockFormatted: "0",
+      rewardPerBlock: '0', // Fetched dynamically
+      rewardPerBlockFormatted: '0',
       blocksPerDay: getBlocksPerDay(),
-      blocksPerYear: getBlocksPerYear()
-    }
+      blocksPerYear: getBlocksPerYear(),
+    },
   };
 }
 
@@ -168,4 +168,4 @@ export const BLOCKS_PER_DAY = Math.floor(86400 / DEFAULT_NETWORK_CONFIG.blockTim
 export const BLOCKS_PER_YEAR = BLOCKS_PER_DAY * 365;
 export const FARMING_CONFIG: FarmingConfig = createFarmingConfig();
 export const MASTER_CHEF_ADDRESS = DEFAULT_STATIC_CONTRACTS.masterChef;
-export const REWARD_TOKEN_ADDRESS = "0x0000000000000000000000000000000000000000" as `0x${string}`; // Use dynamic fetching
+export const REWARD_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`; // Use dynamic fetching

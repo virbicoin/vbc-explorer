@@ -21,50 +21,53 @@ import { connectDB, Contract } from '../models/index';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
 
 // Define Token schema
-const tokenSchema = new mongoose.Schema({
-  address: String,
-  name: String,
-  symbol: String,
-  decimals: { type: Number, default: 18 },
-  totalSupply: String,
-  holders: { type: Number, default: 0 },
-  type: String,
-  supply: String,
-  verified: { type: Boolean, default: false }
-}, { collection: 'tokens' });
+const tokenSchema = new mongoose.Schema(
+  {
+    address: String,
+    name: String,
+    symbol: String,
+    decimals: { type: Number, default: 18 },
+    totalSupply: String,
+    holders: { type: Number, default: 0 },
+    type: String,
+    supply: String,
+    verified: { type: Boolean, default: false },
+  },
+  { collection: 'tokens' }
+);
 
 const Token = mongoose.models.Token || mongoose.model('Token', tokenSchema);
 
 // ERC20 ABI
 const ERC20_ABI = [
   {
-    "constant": true,
-    "inputs": [],
-    "name": "name",
-    "outputs": [{ "name": "", "type": "string" }],
-    "type": "function"
+    constant: true,
+    inputs: [],
+    name: 'name',
+    outputs: [{ name: '', type: 'string' }],
+    type: 'function',
   },
   {
-    "constant": true,
-    "inputs": [],
-    "name": "symbol",
-    "outputs": [{ "name": "", "type": "string" }],
-    "type": "function"
+    constant: true,
+    inputs: [],
+    name: 'symbol',
+    outputs: [{ name: '', type: 'string' }],
+    type: 'function',
   },
   {
-    "constant": true,
-    "inputs": [],
-    "name": "decimals",
-    "outputs": [{ "name": "", "type": "uint8" }],
-    "type": "function"
+    constant: true,
+    inputs: [],
+    name: 'decimals',
+    outputs: [{ name: '', type: 'uint8' }],
+    type: 'function',
   },
   {
-    "constant": true,
-    "inputs": [],
-    "name": "totalSupply",
-    "outputs": [{ "name": "", "type": "uint256" }],
-    "type": "function"
-  }
+    constant: true,
+    inputs: [],
+    name: 'totalSupply',
+    outputs: [{ name: '', type: 'uint256' }],
+    type: 'function',
+  },
 ] as const;
 
 const config = loadConfig();
@@ -95,18 +98,18 @@ async function addToken(tokenAddress: string) {
       console.log(`   Name: ${existingToken.name}`);
       console.log(`   Symbol: ${existingToken.symbol}`);
       console.log(`   Type: ${existingToken.type}`);
-      
+
       const readline = await import('readline');
       const rl = readline.createInterface({
         input: process.stdin,
-        output: process.stdout
+        output: process.stdout,
       });
-      
+
       const answer = await new Promise<string>((resolve) => {
         rl.question('   Do you want to update it? (y/N): ', resolve);
       });
       rl.close();
-      
+
       if (answer.toLowerCase() !== 'y') {
         console.log('❌ Aborted');
         process.exit(0);
@@ -115,14 +118,14 @@ async function addToken(tokenAddress: string) {
 
     // Verify it's a valid ERC20 contract
     const contract = new web3.eth.Contract(ERC20_ABI as any, tokenAddress);
-    
+
     let name: string;
     let symbol: string;
     let decimals: number;
     let totalSupply: bigint;
 
     try {
-      name = await contract.methods.name().call() as string;
+      name = (await contract.methods.name().call()) as string;
       console.log(`   Name: ${name}`);
     } catch (e) {
       console.error('❌ Failed to get token name. This may not be a valid ERC20 token.');
@@ -130,7 +133,7 @@ async function addToken(tokenAddress: string) {
     }
 
     try {
-      symbol = await contract.methods.symbol().call() as string;
+      symbol = (await contract.methods.symbol().call()) as string;
       console.log(`   Symbol: ${symbol}`);
     } catch (e) {
       console.error('❌ Failed to get token symbol. This may not be a valid ERC20 token.');
@@ -146,7 +149,7 @@ async function addToken(tokenAddress: string) {
     }
 
     try {
-      totalSupply = await contract.methods.totalSupply().call() as bigint;
+      totalSupply = (await contract.methods.totalSupply().call()) as bigint;
       console.log(`   Total Supply: ${totalSupply.toString()}`);
     } catch (e) {
       console.log('⚠️ Could not get totalSupply, defaulting to 0');
@@ -192,7 +195,6 @@ async function addToken(tokenAddress: string) {
     }
 
     console.log(`\n🎉 Token "${name}" (${symbol}) is now available in the explorer!`);
-    
   } catch (error) {
     console.error('❌ Error:', error);
     process.exit(1);

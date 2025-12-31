@@ -21,13 +21,13 @@ export interface ChainConfig {
 // Create chain definition dynamically from config
 export function createChain(config: ChainConfig): Chain {
   // Ensure all values are proper types for viem
-  const chainId = typeof config.chainId === 'bigint' 
-    ? Number(config.chainId)
-    : Number(config.chainId) || 1;
-  const decimals = typeof config.currency.decimals === 'bigint' 
-    ? Number(config.currency.decimals)
-    : Number(config.currency.decimals) || 18;
-    
+  const chainId =
+    typeof config.chainId === 'bigint' ? Number(config.chainId) : Number(config.chainId) || 1;
+  const decimals =
+    typeof config.currency.decimals === 'bigint'
+      ? Number(config.currency.decimals)
+      : Number(config.currency.decimals) || 18;
+
   return defineChain({
     id: chainId,
     name: config.name,
@@ -92,7 +92,9 @@ export function getDexContracts() {
     router: config.routerV2,
     masterChef: config.masterChefV2,
     factory: config.factoryV2,
-    wrappedNative: config.wrappedNative?.address || '0x0000000000000000000000000000000000000000' as `0x${string}`,
+    wrappedNative:
+      config.wrappedNative?.address ||
+      ('0x0000000000000000000000000000000000000000' as `0x${string}`),
   } as const;
 }
 
@@ -115,9 +117,10 @@ export function getNativeToken(): Token {
   const config = getMinimalConfig();
   const currency = config.currency || { name: 'Ether', symbol: 'ETH', decimals: 18 };
   // Ensure decimals is a number
-  const decimals = typeof currency.decimals === 'bigint' 
-    ? Number(currency.decimals) 
-    : Number(currency.decimals) || 18;
+  const decimals =
+    typeof currency.decimals === 'bigint'
+      ? Number(currency.decimals)
+      : Number(currency.decimals) || 18;
   return {
     address: '0x0000000000000000000000000000000000000000' as `0x${string}`,
     name: currency.name,
@@ -132,9 +135,10 @@ export function getWrappedNativeToken(): Token {
   const wrappedNative = config.wrappedNative;
   if (wrappedNative) {
     // Ensure decimals is a number
-    const decimals = typeof wrappedNative.decimals === 'bigint' 
-      ? Number(wrappedNative.decimals) 
-      : Number(wrappedNative.decimals) || 18;
+    const decimals =
+      typeof wrappedNative.decimals === 'bigint'
+        ? Number(wrappedNative.decimals)
+        : Number(wrappedNative.decimals) || 18;
     return {
       address: wrappedNative.address,
       name: wrappedNative.name,
@@ -144,9 +148,10 @@ export function getWrappedNativeToken(): Token {
   }
   // Fallback for WETH-compatible
   const currency = config.currency || { name: 'Ether', symbol: 'ETH', decimals: 18 };
-  const decimals = typeof currency.decimals === 'bigint' 
-    ? Number(currency.decimals) 
-    : Number(currency.decimals) || 18;
+  const decimals =
+    typeof currency.decimals === 'bigint'
+      ? Number(currency.decimals)
+      : Number(currency.decimals) || 18;
   return {
     address: '0x0000000000000000000000000000000000000000' as `0x${string}`,
     name: `Wrapped ${currency.name}`,
@@ -196,7 +201,7 @@ export const ROUTER_ABI = [
   },
   {
     inputs: [],
-    name: 'WETH',  // Standard Uniswap V2 method name
+    name: 'WETH', // Standard Uniswap V2 method name
     outputs: [{ type: 'address' }],
     stateMutability: 'view',
     type: 'function',
@@ -257,7 +262,7 @@ export const ROUTER_ABI = [
       { type: 'address', name: 'to' },
       { type: 'uint256', name: 'deadline' },
     ],
-    name: 'addLiquidityETH',  // Standard Uniswap V2 method name
+    name: 'addLiquidityETH', // Standard Uniswap V2 method name
     outputs: [
       { type: 'uint256', name: 'amountToken' },
       { type: 'uint256', name: 'amountETH' },
@@ -327,7 +332,7 @@ export const ROUTER_ABI = [
       { type: 'address', name: 'to' },
       { type: 'uint256', name: 'deadline' },
     ],
-    name: 'removeLiquidityETH',  // Standard Uniswap V2 method name
+    name: 'removeLiquidityETH', // Standard Uniswap V2 method name
     outputs: [
       { type: 'uint256', name: 'amountToken' },
       { type: 'uint256', name: 'amountETH' },
@@ -395,7 +400,7 @@ export const ROUTER_ABI = [
       { type: 'address', name: 'to' },
       { type: 'uint256', name: 'deadline' },
     ],
-    name: 'swapExactETHForTokens',  // Standard Uniswap V2 method name
+    name: 'swapExactETHForTokens', // Standard Uniswap V2 method name
     outputs: [{ type: 'uint256[]', name: 'amounts' }],
     stateMutability: 'payable',
     type: 'function',
@@ -420,7 +425,7 @@ export const ROUTER_ABI = [
       { type: 'address', name: 'to' },
       { type: 'uint256', name: 'deadline' },
     ],
-    name: 'swapExactTokensForETH',  // Standard Uniswap V2 method name
+    name: 'swapExactTokensForETH', // Standard Uniswap V2 method name
     outputs: [{ type: 'uint256[]', name: 'amounts' }],
     stateMutability: 'nonpayable',
     type: 'function',

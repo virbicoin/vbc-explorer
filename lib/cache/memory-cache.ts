@@ -1,6 +1,6 @@
 /**
  * In-Memory Cache with TTL
- * 
+ *
  * Simple LRU-like cache for API responses and expensive computations.
  * Reduces database queries and blockchain RPC calls.
  */
@@ -12,9 +12,9 @@ interface CacheEntry<T> {
 }
 
 interface CacheOptions {
-  maxSize?: number;      // Max entries (default: 1000)
-  defaultTTL?: number;   // Default TTL in ms (default: 60s)
-  maxMemoryMB?: number;  // Max memory in MB (default: 50)
+  maxSize?: number; // Max entries (default: 1000)
+  defaultTTL?: number; // Default TTL in ms (default: 60s)
+  maxMemoryMB?: number; // Max memory in MB (default: 50)
 }
 
 class MemoryCache {
@@ -37,7 +37,7 @@ class MemoryCache {
    */
   get<T>(key: string): T | undefined {
     const entry = this.cache.get(key) as CacheEntry<T> | undefined;
-    
+
     if (!entry) {
       this.misses++;
       return undefined;
@@ -113,11 +113,7 @@ class MemoryCache {
   /**
    * Get or set pattern - fetch if not cached
    */
-  async getOrSet<T>(
-    key: string,
-    fetcher: () => Promise<T>,
-    ttl?: number
-  ): Promise<T> {
+  async getOrSet<T>(key: string, fetcher: () => Promise<T>, ttl?: number): Promise<T> {
     const cached = this.get<T>(key);
     if (cached !== undefined) {
       return cached;
@@ -141,8 +137,8 @@ class MemoryCache {
     const total = this.hits + this.misses;
     return {
       size: this.cache.size,
-      memoryMB: Math.round(this.currentSize / 1024 / 1024 * 100) / 100,
-      hitRate: total > 0 ? Math.round(this.hits / total * 100) / 100 : 0,
+      memoryMB: Math.round((this.currentSize / 1024 / 1024) * 100) / 100,
+      hitRate: total > 0 ? Math.round((this.hits / total) * 100) / 100 : 0,
       hits: this.hits,
       misses: this.misses,
     };
@@ -181,9 +177,9 @@ class MemoryCache {
 
 // Cache TTL constants (in milliseconds)
 export const CACHE_TTL = {
-  SHORT: 10 * 1000,        // 10 seconds - for rapidly changing data
-  MEDIUM: 60 * 1000,       // 1 minute - for moderately changing data
-  LONG: 5 * 60 * 1000,     // 5 minutes - for stable data
+  SHORT: 10 * 1000, // 10 seconds - for rapidly changing data
+  MEDIUM: 60 * 1000, // 1 minute - for moderately changing data
+  LONG: 5 * 60 * 1000, // 5 minutes - for stable data
   VERY_LONG: 30 * 60 * 1000, // 30 minutes - for rarely changing data
 } as const;
 
@@ -202,10 +198,13 @@ export const dbCache = new MemoryCache({
 
 // Periodic cleanup (every 5 minutes)
 if (typeof setInterval !== 'undefined') {
-  setInterval(() => {
-    apiCache.cleanup();
-    dbCache.cleanup();
-  }, 5 * 60 * 1000);
+  setInterval(
+    () => {
+      apiCache.cleanup();
+      dbCache.cleanup();
+    },
+    5 * 60 * 1000
+  );
 }
 
 export { MemoryCache };

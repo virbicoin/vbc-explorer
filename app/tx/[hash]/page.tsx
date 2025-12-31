@@ -3,8 +3,8 @@
 import { useState, useEffect } from 'react';
 import { use } from 'react';
 import Link from 'next/link';
-import { 
-  ArrowUpIcon, 
+import {
+  ArrowUpIcon,
   ClockIcon,
   CurrencyDollarIcon,
   DocumentTextIcon,
@@ -12,7 +12,7 @@ import {
   CubeIcon,
   BoltIcon,
   ArrowPathIcon,
-  ClipboardDocumentIcon
+  ClipboardDocumentIcon,
 } from '@heroicons/react/24/outline';
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
 import { initializeCurrency, formatGasUnit } from '../../../lib/bigint-utils';
@@ -96,12 +96,12 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
       try {
         // Initialize currency conversion factors
         await initializeCurrency();
-        
+
         // Load config values from API
         await initializeCurrencyConfig();
         const symbol = getCurrencySymbol();
         setCurrencySymbol(symbol);
-        
+
         const response = await fetch('/api/config');
         if (response.ok) {
           const configData = await response.json();
@@ -120,13 +120,13 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
       try {
         setLoading(true);
         setError(null);
-        
+
         const response = await fetch(`/api/tx/${resolvedParams.hash}`);
-        
+
         if (!response.ok) {
           throw new Error('Transaction not found');
         }
-        
+
         const data = await response.json();
         setTransaction(data);
       } catch (err) {
@@ -146,7 +146,7 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
       // Convert from Wei to native currency (1 unit = 10^18 Wei)
       const weiValue = BigInt(value);
       const nativeValue = Number(weiValue) / 1e18;
-      
+
       if (nativeValue === 0) return `0 ${currencySymbol}`;
       if (nativeValue < 0.000001) return `<0.000001 ${currencySymbol}`;
       // Display without rounding decimals
@@ -160,7 +160,7 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
     try {
       const weiValue = BigInt(gasPrice);
       const gasUnitValue = Number(weiValue) / 1e9;
-      
+
       if (gasUnitValue >= 1) {
         return formatGasUnit(gasUnitValue.toString());
       } else {
@@ -195,21 +195,21 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
     if (!miner || !config?.miners) return { name: 'Unknown', isPool: false, address: null };
 
     const minerKey = Object.keys(config.miners).find(
-      key => key.toLowerCase() === miner.toLowerCase()
+      (key) => key.toLowerCase() === miner.toLowerCase()
     );
-    
+
     if (minerKey) {
       return {
         name: config.miners[minerKey],
         isPool: true,
-        address: miner
+        address: miner,
       };
     }
 
     return {
       name: miner,
       isPool: false,
-      address: miner
+      address: miner,
     };
   };
 
@@ -232,12 +232,14 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
       contract_interaction: { bg: 'bg-violet-100', text: 'text-violet-700', icon: '📝' },
       mining_reward: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '⛏️' },
     };
-    
+
     const config = typeConfig[type || 'contract_interaction'] || typeConfig.contract_interaction;
     const displayAction = action || type || 'Transaction';
-    
+
     return (
-      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${config.bg} ${config.text}`}>
+      <span
+        className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${config.bg} ${config.text}`}
+      >
         <span>{config.icon}</span>
         <span>{displayAction}</span>
       </span>
@@ -262,7 +264,7 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
         document.execCommand('copy');
         textArea.remove();
       }
-      
+
       // コピー成功時のフィードバック
       setCopiedItem(text);
       setTimeout(() => {
@@ -276,19 +278,19 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
   if (loading) {
     return (
       <>
-        <div className='bg-gray-800 border-b border-gray-700'>
-          <div className='container mx-auto px-4 py-8'>
-            <div className='flex items-center gap-3 mb-4'>
-              <ArrowUpIcon className='w-8 h-8 text-blue-400' />
-              <h1 className='text-3xl font-bold text-gray-100'>Transaction Details</h1>
+        <div className="bg-gray-800 border-b border-gray-700">
+          <div className="container mx-auto px-4 py-8">
+            <div className="flex items-center gap-3 mb-4">
+              <ArrowUpIcon className="w-8 h-8 text-blue-400" />
+              <h1 className="text-3xl font-bold text-gray-100">Transaction Details</h1>
             </div>
-            <p className='text-gray-400'>Loading transaction information...</p>
+            <p className="text-gray-400">Loading transaction information...</p>
           </div>
         </div>
-        <main className='container mx-auto px-4 py-8'>
-          <div className='bg-gray-800 rounded-lg border border-gray-700 p-8 text-center'>
-            <div className='animate-spin w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full mx-auto mb-4'></div>
-            <p className='text-gray-400'>Loading transaction details...</p>
+        <main className="container mx-auto px-4 py-8">
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
+            <div className="animate-spin w-8 h-8 border-4 border-blue-400 border-t-transparent rounded-full mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading transaction details...</p>
           </div>
         </main>
       </>
@@ -298,26 +300,26 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
   if (error || !transaction) {
     return (
       <>
-        <div className='bg-gray-800 border-b border-gray-700'>
-          <div className='container mx-auto px-4 py-8'>
-            <div className='flex items-center gap-3 mb-4'>
-              <ArrowUpIcon className='w-8 h-8 text-red-400' />
-              <h1 className='text-3xl font-bold text-gray-100'>Transaction Not Found</h1>
+        <div className="bg-gray-800 border-b border-gray-700">
+          <div className="container mx-auto px-4 py-8">
+            <div className="flex items-center gap-3 mb-4">
+              <ArrowUpIcon className="w-8 h-8 text-red-400" />
+              <h1 className="text-3xl font-bold text-gray-100">Transaction Not Found</h1>
             </div>
-            <p className='text-gray-400'>The requested transaction could not be found.</p>
+            <p className="text-gray-400">The requested transaction could not be found.</p>
           </div>
         </div>
-        <main className='container mx-auto px-4 py-8'>
-          <div className='bg-gray-800 rounded-lg border border-gray-700 p-8 text-center'>
-            <p className='text-red-400 mb-4'>{error || 'Transaction not found'}</p>
+        <main className="container mx-auto px-4 py-8">
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-8 text-center">
+            <p className="text-red-400 mb-4">{error || 'Transaction not found'}</p>
             <Link
-              href='/'
-              className='inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors'
+              href="/"
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition-colors"
             >
-              <ArrowUpIcon className='w-4 h-4' />
+              <ArrowUpIcon className="w-4 h-4" />
               Back to Explorer
             </Link>
-      </div>
+          </div>
         </main>
       </>
     );
@@ -342,257 +344,273 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
           }
         })(),
         sub: 'Transaction amount',
-        icon: <CurrencyDollarIcon className='w-5 h-5 text-green-400' />,
-        colorClass: 'text-green-400'
+        icon: <CurrencyDollarIcon className="w-5 h-5 text-green-400" />,
+        colorClass: 'text-green-400',
       },
       {
         title: 'Gas Used',
-        value: transaction.gasUsed !== undefined ? `${transaction.gasUsed.toLocaleString()} ${formatGasUnit('1').split(' ')[1] || 'Gwei'}` : `0 ${formatGasUnit('1').split(' ')[1] || 'Gwei'}`,
+        value:
+          transaction.gasUsed !== undefined
+            ? `${transaction.gasUsed.toLocaleString()} ${formatGasUnit('1').split(' ')[1] || 'Gwei'}`
+            : `0 ${formatGasUnit('1').split(' ')[1] || 'Gwei'}`,
         sub: 'Gas consumed by transaction',
-        icon: <BoltIcon className='w-5 h-5 text-orange-400' />,
-        colorClass: 'text-orange-400'
+        icon: <BoltIcon className="w-5 h-5 text-orange-400" />,
+        colorClass: 'text-orange-400',
       },
       {
         title: 'Status',
         value: transaction.status === 'success' ? 'Success' : 'Failed',
         sub: 'Transaction execution status',
-        icon: <ExclamationTriangleIcon className={`w-5 h-5 ${transaction.status === 'success' ? 'text-green-400' : 'text-red-400'}`} />,
-        colorClass: transaction.status === 'success' ? 'text-green-400' : 'text-red-400'
+        icon: (
+          <ExclamationTriangleIcon
+            className={`w-5 h-5 ${transaction.status === 'success' ? 'text-green-400' : 'text-red-400'}`}
+          />
+        ),
+        colorClass: transaction.status === 'success' ? 'text-green-400' : 'text-red-400',
       },
       {
         title: 'Timestamp',
         value: transaction.block ? getTimeAgo(transaction.block.timestamp) : 'Unknown',
         sub: transaction.block ? formatTimestamp(transaction.block.timestamp) : 'No block info',
-        icon: <ClockIcon className='w-5 h-5 text-yellow-400' />,
-        colorClass: 'text-yellow-400'
-      }
+        icon: <ClockIcon className="w-5 h-5 text-yellow-400" />,
+        colorClass: 'text-yellow-400',
+      },
     ];
 
     // Transaction main info table
     const transactionInfo = [
-      { 
-        label: 'Hash', 
+      {
+        label: 'Hash',
         value: (
-          <div className='bg-gray-700 rounded p-3'>
-            <div className='flex items-center justify-between mb-2'>
-              <span className='text-gray-400 text-sm'>Transaction Hash</span>
-              <div className='flex items-center gap-2'>
+          <div className="bg-gray-700 rounded p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-400 text-sm">Transaction Hash</span>
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => copyToClipboard(transaction.hash)}
-                  className='p-1 text-gray-400 hover:text-gray-200 hover:bg-gray-600 rounded transition-all duration-200'
-                  title='Copy hash to clipboard'
-            >
-                  <ClipboardDocumentIcon className='w-4 h-4' />
+                  className="p-1 text-gray-400 hover:text-gray-200 hover:bg-gray-600 rounded transition-all duration-200"
+                  title="Copy hash to clipboard"
+                >
+                  <ClipboardDocumentIcon className="w-4 h-4" />
                 </button>
                 {copiedItem === transaction.hash && (
-                  <span className='text-green-400 text-sm font-mono'>Copied!</span>
+                  <span className="text-green-400 text-sm font-mono">Copied!</span>
                 )}
-      </div>
+              </div>
             </div>
-            <code className='text-sm text-gray-300 break-all font-mono'>
-              {transaction.hash}
-            </code>
+            <code className="text-sm text-gray-300 break-all font-mono">{transaction.hash}</code>
           </div>
         ),
-        colSpan: 2
+        colSpan: 2,
       },
-      { 
-        label: 'From', 
+      {
+        label: 'From',
         value: (
-          <div className='bg-gray-700 rounded p-3'>
-            <div className='flex items-center justify-between mb-2'>
-              <span className='text-gray-400 text-sm'>From Address</span>
-              <div className='flex items-center gap-2'>
+          <div className="bg-gray-700 rounded p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-400 text-sm">From Address</span>
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => copyToClipboard(transaction.from)}
-                  className='p-1 text-gray-400 hover:text-gray-200 hover:bg-gray-600 rounded transition-all duration-200'
-                  title='Copy address to clipboard'
+                  className="p-1 text-gray-400 hover:text-gray-200 hover:bg-gray-600 rounded transition-all duration-200"
+                  title="Copy address to clipboard"
                 >
-                  <ClipboardDocumentIcon className='w-4 h-4' />
+                  <ClipboardDocumentIcon className="w-4 h-4" />
                 </button>
                 {copiedItem === transaction.from && (
-                  <span className='text-green-400 text-sm font-mono'>Copied!</span>
+                  <span className="text-green-400 text-sm font-mono">Copied!</span>
                 )}
-            </div>
+              </div>
             </div>
             {transaction.from === '0x0000000000000000000000000000000000000000' ? (
-              <span className='text-gray-400 font-mono text-sm'>System</span>
+              <span className="text-gray-400 font-mono text-sm">System</span>
             ) : (
-              <Link href={`/address/${transaction.from}`} className='text-blue-400 hover:underline font-mono break-all text-sm'>
+              <Link
+                href={`/address/${transaction.from}`}
+                className="text-blue-400 hover:underline font-mono break-all text-sm"
+              >
                 {transaction.from}
               </Link>
             )}
           </div>
-        )
+        ),
       },
-      { 
-        label: 'To', 
+      {
+        label: 'To',
         value: transaction.isContractCreation ? (
-          <div className='bg-gray-700 rounded p-3'>
-            <div className='flex items-center justify-between mb-2'>
-              <span className='text-gray-400 text-sm'>To Address</span>
+          <div className="bg-gray-700 rounded p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-400 text-sm">To Address</span>
             </div>
-            <span className='text-yellow-400 font-mono text-sm'>Contract Creation</span>
+            <span className="text-yellow-400 font-mono text-sm">Contract Creation</span>
           </div>
         ) : (
-          <div className='bg-gray-700 rounded p-3'>
-            <div className='flex items-center justify-between mb-2'>
-              <span className='text-gray-400 text-sm'>To Address</span>
-              <div className='flex items-center gap-2'>
+          <div className="bg-gray-700 rounded p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-400 text-sm">To Address</span>
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => copyToClipboard(transaction.to)}
-                  className='p-1 text-gray-400 hover:text-gray-200 hover:bg-gray-600 rounded transition-all duration-200'
-                  title='Copy address to clipboard'
+                  className="p-1 text-gray-400 hover:text-gray-200 hover:bg-gray-600 rounded transition-all duration-200"
+                  title="Copy address to clipboard"
                 >
-                  <ClipboardDocumentIcon className='w-4 h-4' />
+                  <ClipboardDocumentIcon className="w-4 h-4" />
                 </button>
                 {copiedItem === transaction.to && (
-                  <span className='text-green-400 text-sm font-mono'>Copied!</span>
-              )}
+                  <span className="text-green-400 text-sm font-mono">Copied!</span>
+                )}
+              </div>
             </div>
-            </div>
-            <Link href={`/address/${transaction.to}`} className='text-blue-400 hover:underline font-mono break-all text-sm'>
+            <Link
+              href={`/address/${transaction.to}`}
+              className="text-blue-400 hover:underline font-mono break-all text-sm"
+            >
               {transaction.to}
             </Link>
           </div>
-        )
+        ),
       },
-      { 
-        label: 'Value', 
-        value: <span className='text-green-400'>{formatValue(transaction.value)}</span>
+      {
+        label: 'Value',
+        value: <span className="text-green-400">{formatValue(transaction.value)}</span>,
       },
-      { 
-        label: 'Gas Used', 
-        value: <span className='text-orange-400'>{transaction.gasUsed !== undefined ? transaction.gasUsed.toLocaleString() : '0'} {formatGasUnit('1').split(' ')[1] || 'Gwei'}</span>
+      {
+        label: 'Gas Used',
+        value: (
+          <span className="text-orange-400">
+            {transaction.gasUsed !== undefined ? transaction.gasUsed.toLocaleString() : '0'}{' '}
+            {formatGasUnit('1').split(' ')[1] || 'Gwei'}
+          </span>
+        ),
       },
-      { 
-        label: 'Gas Price', 
-        value: transaction.gasPrice ? formatGasPrice(transaction.gasPrice) : '0 wei'
+      {
+        label: 'Gas Price',
+        value: transaction.gasPrice ? formatGasPrice(transaction.gasPrice) : '0 wei',
       },
       { label: 'Gas Limit', value: transaction.gas || '0' },
       { label: 'Nonce', value: transaction.nonce },
       { label: 'Transaction Index', value: transaction.transactionIndex },
-      { 
-        label: 'Status', 
+      {
+        label: 'Status',
         value: (
-          <span className={`font-semibold ${transaction.status === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+          <span
+            className={`font-semibold ${transaction.status === 'success' ? 'text-green-400' : 'text-red-400'}`}
+          >
             {transaction.status === 'success' ? 'Success' : 'Failed'}
           </span>
-        )
+        ),
       },
-      { 
-        label: 'Timestamp', 
+      {
+        label: 'Timestamp',
         value: transaction.block ? (
           <div>
-            <div className='text-gray-200'>{formatTimestamp(transaction.block.timestamp)}</div>
-            <div className='text-sm text-gray-400'>{getTimeAgo(transaction.block.timestamp)}</div>
+            <div className="text-gray-200">{formatTimestamp(transaction.block.timestamp)}</div>
+            <div className="text-sm text-gray-400">{getTimeAgo(transaction.block.timestamp)}</div>
           </div>
-        ) : 'Unknown'
-      }
+        ) : (
+          'Unknown'
+        ),
+      },
     ];
 
     return (
       <>
         {/* Page Header */}
-        <div className='bg-gray-800 border-b border-gray-700'>
-          <div className='container mx-auto px-4 py-8'>
-            <div className='flex items-center gap-3 mb-4'>
-              <ArrowPathIcon className='w-8 h-8 text-blue-400' />
-              <h1 className='text-3xl font-bold text-gray-100'>Transaction Details</h1>
+        <div className="bg-gray-800 border-b border-gray-700">
+          <div className="container mx-auto px-4 py-8">
+            <div className="flex items-center gap-3 mb-4">
+              <ArrowPathIcon className="w-8 h-8 text-blue-400" />
+              <h1 className="text-3xl font-bold text-gray-100">Transaction Details</h1>
               {getTransactionTypeBadge(transaction.txType, transaction.txAction)}
             </div>
-            <p className='text-gray-400'>
+            <p className="text-gray-400">
               Transaction {formatAddress(transaction.hash)} details and information.
             </p>
           </div>
-            </div>
+        </div>
 
-        <main className='container mx-auto px-4 py-8'>
+        <main className="container mx-auto px-4 py-8">
           {/* Summary Cards */}
-          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8'>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {summaryStats.map((stat, idx) => (
-              <div key={idx} className='bg-gray-800 rounded-lg border border-gray-700 p-6'>
-                <div className='flex items-center gap-3 mb-4'>
+              <div key={idx} className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+                <div className="flex items-center gap-3 mb-4">
                   {stat.icon}
-                  <h3 className='text-lg font-semibold text-gray-100'>{stat.title}</h3>
+                  <h3 className="text-lg font-semibold text-gray-100">{stat.title}</h3>
                 </div>
-                <div className={`text-2xl font-bold ${stat.colorClass}`}>
-                  {stat.value}
-                </div>
-                <div className='text-sm text-gray-400 mt-2'>
-                  {stat.sub}
-                </div>
+                <div className={`text-2xl font-bold ${stat.colorClass}`}>{stat.value}</div>
+                <div className="text-sm text-gray-400 mt-2">{stat.sub}</div>
               </div>
             ))}
           </div>
 
           {/* Transaction Information */}
-          <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8'>
-            <h2 className='text-xl font-semibold text-gray-100 mb-4'>Transaction Information</h2>
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-6'>
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8">
+            <h2 className="text-xl font-semibold text-gray-100 mb-4">Transaction Information</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {transactionInfo.map((info, idx) => (
                 <div key={idx} className={info.colSpan === 2 ? 'md:col-span-2' : ''}>
-                  <span className='text-gray-400 text-sm'>{info.label}</span>
-                  <div className='text-lg font-semibold text-gray-200 mt-1'>
-                    {info.value}
-                  </div>
+                  <span className="text-gray-400 text-sm">{info.label}</span>
+                  <div className="text-lg font-semibold text-gray-200 mt-1">{info.value}</div>
                 </div>
               ))}
             </div>
           </div>
 
-        {/* Block Information */}
-        {transaction.block && (
-            <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8'>
-              <div className='flex items-center gap-3 mb-4'>
-                <CubeIcon className='w-6 h-6 text-blue-400' />
-                <h2 className='text-xl font-semibold text-gray-100'>Block Information</h2>
+          {/* Block Information */}
+          {transaction.block && (
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8">
+              <div className="flex items-center gap-3 mb-4">
+                <CubeIcon className="w-6 h-6 text-blue-400" />
+                <h2 className="text-xl font-semibold text-gray-100">Block Information</h2>
               </div>
-              <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6'>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div>
-                  <span className='text-gray-400 text-sm'>Block Number</span>
-                  <div className='text-lg font-semibold text-blue-400'>
-                <Link
-                  href={`/block/${transaction.block.number}`}
-                      className='hover:text-blue-300 transition-colors hover:underline'
-                >
+                  <span className="text-gray-400 text-sm">Block Number</span>
+                  <div className="text-lg font-semibold text-blue-400">
+                    <Link
+                      href={`/block/${transaction.block.number}`}
+                      className="hover:text-blue-300 transition-colors hover:underline"
+                    >
                       {transaction.block.number.toLocaleString()}
-                </Link>
-              </div>
+                    </Link>
+                  </div>
                 </div>
                 <div>
-                  <span className='text-gray-400 text-sm'>Block Hash</span>
-                  <div className='text-sm font-mono text-blue-400 break-all'>
-                <Link
-                  href={`/block/${transaction.block.hash}`}
-                      className='hover:text-blue-300 transition-colors hover:underline'
+                  <span className="text-gray-400 text-sm">Block Hash</span>
+                  <div className="text-sm font-mono text-blue-400 break-all">
+                    <Link
+                      href={`/block/${transaction.block.hash}`}
+                      className="hover:text-blue-300 transition-colors hover:underline"
                       title={transaction.block.hash}
-                >
+                    >
                       {`${transaction.block.hash.slice(0, 10)}...${transaction.block.hash.slice(-8)}`}
-                </Link>
-              </div>
+                    </Link>
+                  </div>
                 </div>
                 <div>
-                  <span className='text-gray-400 text-sm'>Timestamp</span>
-                  <div className='text-sm font-semibold text-gray-200'>
+                  <span className="text-gray-400 text-sm">Timestamp</span>
+                  <div className="text-sm font-semibold text-gray-200">
                     {formatTimestamp(transaction.block.timestamp)}
                   </div>
-                  <div className='text-sm text-gray-400'>
+                  <div className="text-sm text-gray-400">
                     {getTimeAgo(transaction.block.timestamp)}
                   </div>
                 </div>
-                  <div>
-                  <span className='text-gray-400 text-sm'>Miner</span>
-                  <div className='text-sm font-semibold text-green-400'>
+                <div>
+                  <span className="text-gray-400 text-sm">Miner</span>
+                  <div className="text-sm font-semibold text-green-400">
                     {(() => {
                       const minerInfo = getMinerDisplayInfo(transaction.block.miner);
                       return (
                         <Link
                           href={`/address/${minerInfo.address || ''}`}
-                          className='hover:text-green-300 transition-colors hover:underline'
+                          className="hover:text-green-300 transition-colors hover:underline"
                           title={minerInfo.address || ''}
                         >
-                          {minerInfo.isPool ? minerInfo.name : formatAddress(minerInfo.address || '')}
+                          {minerInfo.isPool
+                            ? minerInfo.name
+                            : formatAddress(minerInfo.address || '')}
                         </Link>
                       );
                     })()}
@@ -604,28 +622,28 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
 
           {/* Input Data */}
           {transaction.inputData && transaction.inputData !== '0x' && (
-            <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8'>
-              <div className='flex items-center gap-3 mb-4'>
-                <DocumentTextIcon className='w-6 h-6 text-purple-400' />
-                <h2 className='text-xl font-semibold text-gray-100'>Input Data</h2>
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8">
+              <div className="flex items-center gap-3 mb-4">
+                <DocumentTextIcon className="w-6 h-6 text-purple-400" />
+                <h2 className="text-xl font-semibold text-gray-100">Input Data</h2>
               </div>
-              <div className='bg-gray-700 rounded p-4'>
-                <div className='flex items-center justify-between mb-2'>
-                  <span className='text-gray-400 text-sm'>Transaction Input</span>
-                  <div className='flex items-center gap-2'>
+              <div className="bg-gray-700 rounded p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-gray-400 text-sm">Transaction Input</span>
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={() => copyToClipboard(transaction.inputData!)}
-                      className='p-1 text-gray-400 hover:text-gray-200 hover:bg-gray-600 rounded transition-all duration-200'
-                      title='Copy input data to clipboard'
+                      className="p-1 text-gray-400 hover:text-gray-200 hover:bg-gray-600 rounded transition-all duration-200"
+                      title="Copy input data to clipboard"
                     >
-                      <ClipboardDocumentIcon className='w-4 h-4' />
+                      <ClipboardDocumentIcon className="w-4 h-4" />
                     </button>
                     {copiedItem === transaction.inputData && (
-                      <span className='text-green-400 text-sm font-mono'>Copied!</span>
+                      <span className="text-green-400 text-sm font-mono">Copied!</span>
                     )}
                   </div>
                 </div>
-                <code className='text-sm text-gray-300 break-all font-mono'>
+                <code className="text-sm text-gray-300 break-all font-mono">
                   {transaction.inputData}
                 </code>
               </div>
@@ -634,24 +652,29 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
 
           {/* Logs */}
           {transaction.logs && transaction.logs.length > 0 && (
-            <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8'>
-              <div className='flex items-center gap-3 mb-4'>
-                <DocumentTextIcon className='w-6 h-6 text-blue-400' />
-                <h2 className='text-xl font-semibold text-gray-100'>Logs ({transaction.logs.length})</h2>
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8">
+              <div className="flex items-center gap-3 mb-4">
+                <DocumentTextIcon className="w-6 h-6 text-blue-400" />
+                <h2 className="text-xl font-semibold text-gray-100">
+                  Logs ({transaction.logs.length})
+                </h2>
               </div>
-              <div className='space-y-4'>
+              <div className="space-y-4">
                 {transaction.logs.map((log, index) => (
-                  <div key={index} className='bg-gray-700 rounded p-4'>
-                    <div className='grid grid-cols-1 md:grid-cols-2 gap-4 text-sm'>
+                  <div key={index} className="bg-gray-700 rounded p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className='text-gray-400'>Address:</span>
-                        <div className='font-mono text-blue-400 break-all'>{log.address}</div>
+                        <span className="text-gray-400">Address:</span>
+                        <div className="font-mono text-blue-400 break-all">{log.address}</div>
                       </div>
                       <div>
-                        <span className='text-gray-400'>Topics:</span>
-                        <div className='space-y-1'>
+                        <span className="text-gray-400">Topics:</span>
+                        <div className="space-y-1">
                           {log.topics.map((topic, topicIndex) => (
-                            <div key={topicIndex} className='font-mono text-sm text-gray-300 break-all'>
+                            <div
+                              key={topicIndex}
+                              className="font-mono text-sm text-gray-300 break-all"
+                            >
                               {topic}
                             </div>
                           ))}
@@ -665,67 +688,70 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
           )}
 
           {/* Advanced Transaction Details */}
-          {(transaction.cumulativeGasUsed !== undefined || transaction.effectiveGasPrice || transaction.maxFeePerGas || transaction.maxPriorityFeePerGas || transaction.v || transaction.r || transaction.s) && (
-            <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8'>
-              <div className='flex items-center gap-3 mb-4'>
-                <DocumentTextIcon className='w-6 h-6 text-yellow-400' />
-                <h2 className='text-xl font-semibold text-gray-100'>Advanced Transaction Details</h2>
+          {(transaction.cumulativeGasUsed !== undefined ||
+            transaction.effectiveGasPrice ||
+            transaction.maxFeePerGas ||
+            transaction.maxPriorityFeePerGas ||
+            transaction.v ||
+            transaction.r ||
+            transaction.s) && (
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8">
+              <div className="flex items-center gap-3 mb-4">
+                <DocumentTextIcon className="w-6 h-6 text-yellow-400" />
+                <h2 className="text-xl font-semibold text-gray-100">
+                  Advanced Transaction Details
+                </h2>
               </div>
-              <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {transaction.cumulativeGasUsed !== undefined && (
                   <div>
-                    <span className='text-gray-400 text-sm'>Cumulative Gas Used</span>
-                    <div className='text-lg font-semibold text-orange-400'>
-                      {transaction.cumulativeGasUsed.toLocaleString()} {formatGasUnit('1').split(' ')[1] || 'Gwei'}
+                    <span className="text-gray-400 text-sm">Cumulative Gas Used</span>
+                    <div className="text-lg font-semibold text-orange-400">
+                      {transaction.cumulativeGasUsed.toLocaleString()}{' '}
+                      {formatGasUnit('1').split(' ')[1] || 'Gwei'}
                     </div>
                   </div>
                 )}
                 {transaction.effectiveGasPrice && (
                   <div>
-                    <span className='text-gray-400 text-sm'>Effective Gas Price</span>
-                    <div className='text-lg font-semibold text-blue-400'>
+                    <span className="text-gray-400 text-sm">Effective Gas Price</span>
+                    <div className="text-lg font-semibold text-blue-400">
                       {formatGasPrice(transaction.effectiveGasPrice)}
                     </div>
                   </div>
                 )}
                 {transaction.maxFeePerGas && (
                   <div>
-                    <span className='text-gray-400 text-sm'>Max Fee Per Gas</span>
-                    <div className='text-lg font-semibold text-purple-400'>
+                    <span className="text-gray-400 text-sm">Max Fee Per Gas</span>
+                    <div className="text-lg font-semibold text-purple-400">
                       {formatGasPrice(transaction.maxFeePerGas)}
                     </div>
                   </div>
                 )}
                 {transaction.maxPriorityFeePerGas && (
                   <div>
-                    <span className='text-gray-400 text-sm'>Max Priority Fee Per Gas</span>
-                    <div className='text-lg font-semibold text-green-400'>
+                    <span className="text-gray-400 text-sm">Max Priority Fee Per Gas</span>
+                    <div className="text-lg font-semibold text-green-400">
                       {formatGasPrice(transaction.maxPriorityFeePerGas)}
                     </div>
                   </div>
                 )}
                 {transaction.v && (
                   <div>
-                    <span className='text-gray-400 text-sm'>V (Recovery ID)</span>
-                    <div className='text-sm font-mono text-gray-300 break-all'>
-                      {transaction.v}
-                    </div>
+                    <span className="text-gray-400 text-sm">V (Recovery ID)</span>
+                    <div className="text-sm font-mono text-gray-300 break-all">{transaction.v}</div>
                   </div>
                 )}
                 {transaction.r && (
                   <div>
-                    <span className='text-gray-400 text-sm'>R (Signature)</span>
-                    <div className='text-sm font-mono text-gray-300 break-all'>
-                      {transaction.r}
-                    </div>
+                    <span className="text-gray-400 text-sm">R (Signature)</span>
+                    <div className="text-sm font-mono text-gray-300 break-all">{transaction.r}</div>
                   </div>
                 )}
                 {transaction.s && (
                   <div>
-                    <span className='text-gray-400 text-sm'>S (Signature)</span>
-                    <div className='text-sm font-mono text-gray-300 break-all'>
-                      {transaction.s}
-                    </div>
+                    <span className="text-gray-400 text-sm">S (Signature)</span>
+                    <div className="text-sm font-mono text-gray-300 break-all">{transaction.s}</div>
                   </div>
                 )}
               </div>
@@ -734,24 +760,29 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
 
           {/* Access List */}
           {transaction.accessList && transaction.accessList.length > 0 && (
-            <div className='bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8'>
-              <div className='flex items-center gap-3 mb-4'>
-                <DocumentTextIcon className='w-6 h-6 text-indigo-400' />
-                <h2 className='text-xl font-semibold text-gray-100'>Access List ({transaction.accessList.length})</h2>
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8">
+              <div className="flex items-center gap-3 mb-4">
+                <DocumentTextIcon className="w-6 h-6 text-indigo-400" />
+                <h2 className="text-xl font-semibold text-gray-100">
+                  Access List ({transaction.accessList.length})
+                </h2>
               </div>
-              <div className='space-y-4'>
+              <div className="space-y-4">
                 {transaction.accessList.map((access, index) => (
-                  <div key={index} className='bg-gray-700 rounded p-4'>
-                    <div className='grid grid-cols-1 md:grid-cols-2 gap-4 text-sm'>
+                  <div key={index} className="bg-gray-700 rounded p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className='text-gray-400'>Address:</span>
-                        <div className='font-mono text-blue-400 break-all'>{access.address}</div>
+                        <span className="text-gray-400">Address:</span>
+                        <div className="font-mono text-blue-400 break-all">{access.address}</div>
                       </div>
                       <div>
-                        <span className='text-gray-400'>Storage Keys:</span>
-                        <div className='space-y-1'>
+                        <span className="text-gray-400">Storage Keys:</span>
+                        <div className="space-y-1">
                           {access.storageKeys.map((key, keyIndex) => (
-                            <div key={keyIndex} className='font-mono text-sm text-gray-300 break-all'>
+                            <div
+                              key={keyIndex}
+                              className="font-mono text-sm text-gray-300 break-all"
+                            >
                               {key}
                             </div>
                           ))}
@@ -766,37 +797,37 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
 
           {/* Internal Transactions */}
           {transaction.internalTransactions && transaction.internalTransactions.length > 0 && (
-            <div className='bg-gray-800 rounded-lg border border-gray-700 p-6'>
-              <div className='flex items-center gap-3 mb-4'>
-                <DocumentTextIcon className='w-6 h-6 text-purple-400' />
-                <h2 className='text-xl font-semibold text-gray-100'>Internal Transactions ({transaction.internalTransactions.length})</h2>
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <DocumentTextIcon className="w-6 h-6 text-purple-400" />
+                <h2 className="text-xl font-semibold text-gray-100">
+                  Internal Transactions ({transaction.internalTransactions.length})
+                </h2>
               </div>
-              <div className='space-y-4'>
+              <div className="space-y-4">
                 {transaction.internalTransactions.map((internalTx, index) => (
-                  <div key={index} className='bg-gray-700 rounded p-4'>
-                    <div className='grid grid-cols-1 md:grid-cols-3 gap-4 text-sm'>
+                  <div key={index} className="bg-gray-700 rounded p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                       <div>
-                        <span className='text-gray-400'>From:</span>
-                        <div className='font-mono text-blue-400 break-all'>{internalTx.from}</div>
+                        <span className="text-gray-400">From:</span>
+                        <div className="font-mono text-blue-400 break-all">{internalTx.from}</div>
                       </div>
                       <div>
-                        <span className='text-gray-400'>To:</span>
-                        <div className='font-mono text-blue-400 break-all'>{internalTx.to}</div>
+                        <span className="text-gray-400">To:</span>
+                        <div className="font-mono text-blue-400 break-all">{internalTx.to}</div>
                       </div>
                       <div>
-                        <span className='text-gray-400'>Value:</span>
-                        <div className='text-green-400'>{formatValue(internalTx.value)}</div>
+                        <span className="text-gray-400">Value:</span>
+                        <div className="text-green-400">{formatValue(internalTx.value)}</div>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-        )}
-      </main>
-
-
-    </>
-  );
+          )}
+        </main>
+      </>
+    );
   }
-} 
+}

@@ -17,20 +17,20 @@ const initDB = async () => {
     }
 
     await connectDB();
-    
+
     // Wait for connection to be fully established
     let retries = 0;
     const maxRetries = 30;
     while ((mongoose.connection.readyState as number) !== 1 && retries < maxRetries) {
       console.log('⌛ Waiting for database connection...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       retries++;
     }
-    
+
     if ((mongoose.connection.readyState as number) !== 1) {
       throw new Error('Database connection timeout');
     }
-    
+
     console.log('🔗 Database connection initialized successfully');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);
@@ -43,7 +43,7 @@ const checkMemory = () => {
   const usage = process.memoryUsage();
   const usedMB = Math.round(usage.heapUsed / 1024 / 1024);
   const limitMB = parseInt(process.env.MEMORY_LIMIT_MB || '256'); // Optimized for 2GB instances
-  
+
   if (usedMB > limitMB) {
     console.log(`⚠️ Memory usage: ${usedMB}MB (limit: ${limitMB}MB)`);
     if (global.gc) {
@@ -116,7 +116,7 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
     // Check cache first
     const cacheKey = currency.symbol;
     const cached = priceCache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
       console.log(`📋 Using cached price data for ${currency.symbol}`);
       return cached.data;
     }
@@ -124,7 +124,7 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
     const priceSources: Array<{
       name: string;
       url: string;
-       
+
       parser: (data: any) => { quoteBTC: number; quoteUSD: number } | null;
     }> = [];
 
@@ -133,17 +133,17 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
       priceSources.push({
         name: 'CoinGecko',
         url: `https://api.coingecko.com/api/v3/simple/price?ids=${currency.priceApi.coingecko.id}&vs_currencies=btc,usd`,
-         
+
         parser: (data: any) => {
           const coinId = currency.priceApi?.coingecko?.id;
           if (coinId && data[coinId]) {
             return {
               quoteBTC: data[coinId].btc || 0,
-              quoteUSD: data[coinId].usd || 0
+              quoteUSD: data[coinId].usd || 0,
             };
           }
           return null;
-        }
+        },
       });
     }
 
@@ -152,11 +152,11 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
       priceSources.push({
         name: 'CoinPaprika',
         url: `https://api.coinpaprika.com/v1/tickers/${currency.priceApi.coinpaprika.id}`,
-         
+
         parser: (data: any) => ({
           quoteBTC: data.quotes?.BTC?.price || 0,
-          quoteUSD: data.quotes?.USD?.price || 0
-        })
+          quoteUSD: data.quotes?.USD?.price || 0,
+        }),
       });
     }
 
@@ -167,7 +167,7 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
         symbol: currency.symbol,
         timestamp: Date.now(),
         quoteBTC: 0.000001, // Mock BTC price
-        quoteUSD: 0.05 // Mock USD price
+        quoteUSD: 0.05, // Mock USD price
       };
       priceCache.set(cacheKey, { data: fallbackData, timestamp: Date.now() });
       return fallbackData;
@@ -177,7 +177,7 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
     const fetchPromises = priceSources.map(async (source) => {
       try {
         console.log(`🔄 Fetching price from ${source.name}...`);
-        
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
 
@@ -185,25 +185,27 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
           signal: controller.signal,
           headers: {
             'User-Agent': 'VirBiCoin-Explorer/1.0',
-            'Accept': 'application/json',
-            'Cache-Control': 'no-cache'
-          }
+            Accept: 'application/json',
+            'Cache-Control': 'no-cache',
+          },
         });
-        
+
         clearTimeout(timeoutId);
-        
+
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         const data = await response.json();
         const priceData = source.parser(data);
-        
+
         if (priceData && (priceData.quoteUSD > 0 || priceData.quoteBTC > 0)) {
-          console.log(`✅ Successfully fetched from ${source.name}: $${priceData.quoteUSD} USD, ${priceData.quoteBTC} BTC`);
+          console.log(
+            `✅ Successfully fetched from ${source.name}: $${priceData.quoteUSD} USD, ${priceData.quoteBTC} BTC`
+          );
           return {
             source: source.name,
-            ...priceData
+            ...priceData,
           };
         }
         return null;
@@ -216,19 +218,19 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
 
     // Wait for all promises and take the first successful result
     const results = await Promise.allSettled(fetchPromises);
-    
+
     for (const result of results) {
       if (result.status === 'fulfilled' && result.value) {
         const priceResult = {
           symbol: currency.symbol,
           timestamp: Date.now(),
           quoteBTC: result.value.quoteBTC,
-          quoteUSD: result.value.quoteUSD
+          quoteUSD: result.value.quoteUSD,
         };
-        
+
         // Cache the result
         priceCache.set(cacheKey, { data: priceResult, timestamp: Date.now() });
-        
+
         return priceResult;
       }
     }
@@ -239,14 +241,13 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
       symbol: currency.symbol,
       timestamp: Date.now(),
       quoteBTC: 0.000001, // Mock BTC price
-      quoteUSD: 0.05 // Mock USD price
+      quoteUSD: 0.05, // Mock USD price
     };
-    
-    // Cache fallback data for shorter duration
-    priceCache.set(cacheKey, { data: fallbackData, timestamp: Date.now() - (CACHE_DURATION / 2) });
-    
-    return fallbackData;
 
+    // Cache fallback data for shorter duration
+    priceCache.set(cacheKey, { data: fallbackData, timestamp: Date.now() - CACHE_DURATION / 2 });
+
+    return fallbackData;
   } catch (error) {
     console.error(`❌ Error fetching ${currencyConfig?.symbol || 'crypto'} price:`, error);
     return null;
@@ -261,14 +262,16 @@ const updatePriceData = async (priceData: PriceData): Promise<void> => {
     // Memory check before database operation
     if (!checkMemory()) {
       console.log('💾 Memory limit reached, waiting before database update');
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 
     const market = new Market(priceData);
     await market.save();
 
     if (!config.general?.quiet) {
-      console.log(`💰 Price data updated: ${priceData.symbol} = $${priceData.quoteUSD} (${priceData.quoteBTC} BTC)`);
+      console.log(
+        `💰 Price data updated: ${priceData.symbol} = $${priceData.quoteUSD} (${priceData.quoteBTC} BTC)`
+      );
     }
   } catch (error) {
     console.error('❌ Error updating price data:', error);
@@ -339,19 +342,24 @@ const updatePrice = async (): Promise<void> => {
 const startPriceMonitoring = async (): Promise<void> => {
   const currencySymbol = currencyConfig?.symbol || 'CRYPTO';
   console.log(`💰 Starting ${currencySymbol} price monitoring...`);
-  console.log(`⏰ Update interval: ${(config.priceUpdateInterval || 30 * 60 * 1000) / 1000} seconds`);
+  console.log(
+    `⏰ Update interval: ${(config.priceUpdateInterval || 30 * 60 * 1000) / 1000} seconds`
+  );
 
   // Initial update
   await updatePrice();
 
   // Set up periodic updates with error handling
-  setInterval(async () => {
-    try {
-      await updatePrice();
-    } catch (error) {
-      console.error('❌ Error in periodic price update:', error);
-    }
-  }, config.priceUpdateInterval || 30 * 60 * 1000);
+  setInterval(
+    async () => {
+      try {
+        await updatePrice();
+      } catch (error) {
+        console.error('❌ Error in periodic price update:', error);
+      }
+    },
+    config.priceUpdateInterval || 30 * 60 * 1000
+  );
 };
 
 /**
@@ -369,7 +377,9 @@ const runOnce = async (): Promise<void> => {
 const showCurrentPrice = async (): Promise<void> => {
   const latestPrice = await getLatestPrice();
   if (latestPrice) {
-    console.log(`💰 Current ${latestPrice.symbol} price: $${latestPrice.quoteUSD} (${latestPrice.quoteBTC} BTC)`);
+    console.log(
+      `💰 Current ${latestPrice.symbol} price: $${latestPrice.quoteUSD} (${latestPrice.quoteBTC} BTC)`
+    );
     console.log(`🕐 Last updated: ${new Date(latestPrice.timestamp).toLocaleString()}`);
   } else {
     console.log('❌ No price data available');
