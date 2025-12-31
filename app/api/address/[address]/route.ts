@@ -816,14 +816,28 @@ export async function GET(
     const type = isNFT ? 'nft_transfer' : 'token_transfer';
     const action = isNFT ? 'NFT Transfer' : 'Token Transfer';
 
+    // Normalize timestamp to Unix seconds for consistency
+    let normalizedTimestamp: number;
+    const rawTimestamp = t.timestamp;
+    if (rawTimestamp instanceof Date) {
+      normalizedTimestamp = Math.floor(rawTimestamp.getTime() / 1000);
+    } else if (typeof rawTimestamp === 'string') {
+      normalizedTimestamp = Math.floor(new Date(rawTimestamp).getTime() / 1000);
+    } else if (typeof rawTimestamp === 'number') {
+      // Already Unix timestamp
+      normalizedTimestamp = rawTimestamp;
+    } else {
+      normalizedTimestamp = Math.floor(Date.now() / 1000);
+    }
+
     const formatted: FormattedTransaction = {
       hash: t.transactionHash as string,
       from: t.from as string,
       to: t.to as string,
       value: '0',
       valueRaw: '0',
-      timestamp: t.timestamp as Date,
-      timeAgo: getTimeAgo(t.timestamp as Date),
+      timestamp: normalizedTimestamp,
+      timeAgo: getTimeAgo(normalizedTimestamp),
       blockNumber: t.blockNumber as number,
       type,
       action,
