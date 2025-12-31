@@ -90,6 +90,9 @@ const minimalErc721Abi = [
 import { connectDB, Contract } from '../models/index';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
 
+// LP Token configuration - loaded from environment or fetched from factory
+const LP_TOKEN_TYPES = ['LP', 'SLP', 'SLP-V2', 'UNI-V2', 'CAKE-LP'] as const;
+
 // Initialize database connection
 const initDB = async () => {
   try {
@@ -631,7 +634,7 @@ async function updateErc20TokenWithRealData(tokenAddress: string) {
   }
 }
 
-// 全VRC-20トークンを一括で更新する関数
+// 全VRC-20トークンを一括で更新する関数（LPトークン含む）
 async function updateAllErc20Tokens() {
   try {
     if (mongoose.connection.readyState !== 1) {
@@ -639,8 +642,9 @@ async function updateAllErc20Tokens() {
       await connectDB();
     }
 
-    const tokens = await Token.find({ type: { $in: ['VRC-20', 'ERC20'] } });
-    console.log(`💰 Found ${tokens.length} VRC-20 tokens to update`);
+    // VRC-20 tokens and LP tokens (LP tokens use same transfer format as ERC20)
+    const tokens = await Token.find({ type: { $in: ['VRC-20', 'ERC20', 'LP', 'SLP', 'SLP-V2', 'UNI-V2', 'CAKE-LP'] } });
+    console.log(`💰 Found ${tokens.length} VRC-20/LP tokens to update`);
 
     // Process tokens sequentially to avoid overwhelming the RPC
     for (const token of tokens) {
@@ -1181,6 +1185,128 @@ async function updateAllVrc721Tokens() {
 // Export for use by other scripts
 export { updateTokenWithRealData };
 
+// Uniswap V2 Factory ABI (minimal for getting pairs)
+const FACTORY_ABI = [
+  {
+    inputs: [],
+    name: 'allPairsLength',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    name: 'allPairs',
+    outputs: [{ internalType: 'address', name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+];
+
+// LP Token (Pair) ABI for getting token info
+const LP_TOKEN_ABI = [
+  { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'symbol', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'decimals', outputs: [{ name: '', type: 'uint8' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'totalSupply', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'token0', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'token1', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+];
+
+// Sync all LP tokens from DEX factory
+async function syncLPTokensFromFactory() {
+  console.log('🔄 Syncing LP tokens from DEX factory...');
+
+  try {
+    // Get factory address from config
+    const config = loadConfig();
+    const factoryAddress = config.dex?.factory;
+    
+    if (!factoryAddress) {
+      console.log('⚠️ No DEX factory address configured, skipping LP token sync');
+      return;
+    }
+
+    console.log(`📍 Using factory address: ${factoryAddress}`);
+
+    const factory = new web3.eth.Contract(FACTORY_ABI as any, factoryAddress);
+    const pairsLengthResult = await factory.methods.allPairsLength().call();
+    const pairsLength = Number(pairsLengthResult);
+    console.log(`📊 Found ${pairsLength} LP pairs in factory`);
+
+    // Ensure DB connection
+    if (mongoose.connection.readyState !== 1) {
+      await connectDB();
+    }
+
+    const db = mongoose.connection.db;
+    if (!db) {
+      throw new Error('Database connection not established');
+    }
+
+    // Process each pair
+    for (let i = 0; i < pairsLength; i++) {
+      try {
+        const pairAddressResult = await factory.methods.allPairs(i).call();
+        const pairAddress = String(pairAddressResult);
+        const normalizedAddress = pairAddress.toLowerCase();
+        
+        // Check if LP token already exists
+        const existingToken = await Token.findOne({ address: normalizedAddress });
+        if (existingToken) {
+          // Update type if not set correctly
+          if (!LP_TOKEN_TYPES.includes(existingToken.type as any)) {
+            console.log(`🔧 Updating token type for ${normalizedAddress}`);
+            await Token.updateOne(
+              { address: normalizedAddress },
+              { $set: { type: 'LP' } }
+            );
+          }
+          continue;
+        }
+
+        // Get LP token info
+        const lpToken = new web3.eth.Contract(LP_TOKEN_ABI as any, pairAddress);
+        const [name, symbol, decimals, totalSupplyResult] = await Promise.all([
+          lpToken.methods.name().call(),
+          lpToken.methods.symbol().call(),
+          lpToken.methods.decimals().call(),
+          lpToken.methods.totalSupply().call(),
+        ]);
+
+        // Register new LP token
+        const tokenDoc = {
+          address: normalizedAddress,
+          name: String(name),
+          symbol: String(symbol),
+          decimals: Number(decimals),
+          totalSupply: String(totalSupplyResult),
+          type: 'LP',
+          holders: 0,
+          verified: true,
+        };
+
+        await db.collection('tokens').updateOne(
+          { address: normalizedAddress },
+          { $set: tokenDoc },
+          { upsert: true }
+        );
+
+        console.log(`✅ Registered LP token: ${symbol} (${normalizedAddress})`);
+
+        // Small delay between pairs
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      } catch (error: any) {
+        console.error(`❌ Error processing pair ${i}:`, error.message);
+      }
+    }
+
+    console.log('✅ LP token sync from factory complete');
+  } catch (error) {
+    console.error('❌ Error syncing LP tokens from factory:', error);
+  }
+}
+
 async function main() {
   try {
     // Initialize database connection first
@@ -1201,12 +1327,14 @@ Options:
   --rescan            Reset scan progress and rescan from block 0
   --update-all-vrc721 Update all VRC-721 token metadata
   --update-all-vrc20  Update all VRC-20 token supply data
+  --sync-lp-tokens    Sync LP tokens from DEX factory and update their data
   --update-single <address>  Update a single token by address
   
 Without options, the scanner runs continuously and:
   - Scans for new tokens every 15 minutes
   - Updates VRC-20 token data every 5 minutes
   - Updates VRC-721 token metadata every 15 minutes
+  - Syncs LP tokens from DEX factory every 1 hour
 `);
       await disconnect();
       return;
@@ -1245,14 +1373,25 @@ Without options, the scanner runs continuously and:
       return;
     }
 
+    if (args.includes('--sync-lp-tokens')) {
+      await syncLPTokensFromFactory();
+      await updateAllErc20Tokens(); // LP tokens are updated with ERC20 tokens
+      await disconnect();
+      return;
+    }
+
     // Ensure initial DB connection
     await connectDB();
+
+    // Initial LP token sync from factory (register any new LP tokens)
+    console.log('🔄 Initial LP token sync from factory...');
+    await syncLPTokensFromFactory();
 
     // Default: 通常のトークンスキャン＋VRC-721/VRC-20トークンの定期自動更新
     await scanForTokens(); // Run once on start
 
-    // Initial update of VRC-20 tokens
-    console.log('🔄 Initial VRC-20 token update...');
+    // Initial update of VRC-20 tokens (includes LP tokens)
+    console.log('🔄 Initial VRC-20/LP token update...');
     await updateAllErc20Tokens();
 
     setInterval(async () => {
@@ -1281,6 +1420,16 @@ Without options, the scanner runs continuously and:
         console.error('❌ Error in updateAllErc20Tokens interval:', error);
       }
     }, VRC20_UPDATE_INTERVAL);
+
+    // LP tokens sync from factory (1 hour interval to detect new pairs)
+    const LP_SYNC_INTERVAL = 60 * 60 * 1000; // 1 hour
+    setInterval(async () => {
+      try {
+        await syncLPTokensFromFactory();
+      } catch (error) {
+        console.error('❌ Error in syncLPTokensFromFactory interval:', error);
+      }
+    }, LP_SYNC_INTERVAL);
 
     // Graceful shutdown
     process.on('SIGINT', async () => {
