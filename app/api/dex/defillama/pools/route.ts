@@ -74,10 +74,16 @@ export async function GET() {
 
         for (const pair of pairsArray) {
           // Calculate TVL from reserves
-          const reserve0 =
-            Number(BigInt(pair.reserve0 || '0')) / Math.pow(10, pair.baseToken?.decimals || 18);
-          const reserve1 =
-            Number(BigInt(pair.reserve1 || '0')) / Math.pow(10, pair.quoteToken?.decimals || 18);
+          // pair.reserve0 and pair.reserve1 are strings representing token amounts
+          const baseDecimals = pair.baseToken?.decimals || 18;
+          const quoteDecimals = pair.quoteToken?.decimals || 18;
+
+          // Safely parse reserves as BigInt from string
+          const reserve0Raw = String(pair.reserve0 || '0');
+          const reserve1Raw = String(pair.reserve1 || '0');
+
+          const reserve0 = Number(BigInt(reserve0Raw)) / Math.pow(10, baseDecimals);
+          const reserve1 = Number(BigInt(reserve1Raw)) / Math.pow(10, quoteDecimals);
 
           let tvlUsd = 0;
 
