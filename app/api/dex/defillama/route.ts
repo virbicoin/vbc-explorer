@@ -6,7 +6,7 @@ import { headers } from 'next/headers';
 /**
  * DefiLlama Protocol Info API
  * Returns protocol information in DefiLlama-compatible format
- * 
+ *
  * GET /api/dex/defillama
  */
 
@@ -26,11 +26,11 @@ export async function GET() {
     const config = loadConfig();
     const nativeSymbol = config.currency?.symbol || 'VBC';
     const chainName = config.network?.name || 'Virbicoin';
-    
+
     // Get external price data
     const priceData = await getExternalPriceData();
     const nativePriceUsd = priceData.nativePriceUsd;
-    
+
     // Get pool data from pairs API
     let totalTvlUsd = priceData.totalTvlUsd; // Use DefiLlama TVL if available
     let pools: Array<{
@@ -47,36 +47,40 @@ export async function GET() {
       const pairsResponse = await fetch(`${baseUrl}/api/dex/pairs`, {
         cache: 'no-store',
       });
-      
+
       if (pairsResponse.ok) {
         const pairsData = await pairsResponse.json();
         const pairsArray = pairsData.data?.pairs || pairsData.data || [];
-        
+
         if (Array.isArray(pairsArray) && pairsArray.length > 0) {
           let calculatedTvl = 0;
-          
-          pools = pairsArray.map((pair: {
-            address: string;
-            name: string;
-            liquidity: string;
-            baseToken: { address: string };
-            quoteToken: { address: string };
-          }) => {
-            // Calculate TVL in USD (liquidity is in native token)
-            const liquidityInNative = parseFloat(pair.liquidity || '0') / 1e18;
-            const tvlUsd = liquidityInNative * nativePriceUsd;
-            calculatedTvl += tvlUsd;
 
-            return {
-              pool: pair.address,
-              chain: chainName,
-              project: `${chainName} DEX`,
-              symbol: pair.name,
-              tvlUsd: tvlUsd,
-              underlyingTokens: [pair.baseToken?.address, pair.quoteToken?.address].filter(Boolean),
-            };
-          });
-          
+          pools = pairsArray.map(
+            (pair: {
+              address: string;
+              name: string;
+              liquidity: string;
+              baseToken: { address: string };
+              quoteToken: { address: string };
+            }) => {
+              // Calculate TVL in USD (liquidity is in native token)
+              const liquidityInNative = parseFloat(pair.liquidity || '0') / 1e18;
+              const tvlUsd = liquidityInNative * nativePriceUsd;
+              calculatedTvl += tvlUsd;
+
+              return {
+                pool: pair.address,
+                chain: chainName,
+                project: `${chainName} DEX`,
+                symbol: pair.name,
+                tvlUsd: tvlUsd,
+                underlyingTokens: [pair.baseToken?.address, pair.quoteToken?.address].filter(
+                  Boolean
+                ),
+              };
+            }
+          );
+
           // If no external TVL, use calculated
           if (totalTvlUsd === 0) {
             totalTvlUsd = calculatedTvl;
@@ -121,10 +125,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error('DefiLlama API error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch protocol data' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch protocol data' }, { status: 500 });
   }
 }
 

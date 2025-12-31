@@ -6,9 +6,9 @@ import { headers } from 'next/headers';
 /**
  * DefiLlama Pools API
  * Returns pool information in DefiLlama yields-compatible format
- * 
+ *
  * GET /api/dex/defillama/pools
- * 
+ *
  * This endpoint provides data compatible with DefiLlama's yields dashboard
  * Format: https://yields.llama.fi/pools
  */
@@ -25,21 +25,21 @@ async function getBaseUrl(): Promise<string> {
 }
 
 interface Pool {
-  pool: string;          // unique pool id
-  chain: string;         // chain name
-  project: string;       // project name
-  symbol: string;        // pool symbol (e.g., "VBC-USDT")
-  tvlUsd: number;        // TVL in USD
-  apyBase?: number;      // base APY from trading fees
-  apyReward?: number;    // reward APY from farming
-  apy?: number;          // total APY
+  pool: string; // unique pool id
+  chain: string; // chain name
+  project: string; // project name
+  symbol: string; // pool symbol (e.g., "VBC-USDT")
+  tvlUsd: number; // TVL in USD
+  apyBase?: number; // base APY from trading fees
+  apyReward?: number; // reward APY from farming
+  apy?: number; // total APY
   rewardTokens?: string[]; // reward token addresses
   underlyingTokens: string[]; // underlying token addresses
-  poolMeta?: string;     // optional metadata
-  il7d?: number;         // 7-day impermanent loss
-  apyBase7d?: number;    // 7-day base APY
-  volumeUsd1d?: number;  // 24h volume in USD
-  volumeUsd7d?: number;  // 7-day volume in USD
+  poolMeta?: string; // optional metadata
+  il7d?: number; // 7-day impermanent loss
+  apyBase7d?: number; // 7-day base APY
+  volumeUsd1d?: number; // 24h volume in USD
+  volumeUsd7d?: number; // 7-day volume in USD
   apyBaseInception?: number; // APY since inception
 }
 
@@ -47,27 +47,27 @@ export async function GET() {
   try {
     const config = loadConfig();
     const chainName = config.network?.name || 'Virbicoin';
-    
+
     // Get external price data
     const priceData = await getExternalPriceData();
     const nativePriceUsd = priceData.nativePriceUsd;
-    
+
     // Get reward token info from DEX config
     const rewardTokenAddress = config.dex?.rewardToken?.address;
     const rewardTokens = rewardTokenAddress ? [rewardTokenAddress] : [];
-    
+
     const pools: Pool[] = [];
-    
+
     try {
       const baseUrl = await getBaseUrl();
       const pairsResponse = await fetch(`${baseUrl}/api/dex/pairs`, {
         cache: 'no-store',
       });
-      
+
       if (pairsResponse.ok) {
         const pairsData = await pairsResponse.json();
         const pairsArray = pairsData.data?.pairs || pairsData.data || [];
-        
+
         for (const pair of pairsArray) {
           // Calculate TVL in USD (liquidity is in wei)
           const liquidityInNative = parseFloat(pair.liquidity || '0') / 1e18;
@@ -110,10 +110,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error('DefiLlama pools API error:', error);
-    return NextResponse.json(
-      { status: 'error', data: [] },
-      { status: 500 }
-    );
+    return NextResponse.json({ status: 'error', data: [] }, { status: 500 });
   }
 }
 

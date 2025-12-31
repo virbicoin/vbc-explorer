@@ -548,6 +548,14 @@ const apiCategories: ApiCategory[] = [
         description: 'Price chart data for a trading pair',
         params: ['pair (required)', 'interval (optional)'],
       },
+      {
+        method: 'GET',
+        path: '/api/dex/external-price',
+        description: 'External price data from Exbitron and DefiLlama',
+        response:
+          '{"nativePriceUsd": 0.000217, "totalTvlUsd": 98.41, "source": {"price": "exbitron", "tvl": "defillama"}}',
+        example: 'curl "https://explorer.digitalregion.jp/api/dex/external-price"',
+      },
     ],
   },
   {
@@ -581,6 +589,91 @@ const apiCategories: ApiCategory[] = [
         path: '/api/dex/cmc/trades/[pair]',
         description: 'Recent trades for a trading pair',
         params: ['pair (required)'],
+      },
+    ],
+  },
+  {
+    name: 'DefiLlama APIs',
+    icon: <ChartBarIcon className="w-6 h-6" />,
+    description: 'DefiLlama-compatible endpoints for TVL, pools, and prices.',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/api/dex/defillama',
+        description: 'Protocol info with TVL, pools, and social links',
+        response:
+          '{"id": "virbicoin-dex", "name": "VirBiCoin DEX", "tvl": 98.41, "chainTvls": {...}, "pools": [...]}',
+        example: 'curl "https://explorer.digitalregion.jp/api/dex/defillama"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/defillama/tvl',
+        description: 'Total Value Locked (plain number)',
+        response: '98.41394513608628',
+        example: 'curl "https://explorer.digitalregion.jp/api/dex/defillama/tvl"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/defillama/pools',
+        description: 'Pool data in yields-compatible format',
+        response:
+          '{"status": "ok", "data": [{"pool": "virbicoin-dex-vbcg-vbc", "chain": "Virbicoin", "tvlUsd": 45.21, ...}]}',
+        example: 'curl "https://explorer.digitalregion.jp/api/dex/defillama/pools"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/defillama/prices',
+        description: 'Token prices with confidence scores',
+        response:
+          '{"coins": {"virbicoin:0x...": {"symbol": "VBC", "price": 0.000217, "confidence": 0.9, ...}}}',
+        example: 'curl "https://explorer.digitalregion.jp/api/dex/defillama/prices"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/defillama/historical',
+        description: 'Historical TVL data (30 days)',
+        response:
+          '{"id": "virbicoin-dex", "tvl": 98.41, "chainTvls": {"Virbicoin": {"tvl": [...]}}}',
+        example: 'curl "https://explorer.digitalregion.jp/api/dex/defillama/historical"',
+      },
+    ],
+  },
+  {
+    name: 'GeckoTerminal APIs',
+    icon: <ChartBarIcon className="w-6 h-6" />,
+    description: 'GeckoTerminal-compatible endpoints for DEX metadata and pools.',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/info',
+        description: 'DEX metadata including network, contracts, and features',
+        response:
+          '{"name": "VirBiCoin DEX", "network": {...}, "contracts": {...}, "features": {...}}',
+        example: 'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/info"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/pools',
+        description: 'Pool data in GeckoTerminal format',
+        params: ['include (optional: base_token,quote_token,dex)'],
+        response:
+          '{"data": [{"id": "virbicoin_0x...", "attributes": {"name": "VBCG/VBC", "reserve_in_usd": "90.42", ...}}]}',
+        example: 'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/pools"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/ohlcv/[pool]',
+        description: 'OHLCV candlestick data for a pool',
+        params: [
+          'pool (required) - Pool contract address',
+          'aggregate (optional: minutes, default 1)',
+          'limit (optional: default 100)',
+          'currency (optional: usd or token)',
+        ],
+        response:
+          '{"data": {"id": "virbicoin_0x...", "attributes": {"ohlcv_list": [["timestamp", "open", "high", "low", "close", "volume"], ...]}}}',
+        example:
+          'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/ohlcv/0x...?aggregate=15&limit=50"',
       },
     ],
   },

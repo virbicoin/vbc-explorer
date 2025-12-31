@@ -20,22 +20,22 @@ async function fetchExbitronPrice(nativeSymbol: string): Promise<number> {
     const response = await fetch('https://api.exbitron.com/api/v1/cg/tickers', {
       next: { revalidate: 300 },
     });
-    
+
     if (!response.ok) {
       throw new Error(`Exbitron API error: ${response.status}`);
     }
-    
+
     const tickers = await response.json();
-    
+
     // Find native token / USDT ticker (e.g., VBC-USDT)
     const nativeUsdt = tickers.find(
       (t: { ticker_id: string }) => t.ticker_id === `${nativeSymbol}-USDT`
     );
-    
+
     if (nativeUsdt && nativeUsdt.last_price) {
       return parseFloat(nativeUsdt.last_price);
     }
-    
+
     return 0;
   } catch (error) {
     console.error('Failed to fetch Exbitron price:', error);
@@ -48,11 +48,11 @@ async function fetchDefiLlamaTvl(): Promise<number> {
     const response = await fetch('https://api.llama.fi/tvl/virbicoin-dex', {
       next: { revalidate: 300 },
     });
-    
+
     if (!response.ok) {
       throw new Error(`DefiLlama API error: ${response.status}`);
     }
-    
+
     const tvl = await response.json();
     return typeof tvl === 'number' ? tvl : 0;
   } catch (error) {

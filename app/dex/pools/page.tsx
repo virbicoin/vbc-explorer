@@ -65,7 +65,7 @@ export default function PoolsPage() {
   const [externalTVL, setExternalTVL] = useState<number | null>(null);
   const [nativePrice, setNativePrice] = useState<number | null>(null);
   const [nativeSymbol, setNativeSymbol] = useState<string>('');
-  
+
   // Get wrapped native token address from config
   const { config: dexConfig } = useDexConfig();
   const wrappedNativeAddress = dexConfig?.contracts?.wrappedNative?.toLowerCase() || '';
@@ -88,7 +88,7 @@ export default function PoolsPage() {
           fetch('/api/dex/geckoterminal/pools'),
           fetch('/api/dex/external-price'),
         ]);
-        
+
         const data = await poolsRes.json();
         const externalPrice = await externalPriceRes.json();
 
@@ -168,8 +168,18 @@ export default function PoolsPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-blue-500/20 rounded-xl">
-                <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                <svg
+                  className="w-8 h-8 text-blue-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                  />
                 </svg>
               </div>
               <div>
@@ -178,10 +188,30 @@ export default function PoolsPage() {
               </div>
             </div>
             <nav className="hidden md:flex items-center gap-1 bg-gray-800/50 rounded-xl p-1">
-              <a href="/dex" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Trade</a>
-              <a href="/dex/pools" className="px-4 py-2 text-sm font-medium bg-blue-500/20 text-blue-400 rounded-lg">Pools</a>
-              <a href="/dex/analytics" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Analytics</a>
-              <a href="/dex/docs" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Docs</a>
+              <Link
+                href="/dex"
+                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+              >
+                Trade
+              </Link>
+              <Link
+                href="/dex/pools"
+                className="px-4 py-2 text-sm font-medium bg-blue-500/20 text-blue-400 rounded-lg"
+              >
+                Pools
+              </Link>
+              <Link
+                href="/dex/analytics"
+                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+              >
+                Analytics
+              </Link>
+              <Link
+                href="/dex/docs"
+                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+              >
+                Docs
+              </Link>
             </nav>
           </div>
         </div>

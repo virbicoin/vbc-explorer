@@ -81,13 +81,16 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
   }, []);
 
   // Convert wrapped native address to native token address
-  const normalizeTokenAddress = useCallback((addr: string | null | undefined): string | null => {
-    if (!addr) return null;
-    if (addr.toLowerCase() === wrappedNativeAddress) {
-      return NATIVE_TOKEN_ADDRESS;
-    }
-    return addr;
-  }, [wrappedNativeAddress]);
+  const normalizeTokenAddress = useCallback(
+    (addr: string | null | undefined): string | null => {
+      if (!addr) return null;
+      if (addr.toLowerCase() === wrappedNativeAddress) {
+        return NATIVE_TOKEN_ADDRESS;
+      }
+      return addr;
+    },
+    [wrappedNativeAddress]
+  );
 
   // Normalize URL parameters (convert wrapped native to native)
   const normalizedFrom = normalizeTokenAddress(initialFrom);
@@ -115,8 +118,13 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
   useEffect(() => {
     // Wait for wrappedNativeAddress to be available if we have URL params
     if ((initialFrom || initialTo) && !wrappedNativeAddress) return;
-    
-    if (availableTokens.length > 0 && !urlParamsApplied && tokenConfig && (normalizedFrom || normalizedTo)) {
+
+    if (
+      availableTokens.length > 0 &&
+      !urlParamsApplied &&
+      tokenConfig &&
+      (normalizedFrom || normalizedTo)
+    ) {
       let fromToken: Token | undefined;
       let toToken: Token | undefined;
 
@@ -143,7 +151,17 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
         setUrlParamsApplied(true);
       }
     }
-  }, [availableTokens, tokenConfig, normalizedFrom, normalizedTo, urlParamsApplied, wrappedNativeAddress, initialFrom, initialTo]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    availableTokens,
+    tokenConfig,
+    normalizedFrom,
+    normalizedTo,
+    urlParamsApplied,
+    wrappedNativeAddress,
+    initialFrom,
+    initialTo,
+  ]);
 
   // Update tokenIn only when tokenIn is still the native token and no URL params.
   // (Prevents swap-direction toggle from being overwritten back to native.)
@@ -160,6 +178,7 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
     if (tokenIn.symbol !== nativeToken.symbol || tokenIn.decimals !== nativeToken.decimals) {
       setTokenIn(nativeToken);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availableTokens, tokenIn, tokenIn.symbol, tokenIn.decimals, urlParamsApplied]);
 
   // Track if user has manually set tokenOut
@@ -176,7 +195,7 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
   useEffect(() => {
     // Wait for URL params to be processed first if they exist
     if ((initialFrom || initialTo) && !urlParamsApplied) return;
-    
+
     if (availableTokens.length > 0 && !tokenOutInitialized && tokenConfig && !urlParamsApplied) {
       // Find a non-native/wrapped token for default output
       const nativeSymbol = tokenConfig.native.symbol;
@@ -189,6 +208,7 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
       );
       setTokenOutInitialized(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [availableTokens, tokenOutInitialized, tokenConfig, urlParamsApplied, initialFrom, initialTo]);
 
   // Build swap path - use multi-hop for Token↔Token swaps
@@ -326,6 +346,7 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
     } else {
       setAmountIn('');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tokenIn, tokenOut, amountOut]);
 
   // Clear amounts on success

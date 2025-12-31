@@ -132,7 +132,11 @@ const getLPUnit = (rawAmount: bigint): string => {
   return ethValue >= 0.0001 ? 'LP' : 'nLP';
 };
 
-export function PoolContent({ initialTokenAddress, initialTokenA, initialTokenB }: PoolContentProps) {
+export function PoolContent({
+  initialTokenAddress,
+  initialTokenA,
+  initialTokenB,
+}: PoolContentProps) {
   const { address, isConnected } = useAccount();
   const [initialTokenSet, setInitialTokenSet] = useState(false);
   const [initialPairSet, setInitialPairSet] = useState(false);
@@ -148,13 +152,16 @@ export function PoolContent({ initialTokenAddress, initialTokenA, initialTokenB 
   const wrappedNativeAddress = dexConfig?.contracts?.wrappedNative?.toLowerCase() || '';
 
   // Convert wrapped native address to native token address
-  const normalizeTokenAddress = useCallback((addr: string | null | undefined): string | null => {
-    if (!addr) return null;
-    if (wrappedNativeAddress && addr.toLowerCase() === wrappedNativeAddress) {
-      return NATIVE_TOKEN_ADDRESS;
-    }
-    return addr;
-  }, [wrappedNativeAddress]);
+  const normalizeTokenAddress = useCallback(
+    (addr: string | null | undefined): string | null => {
+      if (!addr) return null;
+      if (wrappedNativeAddress && addr.toLowerCase() === wrappedNativeAddress) {
+        return NATIVE_TOKEN_ADDRESS;
+      }
+      return addr;
+    },
+    [wrappedNativeAddress]
+  );
 
   // Normalize URL parameters (convert wrapped native to native)
   const normalizedTokenA = normalizeTokenAddress(initialTokenA);
@@ -303,7 +310,7 @@ export function PoolContent({ initialTokenAddress, initialTokenA, initialTokenB 
   useEffect(() => {
     // Wait for URL params to be processed first if they exist
     if ((initialTokenA || initialTokenB) && !initialPairSet) return;
-    
+
     if (allTokens.length > 0 && !initialPairSet) {
       // Find native token from available tokens
       const nativeToken = allTokens.find(
@@ -319,17 +326,28 @@ export function PoolContent({ initialTokenAddress, initialTokenA, initialTokenB 
   useEffect(() => {
     // Wait for wrappedNativeAddress to be loaded if we have URL params
     if ((initialTokenA || initialTokenB) && !wrappedNativeAddress) return;
-    
-    if (allTokens.length > 0 && !initialPairSet && tokenConfig && normalizedTokenA && normalizedTokenB) {
+
+    if (
+      allTokens.length > 0 &&
+      !initialPairSet &&
+      tokenConfig &&
+      normalizedTokenA &&
+      normalizedTokenB
+    ) {
       const targetTokenA = allTokens.find(
         (t) => t.address.toLowerCase() === normalizedTokenA.toLowerCase()
       );
       const targetTokenB = allTokens.find(
         (t) => t.address.toLowerCase() === normalizedTokenB.toLowerCase()
       );
-      
+
       if (targetTokenA && targetTokenB) {
-        console.log('Setting initial pair from URL:', targetTokenA.symbol, '/', targetTokenB.symbol);
+        console.log(
+          'Setting initial pair from URL:',
+          targetTokenA.symbol,
+          '/',
+          targetTokenB.symbol
+        );
         setTokenA(targetTokenA);
         setTokenB(targetTokenB);
         setInitialPairSet(true);
@@ -337,7 +355,16 @@ export function PoolContent({ initialTokenAddress, initialTokenA, initialTokenB 
         return;
       }
     }
-  }, [allTokens, tokenConfig, normalizedTokenA, normalizedTokenB, initialPairSet, wrappedNativeAddress, initialTokenA, initialTokenB]);
+  }, [
+    allTokens,
+    tokenConfig,
+    normalizedTokenA,
+    normalizedTokenB,
+    initialPairSet,
+    wrappedNativeAddress,
+    initialTokenA,
+    initialTokenB,
+  ]);
 
   // Set tokenB from URL parameter or default
   useEffect(() => {
@@ -345,7 +372,7 @@ export function PoolContent({ initialTokenAddress, initialTokenA, initialTokenB 
     if ((initialTokenAddress || initialTokenA || initialTokenB) && !wrappedNativeAddress) return;
     // Don't set default if we're waiting for pair to be set
     if (initialTokenA && initialTokenB && !initialPairSet) return;
-    
+
     if (allTokens.length > 0 && !initialTokenSet && tokenConfig) {
       // If normalizedTokenAddress is provided, find and set that token
       if (normalizedTokenAddress) {

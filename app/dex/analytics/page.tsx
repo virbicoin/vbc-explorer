@@ -90,7 +90,7 @@ export default function AnalyticsPage() {
           fetch('/api/dex/geckoterminal/pools'),
           fetch('/api/dex/external-price'),
         ]);
-        
+
         const data = await poolsRes.json();
         const externalPrice = await externalPriceRes.json();
 
@@ -210,15 +210,39 @@ export default function AnalyticsPage() {
             </div>
             <div className="flex items-center gap-4">
               <div className="px-4 py-2 bg-gray-800/50 rounded-xl border border-gray-700/50">
-                <span className="text-gray-400 text-sm">{stats.nativeSymbol || 'Native'} Price </span>
+                <span className="text-gray-400 text-sm">
+                  {stats.nativeSymbol || 'Native'} Price{' '}
+                </span>
                 <span className="text-xs text-green-400">({stats.priceSource})</span>
-                <span className="text-green-400 font-semibold ml-1">${stats.nativePrice.toFixed(6)}</span>
+                <span className="text-green-400 font-semibold ml-1">
+                  ${stats.nativePrice.toFixed(6)}
+                </span>
               </div>
               <nav className="hidden md:flex items-center gap-1 bg-gray-800/50 rounded-xl p-1">
-                <a href="/dex" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Trade</a>
-                <a href="/dex/pools" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Pools</a>
-                <a href="/dex/analytics" className="px-4 py-2 text-sm font-medium bg-purple-500/20 text-purple-400 rounded-lg">Analytics</a>
-                <a href="/dex/docs" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Docs</a>
+                <Link
+                  href="/dex"
+                  className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+                >
+                  Trade
+                </Link>
+                <Link
+                  href="/dex/pools"
+                  className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+                >
+                  Pools
+                </Link>
+                <Link
+                  href="/dex/analytics"
+                  className="px-4 py-2 text-sm font-medium bg-purple-500/20 text-purple-400 rounded-lg"
+                >
+                  Analytics
+                </Link>
+                <Link
+                  href="/dex/docs"
+                  className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+                >
+                  Docs
+                </Link>
               </nav>
             </div>
           </div>
@@ -227,7 +251,6 @@ export default function AnalyticsPage() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-8">
-
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
@@ -378,10 +401,7 @@ export default function AnalyticsPage() {
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
             <h3 className="text-lg font-bold text-white mb-4">Quick Links</h3>
             <div className="space-y-2">
-              <Link
-                href="/dex"
-                className="flex items-center gap-2 text-green-400 hover:underline"
-              >
+              <Link href="/dex" className="flex items-center gap-2 text-green-400 hover:underline">
                 <ArrowsRightLeftIcon className="w-4 h-4" />
                 Trade Now
               </Link>

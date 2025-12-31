@@ -1,8 +1,9 @@
 'use client';
 
-import { Suspense, useState, useEffect, useCallback } from 'react';
+import { Suspense, useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import {
   ArrowsRightLeftIcon,
   CircleStackIcon,
@@ -134,12 +135,6 @@ function DexPageContent() {
   const [showChart, setShowChart] = useState(true);
   const [nativePrice, setNativePrice] = useState<number | null>(null);
   const [nativeSymbol, setNativeSymbol] = useState<string>('');
-  
-  // State to track current swap tokens for chart synchronization
-  const [currentSwapTokens, setCurrentSwapTokens] = useState<{ from: string | null; to: string | null }>({
-    from: fromParam,
-    to: toParam,
-  });
 
   // Fetch native token price from external API
   useEffect(() => {
@@ -160,15 +155,29 @@ function DexPageContent() {
     return () => clearInterval(interval);
   }, []);
 
-  // Update currentSwapTokens when URL params change
-  useEffect(() => {
-    setCurrentSwapTokens({ from: fromParam, to: toParam });
+  // Derive currentSwapTokens directly from URL params using useMemo
+  const currentSwapTokens = useMemo(() => {
+    return { from: fromParam, to: toParam };
   }, [fromParam, toParam]);
 
-  // Callback when swap tokens change
-  const handleSwapTokensChange = useCallback((tokenIn: string | null, tokenOut: string | null) => {
-    setCurrentSwapTokens({ from: tokenIn, to: tokenOut });
-  }, []);
+  // Callback when swap tokens change - updates URL params
+  const handleSwapTokensChange = useCallback(
+    (tokenIn: string | null, tokenOut: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (tokenIn) {
+        params.set('from', tokenIn);
+      } else {
+        params.delete('from');
+      }
+      if (tokenOut) {
+        params.set('to', tokenOut);
+      } else {
+        params.delete('to');
+      }
+      router.replace(`/dex?${params.toString()}`, { scroll: false });
+    },
+    [searchParams, router]
+  );
 
   useEffect(() => {
     if (tabParam && ['swap', 'pool', 'farm'].includes(tabParam) && tabParam !== activeTab) {
@@ -210,7 +219,9 @@ function DexPageContent() {
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-white">VirBiCoin DEX</h1>
-                <p className="text-gray-400 mt-1">Swap tokens, provide liquidity, and earn rewards</p>
+                <p className="text-gray-400 mt-1">
+                  Swap tokens, provide liquidity, and earn rewards
+                </p>
               </div>
             </div>
             <nav className="hidden md:flex items-center gap-2 bg-gray-800/50 rounded-xl p-1">
@@ -220,10 +231,30 @@ function DexPageContent() {
                   <span className="text-green-400 font-semibold">${nativePrice.toFixed(6)}</span>
                 </div>
               )}
-              <a href="/dex" className="px-4 py-2 text-sm font-medium bg-green-500/20 text-green-400 rounded-lg">Trade</a>
-              <a href="/dex/pools" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Pools</a>
-              <a href="/dex/analytics" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Analytics</a>
-              <a href="/dex/docs" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Docs</a>
+              <Link
+                href="/dex"
+                className="px-4 py-2 text-sm font-medium bg-green-500/20 text-green-400 rounded-lg"
+              >
+                Trade
+              </Link>
+              <Link
+                href="/dex/pools"
+                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+              >
+                Pools
+              </Link>
+              <Link
+                href="/dex/analytics"
+                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+              >
+                Analytics
+              </Link>
+              <Link
+                href="/dex/docs"
+                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+              >
+                Docs
+              </Link>
             </nav>
           </div>
         </div>
@@ -260,8 +291,8 @@ function DexPageContent() {
                   {/* Trading Chart */}
                   {showChart && (
                     <div className="order-2 lg:order-1">
-                      <TradingChart 
-                        tokenInAddress={currentSwapTokens.from} 
+                      <TradingChart
+                        tokenInAddress={currentSwapTokens.from}
                         tokenOutAddress={currentSwapTokens.to}
                         nativePriceUsd={nativePrice}
                         nativeSymbol={nativeSymbol}
@@ -273,13 +304,23 @@ function DexPageContent() {
                   <div
                     className={`order-1 lg:order-2 ${!showChart ? 'max-w-lg mx-auto w-full' : ''}`}
                   >
-                    <SwapContent initialFrom={fromParam} initialTo={toParam} onTokensChange={handleSwapTokensChange} />
+                    <SwapContent
+                      initialFrom={fromParam}
+                      initialTo={toParam}
+                      onTokensChange={handleSwapTokensChange}
+                    />
                   </div>
                 </div>
               </div>
             )}
 
-            {activeTab === 'pool' && <PoolContent initialTokenAddress={tokenParam} initialTokenA={tokenAParam} initialTokenB={tokenBParam} />}
+            {activeTab === 'pool' && (
+              <PoolContent
+                initialTokenAddress={tokenParam}
+                initialTokenA={tokenAParam}
+                initialTokenB={tokenBParam}
+              />
+            )}
             {activeTab === 'farm' && <FarmContent />}
           </DexWrapper>
         </Suspense>

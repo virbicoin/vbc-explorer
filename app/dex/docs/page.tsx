@@ -16,8 +16,18 @@ export default function DocsPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-cyan-500/20 rounded-xl">
-                <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                <svg
+                  className="w-8 h-8 text-cyan-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                  />
                 </svg>
               </div>
               <div>
@@ -26,10 +36,30 @@ export default function DocsPage() {
               </div>
             </div>
             <nav className="hidden md:flex items-center gap-1 bg-gray-800/50 rounded-xl p-1">
-              <a href="/dex" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Trade</a>
-              <a href="/dex/pools" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Pools</a>
-              <a href="/dex/analytics" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Analytics</a>
-              <a href="/dex/docs" className="px-4 py-2 text-sm font-medium bg-cyan-500/20 text-cyan-400 rounded-lg">Docs</a>
+              <Link
+                href="/dex"
+                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+              >
+                Trade
+              </Link>
+              <Link
+                href="/dex/pools"
+                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+              >
+                Pools
+              </Link>
+              <Link
+                href="/dex/analytics"
+                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+              >
+                Analytics
+              </Link>
+              <Link
+                href="/dex/docs"
+                className="px-4 py-2 text-sm font-medium bg-cyan-500/20 text-cyan-400 rounded-lg"
+              >
+                Docs
+              </Link>
             </nav>
           </div>
         </div>
@@ -37,7 +67,6 @@ export default function DocsPage() {
 
       {/* Main Content */}
       <div className="max-w-4xl mx-auto px-4 py-8">
-
         {/* Table of Contents */}
         <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50 mb-8">
           <h2 className="text-lg font-bold text-white mb-4">Table of Contents</h2>

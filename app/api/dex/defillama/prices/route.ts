@@ -6,9 +6,9 @@ import { headers } from 'next/headers';
 /**
  * DefiLlama Prices API
  * Returns token prices in DefiLlama-compatible format
- * 
+ *
  * GET /api/dex/defillama/prices
- * 
+ *
  * This endpoint provides data compatible with DefiLlama's coins API
  * Format similar to: GET /prices/current/{coins}
  */
@@ -41,18 +41,18 @@ export async function GET() {
     const config = loadConfig();
     const nativeSymbol = config.currency?.symbol || 'VBC';
     const chainName = config.network?.name || 'Virbicoin';
-    
+
     // Get external price data
     const priceData = await getExternalPriceData();
     const nativePriceUsd = priceData.nativePriceUsd;
-    
+
     const coins: Record<string, TokenPrice> = {};
     const timestamp = Math.floor(Date.now() / 1000);
-    
+
     // Add native token price
     const nativeAddress = '0x0000000000000000000000000000000000000000';
     const wrappedNativeAddress = config.dex?.wrappedNative?.address;
-    
+
     // Native token
     coins[`${chainName.toLowerCase()}:${nativeAddress}`] = {
       decimals: config.currency?.decimals || 18,
@@ -61,7 +61,7 @@ export async function GET() {
       timestamp: timestamp,
       confidence: nativePriceUsd > 0 ? 0.99 : 0,
     };
-    
+
     // Wrapped native token
     if (wrappedNativeAddress) {
       coins[`${chainName.toLowerCase()}:${wrappedNativeAddress.toLowerCase()}`] = {
@@ -79,19 +79,20 @@ export async function GET() {
       const pairsResponse = await fetch(`${baseUrl}/api/dex/pairs`, {
         cache: 'no-store',
       });
-      
+
       if (pairsResponse.ok) {
         const pairsData = await pairsResponse.json();
         const pairsArray = pairsData.data?.pairs || pairsData.data || [];
-        
-        const tokenPrices: Map<string, { price: number; symbol: string; decimals: number }> = new Map();
-        
+
+        const tokenPrices: Map<string, { price: number; symbol: string; decimals: number }> =
+          new Map();
+
         for (const pair of pairsArray) {
           const token0 = pair.baseToken?.address?.toLowerCase();
           const token1 = pair.quoteToken?.address?.toLowerCase();
           const price = parseFloat(pair.price || '0');
           const wrappedAddr = wrappedNativeAddress?.toLowerCase();
-          
+
           // If quote token is native/wrapped native, base token price = native price * price
           if ((token1 === nativeAddress || token1 === wrappedAddr) && price > 0 && token0) {
             const basePriceUsd = nativePriceUsd * price;
@@ -103,7 +104,7 @@ export async function GET() {
               });
             }
           }
-          
+
           // If base token is native/wrapped native, quote token price = native price / price
           if ((token0 === nativeAddress || token0 === wrappedAddr) && price > 0 && token1) {
             const quotePriceUsd = nativePriceUsd / price;
@@ -116,7 +117,7 @@ export async function GET() {
             }
           }
         }
-        
+
         // Add calculated token prices
         for (const [address, data] of tokenPrices) {
           if (address !== nativeAddress && address !== wrappedNativeAddress?.toLowerCase()) {
@@ -146,10 +147,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error('DefiLlama prices API error:', error);
-    return NextResponse.json(
-      { coins: {} },
-      { status: 500 }
-    );
+    return NextResponse.json({ coins: {} }, { status: 500 });
   }
 }
 

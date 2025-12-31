@@ -150,10 +150,10 @@ function findPairByTokens(
   wrappedNativeAddress: string
 ): TradingPair | null {
   if (!tokenInAddress || !tokenOutAddress || pairs.length === 0) return null;
-  
+
   const inAddr = tokenInAddress.toLowerCase();
   const outAddr = tokenOutAddress.toLowerCase();
-  
+
   // Convert native address to wrapped native for matching with pairs
   const normalizeForPair = (addr: string) => {
     if (addr === NATIVE_TOKEN_ADDRESS.toLowerCase() && wrappedNativeAddress) {
@@ -161,16 +161,21 @@ function findPairByTokens(
     }
     return addr;
   };
-  
+
   const normalizedIn = normalizeForPair(inAddr);
   const normalizedOut = normalizeForPair(outAddr);
-  
+
   // Find pair matching these tokens (in either order)
-  return pairs.find(pair => {
-    const base = pair.baseToken.address.toLowerCase();
-    const quote = pair.quoteToken.address.toLowerCase();
-    return (base === normalizedIn && quote === normalizedOut) || (base === normalizedOut && quote === normalizedIn);
-  }) || null;
+  return (
+    pairs.find((pair) => {
+      const base = pair.baseToken.address.toLowerCase();
+      const quote = pair.quoteToken.address.toLowerCase();
+      return (
+        (base === normalizedIn && quote === normalizedOut) ||
+        (base === normalizedOut && quote === normalizedIn)
+      );
+    }) || null
+  );
 }
 
 interface TradingChartProps {
@@ -180,7 +185,12 @@ interface TradingChartProps {
   nativeSymbol?: string;
 }
 
-export function TradingChart({ tokenInAddress, tokenOutAddress, nativePriceUsd, nativeSymbol }: TradingChartProps) {
+export function TradingChart({
+  tokenInAddress,
+  tokenOutAddress,
+  nativePriceUsd,
+  nativeSymbol,
+}: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -225,11 +235,16 @@ export function TradingChart({ tokenInAddress, tokenOutAddress, nativePriceUsd, 
 
         if (data.data.pairs && data.data.pairs.length > 0) {
           setPairs(data.data.pairs);
-          
+
           // Only set default pair on first load if no pair is selected
           if (!selectedPair && !userSelectedPair && !initialPairSet) {
             // Try to find matching pair from URL params first
-            const matchedPair = findPairByTokens(data.data.pairs, tokenInAddress || null, tokenOutAddress || null, wrappedNativeAddress);
+            const matchedPair = findPairByTokens(
+              data.data.pairs,
+              tokenInAddress || null,
+              tokenOutAddress || null,
+              wrappedNativeAddress
+            );
             if (matchedPair) {
               setSelectedPair(matchedPair);
             } else {
@@ -237,7 +252,7 @@ export function TradingChart({ tokenInAddress, tokenOutAddress, nativePriceUsd, 
             }
             setInitialPairSet(true);
           }
-          
+
           // Update price for currently selected pair (without changing selection)
           if (selectedPair) {
             const updatedPair = data.data.pairs.find((p: TradingPair) => p.id === selectedPair.id);
@@ -261,21 +276,41 @@ export function TradingChart({ tokenInAddress, tokenOutAddress, nativePriceUsd, 
     // Refresh pairs every 30 seconds
     const interval = setInterval(fetchPairs, 30000);
     return () => clearInterval(interval);
-  }, [selectedPair, userSelectedPair, initialPairSet, tokenInAddress, tokenOutAddress, pairs.length, wrappedNativeAddress]);
+  }, [
+    selectedPair,
+    userSelectedPair,
+    initialPairSet,
+    tokenInAddress,
+    tokenOutAddress,
+    pairs.length,
+    wrappedNativeAddress,
+  ]);
 
   // Update selected pair when URL params change (from swap interface)
   useEffect(() => {
     if (pairs.length === 0 || !tokenInAddress || !tokenOutAddress) return;
     if (!wrappedNativeAddress) return; // Wait for config
-    
+
     // Only auto-update if user hasn't manually selected a pair
     if (userSelectedPair) return;
-    
-    const matchedPair = findPairByTokens(pairs, tokenInAddress, tokenOutAddress, wrappedNativeAddress);
+
+    const matchedPair = findPairByTokens(
+      pairs,
+      tokenInAddress,
+      tokenOutAddress,
+      wrappedNativeAddress
+    );
     if (matchedPair && matchedPair.id !== selectedPair?.id) {
       setSelectedPair(matchedPair);
     }
-  }, [tokenInAddress, tokenOutAddress, pairs, selectedPair?.id, userSelectedPair, wrappedNativeAddress]);
+  }, [
+    tokenInAddress,
+    tokenOutAddress,
+    pairs,
+    selectedPair?.id,
+    userSelectedPair,
+    wrappedNativeAddress,
+  ]);
 
   // Update price data when pair or timeframe changes
   useEffect(() => {
@@ -521,15 +556,21 @@ export function TradingChart({ tokenInAddress, tokenOutAddress, nativePriceUsd, 
             <div>
               <span className="text-2xl font-bold text-white">{formatPrice(currentPrice)}</span>
               <span className="text-sm text-gray-400 ml-2">{selectedPair.quoteToken.symbol}</span>
-              {nativePriceUsd && nativePriceUsd > 0 && nativeSymbol && (
+              {nativePriceUsd &&
+                nativePriceUsd > 0 &&
+                nativeSymbol &&
                 // Show USD price only when quote token is native token (VBC/WVBC)
-                (selectedPair.quoteToken.symbol === nativeSymbol || 
-                 selectedPair.quoteToken.symbol === `W${nativeSymbol}`) && (
+                (selectedPair.quoteToken.symbol === nativeSymbol ||
+                  selectedPair.quoteToken.symbol === `W${nativeSymbol}`) && (
                   <span className="text-sm text-green-400 ml-2">
-                    (${(currentPrice * nativePriceUsd).toLocaleString(undefined, { minimumFractionDigits: 6, maximumFractionDigits: 6 })})
+                    ($
+                    {(currentPrice * nativePriceUsd).toLocaleString(undefined, {
+                      minimumFractionDigits: 6,
+                      maximumFractionDigits: 6,
+                    })}
+                    )
                   </span>
-                )
-              )}
+                )}
             </div>
             <div className="hidden sm:flex items-center gap-4 text-sm">
               <div>

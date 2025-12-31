@@ -4,7 +4,7 @@ import { getExternalPriceData } from '@/lib/dex/external-price';
 /**
  * DefiLlama TVL API
  * Returns current TVL in DefiLlama-compatible format
- * 
+ *
  * GET /api/dex/defillama/tvl
  */
 
@@ -30,10 +30,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error('DefiLlama TVL API error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch TVL data' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch TVL data' }, { status: 500 });
   }
 }
 
