@@ -264,27 +264,42 @@ export const connectDB = async (): Promise<void> => {
       mongoose.set('strictQuery', false);
 
       if (mongoose.connection.readyState === 0) {
-        // Try to load config.json for database URI
-        let uri = process.env.MONGODB_URI || 'mongodb://localhost/explorerDB';
+        // Priority: environment variable > config.json > default
+        let uri = process.env.MONGODB_URI || '';
 
-        try {
-          const fs = await import('fs');
-          const path = await import('path');
-          const configPath = path.join(process.cwd(), 'config.json');
-          if (fs.existsSync(configPath)) {
-            const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-            if (config.database && config.database.uri) {
-              uri = config.database.uri;
-              console.log('📄 Using MongoDB URI from config.json');
-
-              // Validate URI format
-              if (!uri.includes('mongodb://')) {
-                throw new Error('Invalid MongoDB URI format');
+        // If not in env, try config.json
+        if (!uri) {
+          try {
+            const fs = await import('fs');
+            const path = await import('path');
+            const configPath = path.join(process.cwd(), 'config.json');
+            if (fs.existsSync(configPath)) {
+              const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+              if (config.database && config.database.uri) {
+                uri = config.database.uri;
+                // Resolve ${VAR_NAME} syntax
+                uri = uri.replace(/\$\{([^}]+)\}/g, (_: string, varName: string) => {
+                  return process.env[varName] || '';
+                });
+                console.log('📄 Using MongoDB URI from config.json');
               }
             }
+          } catch (configError) {
+            console.log('📄 Config read error, using environment variable');
           }
-        } catch (configError) {
+        } else {
+          console.log('📄 Using MongoDB URI from environment variable');
+        }
+
+        // Fallback to default
+        if (!uri) {
+          uri = 'mongodb://localhost/explorerDB';
           console.log('📄 Using default MongoDB URI');
+        }
+
+        // Validate URI format
+        if (!uri.startsWith('mongodb://') && !uri.startsWith('mongodb+srv://')) {
+          throw new Error(`Invalid MongoDB URI format: ${uri.substring(0, 20)}...`);
         }
 
         // Optimized database connection options for t4g.small (2GB RAM)

@@ -84,7 +84,7 @@ export async function GET() {
     const usdtAddress = config.dex?.tokens?.usdt?.address?.toLowerCase();
     const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase();
 
-    // Get LP tokens from config
+    // Get LP tokens from config - use both lpTokens and farmPools
     const lpTokens = (config.dex?.lpTokens || {}) as Record<
       string,
       {
@@ -96,13 +96,27 @@ export async function GET() {
       }
     >;
 
+    // Also add farm pools if lpTokens is empty
+    const farmPools = (config.dex?.farmPools || []) as Array<{
+      pid: number;
+      name: string;
+      lpToken: string;
+      token0Symbol: string;
+      token1Symbol: string;
+    }>;
+
+    // Merge LP addresses from both sources
+    const lpAddresses = new Set<string>();
+    Object.values(lpTokens).forEach((lp) => lpAddresses.add(lp.address.toLowerCase()));
+    farmPools.forEach((pool) => lpAddresses.add(pool.lpToken.toLowerCase()));
+
     const pools: PoolData[] = [];
 
     // First pass: Get VBC/USDT price for USD calculations
     let vbcPriceUsd = 0;
-    for (const [, lpToken] of Object.entries(lpTokens)) {
+    for (const lpAddress of lpAddresses) {
       try {
-        const pairContract = new ethers.Contract(lpToken.address, PAIR_ABI, provider);
+        const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
         const token0Address = await pairContract.token0();
         const token1Address = await pairContract.token1();
 
@@ -136,9 +150,9 @@ export async function GET() {
     }
 
     // Second pass: Build pool data
-    for (const [key, lpToken] of Object.entries(lpTokens)) {
+    for (const lpAddress of lpAddresses) {
       try {
-        const pairContract = new ethers.Contract(lpToken.address, PAIR_ABI, provider);
+        const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
 
         const [reserves, token0Address, token1Address] = await Promise.all([
           pairContract.getReserves(),
@@ -201,11 +215,11 @@ export async function GET() {
         const displaySymbol1 = symbol1 === 'WVBC' ? 'VBC' : symbol1;
 
         const poolData: PoolData = {
-          id: `${networkSlug}_${lpToken.address.toLowerCase()}`,
+          id: `${networkSlug}_${lpAddress}`,
           type: 'pool',
           attributes: {
             name: `${displaySymbol0}/${displaySymbol1}`,
-            address: lpToken.address.toLowerCase(),
+            address: lpAddress,
             base_token_price_usd: baseTokenPriceUsd,
             quote_token_price_usd: quoteTokenPriceUsd,
             base_token_price_native_currency: price.toString(),
@@ -251,7 +265,7 @@ export async function GET() {
 
         pools.push(poolData);
       } catch (error) {
-        console.error(`Error processing pair ${key}:`, error);
+        console.error(`Error processing pair ${lpAddress}:`, error);
       }
     }
 
