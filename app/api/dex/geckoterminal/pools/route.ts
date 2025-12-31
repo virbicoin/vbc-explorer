@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 const PAIR_ABI = [
-  'function getReserves() view returns (uint256, uint256, uint32)',
+  'function getReserves() view returns (uint256 reserve0, uint256 reserve1)',
   'function token0() view returns (address)',
   'function token1() view returns (address)',
   'function totalSupply() view returns (uint256)',
