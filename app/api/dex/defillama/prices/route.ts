@@ -68,6 +68,7 @@ export async function GET() {
     // Calculate other token prices from DEX pairs
     try {
       const { db } = await connectToDatabase();
+      if (!db) throw new Error('Database not available');
       const pairsCollection = db.collection('dex_pairs');
       const pairsData = await pairsCollection.find({}).toArray();
       
