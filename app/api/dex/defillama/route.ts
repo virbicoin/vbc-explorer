@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { loadConfig } from '@/lib/config';
 import { getExternalPriceData } from '@/lib/dex/external-price';
-import { connectToDatabase } from '@/lib/db';
+import { headers } from 'next/headers';
 
 /**
  * DefiLlama Protocol Info API
@@ -13,6 +13,14 @@ import { connectToDatabase } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// Helper function to get base URL
+async function getBaseUrl(): Promise<string> {
+  const headersList = await headers();
+  const host = headersList.get('host') || 'localhost:3000';
+  const protocol = headersList.get('x-forwarded-proto') || 'http';
+  return `${protocol}://${host}`;
+}
+
 export async function GET() {
   try {
     const config = loadConfig();
@@ -23,7 +31,7 @@ export async function GET() {
     const priceData = await getExternalPriceData();
     const nativePriceUsd = priceData.nativePriceUsd;
     
-    // Get pool data from database
+    // Get pool data from pairs API
     let totalTvlUsd = priceData.totalTvlUsd; // Use DefiLlama TVL if available
     let pools: Array<{
       pool: string;
@@ -35,37 +43,48 @@ export async function GET() {
     }> = [];
 
     try {
-      const { db } = await connectToDatabase();
-      if (!db) throw new Error('Database not available');
-      const pairsCollection = db.collection('dex_pairs');
-      const pairsData = await pairsCollection.find({}).toArray();
+      const baseUrl = await getBaseUrl();
+      const pairsResponse = await fetch(`${baseUrl}/api/dex/pairs`, {
+        cache: 'no-store',
+      });
       
-      if (pairsData.length > 0) {
-        let calculatedTvl = 0;
+      if (pairsResponse.ok) {
+        const pairsData = await pairsResponse.json();
+        const pairsArray = pairsData.data?.pairs || pairsData.data || [];
         
-        pools = pairsData.map((pair) => {
-          // Calculate TVL in USD (liquidity is in native token)
-          const liquidityInNative = parseFloat(pair.liquidity || '0');
-          const tvlUsd = liquidityInNative * nativePriceUsd;
-          calculatedTvl += tvlUsd;
+        if (Array.isArray(pairsArray) && pairsArray.length > 0) {
+          let calculatedTvl = 0;
+          
+          pools = pairsArray.map((pair: {
+            address: string;
+            name: string;
+            liquidity: string;
+            baseToken: { address: string };
+            quoteToken: { address: string };
+          }) => {
+            // Calculate TVL in USD (liquidity is in native token)
+            const liquidityInNative = parseFloat(pair.liquidity || '0') / 1e18;
+            const tvlUsd = liquidityInNative * nativePriceUsd;
+            calculatedTvl += tvlUsd;
 
-          return {
-            pool: pair.address,
-            chain: chainName,
-            project: `${chainName} DEX`,
-            symbol: pair.name || `${pair.token0Symbol}-${pair.token1Symbol}`,
-            tvlUsd: tvlUsd,
-            underlyingTokens: [pair.token0, pair.token1].filter(Boolean),
-          };
-        });
-        
-        // If no external TVL, use calculated
-        if (totalTvlUsd === 0) {
-          totalTvlUsd = calculatedTvl;
+            return {
+              pool: pair.address,
+              chain: chainName,
+              project: `${chainName} DEX`,
+              symbol: pair.name,
+              tvlUsd: tvlUsd,
+              underlyingTokens: [pair.baseToken?.address, pair.quoteToken?.address].filter(Boolean),
+            };
+          });
+          
+          // If no external TVL, use calculated
+          if (totalTvlUsd === 0) {
+            totalTvlUsd = calculatedTvl;
+          }
         }
       }
-    } catch (dbError) {
-      console.error('Database error:', dbError);
+    } catch (fetchError) {
+      console.error('Fetch error:', fetchError);
       // Continue with external TVL data
     }
 

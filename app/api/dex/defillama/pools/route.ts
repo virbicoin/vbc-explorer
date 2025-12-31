@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { loadConfig } from '@/lib/config';
 import { getExternalPriceData } from '@/lib/dex/external-price';
-import { connectToDatabase } from '@/lib/db';
+import { headers } from 'next/headers';
 
 /**
  * DefiLlama Pools API
@@ -15,6 +15,14 @@ import { connectToDatabase } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+// Helper function to get base URL
+async function getBaseUrl(): Promise<string> {
+  const headersList = await headers();
+  const host = headersList.get('host') || 'localhost:3000';
+  const protocol = headersList.get('x-forwarded-proto') || 'http';
+  return `${protocol}://${host}`;
+}
 
 interface Pool {
   pool: string;          // unique pool id
@@ -51,34 +59,39 @@ export async function GET() {
     const pools: Pool[] = [];
     
     try {
-      const { db } = await connectToDatabase();
-      if (!db) throw new Error('Database not available');
-      const pairsCollection = db.collection('dex_pairs');
-      const pairsData = await pairsCollection.find({}).toArray();
+      const baseUrl = await getBaseUrl();
+      const pairsResponse = await fetch(`${baseUrl}/api/dex/pairs`, {
+        cache: 'no-store',
+      });
       
-      for (const pair of pairsData) {
-        // Calculate TVL in USD
-        const liquidityInNative = parseFloat(pair.liquidity || '0');
-        const tvlUsd = liquidityInNative * nativePriceUsd;
+      if (pairsResponse.ok) {
+        const pairsData = await pairsResponse.json();
+        const pairsArray = pairsData.data?.pairs || pairsData.data || [];
+        
+        for (const pair of pairsArray) {
+          // Calculate TVL in USD (liquidity is in wei)
+          const liquidityInNative = parseFloat(pair.liquidity || '0') / 1e18;
+          const tvlUsd = liquidityInNative * nativePriceUsd;
 
-        pools.push({
-          pool: `${chainName.toLowerCase()}-${pair.address}`.toLowerCase(),
-          chain: chainName,
-          project: `${chainName} DEX`,
-          symbol: pair.name || `${pair.token0Symbol}-${pair.token1Symbol}`,
-          tvlUsd: tvlUsd,
-          apyBase: 0, // Would calculate from fees/volume
-          apyReward: 0, // Would get from farming contracts
-          apy: 0,
-          rewardTokens: rewardTokens,
-          underlyingTokens: [pair.token0, pair.token1].filter(Boolean),
-          poolMeta: undefined,
-          volumeUsd1d: 0,
-          volumeUsd7d: 0,
-        });
+          pools.push({
+            pool: `${chainName.toLowerCase()}-${pair.address}`.toLowerCase(),
+            chain: chainName,
+            project: `${chainName} DEX`,
+            symbol: pair.name,
+            tvlUsd: tvlUsd,
+            apyBase: 0, // Would calculate from fees/volume
+            apyReward: 0, // Would get from farming contracts
+            apy: 0,
+            rewardTokens: rewardTokens,
+            underlyingTokens: [pair.baseToken?.address, pair.quoteToken?.address].filter(Boolean),
+            poolMeta: undefined,
+            volumeUsd1d: 0,
+            volumeUsd7d: 0,
+          });
+        }
       }
-    } catch (dbError) {
-      console.error('Database error:', dbError);
+    } catch (fetchError) {
+      console.error('Fetch error:', fetchError);
     }
 
     // DefiLlama pools response format

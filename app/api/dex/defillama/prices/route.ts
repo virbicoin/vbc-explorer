@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { loadConfig } from '@/lib/config';
 import { getExternalPriceData } from '@/lib/dex/external-price';
-import { connectToDatabase } from '@/lib/db';
+import { headers } from 'next/headers';
 
 /**
  * DefiLlama Prices API
@@ -15,6 +15,14 @@ import { connectToDatabase } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+// Helper function to get base URL
+async function getBaseUrl(): Promise<string> {
+  const headersList = await headers();
+  const host = headersList.get('host') || 'localhost:3000';
+  const protocol = headersList.get('x-forwarded-proto') || 'http';
+  return `${protocol}://${host}`;
+}
 
 interface TokenPrice {
   decimals: number;
@@ -67,79 +75,63 @@ export async function GET() {
 
     // Calculate other token prices from DEX pairs
     try {
-      const { db } = await connectToDatabase();
-      if (!db) throw new Error('Database not available');
-      const pairsCollection = db.collection('dex_pairs');
-      const pairsData = await pairsCollection.find({}).toArray();
+      const baseUrl = await getBaseUrl();
+      const pairsResponse = await fetch(`${baseUrl}/api/dex/pairs`, {
+        cache: 'no-store',
+      });
       
-      const tokenPrices: Map<string, { price: number; symbol: string; decimals: number }> = new Map();
-      
-      for (const pair of pairsData) {
-        const token0 = pair.token0?.toLowerCase();
-        const token1 = pair.token1?.toLowerCase();
-        const price = parseFloat(pair.price || '0');
-        const wrappedAddr = wrappedNativeAddress?.toLowerCase();
+      if (pairsResponse.ok) {
+        const pairsData = await pairsResponse.json();
+        const pairsArray = pairsData.data?.pairs || pairsData.data || [];
         
-        // If one token is native/wrapped native, calculate the other's price
-        if ((token0 === nativeAddress || token0 === wrappedAddr) && price > 0) {
-          // Quote token price = native price / price ratio
-          const quotePriceUsd = nativePriceUsd / price;
-          if (!tokenPrices.has(token1) || tokenPrices.get(token1)!.price === 0) {
-            tokenPrices.set(token1, {
-              price: quotePriceUsd,
-              symbol: pair.token1Symbol || 'UNKNOWN',
-              decimals: pair.token1Decimals || 18,
-            });
+        const tokenPrices: Map<string, { price: number; symbol: string; decimals: number }> = new Map();
+        
+        for (const pair of pairsArray) {
+          const token0 = pair.baseToken?.address?.toLowerCase();
+          const token1 = pair.quoteToken?.address?.toLowerCase();
+          const price = parseFloat(pair.price || '0');
+          const wrappedAddr = wrappedNativeAddress?.toLowerCase();
+          
+          // If quote token is native/wrapped native, base token price = native price * price
+          if ((token1 === nativeAddress || token1 === wrappedAddr) && price > 0 && token0) {
+            const basePriceUsd = nativePriceUsd * price;
+            if (!tokenPrices.has(token0) || tokenPrices.get(token0)!.price === 0) {
+              tokenPrices.set(token0, {
+                price: basePriceUsd,
+                symbol: pair.baseToken?.symbol || 'UNKNOWN',
+                decimals: pair.baseToken?.decimals || 18,
+              });
+            }
+          }
+          
+          // If base token is native/wrapped native, quote token price = native price / price
+          if ((token0 === nativeAddress || token0 === wrappedAddr) && price > 0 && token1) {
+            const quotePriceUsd = nativePriceUsd / price;
+            if (!tokenPrices.has(token1) || tokenPrices.get(token1)!.price === 0) {
+              tokenPrices.set(token1, {
+                price: quotePriceUsd,
+                symbol: pair.quoteToken?.symbol || 'UNKNOWN',
+                decimals: pair.quoteToken?.decimals || 18,
+              });
+            }
           }
         }
         
-        if ((token1 === nativeAddress || token1 === wrappedAddr) && price > 0) {
-          // Base token price = native price * price
-          const basePriceUsd = nativePriceUsd * price;
-          if (!tokenPrices.has(token0) || tokenPrices.get(token0)!.price === 0) {
-            tokenPrices.set(token0, {
-              price: basePriceUsd,
-              symbol: pair.token0Symbol || 'UNKNOWN',
-              decimals: pair.token0Decimals || 18,
-            });
-          }
-        }
-      }
-      
-      // Add calculated token prices
-      for (const [address, data] of tokenPrices) {
-        if (address !== nativeAddress && address !== wrappedNativeAddress?.toLowerCase()) {
-          coins[`${chainName.toLowerCase()}:${address}`] = {
-            decimals: data.decimals,
-            symbol: data.symbol,
-            price: data.price,
-            timestamp: timestamp,
-            confidence: data.price > 0 ? 0.9 : 0,
-          };
-        }
-      }
-      
-      // Also get token prices from tokens collection
-      const tokensCollection = db.collection('tokens');
-      const tokens = await tokensCollection.find({}).toArray();
-      
-      for (const token of tokens) {
-        const addr = token.address?.toLowerCase();
-        if (addr && !coins[`${chainName.toLowerCase()}:${addr}`]) {
-          // If token has USD price in DB, use it
-          if (token.priceUsd && token.priceUsd > 0) {
-            coins[`${chainName.toLowerCase()}:${addr}`] = {
-              decimals: token.decimals || 18,
-              symbol: token.symbol || 'UNKNOWN',
-              price: token.priceUsd,
+        // Add calculated token prices
+        for (const [address, data] of tokenPrices) {
+          if (address !== nativeAddress && address !== wrappedNativeAddress?.toLowerCase()) {
+            coins[`${chainName.toLowerCase()}:${address}`] = {
+              decimals: data.decimals,
+              symbol: data.symbol,
+              price: data.price,
               timestamp: timestamp,
-              confidence: 0.8,
+              confidence: data.price > 0 ? 0.9 : 0,
             };
           }
         }
       }
-    } catch (dbError) {
-      console.error('Database error:', dbError);
+    } catch (fetchError) {
+      console.error('Fetch error:', fetchError);
     }
 
     const response: PricesResponse = { coins };
