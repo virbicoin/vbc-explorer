@@ -87,7 +87,11 @@ type Tab = 'add' | 'remove';
 
 interface PoolContentProps {
   initialTokenAddress?: string | null;
+  initialTokenA?: string | null;
+  initialTokenB?: string | null;
 }
+
+const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 // Minimal MasterChef ABI for userInfo
 const MASTERCHEF_USERINFO_ABI = [
@@ -128,9 +132,10 @@ const getLPUnit = (rawAmount: bigint): string => {
   return ethValue >= 0.0001 ? 'LP' : 'nLP';
 };
 
-export function PoolContent({ initialTokenAddress }: PoolContentProps) {
+export function PoolContent({ initialTokenAddress, initialTokenA, initialTokenB }: PoolContentProps) {
   const { address, isConnected } = useAccount();
   const [initialTokenSet, setInitialTokenSet] = useState(false);
+  const [initialPairSet, setInitialPairSet] = useState(false);
   const [customToken, setCustomToken] = useState<Token | null>(null);
 
   // Fetch tokens from API
@@ -138,6 +143,23 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
 
   // Fetch DEX config for farming pools
   const { config: dexConfig } = useDexConfig();
+
+  // Get wrapped native token address from config
+  const wrappedNativeAddress = dexConfig?.contracts?.wrappedNative?.toLowerCase() || '';
+
+  // Convert wrapped native address to native token address
+  const normalizeTokenAddress = useCallback((addr: string | null | undefined): string | null => {
+    if (!addr) return null;
+    if (wrappedNativeAddress && addr.toLowerCase() === wrappedNativeAddress) {
+      return NATIVE_TOKEN_ADDRESS;
+    }
+    return addr;
+  }, [wrappedNativeAddress]);
+
+  // Normalize URL parameters (convert wrapped native to native)
+  const normalizedTokenA = normalizeTokenAddress(initialTokenA);
+  const normalizedTokenB = normalizeTokenAddress(initialTokenB);
+  const normalizedTokenAddress = normalizeTokenAddress(initialTokenAddress);
 
   // Token configuration from config.json
   const {
@@ -208,26 +230,26 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
 
   // Fetch custom token info from blockchain if not in available tokens
   const shouldFetchCustomToken =
-    initialTokenAddress &&
+    normalizedTokenAddress &&
     availableTokens.length > 0 &&
-    !availableTokens.find((t) => t.address.toLowerCase() === initialTokenAddress.toLowerCase());
+    !availableTokens.find((t) => t.address.toLowerCase() === normalizedTokenAddress.toLowerCase());
 
   const { data: tokenName } = useReadContract({
-    address: initialTokenAddress as Address,
+    address: normalizedTokenAddress as Address,
     abi: ERC20ABI,
     functionName: 'name',
     query: { enabled: !!shouldFetchCustomToken },
   });
 
   const { data: tokenSymbol } = useReadContract({
-    address: initialTokenAddress as Address,
+    address: normalizedTokenAddress as Address,
     abi: ERC20ABI,
     functionName: 'symbol',
     query: { enabled: !!shouldFetchCustomToken },
   });
 
   const { data: tokenDecimals } = useReadContract({
-    address: initialTokenAddress as Address,
+    address: normalizedTokenAddress as Address,
     abi: ERC20ABI,
     functionName: 'decimals',
     query: { enabled: !!shouldFetchCustomToken },
@@ -240,7 +262,7 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
       tokenName &&
       tokenSymbol &&
       tokenDecimals !== undefined &&
-      initialTokenAddress
+      normalizedTokenAddress
     ) {
       console.log('Building custom token from blockchain:', {
         tokenName,
@@ -248,13 +270,13 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
         tokenDecimals,
       });
       setCustomToken({
-        address: initialTokenAddress as Address,
+        address: normalizedTokenAddress as Address,
         name: tokenName as string,
         symbol: tokenSymbol as string,
         decimals: tokenDecimals as number,
       });
     }
-  }, [shouldFetchCustomToken, tokenName, tokenSymbol, tokenDecimals, initialTokenAddress]);
+  }, [shouldFetchCustomToken, tokenName, tokenSymbol, tokenDecimals, normalizedTokenAddress]);
 
   // Combined token list (available + custom)
   const allTokens = useMemo(() => {
@@ -277,8 +299,12 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
   const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
 
   // Update tokenA when available tokens change (config may have loaded)
+  // But wait for URL params to be processed first
   useEffect(() => {
-    if (allTokens.length > 0) {
+    // Wait for URL params to be processed first if they exist
+    if ((initialTokenA || initialTokenB) && !initialPairSet) return;
+    
+    if (allTokens.length > 0 && !initialPairSet) {
       // Find native token from available tokens
       const nativeToken = allTokens.find(
         (t) => t.address === '0x0000000000000000000000000000000000000000'
@@ -287,15 +313,44 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
         setTokenA(nativeToken);
       }
     }
-  }, [allTokens, tokenA.symbol]);
+  }, [allTokens, tokenA.symbol, initialPairSet, initialTokenA, initialTokenB]);
+
+  // Set tokens from tokenA/tokenB URL parameters (for pair-based navigation)
+  useEffect(() => {
+    // Wait for wrappedNativeAddress to be loaded if we have URL params
+    if ((initialTokenA || initialTokenB) && !wrappedNativeAddress) return;
+    
+    if (allTokens.length > 0 && !initialPairSet && tokenConfig && normalizedTokenA && normalizedTokenB) {
+      const targetTokenA = allTokens.find(
+        (t) => t.address.toLowerCase() === normalizedTokenA.toLowerCase()
+      );
+      const targetTokenB = allTokens.find(
+        (t) => t.address.toLowerCase() === normalizedTokenB.toLowerCase()
+      );
+      
+      if (targetTokenA && targetTokenB) {
+        console.log('Setting initial pair from URL:', targetTokenA.symbol, '/', targetTokenB.symbol);
+        setTokenA(targetTokenA);
+        setTokenB(targetTokenB);
+        setInitialPairSet(true);
+        setInitialTokenSet(true);
+        return;
+      }
+    }
+  }, [allTokens, tokenConfig, normalizedTokenA, normalizedTokenB, initialPairSet, wrappedNativeAddress, initialTokenA, initialTokenB]);
 
   // Set tokenB from URL parameter or default
   useEffect(() => {
+    // Wait for wrappedNativeAddress if we have URL params that need it
+    if ((initialTokenAddress || initialTokenA || initialTokenB) && !wrappedNativeAddress) return;
+    // Don't set default if we're waiting for pair to be set
+    if (initialTokenA && initialTokenB && !initialPairSet) return;
+    
     if (allTokens.length > 0 && !initialTokenSet && tokenConfig) {
-      // If initialTokenAddress is provided, find and set that token
-      if (initialTokenAddress) {
+      // If normalizedTokenAddress is provided, find and set that token
+      if (normalizedTokenAddress) {
         const targetToken = allTokens.find(
-          (t) => t.address.toLowerCase() === initialTokenAddress.toLowerCase()
+          (t) => t.address.toLowerCase() === normalizedTokenAddress.toLowerCase()
         );
         if (targetToken) {
           console.log('Setting initial token B from URL:', targetToken.symbol);
@@ -328,6 +383,11 @@ export function PoolContent({ initialTokenAddress }: PoolContentProps) {
     initialTokenSet,
     shouldFetchCustomToken,
     customToken,
+    wrappedNativeAddress,
+    initialTokenA,
+    initialTokenB,
+    initialPairSet,
+    normalizedTokenAddress,
   ]);
 
   // Get pair address and reserves

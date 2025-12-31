@@ -27,7 +27,7 @@ export interface DexConfigData {
   contracts: {
     router: `0x${string}`;
     factory: `0x${string}`;
-    wvbc: `0x${string}`;
+    wrappedNative: `0x${string}`;
     masterChef: `0x${string}`;
   };
   rewardToken: TokenInfo;
@@ -38,7 +38,7 @@ export interface DexConfigData {
   };
   tokens: {
     native: TokenInfo;
-    wvbc: TokenInfo;
+    wrappedNative: TokenInfo;
     reward: TokenInfo;
   };
   lastUpdated: number;

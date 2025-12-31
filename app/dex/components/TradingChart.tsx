@@ -11,6 +11,9 @@ import {
   ISeriesApi,
 } from 'lightweight-charts';
 import Image from 'next/image';
+import { useDexConfig } from '@/hooks/useDexConfig';
+
+const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 interface PriceData {
   time: Time;
@@ -138,13 +141,57 @@ async function fetchChartData(pairAddress: string, timeframe: string): Promise<P
   }
 }
 
-export function TradingChart() {
+// Helper to find matching pair by token addresses
+// Note: pairTokens use wrappedNative, but input tokens might use native address
+function findPairByTokens(
+  pairs: TradingPair[],
+  tokenInAddress: string | null,
+  tokenOutAddress: string | null,
+  wrappedNativeAddress: string
+): TradingPair | null {
+  if (!tokenInAddress || !tokenOutAddress || pairs.length === 0) return null;
+  
+  const inAddr = tokenInAddress.toLowerCase();
+  const outAddr = tokenOutAddress.toLowerCase();
+  
+  // Convert native address to wrapped native for matching with pairs
+  const normalizeForPair = (addr: string) => {
+    if (addr === NATIVE_TOKEN_ADDRESS.toLowerCase() && wrappedNativeAddress) {
+      return wrappedNativeAddress.toLowerCase();
+    }
+    return addr;
+  };
+  
+  const normalizedIn = normalizeForPair(inAddr);
+  const normalizedOut = normalizeForPair(outAddr);
+  
+  // Find pair matching these tokens (in either order)
+  return pairs.find(pair => {
+    const base = pair.baseToken.address.toLowerCase();
+    const quote = pair.quoteToken.address.toLowerCase();
+    return (base === normalizedIn && quote === normalizedOut) || (base === normalizedOut && quote === normalizedIn);
+  }) || null;
+}
+
+interface TradingChartProps {
+  tokenInAddress?: string | null;
+  tokenOutAddress?: string | null;
+  nativePriceUsd?: number | null;
+  nativeSymbol?: string;
+}
+
+export function TradingChart({ tokenInAddress, tokenOutAddress, nativePriceUsd, nativeSymbol }: TradingChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
 
+  // Get wrapped native address from config
+  const { config: dexConfig } = useDexConfig();
+  const wrappedNativeAddress = dexConfig?.contracts?.wrappedNative?.toLowerCase() || '';
+
   const [pairs, setPairs] = useState<TradingPair[]>([]);
   const [selectedPair, setSelectedPair] = useState<TradingPair | null>(null);
+  const [userSelectedPair, setUserSelectedPair] = useState<TradingPair | null>(null); // Track user's manual selection
   const [timeFrame, setTimeFrame] = useState<TimeFrame>('1h');
   const [priceData, setPriceData] = useState<PriceData[]>([]);
   const [currentPrice, setCurrentPrice] = useState<number>(0);
@@ -157,12 +204,16 @@ export function TradingChart() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [chartReady, setChartReady] = useState(false);
+  const [initialPairSet, setInitialPairSet] = useState(false);
 
   // Fetch pairs from API
   useEffect(() => {
     const fetchPairs = async () => {
       try {
-        setLoading(true);
+        // Only show loading on first load
+        if (pairs.length === 0) {
+          setLoading(true);
+        }
         setError(null);
 
         const response = await fetch('/api/dex/pairs');
@@ -174,7 +225,26 @@ export function TradingChart() {
 
         if (data.data.pairs && data.data.pairs.length > 0) {
           setPairs(data.data.pairs);
-          setSelectedPair(data.data.pairs[0]);
+          
+          // Only set default pair on first load if no pair is selected
+          if (!selectedPair && !userSelectedPair && !initialPairSet) {
+            // Try to find matching pair from URL params first
+            const matchedPair = findPairByTokens(data.data.pairs, tokenInAddress || null, tokenOutAddress || null, wrappedNativeAddress);
+            if (matchedPair) {
+              setSelectedPair(matchedPair);
+            } else {
+              setSelectedPair(data.data.pairs[0]);
+            }
+            setInitialPairSet(true);
+          }
+          
+          // Update price for currently selected pair (without changing selection)
+          if (selectedPair) {
+            const updatedPair = data.data.pairs.find((p: TradingPair) => p.id === selectedPair.id);
+            if (updatedPair) {
+              setCurrentPrice(updatedPair.price);
+            }
+          }
         } else {
           setError('No trading pairs available');
         }
@@ -191,7 +261,21 @@ export function TradingChart() {
     // Refresh pairs every 30 seconds
     const interval = setInterval(fetchPairs, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedPair, userSelectedPair, initialPairSet, tokenInAddress, tokenOutAddress, pairs.length, wrappedNativeAddress]);
+
+  // Update selected pair when URL params change (from swap interface)
+  useEffect(() => {
+    if (pairs.length === 0 || !tokenInAddress || !tokenOutAddress) return;
+    if (!wrappedNativeAddress) return; // Wait for config
+    
+    // Only auto-update if user hasn't manually selected a pair
+    if (userSelectedPair) return;
+    
+    const matchedPair = findPairByTokens(pairs, tokenInAddress, tokenOutAddress, wrappedNativeAddress);
+    if (matchedPair && matchedPair.id !== selectedPair?.id) {
+      setSelectedPair(matchedPair);
+    }
+  }, [tokenInAddress, tokenOutAddress, pairs, selectedPair?.id, userSelectedPair, wrappedNativeAddress]);
 
   // Update price data when pair or timeframe changes
   useEffect(() => {
@@ -348,9 +432,10 @@ export function TradingChart() {
     }
   }, [priceData, chartReady]);
 
-  // Handle pair selection
+  // Handle pair selection (user manual selection)
   const handlePairSelect = (pair: TradingPair) => {
     setSelectedPair(pair);
+    setUserSelectedPair(pair); // Mark as user-selected to prevent auto-update
     setShowPairSelector(false);
   };
 
@@ -436,6 +521,15 @@ export function TradingChart() {
             <div>
               <span className="text-2xl font-bold text-white">{formatPrice(currentPrice)}</span>
               <span className="text-sm text-gray-400 ml-2">{selectedPair.quoteToken.symbol}</span>
+              {nativePriceUsd && nativePriceUsd > 0 && nativeSymbol && (
+                // Show USD price only when quote token is native token (VBC/WVBC)
+                (selectedPair.quoteToken.symbol === nativeSymbol || 
+                 selectedPair.quoteToken.symbol === `W${nativeSymbol}`) && (
+                  <span className="text-sm text-green-400 ml-2">
+                    (${(currentPrice * nativePriceUsd).toLocaleString(undefined, { minimumFractionDigits: 6, maximumFractionDigits: 6 })})
+                  </span>
+                )
+              )}
             </div>
             <div className="hidden sm:flex items-center gap-4 text-sm">
               <div>

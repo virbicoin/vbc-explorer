@@ -27,7 +27,7 @@ function FarmTokenIcon({
   if (iconPath) {
     return (
       <div
-        className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center border-2 border-gray-800 overflow-hidden`}
+        className="rounded-full bg-gray-900 flex items-center justify-center border-2 border-gray-700 overflow-hidden"
         style={{ width: size, height: size }}
       >
         <Image
@@ -43,7 +43,7 @@ function FarmTokenIcon({
 
   return (
     <div
-      className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center border-2 border-gray-800`}
+      className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center border-2 border-gray-700`}
       style={{ width: size, height: size }}
     >
       <span className="font-bold text-white" style={{ fontSize: size * 0.4 }}>

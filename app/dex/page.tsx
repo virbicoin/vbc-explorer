@@ -1,8 +1,13 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
+import {
+  ArrowsRightLeftIcon,
+  CircleStackIcon,
+  CurrencyDollarIcon,
+} from '@heroicons/react/24/outline';
 
 // Loading component
 function LoadingSkeleton() {
@@ -78,44 +83,17 @@ function TabNavigation({
     {
       id: 'swap',
       label: 'Swap',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
-          />
-        </svg>
-      ),
+      icon: <ArrowsRightLeftIcon className="w-5 h-5" />,
     },
     {
       id: 'pool',
       label: 'Pool',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-      ),
+      icon: <CircleStackIcon className="w-5 h-5" />,
     },
     {
       id: 'farm',
       label: 'Farm',
-      icon: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-      ),
+      icon: <CurrencyDollarIcon className="w-5 h-5" />,
     },
   ];
 
@@ -128,7 +106,7 @@ function TabNavigation({
             onClick={() => onTabChange(tab.id)}
             className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-semibold transition-all ${
               activeTab === tab.id
-                ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg'
+                ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-lg'
                 : 'text-gray-400 hover:text-white hover:bg-gray-700/50'
             }`}
           >
@@ -146,10 +124,51 @@ function DexPageContent() {
   const router = useRouter();
   const tabParam = searchParams.get('tab') as Tab | null;
   const tokenParam = searchParams.get('token');
+  const tokenAParam = searchParams.get('tokenA');
+  const tokenBParam = searchParams.get('tokenB');
+  const fromParam = searchParams.get('from');
+  const toParam = searchParams.get('to');
   const [activeTab, setActiveTab] = useState<Tab>(() =>
     tabParam && ['swap', 'pool', 'farm'].includes(tabParam) ? tabParam : 'swap'
   );
   const [showChart, setShowChart] = useState(true);
+  const [nativePrice, setNativePrice] = useState<number | null>(null);
+  const [nativeSymbol, setNativeSymbol] = useState<string>('');
+  
+  // State to track current swap tokens for chart synchronization
+  const [currentSwapTokens, setCurrentSwapTokens] = useState<{ from: string | null; to: string | null }>({
+    from: fromParam,
+    to: toParam,
+  });
+
+  // Fetch native token price from external API
+  useEffect(() => {
+    async function fetchPrice() {
+      try {
+        const res = await fetch('/api/dex/external-price');
+        const data = await res.json();
+        if (data.success && data.data) {
+          setNativePrice(data.data.nativePriceUsd);
+          setNativeSymbol(data.data.nativeSymbol);
+        }
+      } catch (error) {
+        console.error('Failed to fetch native price:', error);
+      }
+    }
+    fetchPrice();
+    const interval = setInterval(fetchPrice, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, []);
+
+  // Update currentSwapTokens when URL params change
+  useEffect(() => {
+    setCurrentSwapTokens({ from: fromParam, to: toParam });
+  }, [fromParam, toParam]);
+
+  // Callback when swap tokens change
+  const handleSwapTokensChange = useCallback((tokenIn: string | null, tokenOut: string | null) => {
+    setCurrentSwapTokens({ from: tokenIn, to: tokenOut });
+  }, []);
 
   useEffect(() => {
     if (tabParam && ['swap', 'pool', 'farm'].includes(tabParam) && tabParam !== activeTab) {
@@ -163,55 +182,109 @@ function DexPageContent() {
   };
 
   return (
-    <>
-      <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
-
-      <Suspense fallback={<LoadingSkeleton />}>
-        <DexWrapper>
-          {/* Chart + Swap Layout */}
-          {activeTab === 'swap' && (
-            <div className="max-w-7xl mx-auto">
-              {/* Chart Toggle Button */}
-              <div className="flex justify-end mb-4">
-                <button
-                  onClick={() => setShowChart(!showChart)}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700/50 rounded-lg transition-colors"
+    <div className="min-h-screen bg-gray-900">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-green-900/50 to-emerald-900/50 border-b border-gray-800">
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-green-500/20 rounded-xl">
+                <svg
+                  className="w-8 h-8 text-green-400"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
-                    />
-                  </svg>
-                  {showChart ? 'Hide Chart' : 'Show Chart'}
-                </button>
+                  <path d="M16 3h5v5" />
+                  <path d="M8 3H3v5" />
+                  <path d="M21 3l-7 7" />
+                  <path d="M3 3l7 7" />
+                  <path d="M16 21h5v-5" />
+                  <path d="M8 21H3v-5" />
+                  <path d="M21 21l-7-7" />
+                  <path d="M3 21l7-7" />
+                </svg>
               </div>
-
-              <div className={`grid gap-6 ${showChart ? 'lg:grid-cols-[1fr,400px]' : ''}`}>
-                {/* Trading Chart */}
-                {showChart && (
-                  <div className="order-2 lg:order-1">
-                    <TradingChart />
-                  </div>
-                )}
-
-                {/* Swap Interface */}
-                <div
-                  className={`order-1 lg:order-2 ${!showChart ? 'max-w-lg mx-auto w-full' : ''}`}
-                >
-                  <SwapContent />
-                </div>
+              <div>
+                <h1 className="text-3xl font-bold text-white">VirBiCoin DEX</h1>
+                <p className="text-gray-400 mt-1">Swap tokens, provide liquidity, and earn rewards</p>
               </div>
             </div>
-          )}
+            <nav className="hidden md:flex items-center gap-2 bg-gray-800/50 rounded-xl p-1">
+              {nativePrice !== null && nativeSymbol && (
+                <div className="px-3 py-2 text-sm">
+                  <span className="text-gray-400">{nativeSymbol} </span>
+                  <span className="text-green-400 font-semibold">${nativePrice.toFixed(6)}</span>
+                </div>
+              )}
+              <a href="/dex" className="px-4 py-2 text-sm font-medium bg-green-500/20 text-green-400 rounded-lg">Trade</a>
+              <a href="/dex/pools" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Pools</a>
+              <a href="/dex/analytics" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Analytics</a>
+              <a href="/dex/docs" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Docs</a>
+            </nav>
+          </div>
+        </div>
+      </div>
 
-          {activeTab === 'pool' && <PoolContent initialTokenAddress={tokenParam} />}
-          {activeTab === 'farm' && <FarmContent />}
-        </DexWrapper>
-      </Suspense>
-    </>
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
+
+        <Suspense fallback={<LoadingSkeleton />}>
+          <DexWrapper>
+            {/* Chart + Swap Layout */}
+            {activeTab === 'swap' && (
+              <div className="max-w-7xl mx-auto">
+                {/* Chart Toggle Button */}
+                <div className="flex justify-end mb-4">
+                  <button
+                    onClick={() => setShowChart(!showChart)}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-700/50 rounded-lg transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
+                      />
+                    </svg>
+                    {showChart ? 'Hide Chart' : 'Show Chart'}
+                  </button>
+                </div>
+
+                <div className={`grid gap-6 ${showChart ? 'lg:grid-cols-[1fr,400px]' : ''}`}>
+                  {/* Trading Chart */}
+                  {showChart && (
+                    <div className="order-2 lg:order-1">
+                      <TradingChart 
+                        tokenInAddress={currentSwapTokens.from} 
+                        tokenOutAddress={currentSwapTokens.to}
+                        nativePriceUsd={nativePrice}
+                        nativeSymbol={nativeSymbol}
+                      />
+                    </div>
+                  )}
+
+                  {/* Swap Interface */}
+                  <div
+                    className={`order-1 lg:order-2 ${!showChart ? 'max-w-lg mx-auto w-full' : ''}`}
+                  >
+                    <SwapContent initialFrom={fromParam} initialTo={toParam} onTokensChange={handleSwapTokensChange} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'pool' && <PoolContent initialTokenAddress={tokenParam} initialTokenA={tokenAParam} initialTokenB={tokenBParam} />}
+            {activeTab === 'farm' && <FarmContent />}
+          </DexWrapper>
+        </Suspense>
+      </div>
+    </div>
   );
 }
 

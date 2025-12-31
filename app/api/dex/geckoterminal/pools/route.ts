@@ -112,40 +112,56 @@ export async function GET() {
 
     const pools: PoolData[] = [];
 
-    // First pass: Get VBC/USDT price for USD calculations
+    // Fetch VBC price from Exbitron exchange
     let vbcPriceUsd = 0;
-    for (const lpAddress of lpAddresses) {
-      try {
-        const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
-        const token0Address = await pairContract.token0();
-        const token1Address = await pairContract.token1();
-
-        if (
-          (token0Address.toLowerCase() === usdtAddress &&
-            token1Address.toLowerCase() === wrappedNativeAddress) ||
-          (token1Address.toLowerCase() === usdtAddress &&
-            token0Address.toLowerCase() === wrappedNativeAddress)
-        ) {
-          const reserves = await pairContract.getReserves();
-          const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
-          const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
-          const [decimals0, decimals1] = await Promise.all([
-            token0Contract.decimals(),
-            token1Contract.decimals(),
-          ]);
-
-          const reserve0 = Number(ethers.formatUnits(reserves[0], decimals0));
-          const reserve1 = Number(ethers.formatUnits(reserves[1], decimals1));
-
-          if (token0Address.toLowerCase() === usdtAddress) {
-            vbcPriceUsd = reserve0 / reserve1;
-          } else {
-            vbcPriceUsd = reserve1 / reserve0;
-          }
-          break;
+    try {
+      const exbitronRes = await fetch('https://api.exbitron.com/api/v1/cg/tickers');
+      if (exbitronRes.ok) {
+        const tickers = await exbitronRes.json();
+        const vbcUsdt = tickers.find((t: { ticker_id: string }) => t.ticker_id === 'VBC-USDT');
+        if (vbcUsdt && vbcUsdt.last_price) {
+          vbcPriceUsd = parseFloat(vbcUsdt.last_price);
         }
-      } catch {
-        // Skip if error
+      }
+    } catch (error) {
+      console.error('Failed to fetch Exbitron price, falling back to DEX price:', error);
+    }
+
+    // Fallback: Get VBC/USDT price from DEX if Exbitron fails
+    if (vbcPriceUsd === 0) {
+      for (const lpAddress of lpAddresses) {
+        try {
+          const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
+          const token0Address = await pairContract.token0();
+          const token1Address = await pairContract.token1();
+
+          if (
+            (token0Address.toLowerCase() === usdtAddress &&
+              token1Address.toLowerCase() === wrappedNativeAddress) ||
+            (token1Address.toLowerCase() === usdtAddress &&
+              token0Address.toLowerCase() === wrappedNativeAddress)
+          ) {
+            const reserves = await pairContract.getReserves();
+            const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
+            const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
+            const [decimals0, decimals1] = await Promise.all([
+              token0Contract.decimals(),
+              token1Contract.decimals(),
+            ]);
+
+            const reserve0 = Number(ethers.formatUnits(reserves[0], decimals0));
+            const reserve1 = Number(ethers.formatUnits(reserves[1], decimals1));
+
+            if (token0Address.toLowerCase() === usdtAddress) {
+              vbcPriceUsd = reserve0 / reserve1;
+            } else {
+              vbcPriceUsd = reserve1 / reserve0;
+            }
+            break;
+          }
+        } catch {
+          // Skip if error
+        }
       }
     }
 

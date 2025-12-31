@@ -2,6 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
+import {
+  ChartBarIcon,
+  ArrowTrendingUpIcon,
+  CurrencyDollarIcon,
+  CircleStackIcon,
+  ArrowsRightLeftIcon,
+  PlusCircleIcon,
+  DocumentTextIcon,
+  InformationCircleIcon,
+} from '@heroicons/react/24/outline';
 
 interface Pool {
   address: string;
@@ -13,11 +24,58 @@ interface Pool {
 
 interface DexStats {
   totalTVL: number;
+  externalTVL: number | null;
   totalVolume24h: number;
   totalFees24h: number;
   totalPools: number;
   topPools: Pool[];
-  vbcPrice: number;
+  nativePrice: number;
+  nativeSymbol: string;
+  priceSource: string;
+  tvlSource: string;
+}
+
+// Token icon images
+const TOKEN_ICONS: Record<string, string> = {
+  VBC: '/img/VBC.svg',
+  WVBC: '/img/VBC.svg',
+  USDT: '/img/USDT.svg',
+  VBCG: '/img/VBCG.png',
+};
+
+// Token icon component
+function TokenIcon({
+  symbol,
+  size = 32,
+  className = '',
+}: {
+  symbol: string;
+  size?: number;
+  className?: string;
+}) {
+  const iconPath = TOKEN_ICONS[symbol];
+
+  if (iconPath) {
+    return (
+      <Image
+        src={iconPath}
+        alt={symbol}
+        width={size}
+        height={size}
+        className={`rounded-full ${className}`}
+      />
+    );
+  }
+
+  // Fallback gradient icon
+  return (
+    <div
+      className={`flex items-center justify-center rounded-full bg-gradient-to-br from-gray-600 to-gray-800 text-white text-xs font-bold ${className}`}
+      style={{ width: size, height: size }}
+    >
+      {symbol.slice(0, 2)}
+    </div>
+  );
 }
 
 export default function AnalyticsPage() {
@@ -27,8 +85,14 @@ export default function AnalyticsPage() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const res = await fetch('/api/dex/geckoterminal/pools');
-        const data = await res.json();
+        // Fetch pools and external price data in parallel
+        const [poolsRes, externalPriceRes] = await Promise.all([
+          fetch('/api/dex/geckoterminal/pools'),
+          fetch('/api/dex/external-price'),
+        ]);
+        
+        const data = await poolsRes.json();
+        const externalPrice = await externalPriceRes.json();
 
         let totalTVL = 0;
         const pools: Pool[] = data.data.map(
@@ -55,17 +119,38 @@ export default function AnalyticsPage() {
         // Sort by TVL
         pools.sort((a, b) => b.tvl - a.tvl);
 
-        // Get VBC price
-        const configRes = await fetch('/api/dex/config');
-        const config = await configRes.json();
+        // Get native price and TVL from external sources
+        let nativePrice = 0;
+        let nativeSymbol = '';
+        let externalTVL: number | null = null;
+        let priceSource = 'DEX';
+        let tvlSource = 'DEX';
+
+        if (externalPrice.success && externalPrice.data) {
+          if (externalPrice.data.nativePriceUsd > 0) {
+            nativePrice = externalPrice.data.nativePriceUsd;
+            priceSource = externalPrice.data.source?.price || 'Exbitron';
+          }
+          if (externalPrice.data.nativeSymbol) {
+            nativeSymbol = externalPrice.data.nativeSymbol;
+          }
+          if (externalPrice.data.totalTvlUsd > 0) {
+            externalTVL = externalPrice.data.totalTvlUsd;
+            tvlSource = externalPrice.data.source?.tvl || 'DefiLlama';
+          }
+        }
 
         setStats({
           totalTVL,
+          externalTVL,
           totalVolume24h: 0,
           totalFees24h: 0,
           totalPools: pools.length,
           topPools: pools.slice(0, 10),
-          vbcPrice: config.rewardToken?.priceUSD || 0,
+          nativePrice,
+          nativeSymbol,
+          priceSource,
+          tvlSource,
         });
       } catch (error) {
         console.error('Failed to fetch analytics:', error);
@@ -102,56 +187,70 @@ export default function AnalyticsPage() {
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 py-8 px-4">
         <div className="max-w-7xl mx-auto text-center">
           <h1 className="text-2xl font-bold text-red-400">Failed to load analytics</h1>
+          <p className="text-gray-400 mt-2">Please try refreshing the page</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 py-8 px-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">VirBiCoin DEX Analytics</h1>
-          <p className="text-gray-400">Real-time statistics and insights</p>
-        </div>
-
-        {/* Main Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <div className="bg-gradient-to-br from-green-500/20 to-emerald-600/20 rounded-2xl p-6 border border-green-500/30">
-            <div className="flex items-center gap-2 text-green-400 text-sm mb-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
-                />
-              </svg>
-              Total Value Locked
+    <div className="min-h-screen bg-gray-900">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-purple-900/50 to-pink-900/50 border-b border-gray-800">
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-purple-500/20 rounded-xl">
+                <ChartBarIcon className="w-8 h-8 text-purple-400" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-white">DEX Analytics</h1>
+                <p className="text-gray-400 mt-1">Real-time statistics and insights</p>
+              </div>
             </div>
-            <div className="text-3xl font-bold text-white">
+            <div className="flex items-center gap-4">
+              <div className="px-4 py-2 bg-gray-800/50 rounded-xl border border-gray-700/50">
+                <span className="text-gray-400 text-sm">{stats.nativeSymbol || 'Native'} Price </span>
+                <span className="text-xs text-green-400">({stats.priceSource})</span>
+                <span className="text-green-400 font-semibold ml-1">${stats.nativePrice.toFixed(6)}</span>
+              </div>
+              <nav className="hidden md:flex items-center gap-1 bg-gray-800/50 rounded-xl p-1">
+                <a href="/dex" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Trade</a>
+                <a href="/dex/pools" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Pools</a>
+                <a href="/dex/analytics" className="px-4 py-2 text-sm font-medium bg-purple-500/20 text-purple-400 rounded-lg">Analytics</a>
+                <a href="/dex/docs" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Docs</a>
+              </nav>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
+            <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
+              <ArrowTrendingUpIcon className="w-4 h-4" />
+              Total Value Locked
+              <span className="text-xs text-blue-400">({stats.tvlSource})</span>
+            </div>
+            <div className="text-2xl font-bold text-white">
               $
-              {stats.totalTVL.toLocaleString(undefined, {
+              {(stats.externalTVL ?? stats.totalTVL).toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-blue-500/20 to-indigo-600/20 rounded-2xl p-6 border border-blue-500/30">
-            <div className="flex items-center gap-2 text-blue-400 text-sm mb-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                />
-              </svg>
+          <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
+            <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
+              <ChartBarIcon className="w-4 h-4" />
               24h Volume
             </div>
-            <div className="text-3xl font-bold text-white">
+            <div className="text-2xl font-bold text-white">
               $
               {stats.totalVolume24h.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
@@ -160,19 +259,12 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-500/20 to-pink-600/20 rounded-2xl p-6 border border-purple-500/30">
-            <div className="flex items-center gap-2 text-purple-400 text-sm mb-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
+          <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
+            <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
+              <CurrencyDollarIcon className="w-4 h-4" />
               24h Fees
             </div>
-            <div className="text-3xl font-bold text-white">
+            <div className="text-2xl font-bold text-white">
               $
               {stats.totalFees24h.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
@@ -181,19 +273,12 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-yellow-500/20 to-orange-600/20 rounded-2xl p-6 border border-yellow-500/30">
-            <div className="flex items-center gap-2 text-yellow-400 text-sm mb-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-                />
-              </svg>
+          <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
+            <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
+              <CircleStackIcon className="w-4 h-4" />
               Total Pools
             </div>
-            <div className="text-3xl font-bold text-white">{stats.totalPools}</div>
+            <div className="text-2xl font-bold text-white">{stats.totalPools}</div>
           </div>
         </div>
 
@@ -214,53 +299,52 @@ export default function AnalyticsPage() {
                 </tr>
               </thead>
               <tbody>
-                {stats.topPools.map((pool, index) => (
-                  <tr
-                    key={pool.address}
-                    className="border-b border-gray-700/30 hover:bg-gray-700/20 transition-colors"
-                  >
-                    <td className="px-6 py-4 text-gray-500">{index + 1}</td>
-                    <td className="px-6 py-4">
-                      <Link
-                        href={`/dex/pools/${pool.address}`}
-                        className="flex items-center gap-3 group"
-                      >
-                        <div className="flex -space-x-2">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white text-xs font-bold border-2 border-gray-800">
-                            {pool.name.split('/')[0]?.slice(0, 2)}
+                {stats.topPools.map((pool, index) => {
+                  const [token0, token1] = pool.name.split('/');
+                  return (
+                    <tr
+                      key={pool.address}
+                      className="border-b border-gray-700/30 hover:bg-gray-700/20 transition-colors"
+                    >
+                      <td className="px-6 py-4 text-gray-500">{index + 1}</td>
+                      <td className="px-6 py-4">
+                        <Link
+                          href={`/dex/pools/${pool.address}`}
+                          className="flex items-center gap-3 group"
+                        >
+                          <div className="flex -space-x-2">
+                            <TokenIcon symbol={token0 || ''} size={32} />
+                            <TokenIcon symbol={token1 || ''} size={32} />
                           </div>
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white text-xs font-bold border-2 border-gray-800">
-                            {pool.name.split('/')[1]?.slice(0, 2)}
-                          </div>
-                        </div>
-                        <span className="font-semibold text-white group-hover:text-green-400 transition-colors">
-                          {pool.name}
-                        </span>
-                      </Link>
-                    </td>
-                    <td className="px-6 py-4 text-right text-white font-medium">
-                      $
-                      {pool.tvl.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td className="px-6 py-4 text-right text-gray-400">
-                      $
-                      {pool.volume24h.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
-                    <td className="px-6 py-4 text-right text-gray-400">
-                      $
-                      {pool.fees24h.toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
-                  </tr>
-                ))}
+                          <span className="font-semibold text-white group-hover:text-green-400 transition-colors">
+                            {pool.name}
+                          </span>
+                        </Link>
+                      </td>
+                      <td className="px-6 py-4 text-right text-white font-medium">
+                        $
+                        {pool.tvl.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td className="px-6 py-4 text-right text-gray-400">
+                        $
+                        {pool.volume24h.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td className="px-6 py-4 text-right text-gray-400">
+                        $
+                        {pool.fees24h.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -271,7 +355,7 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* Protocol Info */}
+        {/* Protocol Info & Quick Links */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
             <h3 className="text-lg font-bold text-white mb-4">Protocol Info</h3>
@@ -294,79 +378,38 @@ export default function AnalyticsPage() {
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
             <h3 className="text-lg font-bold text-white mb-4">Quick Links</h3>
             <div className="space-y-2">
-              <Link href="/dex" className="flex items-center gap-2 text-green-400 hover:underline">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
-                  />
-                </svg>
+              <Link
+                href="/dex"
+                className="flex items-center gap-2 text-green-400 hover:underline"
+              >
+                <ArrowsRightLeftIcon className="w-4 h-4" />
                 Trade Now
               </Link>
               <Link
                 href="/dex/pools"
                 className="flex items-center gap-2 text-green-400 hover:underline"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
+                <PlusCircleIcon className="w-4 h-4" />
                 Add Liquidity
               </Link>
               <Link
-                href="/dex/docs"
+                href="/api-docs"
                 className="flex items-center gap-2 text-green-400 hover:underline"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-                Documentation
+                <DocumentTextIcon className="w-4 h-4" />
+                API Documentation
               </Link>
             </div>
           </div>
         </div>
 
         {/* GeckoTerminal Info Box */}
-        <div className="mt-8 p-6 bg-gradient-to-r from-green-500/10 to-emerald-600/10 rounded-2xl border border-green-500/20">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
-              <svg
-                className="w-6 h-6 text-green-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-white mb-2">GeckoTerminal Integration</h3>
-              <p className="text-gray-400 text-sm mb-3">
-                VirBiCoin DEX provides GeckoTerminal-compatible API endpoints for seamless
-                integration with cryptocurrency analytics platforms.
-              </p>
-              <div className="space-y-1 text-xs font-mono text-gray-500">
-                <div>• GET /api/dex/geckoterminal/pools - Pool data</div>
-                <div>• GET /api/dex/geckoterminal/info - DEX metadata</div>
-                <div>• GET /api/dex/geckoterminal/ohlcv/[pool] - Price history</div>
-              </div>
-            </div>
+        <div className="mt-8 p-4 bg-gray-800/30 rounded-xl border border-gray-700/30">
+          <h3 className="text-gray-400 text-sm mb-2">API Endpoints</h3>
+          <div className="space-y-1 text-xs font-mono text-gray-500">
+            <div>GET /api/dex/geckoterminal/pools - All pools data</div>
+            <div>GET /api/dex/geckoterminal/info - DEX information</div>
+            <div>GET /api/dex/geckoterminal/ohlcv/[pool] - Price history</div>
           </div>
         </div>
       </div>

@@ -9,15 +9,34 @@ export const metadata: Metadata = {
 
 export default function DocsPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 py-8 px-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="mb-12">
-          <h1 className="text-4xl font-bold text-white mb-4">VirBiCoin DEX Documentation</h1>
-          <p className="text-xl text-gray-400">
-            Your complete guide to trading, liquidity provision, and yield farming on VirBiCoin DEX
-          </p>
+    <div className="min-h-screen bg-gray-900">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-cyan-900/50 to-teal-900/50 border-b border-gray-800">
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-cyan-500/20 rounded-xl">
+                <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-white">Documentation</h1>
+                <p className="text-gray-400 mt-1">Your complete guide to VirBiCoin DEX</p>
+              </div>
+            </div>
+            <nav className="hidden md:flex items-center gap-1 bg-gray-800/50 rounded-xl p-1">
+              <a href="/dex" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Trade</a>
+              <a href="/dex/pools" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Pools</a>
+              <a href="/dex/analytics" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Analytics</a>
+              <a href="/dex/docs" className="px-4 py-2 text-sm font-medium bg-cyan-500/20 text-cyan-400 rounded-lg">Docs</a>
+            </nav>
+          </div>
         </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-4xl mx-auto px-4 py-8">
 
         {/* Table of Contents */}
         <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50 mb-8">
@@ -375,6 +394,47 @@ export default function DocsPage() {
                       GET
                     </span>
                     <span className="text-gray-300">/api/dex/cmc/assets</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
+                <h4 className="font-bold text-white mb-3">DefiLlama Compatible</h4>
+                <div className="space-y-2 font-mono text-sm">
+                  <div className="flex items-start gap-2">
+                    <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
+                    <span className="text-gray-300">/api/dex/defillama</span>
+                    <span className="text-gray-500 text-xs ml-2">- Protocol info</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
+                    <span className="text-gray-300">/api/dex/defillama/tvl</span>
+                    <span className="text-gray-500 text-xs ml-2">- Current TVL</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
+                    <span className="text-gray-300">/api/dex/defillama/pools</span>
+                    <span className="text-gray-500 text-xs ml-2">- Pool data (yields format)</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
+                    <span className="text-gray-300">/api/dex/defillama/prices</span>
+                    <span className="text-gray-500 text-xs ml-2">- Token prices</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
+                    <span className="text-gray-300">/api/dex/defillama/historical</span>
+                    <span className="text-gray-500 text-xs ml-2">- Historical TVL</span>
                   </div>
                 </div>
               </div>

@@ -57,7 +57,15 @@ function buildSwapPath(tokenIn: Token, tokenOut: Token): Address[] {
   return [fromAddress, wrappedNative, toAddress];
 }
 
-export function SwapContent() {
+interface SwapContentProps {
+  initialFrom?: string | null;
+  initialTo?: string | null;
+  onTokensChange?: (tokenIn: string | null, tokenOut: string | null) => void;
+}
+
+const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapContentProps) {
   const { address, isConnected } = useAccount();
 
   // Fetch tokens from API
@@ -66,16 +74,82 @@ export function SwapContent() {
   // Token configuration from config.json
   const { config: tokenConfig } = useTokenConfig();
 
+  // Get wrapped native token address from DEX config
+  const wrappedNativeAddress = useMemo(() => {
+    const contracts = getDexContracts();
+    return contracts.wrappedNative.toLowerCase();
+  }, []);
+
+  // Convert wrapped native address to native token address
+  const normalizeTokenAddress = useCallback((addr: string | null | undefined): string | null => {
+    if (!addr) return null;
+    if (addr.toLowerCase() === wrappedNativeAddress) {
+      return NATIVE_TOKEN_ADDRESS;
+    }
+    return addr;
+  }, [wrappedNativeAddress]);
+
+  // Normalize URL parameters (convert wrapped native to native)
+  const normalizedFrom = normalizeTokenAddress(initialFrom);
+  const normalizedTo = normalizeTokenAddress(initialTo);
+
   // State - use function to get current native token
-  const [tokenIn, setTokenIn] = useState<Token>(() => getNativeToken());
-  const [tokenOut, setTokenOut] = useState<Token | null>(null);
+  const [tokenIn, setTokenInState] = useState<Token>(() => getNativeToken());
+  const [tokenOut, setTokenOutState] = useState<Token | null>(null);
   const [amountIn, setAmountIn] = useState('');
   const [slippage, setSlippage] = useState(DEFAULT_SLIPPAGE);
 
-  // Update tokenIn only when tokenIn is still the native token.
+  // Wrapped setters
+  const setTokenIn = useCallback((token: Token) => {
+    setTokenInState(token);
+  }, []);
+
+  const setTokenOut = useCallback((token: Token | null) => {
+    setTokenOutState(token);
+  }, []);
+
+  // Track if URL parameters have been applied
+  const [urlParamsApplied, setUrlParamsApplied] = useState(false);
+
+  // Set tokens from URL parameters (from/to)
+  useEffect(() => {
+    // Wait for wrappedNativeAddress to be available if we have URL params
+    if ((initialFrom || initialTo) && !wrappedNativeAddress) return;
+    
+    if (availableTokens.length > 0 && !urlParamsApplied && tokenConfig && (normalizedFrom || normalizedTo)) {
+      let fromToken: Token | undefined;
+      let toToken: Token | undefined;
+
+      if (normalizedFrom) {
+        fromToken = availableTokens.find(
+          (t) => t.address.toLowerCase() === normalizedFrom.toLowerCase()
+        );
+      }
+      if (normalizedTo) {
+        toToken = availableTokens.find(
+          (t) => t.address.toLowerCase() === normalizedTo.toLowerCase()
+        );
+      }
+
+      if (fromToken || toToken) {
+        console.log('Setting swap tokens from URL:', fromToken?.symbol, '->', toToken?.symbol);
+        if (fromToken) {
+          setTokenIn(fromToken);
+        }
+        if (toToken) {
+          setTokenOut(toToken);
+          setTokenOutInitialized(true);
+        }
+        setUrlParamsApplied(true);
+      }
+    }
+  }, [availableTokens, tokenConfig, normalizedFrom, normalizedTo, urlParamsApplied, wrappedNativeAddress, initialFrom, initialTo]);
+
+  // Update tokenIn only when tokenIn is still the native token and no URL params.
   // (Prevents swap-direction toggle from being overwritten back to native.)
   useEffect(() => {
     if (availableTokens.length === 0) return;
+    if (urlParamsApplied) return; // Don't override URL params
     if (!isNativeToken(tokenIn)) return;
 
     const nativeToken = availableTokens.find(
@@ -86,14 +160,24 @@ export function SwapContent() {
     if (tokenIn.symbol !== nativeToken.symbol || tokenIn.decimals !== nativeToken.decimals) {
       setTokenIn(nativeToken);
     }
-  }, [availableTokens, tokenIn, tokenIn.symbol, tokenIn.decimals]);
+  }, [availableTokens, tokenIn, tokenIn.symbol, tokenIn.decimals, urlParamsApplied]);
 
   // Track if user has manually set tokenOut
   const [tokenOutInitialized, setTokenOutInitialized] = useState(false);
 
+  // Notify parent when tokens change
+  useEffect(() => {
+    if (onTokensChange && tokenOut) {
+      onTokensChange(tokenIn.address, tokenOut.address);
+    }
+  }, [tokenIn, tokenIn.address, tokenOut, onTokensChange]);
+
   // Set default tokenOut when tokens are loaded, using config for token filtering
   useEffect(() => {
-    if (availableTokens.length > 0 && !tokenOutInitialized && tokenConfig) {
+    // Wait for URL params to be processed first if they exist
+    if ((initialFrom || initialTo) && !urlParamsApplied) return;
+    
+    if (availableTokens.length > 0 && !tokenOutInitialized && tokenConfig && !urlParamsApplied) {
       // Find a non-native/wrapped token for default output
       const nativeSymbol = tokenConfig.native.symbol;
       const wrappedSymbol = tokenConfig.wrapped.symbol;
@@ -105,7 +189,7 @@ export function SwapContent() {
       );
       setTokenOutInitialized(true);
     }
-  }, [availableTokens, tokenOutInitialized, tokenConfig]);
+  }, [availableTokens, tokenOutInitialized, tokenConfig, urlParamsApplied, initialFrom, initialTo]);
 
   // Build swap path - use multi-hop for Token↔Token swaps
   const swapPath = useMemo((): Address[] => {

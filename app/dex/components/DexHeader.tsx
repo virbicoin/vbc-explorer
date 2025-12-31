@@ -1,7 +1,6 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
 import { useAccount, useConnect, useDisconnect, useBalance, useSwitchChain } from 'wagmi';
 import { formatUnits } from 'viem';
 import { useState, useEffect } from 'react';
@@ -209,35 +208,7 @@ function ConnectWalletButton() {
 export function DexHeader() {
   return (
     <div className="max-w-7xl mx-auto mb-6">
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-        {/* Navigation */}
-        <nav className="flex items-center gap-1 bg-gray-800/50 rounded-xl p-1 border border-gray-700/50">
-          <Link
-            href="/dex"
-            className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
-          >
-            Trade
-          </Link>
-          <Link
-            href="/dex/pools"
-            className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
-          >
-            Pools
-          </Link>
-          <Link
-            href="/dex/analytics"
-            className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
-          >
-            Analytics
-          </Link>
-          <Link
-            href="/dex/docs"
-            className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
-          >
-            Docs
-          </Link>
-        </nav>
-
+      <div className="flex items-center justify-end">
         {/* Wallet Button */}
         <ConnectWalletButton />
       </div>

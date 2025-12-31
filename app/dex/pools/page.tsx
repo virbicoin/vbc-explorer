@@ -1,7 +1,50 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
+import { useDexConfig } from '@/hooks/useDexConfig';
+
+const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+// Token icon mapping
+const TOKEN_ICONS: Record<string, { icon: string; color: string }> = {
+  VBC: { icon: '/img/VBC.svg', color: 'from-green-400 to-teal-500' },
+  WVBC: { icon: '/img/VBC.svg', color: 'from-green-400 to-teal-500' },
+  USDT: { icon: '/img/USDT.svg', color: 'from-green-400 to-emerald-500' },
+  VBCG: { icon: '/img/VBCG.png', color: 'from-yellow-400 to-amber-500' },
+};
+
+function TokenIcon({ symbol, size = 32 }: { symbol: string; size?: number }) {
+  const tokenInfo = TOKEN_ICONS[symbol];
+
+  if (tokenInfo?.icon) {
+    return (
+      <div
+        className="rounded-full overflow-hidden border-2 border-gray-700 bg-gray-900 flex items-center justify-center"
+        style={{ width: size, height: size }}
+      >
+        <Image
+          src={tokenInfo.icon}
+          alt={symbol}
+          width={size - 4}
+          height={size - 4}
+          className="object-contain"
+        />
+      </div>
+    );
+  }
+
+  // Fallback to gradient circle with initials
+  return (
+    <div
+      className={`rounded-full bg-gradient-to-br ${tokenInfo?.color || 'from-gray-400 to-gray-600'} flex items-center justify-center text-white text-xs font-bold border-2 border-gray-700`}
+      style={{ width: size, height: size }}
+    >
+      {symbol.slice(0, 2)}
+    </div>
+  );
+}
 
 interface Pool {
   id: string;
@@ -19,12 +62,42 @@ export default function PoolsPage() {
   const [pools, setPools] = useState<Pool[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalTVL, setTotalTVL] = useState(0);
+  const [externalTVL, setExternalTVL] = useState<number | null>(null);
+  const [nativePrice, setNativePrice] = useState<number | null>(null);
+  const [nativeSymbol, setNativeSymbol] = useState<string>('');
+  
+  // Get wrapped native token address from config
+  const { config: dexConfig } = useDexConfig();
+  const wrappedNativeAddress = dexConfig?.contracts?.wrappedNative?.toLowerCase() || '';
+
+  // Convert wrapped native address to native token address for DEX compatibility
+  const normalizeTokenAddress = useMemo(() => {
+    return (address: string): string => {
+      if (wrappedNativeAddress && address.toLowerCase() === wrappedNativeAddress) {
+        return NATIVE_TOKEN_ADDRESS;
+      }
+      return address;
+    };
+  }, [wrappedNativeAddress]);
 
   useEffect(() => {
     async function fetchPools() {
       try {
-        const res = await fetch('/api/dex/geckoterminal/pools');
-        const data = await res.json();
+        // Fetch pools and external price data in parallel
+        const [poolsRes, externalPriceRes] = await Promise.all([
+          fetch('/api/dex/geckoterminal/pools'),
+          fetch('/api/dex/external-price'),
+        ]);
+        
+        const data = await poolsRes.json();
+        const externalPrice = await externalPriceRes.json();
+
+        // Set external TVL and native price from Exbitron/DefiLlama
+        if (externalPrice.success && externalPrice.data) {
+          setExternalTVL(externalPrice.data.totalTvlUsd);
+          setNativePrice(externalPrice.data.nativePriceUsd);
+          setNativeSymbol(externalPrice.data.nativeSymbol || '');
+        }
 
         const formattedPools = data.data.map(
           (pool: {
@@ -88,32 +161,62 @@ export default function PoolsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 py-8 px-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2">Pools</h1>
-            <p className="text-gray-400">All liquidity pools on VirBiCoin DEX</p>
+    <div className="min-h-screen bg-gray-900">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-900/50 to-indigo-900/50 border-b border-gray-800">
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-500/20 rounded-xl">
+                <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-white">Liquidity Pools</h1>
+                <p className="text-gray-400 mt-1">All liquidity pools on VirBiCoin DEX</p>
+              </div>
+            </div>
+            <nav className="hidden md:flex items-center gap-1 bg-gray-800/50 rounded-xl p-1">
+              <a href="/dex" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Trade</a>
+              <a href="/dex/pools" className="px-4 py-2 text-sm font-medium bg-blue-500/20 text-blue-400 rounded-lg">Pools</a>
+              <a href="/dex/analytics" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Analytics</a>
+              <a href="/dex/docs" className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors">Docs</a>
+            </nav>
           </div>
-          <Link
-            href="/dex?tab=pool"
-            className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:opacity-90 transition-opacity font-semibold"
-          >
-            + Add Liquidity
-          </Link>
         </div>
+      </div>
 
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
-            <div className="text-gray-400 text-sm mb-1">Total Value Locked</div>
+            <div className="text-gray-400 text-sm mb-1 flex items-center gap-1">
+              Total Value Locked
+              <span className="text-xs text-blue-400">(DefiLlama)</span>
+            </div>
             <div className="text-2xl font-bold text-white">
               $
-              {totalTVL.toLocaleString(undefined, {
+              {(externalTVL ?? totalTVL).toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
+            </div>
+          </div>
+          <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
+            <div className="text-gray-400 text-sm mb-1 flex items-center gap-1">
+              {nativeSymbol || 'Native'} Price
+              <span className="text-xs text-green-400">(Exbitron)</span>
+            </div>
+            <div className="text-2xl font-bold text-white">
+              $
+              {nativePrice !== null
+                ? nativePrice.toLocaleString(undefined, {
+                    minimumFractionDigits: 6,
+                    maximumFractionDigits: 6,
+                  })
+                : '---'}
             </div>
           </div>
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
@@ -152,12 +255,8 @@ export default function PoolsPage() {
                         className="flex items-center gap-3 group"
                       >
                         <div className="flex -space-x-2">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white text-xs font-bold border-2 border-gray-800">
-                            {pool.baseToken.symbol.slice(0, 2)}
-                          </div>
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white text-xs font-bold border-2 border-gray-800">
-                            {pool.quoteToken.symbol.slice(0, 2)}
-                          </div>
+                          <TokenIcon symbol={pool.baseToken.symbol} size={36} />
+                          <TokenIcon symbol={pool.quoteToken.symbol} size={36} />
                         </div>
                         <div>
                           <div className="font-semibold text-white group-hover:text-green-400 transition-colors">
@@ -191,13 +290,13 @@ export default function PoolsPage() {
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center gap-2">
                         <Link
-                          href={`/dex?tab=swap&from=${pool.baseToken.address}&to=${pool.quoteToken.address}`}
+                          href={`/dex?tab=swap&from=${normalizeTokenAddress(pool.baseToken.address)}&to=${normalizeTokenAddress(pool.quoteToken.address)}`}
                           className="px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg text-sm hover:bg-green-500/30 transition-colors"
                         >
                           Swap
                         </Link>
                         <Link
-                          href={`/dex?tab=pool&pair=${pool.address}`}
+                          href={`/dex?tab=pool&tokenA=${normalizeTokenAddress(pool.baseToken.address)}&tokenB=${normalizeTokenAddress(pool.quoteToken.address)}`}
                           className="px-3 py-1.5 bg-blue-500/20 text-blue-400 rounded-lg text-sm hover:bg-blue-500/30 transition-colors"
                         >
                           Add
