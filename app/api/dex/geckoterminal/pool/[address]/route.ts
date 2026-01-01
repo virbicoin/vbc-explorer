@@ -142,32 +142,48 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     const price = quoteReserve / baseReserve;
     const priceInverse = baseReserve / quoteReserve;
 
-    // Get VBC price in USD (cached)
+    // Get VBC price in USD (cached) - used as fallback for non-USDT pairs
     const vbcPriceUsd = await getCachedVBCPrice();
 
     // Calculate USD values
+    // For pools with stablecoins (USDT/USDC), use the stablecoin reserve to value the other token
+    // This reflects the actual DEX price, not external CEX price
     let baseTokenPriceUsd: string | null = null;
     let quoteTokenPriceUsd: string | null = null;
     let baseReserveUsd = 0;
     let quoteReserveUsd = 0;
 
-    const isBaseVBC = baseAddress.toLowerCase() === wrappedNativeAddress;
+    const isBaseVBC = baseAddress.toLowerCase() === wrappedNativeAddress || baseSymbol === 'VBC';
     const isQuoteUSDT = quoteAddress.toLowerCase() === usdtAddress;
+    const isBaseUSDT = baseAddress.toLowerCase() === usdtAddress;
 
     if (isBaseVBC && isQuoteUSDT) {
-      baseTokenPriceUsd = vbcPriceUsd.toString();
+      // VBC/USDT pair - use USDT reserve to value VBC (50/50 pool)
+      const dexVbcPrice = quoteReserve / baseReserve; // DEX price of VBC in USD
+      baseTokenPriceUsd = dexVbcPrice.toString();
       quoteTokenPriceUsd = '1';
-      baseReserveUsd = baseReserve * vbcPriceUsd;
-      quoteReserveUsd = quoteReserve;
+      baseReserveUsd = quoteReserve; // VBC value = USDT value (50/50 pool)
+      quoteReserveUsd = quoteReserve; // USDT = 1 USD
+    } else if (isBaseUSDT) {
+      // USDT/X pair - use USDT reserve to value X (50/50 pool)
+      const quoteTokenPrice = baseReserve / quoteReserve; // DEX price
+      baseTokenPriceUsd = '1';
+      quoteTokenPriceUsd = quoteTokenPrice.toString();
+      baseReserveUsd = baseReserve; // USDT = 1 USD
+      quoteReserveUsd = baseReserve; // X value = USDT value (50/50 pool)
     } else if (isBaseVBC) {
+      // VBC/X pair (no stablecoin) - use external price
       baseTokenPriceUsd = vbcPriceUsd.toString();
       const quoteTokenPrice = (baseReserve / quoteReserve) * vbcPriceUsd;
       quoteTokenPriceUsd = quoteTokenPrice.toString();
       baseReserveUsd = baseReserve * vbcPriceUsd;
       quoteReserveUsd = quoteReserve * quoteTokenPrice;
     } else {
+      // Fallback - use external price
       baseReserveUsd = baseReserve * vbcPriceUsd;
       quoteReserveUsd = quoteReserve * vbcPriceUsd;
+      baseTokenPriceUsd = vbcPriceUsd.toString();
+      quoteTokenPriceUsd = vbcPriceUsd.toString();
     }
 
     const totalLiquidityUsd = baseReserveUsd + quoteReserveUsd;

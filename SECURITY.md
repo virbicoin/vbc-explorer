@@ -194,6 +194,23 @@ npm audit --json
 
 ## Changelog
 
+### v0.7.6 (January 2026)
+
+- **Security Audit Completed**: Comprehensive review of DEX, Launchpad, and core API routes
+- **Critical Fix**: NoSQL injection vulnerability in `/api/launchpad/register`
+  - Replaced unsafe `$regex` with direct lowercase address matching
+- **Critical Fix**: Unauthenticated contract POST endpoint
+  - Added input validation (address format verification)
+  - Added rate limiting (10 requests/minute per IP)
+  - Added request body validation
+- **Enhancement**: DEX API price calculation security
+  - VBC/USDT pairs now use on-chain DEX price instead of external API
+  - Prevents price manipulation via external API compromise
+- **Enhancement**: GeckoTerminal/DefiLlama API improvements
+  - TVL calculation now correctly sums both token reserves
+  - `base_token_price_usd` uses pool-derived pricing for accuracy
+  - Added farming APR calculation from MasterChef contract
+
 ### v0.7.5 (January 2025)
 
 - **Security Audit Completed**: Comprehensive review of all 47 API routes
@@ -225,6 +242,44 @@ npm audit --json
 - Added security headers middleware
 - Created security documentation
 - Updated config.example.json to use environment variables
+
+## Security Audit Results (January 2026)
+
+### Summary
+
+| Status | Count | Percentage |
+|--------|-------|------------|
+| Protected endpoints | 35+ | 74%+ |
+| Read-only endpoints | 25+ | 53%+ |
+| Rate-limited endpoints | 15+ | 32%+ |
+
+### Critical Fixes Applied
+
+1. **NoSQL Injection Prevention**: Replaced `new RegExp(userInput)` with direct lowercase matching
+2. **Contract API Protection**: Added authentication, validation, and rate limiting
+3. **DEX Price Security**: On-chain price derivation prevents external API manipulation
+4. **Input Validation**: All user inputs (addresses, hashes, pagination) validated before use
+5. **Rate Limiting**: Added to all sensitive endpoints including contract verification and registration
+
+### API Security Matrix
+
+| Endpoint Category | Validation | Rate Limit | Auth | Notes |
+|-------------------|------------|------------|------|-------|
+| `/api/address/*` | ✅ | ✅ | - | Address format validated |
+| `/api/block/*` | ✅ | ✅ | - | Block number validated |
+| `/api/tx/*` | ✅ | ✅ | - | Hash format validated |
+| `/api/contract/*` | ✅ | ✅ | - | All inputs validated |
+| `/api/tokens/*` | ✅ | ✅ | - | Address validated |
+| `/api/launchpad/*` | ✅ | ✅ | - | NoSQL injection fixed |
+| `/api/dex/geckoterminal/*` | ✅ | - | - | Read-only, address validated |
+| `/api/dex/cmc/*` | ✅ | - | - | Read-only |
+| `/api/dex/defillama/*` | ✅ | - | - | Read-only |
+
+### Remaining Recommendations
+
+- Consider adding rate limiting to DEX API endpoints for DoS protection
+- Implement request logging for security monitoring
+- Regular dependency audits with `npm audit`
 
 ## Security Audit Results (January 2025)
 

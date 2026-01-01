@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Contract } from '@/lib/models';
 import { connectToDatabase } from '@/lib/db';
+import { isValidAddress, checkRateLimit, getClientIp } from '@/lib/security/validation';
 
 export async function GET(
   request: NextRequest,
@@ -35,13 +36,35 @@ export async function GET(
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting - 10 requests per minute
+    const clientIp = getClientIp(request);
+    const rateLimitResult = checkRateLimit(`contract:post:${clientIp}`, 10, 0.17);
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded', retryAfter: rateLimitResult.resetIn },
+        { status: 429 }
+      );
+    }
+
     await connectToDatabase();
 
     const contract = await request.json();
 
+    // Validate required fields
+    if (!contract || typeof contract !== 'object') {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+
+    if (!contract.address || !isValidAddress(contract.address)) {
+      return NextResponse.json({ error: 'Invalid contract address' }, { status: 400 });
+    }
+
+    // Normalize address
+    const normalizedAddress = contract.address.toLowerCase();
+
     await Contract.updateOne(
-      { address: contract.address },
-      { $setOnInsert: contract },
+      { address: normalizedAddress },
+      { $setOnInsert: { ...contract, address: normalizedAddress } },
       { upsert: true }
     );
 

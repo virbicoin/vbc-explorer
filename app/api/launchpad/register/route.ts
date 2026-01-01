@@ -92,9 +92,9 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
-    // Check if token already exists
+    // Check if token already exists (case-insensitive match without regex)
     const existingToken = await Token.findOne({
-      address: { $regex: new RegExp(`^${tokenAddress}$`, 'i') },
+      address: tokenAddress.toLowerCase(),
     });
 
     if (existingToken) {
