@@ -202,35 +202,39 @@ export default function TransactionsPage() {
     return `${address.slice(0, 8)}...${address.slice(-6)}`;
   };
 
-  // MetaMask準拠のトランザクションタイプバッジを生成
-  const getTransactionTypeBadge = (type?: string, action?: string) => {
-    const typeConfig: Record<string, { bg: string; text: string; icon: string }> = {
-      send: { bg: 'bg-red-100', text: 'text-red-700', icon: '↑' },
-      receive: { bg: 'bg-green-100', text: 'text-green-700', icon: '↓' },
-      token_transfer: { bg: 'bg-purple-100', text: 'text-purple-700', icon: '⇆' },
-      nft_transfer: { bg: 'bg-pink-100', text: 'text-pink-700', icon: '🖼' },
-      approve: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '✓' },
-      swap: { bg: 'bg-blue-100', text: 'text-blue-700', icon: '⇋' },
-      liquidity: { bg: 'bg-cyan-100', text: 'text-cyan-700', icon: '💧' },
-      stake: { bg: 'bg-orange-100', text: 'text-orange-700', icon: '📌' },
-      unstake: { bg: 'bg-amber-100', text: 'text-amber-700', icon: '📤' },
-      harvest: { bg: 'bg-lime-100', text: 'text-lime-700', icon: '🌾' },
-      mint: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: '✨' },
-      burn: { bg: 'bg-red-200', text: 'text-red-800', icon: '🔥' },
-      contract_creation: { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: '📄' },
-      contract_interaction: { bg: 'bg-violet-100', text: 'text-violet-700', icon: '📝' },
-      mining_reward: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '⛏️' },
+  // MetaMask準拠のトランザクションタイプバッジを生成（他のページと統一）
+  const getTransactionTypeBadge = (tx: Transaction) => {
+    const type = tx.type || 'unknown';
+    const action = tx.action || type;
+
+    // タイプごとのスタイル定義（暗いテーマ統一）
+    const styles: Record<string, { bg: string; text: string; icon: string }> = {
+      send: { bg: 'bg-red-500/20', text: 'text-red-400', icon: '↑' },
+      receive: { bg: 'bg-green-500/20', text: 'text-green-400', icon: '↓' },
+      token_transfer: { bg: 'bg-purple-500/20', text: 'text-purple-400', icon: '⇄' },
+      nft_transfer: { bg: 'bg-pink-500/20', text: 'text-pink-400', icon: '🎨' },
+      approve: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: '✓' },
+      swap: { bg: 'bg-blue-500/20', text: 'text-blue-400', icon: '⟲' },
+      liquidity: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', icon: '💧' },
+      stake: { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: '📥' },
+      unstake: { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: '📤' },
+      harvest: { bg: 'bg-lime-500/20', text: 'text-lime-400', icon: '🌾' },
+      mint: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', icon: '✨' },
+      burn: { bg: 'bg-red-600/20', text: 'text-red-500', icon: '🔥' },
+      contract_creation: { bg: 'bg-indigo-500/20', text: 'text-indigo-400', icon: '📄' },
+      contract_interaction: { bg: 'bg-violet-500/20', text: 'text-violet-400', icon: '⚡' },
+      mining_reward: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: '⛏️' },
+      unknown: { bg: 'bg-gray-500/20', text: 'text-gray-400', icon: '?' },
     };
 
-    const config = typeConfig[type || 'contract_interaction'] || typeConfig.contract_interaction;
-    const displayAction = action || type || 'Transaction';
+    const style = styles[type] || styles['unknown'];
 
     return (
       <span
-        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}
+        className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${style.bg} ${style.text}`}
       >
-        <span>{config.icon}</span>
-        <span>{displayAction}</span>
+        <span>{style.icon}</span>
+        <span>{action}</span>
       </span>
     );
   };
@@ -412,7 +416,7 @@ export default function TransactionsPage() {
                         {formatAddress(tx.hash)}
                       </Link>
                     </td>
-                    <td className="py-3 px-4">{getTransactionTypeBadge(tx.type, tx.action)}</td>
+                    <td className="py-3 px-4">{getTransactionTypeBadge(tx)}</td>
                     <td className="py-3 px-4">
                       <div className="flex items-center">
                         <HashtagIcon className="w-4 h-4 text-blue-400 mr-2" />
@@ -448,13 +452,13 @@ export default function TransactionsPage() {
                       {tx.to ? (
                         <Link
                           href={`/address/${tx.to}`}
-                          className="text-purple-400 hover:text-purple-300 font-mono text-sm transition-colors"
+                          className="text-red-400 hover:text-red-300 font-mono text-sm transition-colors"
                           title={tx.to}
                         >
                           {formatAddress(tx.to)}
                         </Link>
                       ) : (
-                        <span className="text-gray-500 text-sm">Contract Creation</span>
+                        <span className="text-indigo-400 text-sm">Contract Creation</span>
                       )}
                     </td>
                     <td className="py-3 px-4">

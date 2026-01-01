@@ -23,6 +23,14 @@ import { createPublicClient, http, formatEther, formatUnits, type Address } from
 import mongoose from 'mongoose';
 import { connectDB, Block, Transaction, TokenTransfer, Account, Contract } from '@/models/index';
 import { loadConfig } from '@/lib/config';
+import {
+  isValidAddress,
+  isValidHash,
+  validatePagination,
+  checkRateLimit,
+  getClientIp,
+  getSecurityHeaders,
+} from '@/lib/security';
 
 // Type for config with supply
 interface ConfigWithSupply {
@@ -67,19 +75,25 @@ const publicClient = createPublicClient({
 
 // Response helpers
 function successResponse(result: unknown, message = 'OK') {
-  return NextResponse.json({
-    status: '1',
-    message,
-    result,
-  });
+  return NextResponse.json(
+    {
+      status: '1',
+      message,
+      result,
+    },
+    { headers: getSecurityHeaders() }
+  );
 }
 
 function errorResponse(message: string, result: unknown = null) {
-  return NextResponse.json({
-    status: '0',
-    message,
-    result,
-  });
+  return NextResponse.json(
+    {
+      status: '0',
+      message,
+      result,
+    },
+    { headers: getSecurityHeaders() }
+  );
 }
 
 // ============================================
@@ -1014,6 +1028,16 @@ async function getSourceCode(address: string) {
 // ============================================
 
 export async function GET(request: NextRequest) {
+  // Rate limiting
+  const clientIp = getClientIp(request);
+  const rateLimit = checkRateLimit(`blockscout-api:${clientIp}`, 100, 20);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { status: '0', message: 'Rate limit exceeded', result: null },
+      { status: 429, headers: getSecurityHeaders() }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const apiModule = searchParams.get('module')?.toLowerCase();
   const action = searchParams.get('action')?.toLowerCase();
@@ -1022,55 +1046,90 @@ export async function GET(request: NextRequest) {
     return errorResponse('Missing required parameters: module and action');
   }
 
+  // Validate module and action names (alphanumeric only)
+  if (!/^[a-z0-9_]+$/.test(apiModule) || !/^[a-z0-9_]+$/.test(action)) {
+    return errorResponse('Invalid module or action format');
+  }
+
   try {
     // Account module
     if (apiModule === 'account') {
       if (action === 'balance') {
         const address = searchParams.get('address');
         if (!address) return errorResponse('Missing address parameter');
+        if (!isValidAddress(address)) return errorResponse('Invalid address format');
         return getBalance(address);
       }
       if (action === 'balancemulti') {
         const addresses = searchParams.get('address');
         if (!addresses) return errorResponse('Missing address parameter');
+        // Validate all addresses
+        const addressList = addresses.split(',');
+        for (const addr of addressList) {
+          if (!isValidAddress(addr.trim())) {
+            return errorResponse(`Invalid address format: ${addr}`);
+          }
+        }
         return getBalanceMulti(addresses);
       }
       if (action === 'txlist') {
         const address = searchParams.get('address');
         if (!address) return errorResponse('Missing address parameter');
-        const page = parseInt(searchParams.get('page') || '1');
-        const offset = parseInt(searchParams.get('offset') || '10');
+        if (!isValidAddress(address)) return errorResponse('Invalid address format');
+        const pagination = validatePagination(
+          searchParams.get('page'),
+          searchParams.get('offset'),
+          100
+        );
         const sort = searchParams.get('sort') || 'desc';
-        return getTxList(address, page, offset, sort);
+        return getTxList(address, pagination.page, pagination.limit, sort);
       }
       if (action === 'txlistinternal') {
         const address = searchParams.get('address');
         const txhash = searchParams.get('txhash');
-        const page = parseInt(searchParams.get('page') || '1');
-        const offset = parseInt(searchParams.get('offset') || '10');
-        return getTxListInternal(address || undefined, txhash || undefined, page, offset);
+        if (address && !isValidAddress(address)) return errorResponse('Invalid address format');
+        if (txhash && !isValidHash(txhash)) return errorResponse('Invalid txhash format');
+        const pagination = validatePagination(
+          searchParams.get('page'),
+          searchParams.get('offset'),
+          100
+        );
+        return getTxListInternal(address || undefined, txhash || undefined, pagination.page, pagination.limit);
       }
       if (action === 'tokentx') {
         const address = searchParams.get('address');
         if (!address) return errorResponse('Missing address parameter');
+        if (!isValidAddress(address)) return errorResponse('Invalid address format');
         const contractaddress = searchParams.get('contractaddress') || undefined;
-        const page = parseInt(searchParams.get('page') || '1');
-        const offset = parseInt(searchParams.get('offset') || '10');
-        return getTokenTx(address, contractaddress, page, offset);
+        if (contractaddress && !isValidAddress(contractaddress)) {
+          return errorResponse('Invalid contractaddress format');
+        }
+        const pagination = validatePagination(
+          searchParams.get('page'),
+          searchParams.get('offset'),
+          100
+        );
+        return getTokenTx(address, contractaddress, pagination.page, pagination.limit);
       }
       if (action === 'tokenbalance') {
         const address = searchParams.get('address');
         const contractaddress = searchParams.get('contractaddress');
         if (!address) return errorResponse('Missing address parameter');
         if (!contractaddress) return errorResponse('Missing contractaddress parameter');
+        if (!isValidAddress(address)) return errorResponse('Invalid address format');
+        if (!isValidAddress(contractaddress)) return errorResponse('Invalid contractaddress format');
         return getTokenBalance(address, contractaddress);
       }
       if (action === 'getminedblocks') {
         const address = searchParams.get('address');
         if (!address) return errorResponse('Missing address parameter');
-        const page = parseInt(searchParams.get('page') || '1');
-        const offset = parseInt(searchParams.get('offset') || '10');
-        return getMinedBlocks(address, page, offset);
+        if (!isValidAddress(address)) return errorResponse('Invalid address format');
+        const pagination = validatePagination(
+          searchParams.get('page'),
+          searchParams.get('offset'),
+          100
+        );
+        return getMinedBlocks(address, pagination.page, pagination.limit);
       }
     }
 
@@ -1094,11 +1153,13 @@ export async function GET(request: NextRequest) {
       if (action === 'gettxinfo' || action === 'getstatus') {
         const txhash = searchParams.get('txhash');
         if (!txhash) return errorResponse('Missing txhash parameter');
+        if (!isValidHash(txhash)) return errorResponse('Invalid txhash format');
         return getTxInfo(txhash);
       }
       if (action === 'gettxreceiptstatus') {
         const txhash = searchParams.get('txhash');
         if (!txhash) return errorResponse('Missing txhash parameter');
+        if (!isValidHash(txhash)) return errorResponse('Invalid txhash format');
         return getTxReceiptStatus(txhash);
       }
     }
@@ -1108,19 +1169,19 @@ export async function GET(request: NextRequest) {
       if (action === 'gettoken' || action === 'tokeninfo') {
         const contractaddress = searchParams.get('contractaddress');
         if (!contractaddress) return errorResponse('Missing contractaddress parameter');
+        if (!isValidAddress(contractaddress)) return errorResponse('Invalid contractaddress format');
         return getTokenInfo(contractaddress);
       }
       if (action === 'gettokenholders') {
         const contractaddress = searchParams.get('contractaddress');
         if (!contractaddress) return errorResponse('Missing contractaddress parameter');
-        const page = parseInt(searchParams.get('page') || '1');
-        const offset = parseInt(searchParams.get('offset') || '10');
-        return getTokenHolders(contractaddress, page, offset);
+        if (!isValidAddress(contractaddress)) return errorResponse('Invalid contractaddress format');
+        const pagination = validatePagination(searchParams.get('page'), searchParams.get('offset'), 100);
+        return getTokenHolders(contractaddress, pagination.page, pagination.limit);
       }
       if (action === 'tokenlist') {
-        const page = parseInt(searchParams.get('page') || '1');
-        const offset = parseInt(searchParams.get('offset') || '100');
-        return getTokenList(page, offset);
+        const pagination = validatePagination(searchParams.get('page'), searchParams.get('offset'), 100);
+        return getTokenList(pagination.page, pagination.limit);
       }
     }
 
@@ -1132,6 +1193,7 @@ export async function GET(request: NextRequest) {
       if (action === 'tokensupply') {
         const contractaddress = searchParams.get('contractaddress');
         if (!contractaddress) return errorResponse('Missing contractaddress parameter');
+        if (!isValidAddress(contractaddress)) return errorResponse('Invalid contractaddress format');
         return getTokenSupply(contractaddress);
       }
       if (action === 'ethprice' || action === 'coinprice') {
@@ -1153,16 +1215,25 @@ export async function GET(request: NextRequest) {
       if (action === 'getabi') {
         const address = searchParams.get('address');
         if (!address) return errorResponse('Missing address parameter');
+        if (!isValidAddress(address)) return errorResponse('Invalid address format');
         return getAbi(address);
       }
       if (action === 'getsourcecode') {
         const address = searchParams.get('address');
         if (!address) return errorResponse('Missing address parameter');
+        if (!isValidAddress(address)) return errorResponse('Invalid address format');
         return getSourceCode(address);
       }
       if (action === 'getcontractcreation') {
         const addresses = searchParams.get('contractaddresses');
         if (!addresses) return errorResponse('Missing contractaddresses parameter');
+        // Validate all addresses
+        const addressList = addresses.split(',');
+        for (const addr of addressList) {
+          if (!isValidAddress(addr.trim())) {
+            return errorResponse(`Invalid address format: ${addr}`);
+          }
+        }
         return getContractCreation(addresses);
       }
     }

@@ -122,6 +122,31 @@
       "out_file": "./logs/tokens-out.log",
       "error_file": "./logs/tokens-error.log",
       "log_date_format": "YYYY-MM-DD HH:mm:ss"
+    },
+    {
+      "name": "price",
+      "script": "npx",
+      "args": "ts-node --project tsconfig.tools.json tools/price.ts",
+      "cwd": ".",
+      "wait_ready": true,
+      "listen_timeout": 10000,
+      "env": {
+        "NODE_ENV": "production",
+        "NODE_OPTIONS": "--max-old-space-size=768",
+        "MEMORY_LIMIT_MB": "512"
+      },
+      "max_memory_restart": "768M",
+      "instances": 1,
+      "exec_mode": "fork",
+      "autorestart": true,
+      "watch": false,
+      "max_restarts": 30,
+      "min_uptime": "60s",
+      "restart_delay": 30000,
+      "log_file": "./logs/price.log",
+      "out_file": "./logs/price-out.log",
+      "error_file": "./logs/price-error.log",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss"
     }
   ]
 } 

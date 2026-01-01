@@ -209,16 +209,13 @@ export default function AnalyticsPage() {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <div className="px-4 py-2 bg-gray-800/50 rounded-xl border border-gray-700/50">
-                <span className="text-gray-400 text-sm">
-                  {stats.nativeSymbol || 'Native'} Price{' '}
-                </span>
-                <span className="text-xs text-green-400">({stats.priceSource})</span>
-                <span className="text-green-400 font-semibold ml-1">
-                  ${stats.nativePrice.toFixed(6)}
-                </span>
-              </div>
-              <nav className="hidden md:flex items-center gap-1 bg-gray-800/50 rounded-xl p-1">
+              <nav className="hidden md:flex items-center gap-2 bg-gray-800/50 rounded-xl p-1">
+                {stats.nativePrice > 0 && stats.nativeSymbol && (
+                  <div className="px-3 py-2 text-sm">
+                    <span className="text-gray-400">{stats.nativeSymbol} </span>
+                    <span className="text-green-400 font-semibold">${stats.nativePrice.toFixed(6)}</span>
+                  </div>
+                )}
                 <Link
                   href="/dex"
                   className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
@@ -257,11 +254,10 @@ export default function AnalyticsPage() {
             <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
               <ArrowTrendingUpIcon className="w-4 h-4" />
               Total Value Locked
-              <span className="text-xs text-blue-400">({stats.tvlSource})</span>
             </div>
             <div className="text-2xl font-bold text-white">
               $
-              {(stats.externalTVL ?? stats.totalTVL).toLocaleString(undefined, {
+              {stats.totalTVL.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
@@ -420,16 +416,6 @@ export default function AnalyticsPage() {
                 API Documentation
               </Link>
             </div>
-          </div>
-        </div>
-
-        {/* GeckoTerminal Info Box */}
-        <div className="mt-8 p-4 bg-gray-800/30 rounded-xl border border-gray-700/30">
-          <h3 className="text-gray-400 text-sm mb-2">API Endpoints</h3>
-          <div className="space-y-1 text-xs font-mono text-gray-500">
-            <div>GET /api/dex/geckoterminal/pools - All pools data</div>
-            <div>GET /api/dex/geckoterminal/info - DEX information</div>
-            <div>GET /api/dex/geckoterminal/ohlcv/[pool] - Price history</div>
           </div>
         </div>
       </div>

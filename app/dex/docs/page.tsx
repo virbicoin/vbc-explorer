@@ -35,7 +35,7 @@ export default function DocsPage() {
                 <p className="text-gray-400 mt-1">Your complete guide to VirBiCoin DEX</p>
               </div>
             </div>
-            <nav className="hidden md:flex items-center gap-1 bg-gray-800/50 rounded-xl p-1">
+            <nav className="hidden md:flex items-center gap-2 bg-gray-800/50 rounded-xl p-1">
               <Link
                 href="/dex"
                 className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
@@ -516,6 +516,30 @@ export default function DocsPage() {
                 <div className="px-4 pb-4 text-gray-300">
                   The DEX is based on the battle-tested Uniswap V2 codebase. We recommend users do
                   their own research and only invest what they can afford to lose.
+                </div>
+              </details>
+
+              <details className="bg-gray-800/50 rounded-xl border border-gray-700/50 group">
+                <summary className="p-4 cursor-pointer font-medium text-white hover:text-green-400 transition-colors">
+                  Are the API endpoints rate limited?
+                </summary>
+                <div className="px-4 pb-4 text-gray-300">
+                  Yes, all API endpoints are rate limited to prevent abuse. The limits are
+                  typically 100 requests per minute for most endpoints. If you need higher limits
+                  for your application, please contact us.
+                </div>
+              </details>
+
+              <details className="bg-gray-800/50 rounded-xl border border-gray-700/50 group">
+                <summary className="p-4 cursor-pointer font-medium text-white hover:text-green-400 transition-colors">
+                  How can I report a security vulnerability?
+                </summary>
+                <div className="px-4 pb-4 text-gray-300">
+                  Please report security vulnerabilities responsibly by emailing{' '}
+                  <a href="mailto:security@digitalregion.jp" className="text-green-400 hover:underline">
+                    security@digitalregion.jp
+                  </a>
+                  . Do not create public issues for security matters. We aim to respond within 48 hours.
                 </div>
               </details>
             </div>

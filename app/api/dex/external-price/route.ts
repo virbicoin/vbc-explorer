@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { loadConfig } from '@/lib/config';
+import { getNativePrice } from '@/lib/price-service';
+import { connectDB } from '@/models/index';
 
 // Cache for external price data (5 minute TTL)
 let cachedData: {
@@ -14,34 +16,6 @@ let cachedData: {
 } | null = null;
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-async function fetchExbitronPrice(nativeSymbol: string): Promise<number> {
-  try {
-    const response = await fetch('https://api.exbitron.com/api/v1/cg/tickers', {
-      next: { revalidate: 300 },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Exbitron API error: ${response.status}`);
-    }
-
-    const tickers = await response.json();
-
-    // Find native token / USDT ticker (e.g., VBC-USDT)
-    const nativeUsdt = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${nativeSymbol}-USDT`
-    );
-
-    if (nativeUsdt && nativeUsdt.last_price) {
-      return parseFloat(nativeUsdt.last_price);
-    }
-
-    return 0;
-  } catch (error) {
-    console.error('Failed to fetch Exbitron price:', error);
-    return 0;
-  }
-}
 
 async function fetchDefiLlamaTvl(): Promise<number> {
   try {
@@ -63,6 +37,9 @@ async function fetchDefiLlamaTvl(): Promise<number> {
 
 export async function GET() {
   try {
+    // Connect to database for price service
+    await connectDB();
+
     // Get native token symbol from config
     const config = loadConfig();
     const nativeSymbol = config.currency?.symbol || 'VBC';
@@ -76,11 +53,14 @@ export async function GET() {
       });
     }
 
-    // Fetch from both sources in parallel
-    const [nativePriceUsd, totalTvlUsd] = await Promise.all([
-      fetchExbitronPrice(nativeSymbol),
+    // Get price from price service (uses Market DB first, then Exbitron)
+    const [priceData, totalTvlUsd] = await Promise.all([
+      getNativePrice(),
       fetchDefiLlamaTvl(),
     ]);
+
+    const nativePriceUsd = priceData?.priceUSD || 0;
+    const priceSource = priceData?.source === 'database' ? 'Market DB' : 'Exbitron';
 
     cachedData = {
       nativePriceUsd,
@@ -88,7 +68,7 @@ export async function GET() {
       totalTvlUsd,
       lastUpdated: Date.now(),
       source: {
-        price: 'Exbitron',
+        price: priceSource,
         tvl: 'DefiLlama',
       },
     };

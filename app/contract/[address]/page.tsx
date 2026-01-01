@@ -55,6 +55,7 @@ interface Transaction {
   method?: string;
   type?: string;
   action?: string;
+  direction?: string;
   tokenInfo?: {
     address: string;
     name: string;
@@ -63,7 +64,18 @@ interface Transaction {
     type: string;
     value: string;
     tokenId?: number;
+    direction?: string;
   };
+  tokenTransfers?: Array<{
+    address: string;
+    name: string;
+    symbol: string;
+    decimals: number;
+    type: string;
+    value: string;
+    tokenId?: number;
+    direction?: string;
+  }>;
 }
 
 interface TokenTransfer {
@@ -98,7 +110,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
   const [tokenHoldings, setTokenHoldings] = useState<TokenHolding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'code' | 'transactions' | 'tokenTransfers'>('overview');
+  const [activeTab, setActiveTab] = useState<'code' | 'transactions' | 'tokenTransfers'>('code');
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
   // Transactions pagination
   const [txPage, setTxPage] = useState(1);
@@ -106,6 +118,17 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
   const [txLoading, setTxLoading] = useState(false);
   const [totalTxCount, setTotalTxCount] = useState(0);
   const txPerPage = 25;
+
+  // Check URL parameter for tab on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const tabParam = urlParams.get('tab');
+      if (tabParam === 'code' || tabParam === 'transactions' || tabParam === 'tokenTransfers') {
+        setActiveTab(tabParam as 'code' | 'transactions' | 'tokenTransfers');
+      }
+    }
+  }, []);
 
   const fetchContractData = useCallback(async () => {
     try {
@@ -249,16 +272,109 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
     return `${addr.slice(0, 10)}...${addr.slice(-8)}`;
   };
 
-  // Format token value with decimals
-  const formatTokenValue = (value: string, decimals: number = 18) => {
+  // Format token value with decimals (single token)
+  const formatSingleTokenValue = (tokenInfo: {
+    value: string;
+    decimals: number;
+    symbol: string;
+    tokenId?: number;
+    type?: string;
+    direction?: string;
+  }) => {
+    const { value, decimals, symbol, tokenId, type, direction } = tokenInfo;
+
+    // NFTの場合
+    if (type === 'VRC-721' || type === 'ERC721' || tokenId !== undefined) {
+      return <span className="text-pink-400">Token ID: #{tokenId}</span>;
+    }
+
+    // ERC20の場合
+    try {
+      const numValue = BigInt(value);
+      const divisor = BigInt(10 ** decimals);
+      const intPart = numValue / divisor;
+      const fracPart = numValue % divisor;
+      const formatted =
+        fracPart > 0n
+          ? `${intPart}.${fracPart.toString().padStart(decimals, '0').slice(0, 4).replace(/0+$/, '')}`
+          : intPart.toLocaleString();
+      const color = direction === 'in' ? 'text-green-400' : direction === 'out' ? 'text-red-400' : 'text-purple-400';
+      const prefix = direction === 'in' ? '+' : direction === 'out' ? '-' : '';
+      return (
+        <span className={color}>
+          {prefix}{formatted} {symbol}
+        </span>
+      );
+    } catch {
+      return (
+        <span className="text-purple-400">
+          {value} {symbol}
+        </span>
+      );
+    }
+  };
+
+  // Format token value with decimals (multiple tokens)
+  const formatTokenValue = (tx: Transaction) => {
+    // 複数のトークン転送がある場合
+    if (tx.tokenTransfers && tx.tokenTransfers.length > 0) {
+      return (
+        <div className="flex flex-col gap-1">
+          {tx.tokenTransfers.map((transfer, idx) => (
+            <div key={idx}>{formatSingleTokenValue(transfer)}</div>
+          ))}
+        </div>
+      );
+    }
+
+    // 単一のtokenInfoの場合（後方互換）
+    if (tx.tokenInfo) {
+      return formatSingleTokenValue(tx.tokenInfo);
+    }
+
+    return null;
+  };
+
+  // Format supply value (for token total supply display)
+  const formatSupplyValue = (value: string, decimals: number = 18) => {
     try {
       const numValue = BigInt(value);
       const divisor = BigInt(10 ** decimals);
       const integerPart = numValue / divisor;
       const remainder = numValue % divisor;
       
-      // Format with up to 6 decimal places
       const decimalStr = remainder.toString().padStart(decimals, '0');
+      const significantDecimals = decimalStr.slice(0, 6).replace(/0+$/, '');
+      
+      if (significantDecimals) {
+        return `${integerPart.toLocaleString()}.${significantDecimals}`;
+      }
+      return integerPart.toLocaleString();
+    } catch {
+      return value;
+    }
+  };
+
+  // Format native currency value (Wei to VBC)
+  const formatNativeValue = (value: string) => {
+    try {
+      // Already in VBC format (has decimal point or is small number)
+      if (value.includes('.') || (parseFloat(value) > 0 && parseFloat(value) < 1000000)) {
+        const numVal = parseFloat(value);
+        if (numVal === 0) return '0';
+        if (numVal < 0.000001) return '<0.000001';
+        return numVal.toLocaleString(undefined, { maximumFractionDigits: 6 });
+      }
+      
+      // Wei format - convert to VBC
+      const numValue = BigInt(value);
+      if (numValue === 0n) return '0';
+      
+      const divisor = BigInt(10 ** 18);
+      const integerPart = numValue / divisor;
+      const remainder = numValue % divisor;
+      
+      const decimalStr = remainder.toString().padStart(18, '0');
       const significantDecimals = decimalStr.slice(0, 6).replace(/0+$/, '');
       
       if (significantDecimals) {
@@ -316,35 +432,39 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
     return `${Math.floor(diff / 86400)}d ago`;
   };
 
-  // MetaMask準拠のトランザクションタイプバッジを生成
-  const getTransactionTypeBadge = (type?: string, action?: string) => {
-    const typeConfig: Record<string, { bg: string; text: string; icon: string }> = {
-      send: { bg: 'bg-red-100', text: 'text-red-700', icon: '↑' },
-      receive: { bg: 'bg-green-100', text: 'text-green-700', icon: '↓' },
-      token_transfer: { bg: 'bg-purple-100', text: 'text-purple-700', icon: '⇆' },
-      nft_transfer: { bg: 'bg-pink-100', text: 'text-pink-700', icon: '🖼' },
-      approve: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '✓' },
-      swap: { bg: 'bg-blue-100', text: 'text-blue-700', icon: '⇋' },
-      liquidity: { bg: 'bg-cyan-100', text: 'text-cyan-700', icon: '💧' },
-      stake: { bg: 'bg-orange-100', text: 'text-orange-700', icon: '📌' },
-      unstake: { bg: 'bg-amber-100', text: 'text-amber-700', icon: '📤' },
-      harvest: { bg: 'bg-lime-100', text: 'text-lime-700', icon: '🌾' },
-      mint: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: '✨' },
-      burn: { bg: 'bg-red-200', text: 'text-red-800', icon: '🔥' },
-      contract_creation: { bg: 'bg-indigo-100', text: 'text-indigo-700', icon: '📄' },
-      contract_interaction: { bg: 'bg-violet-100', text: 'text-violet-700', icon: '📝' },
-      mining_reward: { bg: 'bg-yellow-100', text: 'text-yellow-700', icon: '⛏️' },
+  // MetaMask準拠のトランザクションタイプバッジを生成（他のページと統一）
+  const getTransactionTypeBadge = (tx: Transaction) => {
+    const type = tx.type || 'unknown';
+    const action = tx.action || type;
+
+    // タイプごとのスタイル定義（暗いテーマ統一）
+    const styles: Record<string, { bg: string; text: string; icon: string }> = {
+      send: { bg: 'bg-red-500/20', text: 'text-red-400', icon: '↑' },
+      receive: { bg: 'bg-green-500/20', text: 'text-green-400', icon: '↓' },
+      token_transfer: { bg: 'bg-purple-500/20', text: 'text-purple-400', icon: '⇄' },
+      nft_transfer: { bg: 'bg-pink-500/20', text: 'text-pink-400', icon: '🎨' },
+      approve: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: '✓' },
+      swap: { bg: 'bg-blue-500/20', text: 'text-blue-400', icon: '⟲' },
+      liquidity: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', icon: '💧' },
+      stake: { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: '📥' },
+      unstake: { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: '📤' },
+      harvest: { bg: 'bg-lime-500/20', text: 'text-lime-400', icon: '🌾' },
+      mint: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', icon: '✨' },
+      burn: { bg: 'bg-red-600/20', text: 'text-red-500', icon: '🔥' },
+      contract_creation: { bg: 'bg-indigo-500/20', text: 'text-indigo-400', icon: '📄' },
+      contract_interaction: { bg: 'bg-violet-500/20', text: 'text-violet-400', icon: '⚡' },
+      mining_reward: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: '⛏️' },
+      unknown: { bg: 'bg-gray-500/20', text: 'text-gray-400', icon: '?' },
     };
 
-    const config = typeConfig[type || 'contract_interaction'] || typeConfig.contract_interaction;
-    const displayAction = action || type || 'Transaction';
+    const style = styles[type] || styles['unknown'];
 
     return (
       <span
-        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${config.bg} ${config.text}`}
+        className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${style.bg} ${style.text}`}
       >
-        <span>{config.icon}</span>
-        <span>{displayAction}</span>
+        <span>{style.icon}</span>
+        <span>{action}</span>
       </span>
     );
   };
@@ -386,17 +506,54 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
 
   return (
     <>
-      {/* Page Header */}
-      <div className="page-header-container">
-        <div className="container mx-auto px-4 py-8">
-          <h1 className="text-3xl font-bold mb-2 text-gray-100">Contract Details</h1>
-          <p className="text-gray-400">
-            Smart contract information and source code for {contract?.name || 'this contract'}
-          </p>
+      {/* Page Header - GnosisScan Style */}
+      <div className="bg-gray-800 border-b border-gray-700">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="bg-purple-500/20 p-2 rounded-lg">
+              <CodeBracketIcon className="w-6 h-6 text-purple-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                  contract?.verified
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-yellow-500/20 text-yellow-400'
+                }`}>
+                  {contract?.verified ? 'Contract' : 'Unverified Contract'}
+                </span>
+                {contract?.isToken && (
+                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-500/20 text-purple-400">
+                    {contract.tokenType}
+                  </span>
+                )}
+                <h1 className="text-2xl font-bold text-gray-100">
+                  {contract?.name || 'Contract'}
+                </h1>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <span className="font-mono text-gray-400 text-sm">{address}</span>
+            <button
+              onClick={() => copyToClipboard(address, 'address')}
+              className="p-1 text-gray-400 hover:text-blue-400 transition-colors"
+              title="Copy address"
+            >
+              {copiedItem === 'address' ? (
+                <CheckCircleIcon className="w-4 h-4 text-green-400" />
+              ) : (
+                <ClipboardDocumentIcon className="w-4 h-4" />
+              )}
+            </button>
+            {copiedItem === 'address' && (
+              <span className="text-green-400 text-xs">Copied!</span>
+            )}
+          </div>
         </div>
       </div>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-6">
         {/* Token Tracker Banner (if this is a token contract) */}
         {contract?.isToken && (
           <div className="bg-gradient-to-r from-purple-900/50 to-blue-900/50 rounded-lg border border-purple-500/30 p-4 mb-6">
@@ -419,7 +576,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                 <div>
                   <span className="text-gray-400">Total Supply:</span>
                   <span className="ml-2 text-white font-medium">
-                    {contract.tokenTotalSupply ? formatTokenValue(contract.tokenTotalSupply, contract.tokenDecimals || 18) : '0'} {contract.tokenSymbol}
+                    {contract.tokenTotalSupply ? formatSupplyValue(contract.tokenTotalSupply, contract.tokenDecimals || 18) : '0'} {contract.tokenSymbol}
                   </span>
                 </div>
                 <div>
@@ -549,7 +706,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       <span className="font-medium">Verified</span>
                       {contract.verifiedAt && (
                         <span className="text-xs text-gray-500">
-                          ({new Date(contract.verifiedAt).toLocaleDateString()})
+                          ({new Date(contract.verifiedAt).toLocaleString(undefined, { timeZoneName: 'short' })})
                         </span>
                       )}
                     </div>
@@ -592,171 +749,11 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
           </div>
         </div>
 
-        {/* Contract Information Card */}
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-100">Contract Information</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {/* Contract Address - 2 columns */}
-            <div className="md:col-span-2">
-              <div className="text-sm font-medium text-gray-300 mb-2">Contract Address</div>
-              <div className="flex items-center gap-2 font-mono text-blue-400 text-sm break-all bg-white/10 rounded px-3 py-2">
-                <span>{address}</span>
-                <button
-                  onClick={() => copyToClipboard(address, 'address')}
-                  className="p-1 text-gray-400 hover:text-blue-400 transition-colors"
-                  title="Copy address to clipboard"
-                >
-                  {copiedItem === 'address' ? (
-                    <CheckCircleIcon className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <ClipboardDocumentIcon className="w-4 h-4" />
-                  )}
-                </button>
-                {copiedItem === 'address' && (
-                  <span className="text-green-400 text-xs">Copied!</span>
-                )}
-              </div>
-            </div>
-
-            {/* Contract Name */}
-            <div>
-              <div className="text-sm font-medium text-gray-300 mb-2">Contract Name</div>
-              <div className="text-orange-400 text-lg font-semibold">
-                {contract?.name || 'Unverified Contract'}
-              </div>
-            </div>
-
-            {/* Verification Badge */}
-            <div>
-              <div className="text-sm font-medium text-gray-300 mb-2">Verification</div>
-              {contract?.verified ? (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/20 text-green-400 rounded text-sm font-medium w-fit border border-green-500/30">
-                  <ShieldCheckIcon className="w-5 h-5" />
-                  <span>Source Verified</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/20 text-red-400 rounded text-sm font-medium w-fit border border-red-500/30">
-                  <ShieldExclamationIcon className="w-5 h-5" />
-                  <span>Not Verified</span>
-                </div>
-              )}
-            </div>
-
-            {/* Compiler Version */}
-            <div>
-              <div className="text-sm font-medium text-gray-300 mb-2">Compiler Version</div>
-              <div className="text-blue-400 text-lg font-bold">
-                {contract?.compilerVersion || '-'}
-              </div>
-            </div>
-
-            {/* Optimization */}
-            <div>
-              <div className="text-sm font-medium text-gray-300 mb-2">Optimization</div>
-              <div
-                className={`text-lg font-bold ${contract?.optimization ? 'text-green-400' : 'text-gray-400'}`}
-              >
-                {contract?.optimization !== undefined
-                  ? contract.optimization
-                    ? `Enabled (${contract.optimizationRuns || 200} runs)`
-                    : 'Disabled'
-                  : '-'}
-              </div>
-            </div>
-
-            {/* EVM Version */}
-            <div>
-              <div className="text-sm font-medium text-gray-300 mb-2">EVM Version</div>
-              <div className="text-purple-400 text-lg font-bold">
-                {contract?.evmVersion || 'default'}
-              </div>
-            </div>
-
-            {/* License */}
-            <div>
-              <div className="text-sm font-medium text-gray-300 mb-2">License</div>
-              <div className="text-yellow-400 text-lg font-bold">{contract?.license || 'None'}</div>
-            </div>
-
-            {/* Balance */}
-            <div>
-              <div className="text-sm font-medium text-gray-300 mb-2">Balance</div>
-              <div className="text-green-400 text-lg font-bold">{contract?.balance || '0'} VBC</div>
-            </div>
-
-            {/* Transaction Count */}
-            <div>
-              <div className="text-sm font-medium text-gray-300 mb-2">Transactions</div>
-              <div className="text-purple-400 text-lg font-bold">
-                {(contract?.transactionCount || 0).toLocaleString()}
-              </div>
-            </div>
-
-            {/* Creator - only show if data exists */}
-            {contract?.creator && (
-              <div>
-                <div className="text-sm font-medium text-gray-300 mb-2">Creator</div>
-                <Link
-                  href={`/address/${contract.creator}`}
-                  className="font-mono text-blue-400 hover:text-blue-300 transition-colors break-all text-sm"
-                >
-                  {formatAddress(contract.creator)}
-                </Link>
-              </div>
-            )}
-
-            {/* Creation Tx - only show if data exists */}
-            {contract?.creationTx && (
-              <div>
-                <div className="text-sm font-medium text-gray-300 mb-2">Creation Tx</div>
-                <Link
-                  href={`/tx/${contract.creationTx}`}
-                  className="font-mono text-blue-400 hover:text-blue-300 transition-colors break-all text-sm"
-                >
-                  {formatAddress(contract.creationTx)}
-                </Link>
-              </div>
-            )}
-
-            {/* Block Number - only show if data exists */}
-            {contract?.blockNumber ? (
-              <div>
-                <div className="text-sm font-medium text-gray-300 mb-2">Created at Block</div>
-                <Link
-                  href={`/block/${contract.blockNumber}`}
-                  className="text-blue-400 hover:text-blue-300 transition-colors text-lg font-bold"
-                >
-                  {contract.blockNumber.toLocaleString()}
-                </Link>
-              </div>
-            ) : null}
-
-            {/* Verified At */}
-            {contract?.verified && contract?.verifiedAt && (
-              <div>
-                <div className="text-sm font-medium text-gray-300 mb-2">Verified At</div>
-                <div className="flex items-center gap-2 text-gray-300">
-                  <ClockIcon className="w-4 h-4 text-gray-500" />
-                  <span>
-                    {new Date(contract.verifiedAt).toLocaleString(undefined, {
-                      timeZoneName: 'short',
-                    })}
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
         {/* Tabs */}
         <div className="bg-gray-800 rounded-lg border border-gray-700">
           <div className="border-b border-gray-700">
             <div className="flex gap-1 px-4 overflow-x-auto">
               {[
-                { id: 'overview', label: 'Overview', icon: CubeIcon },
                 { id: 'code', label: 'Code', icon: CodeBracketIcon },
                 { id: 'transactions', label: 'Transactions', icon: DocumentTextIcon, count: totalTxCount || contract?.transactionCount },
                 ...(contract?.isToken ? [{ id: 'tokenTransfers', label: 'Token Transfers', icon: ArrowTopRightOnSquareIcon, count: tokenTransfers.length }] : []),
@@ -784,109 +781,6 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
 
           {/* Tab Content */}
           <div className="p-6">
-            {activeTab === 'overview' && (
-              <div className="space-y-6">
-                {/* Contract Details */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-100">Contract Details</h3>
-                    <div className="space-y-3">
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Name:</span>
-                        <span className="text-gray-200 font-medium">
-                          {contract?.name || 'Unverified Contract'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Compiler:</span>
-                        <span className="text-gray-200 font-medium">
-                          {contract?.compilerVersion || '-'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Optimization:</span>
-                        <span className="text-gray-200 font-medium">
-                          {contract?.optimization !== undefined
-                            ? contract.optimization
-                              ? `Yes (${contract.optimizationRuns || 200} runs)`
-                              : 'No'
-                            : '-'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">EVM Version:</span>
-                        <span className="text-gray-200 font-medium">
-                          {contract?.evmVersion || 'default'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">License:</span>
-                        <span className="text-gray-200 font-medium">
-                          {contract?.license || 'None'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-gray-100">Deployment Info</h3>
-                    <div className="space-y-3">
-                      {contract?.creator && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Creator:</span>
-                          <Link
-                            href={`/address/${contract.creator}`}
-                            className="text-blue-400 hover:text-blue-300 font-mono text-sm"
-                          >
-                            {formatAddress(contract.creator)}
-                          </Link>
-                        </div>
-                      )}
-                      {contract?.creationTx && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Creation Tx:</span>
-                          <Link
-                            href={`/tx/${contract.creationTx}`}
-                            className="text-blue-400 hover:text-blue-300 font-mono text-sm"
-                          >
-                            {formatAddress(contract.creationTx)}
-                          </Link>
-                        </div>
-                      )}
-                      {contract?.blockNumber ? (
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Block:</span>
-                          <Link
-                            href={`/block/${contract.blockNumber}`}
-                            className="text-blue-400 hover:text-blue-300"
-                          >
-                            {contract.blockNumber.toLocaleString()}
-                          </Link>
-                        </div>
-                      ) : null}
-                      {contract?.verified && contract?.verifiedAt && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Verified At:</span>
-                          <span className="text-gray-200">
-                            {new Date(contract.verifiedAt).toLocaleString(undefined, {
-                              timeZoneName: 'short',
-                            })}
-                          </span>
-                        </div>
-                      )}
-                      {!contract?.creator &&
-                        !contract?.creationTx &&
-                        !contract?.blockNumber &&
-                        !contract?.verifiedAt && (
-                          <div className="text-gray-500 text-sm">
-                            No deployment information available
-                          </div>
-                        )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {activeTab === 'code' && (
               <div className="space-y-4">
                 <div className="bg-gray-900 rounded-lg p-4 border border-gray-600">
@@ -897,20 +791,12 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
 
                   {contract?.verified && contract?.sourceCode ? (
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                          <span className="text-green-400 font-medium">Contract Verified</span>
-                        </div>
-                        <Link
-                          href={`/contract/status/${address}`}
-                          className="text-xs text-blue-400 hover:text-blue-300 underline"
-                        >
-                          View Verification Details
-                        </Link>
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+                        <span className="text-green-400 font-medium">Contract Verified</span>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                         <div className="bg-gray-800 rounded p-3">
                           <div className="text-gray-400 text-sm">Contract Name</div>
                           <div className="text-gray-200 font-medium">
@@ -933,9 +819,25 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                               : '-'}
                           </div>
                         </div>
+                        <div className="bg-gray-800 rounded p-3">
+                          <div className="text-gray-400 text-sm">License</div>
+                          <div className="text-gray-200 font-medium">
+                            {contract.license || 'None'}
+                          </div>
+                        </div>
                       </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mb-4">
+                      <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                      <span className="text-red-400 font-medium">Contract Not Verified</span>
+                    </div>
+                  )}
+                </div>
 
-                      {/* Contract Source Code */}
+                {contract?.verified && contract?.sourceCode ? (
+                  <div className="space-y-4">
+                    {/* Contract Source Code */}
                       <div className="bg-gray-950 rounded border border-gray-700 overflow-hidden">
                         <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
                           <span className="text-sm font-medium text-gray-300">
@@ -973,12 +875,12 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                         </div>
                       )}
 
-                      {/* Contract Bytecode */}
+                      {/* Deployed Bytecode */}
                       {contract.byteCode && (
                         <div className="bg-gray-950 rounded border border-gray-700 overflow-hidden">
                           <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
                             <span className="text-sm font-medium text-gray-300">
-                              Contract Bytecode
+                              Deployed Bytecode
                             </span>
                           </div>
                           <pre className="p-4 overflow-x-auto text-sm text-gray-300 max-h-96 overflow-y-auto">
@@ -991,22 +893,12 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className="w-2 h-2 bg-red-400 rounded-full"></div>
-                        <span className="text-red-400 font-medium">Contract Not Verified</span>
-                      </div>
-
-                      {/* Always show bytecode */}
+                      {/* Deployed Bytecode */}
                       <div className="bg-gray-950 rounded border border-gray-700 overflow-hidden">
-                        <div className="bg-gray-800 px-4 py-2 border-b border-gray-700 flex items-center justify-between">
+                        <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
                           <span className="text-sm font-medium text-gray-300">
-                            Contract Bytecode
+                            Deployed Bytecode
                           </span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400">
-                              Contract Address: {address.slice(0, 10)}...{address.slice(-8)}
-                            </span>
-                          </div>
                         </div>
                         <pre className="p-4 overflow-x-auto text-sm text-gray-300 max-h-96 overflow-y-auto">
                           <code className="whitespace-pre-wrap break-all">
@@ -1054,7 +946,6 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       </div>
                     </div>
                   )}
-                </div>
               </div>
             )}
 
@@ -1108,7 +999,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                                 </Link>
                               </td>
                               <td className="py-3 px-4">
-                                {getTransactionTypeBadge(tx.type, tx.action)}
+                                {getTransactionTypeBadge(tx)}
                               </td>
                               <td className="py-3 px-4">
                                 <Link
@@ -1138,14 +1029,18 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                                   <span className="text-gray-500">Contract Creation</span>
                                 )}
                               </td>
-                              <td className="py-3 px-4 text-yellow-400">
-                                {tx.tokenInfo ? (
-                                  <span title={`${tx.tokenInfo.value} (raw)`}>
-                                    {formatTokenValue(tx.tokenInfo.value, tx.tokenInfo.decimals)} {tx.tokenInfo.symbol}
-                                  </span>
-                                ) : (
-                                  <span>{tx.value} VBC</span>
-                                )}
+                              <td className="py-3 px-4">
+                                <div className="flex flex-col">
+                                  {parseFloat(tx.value) > 0 && (
+                                    <span className="text-yellow-400">
+                                      {formatNativeValue(tx.value)} VBC
+                                    </span>
+                                  )}
+                                  {formatTokenValue(tx)}
+                                  {parseFloat(tx.value) === 0 && !tx.tokenInfo && !tx.tokenTransfers && (
+                                    <span className="text-gray-500">-</span>
+                                  )}
+                                </div>
                               </td>
                               <td className="py-3 px-4">
                                 <div className="flex items-center gap-2">
@@ -1167,38 +1062,71 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                     </div>
                     {/* Pagination */}
                     {txTotalPages > 1 && (
-                      <div className="mt-6 flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => setTxPage(1)}
-                          disabled={txPage === 1}
-                          className="px-3 py-1 bg-gray-700 text-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-600"
-                        >
-                          First
-                        </button>
-                        <button
-                          onClick={() => setTxPage((p) => Math.max(1, p - 1))}
-                          disabled={txPage === 1}
-                          className="px-3 py-1 bg-gray-700 text-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-600"
-                        >
-                          Prev
-                        </button>
-                        <span className="px-4 py-1 text-gray-400">
-                          Page {txPage} of {txTotalPages}
-                        </span>
-                        <button
-                          onClick={() => setTxPage((p) => Math.min(txTotalPages, p + 1))}
-                          disabled={txPage === txTotalPages}
-                          className="px-3 py-1 bg-gray-700 text-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-600"
-                        >
-                          Next
-                        </button>
-                        <button
-                          onClick={() => setTxPage(txTotalPages)}
-                          disabled={txPage === txTotalPages}
-                          className="px-3 py-1 bg-gray-700 text-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-600"
-                        >
-                          Last
-                        </button>
+                      <div className="mt-6">
+                        <div className="flex justify-center items-center gap-4">
+                          <button
+                            onClick={() => setTxPage(Math.max(1, txPage - 1))}
+                            disabled={txPage === 1}
+                            className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                          >
+                            Previous
+                          </button>
+
+                          <div className="flex items-center gap-2">
+                            {txPage > 3 && (
+                              <>
+                                <button
+                                  onClick={() => setTxPage(1)}
+                                  className="px-3 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors font-medium"
+                                >
+                                  1
+                                </button>
+                                {txPage > 4 && <span className="text-gray-500">...</span>}
+                              </>
+                            )}
+
+                            {Array.from({ length: 5 }, (_, i) => txPage - 2 + i)
+                              .filter((page) => page >= 1 && page <= txTotalPages)
+                              .map((page) => (
+                                <button
+                                  key={page}
+                                  onClick={() => setTxPage(page)}
+                                  className={`px-3 py-2 rounded-lg transition-colors font-medium ${
+                                    page === txPage
+                                      ? 'bg-blue-600 text-white shadow-lg'
+                                      : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                                  }`}
+                                >
+                                  {page}
+                                </button>
+                              ))}
+
+                            {txPage < txTotalPages - 2 && (
+                              <>
+                                {txPage < txTotalPages - 3 && <span className="text-gray-500">...</span>}
+                                <button
+                                  onClick={() => setTxPage(txTotalPages)}
+                                  className="px-3 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors font-medium"
+                                >
+                                  {txTotalPages}
+                                </button>
+                              </>
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => setTxPage(Math.min(txTotalPages, txPage + 1))}
+                            disabled={txPage === txTotalPages}
+                            className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                          >
+                            Next
+                          </button>
+                        </div>
+
+                        <div className="text-center mt-4 text-gray-400 text-sm">
+                          Showing transactions {(txPage - 1) * txPerPage + 1} to{' '}
+                          {Math.min(txPage * txPerPage, totalTxCount)} of {totalTxCount.toLocaleString()} total
+                        </div>
                       </div>
                     )}
                   </>
@@ -1275,7 +1203,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                               </Link>
                             </td>
                             <td className="py-3 px-4 text-yellow-400">
-                              {formatTokenValue(transfer.value, transfer.tokenDecimals || contract?.tokenDecimals || 18)} {transfer.tokenSymbol || contract?.tokenSymbol}
+                              {formatSupplyValue(transfer.value, transfer.tokenDecimals || contract?.tokenDecimals || 18)} {transfer.tokenSymbol || contract?.tokenSymbol}
                             </td>
                             <td className="py-3 px-4">
                               <div className="flex items-center gap-2">

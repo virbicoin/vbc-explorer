@@ -999,17 +999,27 @@ export default function ApiDocsPage() {
       </div>
 
       {/* Footer Note */}
-      <div className="max-w-7xl mx-auto px-4 pb-12">
+      <div className="max-w-7xl mx-auto px-4 pb-12 space-y-4">
         <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-6">
           <h3 className="text-blue-400 font-semibold mb-2">📝 Notes</h3>
           <ul className="text-gray-400 text-sm space-y-2">
             <li>
               • All endpoints return JSON unless otherwise specified (Supply APIs return plain text)
             </li>
-            <li>• Rate limiting: 100 requests per 15 minutes</li>
+            <li>• Rate limiting: 100 requests per minute for most endpoints</li>
             <li>• CORS is enabled for all endpoints</li>
             <li>• Timestamps are in Unix format (seconds since epoch)</li>
             <li>• All amounts are in wei (divide by 10^18 for VBC)</li>
+          </ul>
+        </div>
+
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-6">
+          <h3 className="text-yellow-400 font-semibold mb-2">🔒 Security</h3>
+          <ul className="text-gray-400 text-sm space-y-2">
+            <li>• All API responses include security headers (X-Content-Type-Options, X-Frame-Options, etc.)</li>
+            <li>• Input validation is enforced on all endpoints (addresses, hashes, pagination)</li>
+            <li>• Contract interaction is limited to read-only methods for security</li>
+            <li>• Report security vulnerabilities to: <a href="mailto:security@digitalregion.jp" className="text-yellow-400 hover:underline">security@digitalregion.jp</a></li>
           </ul>
         </div>
       </div>

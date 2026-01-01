@@ -718,6 +718,18 @@ export async function GET(
       value: string;
       tokenId?: number;
     };
+    tokenTransfers?: Array<{
+      address: string;
+      name: string;
+      symbol: string;
+      decimals: number;
+      type: string;
+      value: string;
+      tokenId?: number;
+      from: string;
+      to: string;
+      direction: 'in' | 'out';
+    }>;
     nftInfo?: {
       tokenId: number;
       tokenAddress: string;
@@ -768,7 +780,20 @@ export async function GET(
     // トークン転送情報があれば追加
     const tokenTransfersForTx = tokenTransferMap.get(hash);
     if (tokenTransfersForTx && tokenTransfersForTx.length > 0) {
-      const tt = tokenTransfersForTx[0];
+      // このアドレスに関連する転送を優先
+      const addressLower = address.toLowerCase();
+      
+      // 受け取り（in）を優先的に表示
+      const incomingTransfer = tokenTransfersForTx.find(
+        (t) => (t.to as string).toLowerCase() === addressLower
+      );
+      const outgoingTransfer = tokenTransfersForTx.find(
+        (t) => (t.from as string).toLowerCase() === addressLower
+      );
+      
+      // 受け取りを優先、なければ送金を表示
+      const primaryTransfer = incomingTransfer || outgoingTransfer || tokenTransfersForTx[0];
+      const tt = primaryTransfer;
       const tokenAddr = (tt.tokenAddress as string).toLowerCase();
       const tokenInfo = tokenInfoMap.get(tokenAddr);
 
@@ -781,6 +806,25 @@ export async function GET(
         value: tt.value as string,
         tokenId: tt.tokenId as number | undefined,
       };
+
+      // 全てのトークン転送情報を追加
+      formatted.tokenTransfers = tokenTransfersForTx.map((t) => {
+        const addr = (t.tokenAddress as string).toLowerCase();
+        const info = tokenInfoMap.get(addr);
+        const isIncoming = (t.to as string).toLowerCase() === addressLower;
+        return {
+          address: t.tokenAddress as string,
+          name: info?.name || 'Unknown Token',
+          symbol: info?.symbol || '???',
+          decimals: info?.decimals || 18,
+          type: info?.type || 'VRC-20',
+          value: t.value as string,
+          tokenId: t.tokenId as number | undefined,
+          from: t.from as string,
+          to: t.to as string,
+          direction: isIncoming ? 'in' : 'out',
+        };
+      });
 
       // NFTの場合
       if (tt.tokenId !== undefined && tt.tokenId !== null) {

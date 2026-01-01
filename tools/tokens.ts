@@ -1213,6 +1213,45 @@ const LP_TOKEN_ABI = [
   { inputs: [], name: 'token1', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
 ];
 
+// ERC20 ABI for getting token symbol
+const ERC20_BASIC_ABI = [
+  { inputs: [], name: 'symbol', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
+  { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
+];
+
+// Helper function to get pair-based LP token name and symbol
+async function getLPPairInfo(pairAddress: string): Promise<{ name: string; symbol: string }> {
+  try {
+    const lpContract = new web3.eth.Contract(LP_TOKEN_ABI as any, pairAddress);
+    
+    // Get token0 and token1 addresses
+    const [token0Address, token1Address] = await Promise.all([
+      lpContract.methods.token0().call(),
+      lpContract.methods.token1().call(),
+    ]);
+    
+    // Get symbols for both tokens
+    const token0Contract = new web3.eth.Contract(ERC20_BASIC_ABI as any, String(token0Address));
+    const token1Contract = new web3.eth.Contract(ERC20_BASIC_ABI as any, String(token1Address));
+    
+    const [symbol0, symbol1] = await Promise.all([
+      token0Contract.methods.symbol().call().catch(() => 'UNKNOWN'),
+      token1Contract.methods.symbol().call().catch(() => 'UNKNOWN'),
+    ]);
+    
+    const s0 = String(symbol0);
+    const s1 = String(symbol1);
+    
+    return {
+      name: `${s0}-${s1} LP`,
+      symbol: `${s0}-${s1}`,
+    };
+  } catch (error) {
+    console.error(`Error getting LP pair info for ${pairAddress}:`, error);
+    return { name: 'LP Token', symbol: 'LP' };
+  }
+}
+
 // Sync all LP tokens from DEX factory
 async function syncLPTokensFromFactory() {
   console.log('🔄 Syncing LP tokens from DEX factory...');
@@ -1251,7 +1290,7 @@ async function syncLPTokensFromFactory() {
         const pairAddress = String(pairAddressResult);
         const normalizedAddress = pairAddress.toLowerCase();
         
-        // Check if LP token already exists
+        // Check if LP token already exists with proper name
         const existingToken = await Token.findOne({ address: normalizedAddress });
         if (existingToken) {
           // Update type if not set correctly
@@ -1262,23 +1301,36 @@ async function syncLPTokensFromFactory() {
               { $set: { type: 'LP' } }
             );
           }
+          
+          // Update name and symbol if they are generic (SLP-V2, UNI-V2, etc.)
+          if (existingToken.symbol === 'SLP-V2' || existingToken.symbol === 'UNI-V2' || 
+              existingToken.name === 'Simple LP Token V2' || existingToken.name === 'Uniswap V2') {
+            console.log(`🔧 Updating LP token name/symbol for ${normalizedAddress}...`);
+            const pairInfo = await getLPPairInfo(pairAddress);
+            await Token.updateOne(
+              { address: normalizedAddress },
+              { $set: { name: pairInfo.name, symbol: pairInfo.symbol } }
+            );
+            console.log(`✅ Updated LP token: ${pairInfo.symbol} (${normalizedAddress})`);
+          }
           continue;
         }
 
-        // Get LP token info
+        // Get LP token info from contract
         const lpToken = new web3.eth.Contract(LP_TOKEN_ABI as any, pairAddress);
-        const [name, symbol, decimals, totalSupplyResult] = await Promise.all([
-          lpToken.methods.name().call(),
-          lpToken.methods.symbol().call(),
+        const [decimals, totalSupplyResult] = await Promise.all([
           lpToken.methods.decimals().call(),
           lpToken.methods.totalSupply().call(),
         ]);
 
-        // Register new LP token
+        // Get human-readable name and symbol from pair tokens
+        const pairInfo = await getLPPairInfo(pairAddress);
+
+        // Register new LP token with pair-based name
         const tokenDoc = {
           address: normalizedAddress,
-          name: String(name),
-          symbol: String(symbol),
+          name: pairInfo.name,
+          symbol: pairInfo.symbol,
           decimals: Number(decimals),
           totalSupply: String(totalSupplyResult),
           type: 'LP',
@@ -1292,7 +1344,7 @@ async function syncLPTokensFromFactory() {
           { upsert: true }
         );
 
-        console.log(`✅ Registered LP token: ${symbol} (${normalizedAddress})`);
+        console.log(`✅ Registered LP token: ${pairInfo.symbol} (${normalizedAddress})`);
 
         // Small delay between pairs
         await new Promise((resolve) => setTimeout(resolve, 500));

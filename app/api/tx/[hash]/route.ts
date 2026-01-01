@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import { Transaction, Block, connectDB } from '../../../../models/index';
 import { getTransactionTypeGlobal } from '../../../../lib/transaction-utils';
+import {
+  sanitizeHash,
+  isValidHash,
+  checkRateLimit,
+  getClientIp,
+  getSecurityHeaders,
+} from '../../../../lib/security';
 // import { loadConfig } from '../../../../lib/config';
 
 // Load configuration (unused but kept for future use)
@@ -29,9 +37,38 @@ interface BlockDocument {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ hash: string }> }) {
   try {
-    const { hash } = await params;
+    // Rate limiting
+    const clientIp = getClientIp(request);
+    const rateLimit = checkRateLimit(`tx:${clientIp}`, 60, 30);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
+        { status: 429, headers: getSecurityHeaders() }
+      );
+    }
+
+    const { hash: rawHash } = await params;
+    if (!rawHash) {
+      return NextResponse.json(
+        { error: 'Transaction hash is required' },
+        { status: 400, headers: getSecurityHeaders() }
+      );
+    }
+
+    // Validate and sanitize hash
+    if (!isValidHash(rawHash)) {
+      return NextResponse.json(
+        { error: 'Invalid transaction hash format' },
+        { status: 400, headers: getSecurityHeaders() }
+      );
+    }
+
+    const hash = sanitizeHash(rawHash);
     if (!hash) {
-      return NextResponse.json({ error: 'Transaction hash is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Invalid transaction hash' },
+        { status: 400, headers: getSecurityHeaders() }
+      );
     }
 
     // Connect to database with better error handling
@@ -39,7 +76,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       await connectDB();
     } catch (dbError) {
       console.error('Database connection error:', dbError);
-      return NextResponse.json({ error: 'Database connection failed' }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Database connection failed' },
+        { status: 500, headers: getSecurityHeaders() }
+      );
     }
 
     // Find the transaction by hash
@@ -92,10 +132,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             miner: block.miner,
           },
         };
-        return NextResponse.json(miningRewardTx);
+        return NextResponse.json(miningRewardTx, { headers: getSecurityHeaders() });
       }
       // --- End mining reward fallback ---
-      return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: 'Transaction not found' },
+        { status: 404, headers: getSecurityHeaders() }
+      );
     }
 
     // Get the actual transaction object (handle both array and single object cases)
@@ -115,6 +158,61 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       status: actualTransaction.status,
     });
 
+    // トークン転送情報を取得
+    const db = mongoose.connection.db;
+    let tokenTransfers: Array<Record<string, unknown>> = [];
+    
+    if (db) {
+      const transfers = await db
+        .collection('tokentransfers')
+        .find({ transactionHash: hash })
+        .toArray();
+      
+      if (transfers.length > 0) {
+        // トークン情報を取得
+        const tokenAddresses = [...new Set(transfers.map((t) => t.tokenAddress as string))].filter(Boolean);
+        const tokenInfoMap = new Map<string, { name: string; symbol: string; decimals: number; type: string }>();
+        
+        if (tokenAddresses.length > 0) {
+          const tokens = await db
+            .collection('tokens')
+            .find({
+              address: { $in: tokenAddresses.map((a) => new RegExp(`^${a}$`, 'i')) },
+            })
+            .toArray();
+
+          for (const token of tokens) {
+            const addr = ((token.address as string) || '').toLowerCase();
+            if (addr) {
+              tokenInfoMap.set(addr, {
+                name: (token.name as string) || 'Unknown Token',
+                symbol: (token.symbol as string) || '???',
+                decimals: (token.decimals as number) || 18,
+                type: (token.type as string) || 'VRC-20',
+              });
+            }
+          }
+        }
+
+        // トークン転送をフォーマット
+        tokenTransfers = transfers.map((t) => {
+          const tokenAddr = ((t.tokenAddress as string) || '').toLowerCase();
+          const info = tokenInfoMap.get(tokenAddr);
+          return {
+            from: t.from,
+            to: t.to,
+            tokenAddress: t.tokenAddress,
+            value: t.value,
+            tokenId: t.tokenId,
+            name: info?.name || 'Unknown Token',
+            symbol: info?.symbol || '???',
+            decimals: info?.decimals || 18,
+            type: info?.type || 'VRC-20',
+          };
+        });
+      }
+    }
+
     // Transform the transaction data for frontend
     const transformedTransaction = {
       ...actualTransaction,
@@ -129,6 +227,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // MetaMask compliant type info
       txType: typeInfo.type,
       txAction: typeInfo.action,
+      // トークン転送情報
+      tokenTransfers: tokenTransfers,
       block: block
         ? {
             number: block.number,
@@ -139,9 +239,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         : null,
     };
 
-    return NextResponse.json(transformedTransaction);
+    return NextResponse.json(transformedTransaction, { headers: getSecurityHeaders() });
   } catch (error) {
     console.error('Error fetching transaction details:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500, headers: getSecurityHeaders() }
+    );
   }
 }

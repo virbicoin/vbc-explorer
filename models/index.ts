@@ -102,6 +102,24 @@ export interface IMarket extends Document {
   quoteUSD: number;
 }
 
+// DEX Swap Event Interface
+export interface IDexSwap extends Document {
+  hash: string;
+  blockNumber: number;
+  timestamp: number;
+  pair: string; // LP token address
+  sender: string;
+  to: string;
+  amount0In: string;
+  amount1In: string;
+  amount0Out: string;
+  amount1Out: string;
+  token0: string;
+  token1: string;
+  amountUSD: number;
+  priceUSD: number; // Price of base token at time of swap
+}
+
 // Schema definitions
 const BlockSchema = new Schema(
   {
@@ -224,6 +242,32 @@ const MarketSchema = new Schema(
   },
   { collection: 'Market' }
 );
+
+// DEX Swap Event Schema
+const DexSwapSchema = new Schema(
+  {
+    hash: { type: String, index: true, lowercase: true },
+    blockNumber: { type: Number, index: true },
+    timestamp: { type: Number, index: true },
+    pair: { type: String, index: true, lowercase: true },
+    sender: { type: String, lowercase: true },
+    to: { type: String, lowercase: true },
+    amount0In: String,
+    amount1In: String,
+    amount0Out: String,
+    amount1Out: String,
+    token0: { type: String, lowercase: true },
+    token1: { type: String, lowercase: true },
+    amountUSD: Number,
+    priceUSD: Number,
+  },
+  { collection: 'DexSwap' }
+);
+
+// DEX Swap indexes
+DexSwapSchema.index({ pair: 1, timestamp: -1 });
+DexSwapSchema.index({ pair: 1, blockNumber: -1 });
+DexSwapSchema.index({ hash: 1, pair: 1 }, { unique: true });
 
 // Create indices
 // Optimized transaction indexes for homepage queries
@@ -370,6 +414,8 @@ export const TokenTransfer =
 export const BlockStat =
   mongoose.models.BlockStat || mongoose.model<IBlockStat>('BlockStat', BlockStatSchema);
 export const Market = mongoose.models.Market || mongoose.model<IMarket>('Market', MarketSchema);
+export const DexSwap =
+  mongoose.models.DexSwap || mongoose.model<IDexSwap>('DexSwap', DexSwapSchema);
 
 // Default export for convenience
 const models = {
@@ -381,6 +427,7 @@ const models = {
   TokenTransfer,
   BlockStat,
   Market,
+  DexSwap,
 };
 
 export default models;

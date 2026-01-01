@@ -478,20 +478,22 @@ function ContractVerifyPageInner() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* トップの帯は全幅 */}
-      <div className="bg-gray-800 border-b border-gray-700 w-full">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center gap-3 mb-2">
-            <CodeBracketIcon className="w-8 h-8 text-purple-400" />
-            <h1 className="text-3xl font-bold text-gray-100">Verify Contract Source Code</h1>
+      {/* Header */}
+      <div className="bg-gradient-to-r from-purple-900/50 to-blue-900/50 border-b border-gray-800">
+        <div className="max-w-7xl mx-auto px-4 py-12">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="p-3 bg-purple-500/20 rounded-xl">
+              <CodeBracketIcon className="w-8 h-8 text-purple-400" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-white">Verify Contract Source Code</h1>
+              <p className="text-gray-400 mt-1">Verify and publish your smart contract source code on the blockchain explorer</p>
+            </div>
           </div>
-          <p className="text-gray-400">
-            Verify and publish your smart contract source code on the blockchain explorer.
-          </p>
         </div>
       </div>
       {/* カード部分は中央寄せ */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="max-w-7xl mx-auto px-4 py-8">
         <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-xl">
           <form onSubmit={handleSubmit} className="p-8 space-y-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

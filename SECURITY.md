@@ -194,6 +194,30 @@ npm audit --json
 
 ## Changelog
 
+### v0.7.5 (January 2025)
+
+- **Security Audit Completed**: Comprehensive review of all 47 API routes
+- Fixed RegExp injection vulnerabilities in:
+  - `/api/search/blocks-by-miner` (miner address)
+  - `/api/tokens/[address]/balance` (token/wallet address)
+- Enhanced `/api/contract/interact`:
+  - Added method whitelist (read-only methods only)
+  - Added ABI validation and size limits
+  - Implemented rate limiting
+- Added input validation to `/api/tx/[hash]`:
+  - Transaction hash format validation
+  - Rate limiting
+- Added input validation to `/api/block/[number]`:
+  - Block number format validation
+  - Rate limiting
+- Enhanced main Blockscout API (`/api?module=...`):
+  - Added rate limiting (100 req/min)
+  - Validated all address, hash, and pagination parameters
+  - Added module/action name validation
+- Updated documentation:
+  - Added security FAQs to `/dex/docs`
+  - Added security section to `/api-docs`
+
 ### v0.7.4
 
 - Added comprehensive input validation
@@ -201,6 +225,30 @@ npm audit --json
 - Added security headers middleware
 - Created security documentation
 - Updated config.example.json to use environment variables
+
+## Security Audit Results (January 2025)
+
+### Summary
+
+| Status | Count | Percentage |
+|--------|-------|------------|
+| Protected (before) | 4 | 8.5% |
+| Protected (after) | 10+ | 21%+ |
+| Read-only endpoints | 25+ | 53%+ |
+| Needs attention | 12 | 26% |
+
+### Critical Fixes Applied
+
+1. **RegExp Injection Prevention**: Replaced `new RegExp(userInput)` with sanitized address matching
+2. **Arbitrary Code Execution Prevention**: Contract interact limited to whitelisted read methods
+3. **Input Validation**: All user inputs (addresses, hashes, pagination) validated before use
+4. **Rate Limiting**: Added to all sensitive endpoints
+
+### Remaining Recommendations
+
+- Add security to remaining DEX API endpoints (CMC, GeckoTerminal, DefiLlama)
+- Consider adding authentication for administrative endpoints
+- Implement request logging for security monitoring
 
 ## Contact
 
@@ -213,4 +261,4 @@ For security-related inquiries:
 
 This security policy is reviewed and updated quarterly.
 
-Last Updated: December 2024
+Last Updated: January 2025

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { use } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   ArrowUpIcon,
   ClockIcon,
@@ -16,6 +17,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
 import { initializeCurrency, formatGasUnit } from '../../../lib/bigint-utils';
+import { getTokenIcon, getTokenColor } from '../../../lib/token-icons';
 
 interface Config {
   miners: Record<string, string>;
@@ -25,6 +27,18 @@ interface Config {
     version: string;
     url: string;
   };
+}
+
+interface TokenTransfer {
+  from: string;
+  to: string;
+  tokenAddress: string;
+  value: string;
+  tokenId?: number;
+  name: string;
+  symbol: string;
+  decimals: number;
+  type: string;
 }
 
 interface Transaction {
@@ -59,6 +73,7 @@ interface Transaction {
     value: string;
     type: string;
   }>;
+  tokenTransfers?: TokenTransfer[];
   block?: {
     number: number;
     hash: string;
@@ -616,6 +631,109 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
                     })()}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Token Transfers */}
+          {transaction.tokenTransfers && transaction.tokenTransfers.length > 0 && (
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8">
+              <div className="flex items-center gap-3 mb-4">
+                <ArrowPathIcon className="w-6 h-6 text-purple-400" />
+                <h2 className="text-xl font-semibold text-gray-100">
+                  Token Transfers ({transaction.tokenTransfers.length})
+                </h2>
+              </div>
+              <div className="space-y-3">
+                {transaction.tokenTransfers.map((transfer, index) => {
+                  // トークン値をフォーマット
+                  const formatTokenAmount = () => {
+                    if (transfer.type === 'VRC-721' || transfer.type === 'ERC721' || transfer.tokenId !== undefined) {
+                      return `Token ID: #${transfer.tokenId}`;
+                    }
+                    try {
+                      const numValue = BigInt(transfer.value);
+                      const divisor = BigInt(10 ** transfer.decimals);
+                      const intPart = numValue / divisor;
+                      const fracPart = numValue % divisor;
+                      if (fracPart > 0n) {
+                        return `${intPart}.${fracPart.toString().padStart(transfer.decimals, '0').slice(0, 4)} ${transfer.symbol}`;
+                      }
+                      return `${intPart.toLocaleString()} ${transfer.symbol}`;
+                    } catch {
+                      return `${transfer.value} ${transfer.symbol}`;
+                    }
+                  };
+
+                  return (
+                    <div key={index} className="bg-gray-700 rounded p-4">
+                      <div className="flex flex-col md:flex-row md:items-center gap-4">
+                        {/* Token info */}
+                        <div className="flex items-center gap-2">
+                          {(() => {
+                            const iconUrl = getTokenIcon(transfer.symbol, transfer.tokenAddress);
+                            return (
+                              <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getTokenColor(transfer.symbol)} flex items-center justify-center shadow-md overflow-hidden`}>
+                                {iconUrl ? (
+                                  <Image
+                                    src={iconUrl}
+                                    alt={transfer.symbol || ''}
+                                    width={28}
+                                    height={28}
+                                    className="object-contain"
+                                  />
+                                ) : (
+                                  <span className="font-bold text-white text-xs">
+                                    {transfer.symbol?.charAt(0) || '?'}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                          <div>
+                            <Link
+                              href={`/token/${transfer.tokenAddress}`}
+                              className="text-purple-400 hover:text-purple-300 font-medium"
+                            >
+                              {transfer.name}
+                            </Link>
+                            <div className="text-xs text-gray-400">{transfer.symbol}</div>
+                          </div>
+                        </div>
+
+                        {/* Transfer details */}
+                        <div className="flex-1 flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400 text-sm">From:</span>
+                            <Link
+                              href={`/address/${transfer.from}`}
+                              className="text-green-400 hover:text-green-300 font-mono text-sm"
+                            >
+                              {formatAddress(transfer.from)}
+                            </Link>
+                          </div>
+                          <span className="text-gray-500">→</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-400 text-sm">To:</span>
+                            <Link
+                              href={`/address/${transfer.to}`}
+                              className="text-red-400 hover:text-red-300 font-mono text-sm"
+                            >
+                              {formatAddress(transfer.to)}
+                            </Link>
+                          </div>
+                        </div>
+
+                        {/* Amount */}
+                        <div className="text-right">
+                          <span className="text-purple-400 font-medium">
+                            {formatTokenAmount()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

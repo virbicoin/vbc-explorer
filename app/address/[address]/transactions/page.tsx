@@ -15,6 +15,9 @@ interface TokenInfo {
   type: string;
   value: string;
   tokenId?: number;
+  from?: string;
+  to?: string;
+  direction?: 'in' | 'out';
 }
 
 interface Transaction {
@@ -30,6 +33,7 @@ interface Transaction {
   action?: string;
   direction?: 'in' | 'out' | 'self';
   tokenInfo?: TokenInfo;
+  tokenTransfers?: TokenInfo[];
   nftInfo?: {
     tokenId: number;
     tokenAddress: string;
@@ -180,8 +184,54 @@ export default function AddressTransactionsPage({
     );
   };
 
-  // トークン転送値をフォーマット
+  // トークン転送値をフォーマット（単一）
+  const formatSingleTokenValue = (tokenInfo: TokenInfo) => {
+    const { value, decimals, symbol, tokenId, type, direction } = tokenInfo;
+
+    if (type === 'VRC-721' || type === 'ERC721' || tokenId !== undefined) {
+      return <span className="text-pink-400">Token ID: #{tokenId}</span>;
+    }
+
+    // ERC20の場合 - 常にシンボルを使用
+    try {
+      const numValue = BigInt(value);
+      const divisor = BigInt(10 ** decimals);
+      const intPart = numValue / divisor;
+      const fracPart = numValue % divisor;
+      const formatted =
+        fracPart > 0n
+          ? `${intPart}.${fracPart.toString().padStart(decimals, '0').slice(0, 4)}`
+          : intPart.toString();
+      const color = direction === 'in' ? 'text-green-400' : 'text-red-400';
+      const prefix = direction === 'in' ? '+' : '-';
+      return (
+        <span className={color}>
+          {prefix}{formatted} {symbol}
+        </span>
+      );
+    } catch {
+      return (
+        <span className="text-purple-400">
+          {value} {symbol}
+        </span>
+      );
+    }
+  };
+
+  // トークン転送値をフォーマット（複数対応）
   const formatTokenValue = (tx: Transaction) => {
+    // 複数のトークン転送がある場合
+    if (tx.tokenTransfers && tx.tokenTransfers.length > 0) {
+      return (
+        <div className="flex flex-col gap-1">
+          {tx.tokenTransfers.map((transfer, idx) => (
+            <div key={idx}>{formatSingleTokenValue(transfer)}</div>
+          ))}
+        </div>
+      );
+    }
+
+    // 単一のtokenInfoの場合（後方互換）
     if (!tx.tokenInfo) return null;
 
     const { value, decimals, symbol, tokenId, type } = tx.tokenInfo;
@@ -190,6 +240,7 @@ export default function AddressTransactionsPage({
       return <span className="text-pink-400">Token ID: #{tokenId}</span>;
     }
 
+    // ERC20の場合 - 常にシンボルを使用
     try {
       const numValue = BigInt(value);
       const divisor = BigInt(10 ** decimals);
@@ -361,8 +412,8 @@ export default function AddressTransactionsPage({
                                 {formatValue(tx.value)}
                               </span>
                             )}
-                            {tx.tokenInfo && <div className="text-sm">{formatTokenValue(tx)}</div>}
-                            {parseFloat(tx.value) === 0 && !tx.tokenInfo && (
+                            {(tx.tokenTransfers || tx.tokenInfo) && <div className="text-sm">{formatTokenValue(tx)}</div>}
+                            {parseFloat(tx.value) === 0 && !tx.tokenInfo && !tx.tokenTransfers && (
                               <span className="text-gray-500">-</span>
                             )}
                           </div>

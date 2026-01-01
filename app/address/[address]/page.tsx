@@ -4,6 +4,7 @@ import { use } from 'react';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   UserIcon,
   ArrowUpIcon,
@@ -19,6 +20,7 @@ import {
 import SummaryCard from '../../components/SummaryCard';
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
 import { initializeCurrency } from '../../../lib/bigint-utils';
+import { getTokenIcon, getTokenColor } from '../../../lib/token-icons';
 
 interface Account {
   address: string;
@@ -70,6 +72,9 @@ interface TokenInfo {
   type: string;
   value: string;
   tokenId?: number;
+  from?: string;
+  to?: string;
+  direction?: 'in' | 'out';
 }
 
 interface Transaction {
@@ -88,10 +93,22 @@ interface Transaction {
   direction?: 'in' | 'out' | 'self';
   input?: string;
   tokenInfo?: TokenInfo;
+  tokenTransfers?: TokenInfo[];
   nftInfo?: {
     tokenId: number;
     tokenAddress: string;
   };
+}
+
+interface TokenHolding {
+  address: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  balance: string;
+  type: string;
+  percentage?: number;
+  rank?: number;
 }
 
 export default function AddressPage({ params }: { params: Promise<{ address: string }> }) {
@@ -105,7 +122,9 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
 
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
   const [config, setConfig] = useState<Config | null>(null);
-  const [activeTab, setActiveTab] = useState<'transactions' | 'mining' | 'source'>('transactions');
+  const [activeTab, setActiveTab] = useState<'transactions' | 'mining' | 'tokens' | 'transfers' | 'source'>('transactions');
+  const [tokenHoldings, setTokenHoldings] = useState<TokenHolding[]>([]);
+  const [tokenTransfers, setTokenTransfers] = useState<Transaction[]>([]);
   const [transactionStats, setTransactionStats] = useState<{
     regularCount: number;
     miningCount: number;
@@ -179,6 +198,23 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
         setContract(data.contract);
         setTransactions(data.transactions || []);
         setTransactionStats(data.transactionStats || null);
+
+        // Fetch token holdings
+        try {
+          const tokensResponse = await fetch(`/api/address/${resolvedParams.address}/tokens`);
+          if (tokensResponse.ok) {
+            const tokensData = await tokensResponse.json();
+            setTokenHoldings(tokensData.tokens || []);
+          }
+        } catch (err) {
+          console.error('Error fetching token holdings:', err);
+        }
+
+        // Filter token transfers from transactions
+        const transfers = (data.transactions || []).filter(
+          (tx: Transaction) => tx.type === 'token_transfer' || tx.type === 'nft_transfer' || tx.tokenInfo
+        );
+        setTokenTransfers(transfers);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch address data');
       } finally {
@@ -377,8 +413,55 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
     );
   };
 
-  // トークン転送値をフォーマット
+  // トークン転送値をフォーマット（単一）
+  const formatSingleTokenValue = (tokenInfo: TokenInfo) => {
+    const { value, decimals, symbol, tokenId, type, direction } = tokenInfo;
+
+    // NFTの場合
+    if (type === 'VRC-721' || type === 'ERC721' || tokenId !== undefined) {
+      return <span className="text-pink-400">Token ID: #{tokenId}</span>;
+    }
+
+    // ERC20の場合 - 常にシンボルを使用
+    try {
+      const numValue = BigInt(value);
+      const divisor = BigInt(10 ** decimals);
+      const intPart = numValue / divisor;
+      const fracPart = numValue % divisor;
+      const formatted =
+        fracPart > 0n
+          ? `${intPart}.${fracPart.toString().padStart(decimals, '0').slice(0, 4)}`
+          : intPart.toString();
+      const color = direction === 'in' ? 'text-green-400' : 'text-red-400';
+      const prefix = direction === 'in' ? '+' : '-';
+      return (
+        <span className={color}>
+          {prefix}{formatted} {symbol}
+        </span>
+      );
+    } catch {
+      return (
+        <span className="text-purple-400">
+          {value} {symbol}
+        </span>
+      );
+    }
+  };
+
+  // トークン転送値をフォーマット（複数対応）
   const formatTokenValue = (tx: Transaction) => {
+    // 複数のトークン転送がある場合
+    if (tx.tokenTransfers && tx.tokenTransfers.length > 0) {
+      return (
+        <div className="flex flex-col gap-1">
+          {tx.tokenTransfers.map((transfer, idx) => (
+            <div key={idx}>{formatSingleTokenValue(transfer)}</div>
+          ))}
+        </div>
+      );
+    }
+
+    // 単一のtokenInfoの場合（後方互換）
     if (!tx.tokenInfo) return null;
 
     const { value, decimals, symbol, tokenId, type } = tx.tokenInfo;
@@ -388,7 +471,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
       return <span className="text-pink-400">Token ID: #{tokenId}</span>;
     }
 
-    // ERC20の場合
+    // ERC20の場合 - 常にシンボルを使用
     try {
       const numValue = BigInt(value);
       const divisor = BigInt(10 ** decimals);
@@ -453,6 +536,30 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
   // 統計情報を使用して件数を表示（APIから取得した正確な件数）
   const regularCount = transactionStats?.regularCount || regularTransactions.length;
   const miningCount = transactionStats?.miningCount || miningRewards.length;
+  const tokenTransferCount = tokenTransfers.length;
+  const tokenHoldingsCount = tokenHoldings.length;
+
+  // Format token balance with proper decimals
+  const formatTokenBalance = (balance: string, decimals: number, symbol: string) => {
+    try {
+      const balanceBigInt = BigInt(balance);
+      const divisor = BigInt(10 ** decimals);
+      const intPart = balanceBigInt / divisor;
+      const fracPart = balanceBigInt % divisor;
+      
+      if (fracPart === 0n) {
+        return `${intPart.toLocaleString()} ${symbol}`;
+      }
+      
+      const fracStr = fracPart.toString().padStart(decimals, '0').slice(0, 4).replace(/0+$/, '');
+      if (fracStr) {
+        return `${intPart.toLocaleString()}.${fracStr} ${symbol}`;
+      }
+      return `${intPart.toLocaleString()} ${symbol}`;
+    } catch {
+      return `${balance} ${symbol}`;
+    }
+  };
 
   // Check if this is a contract address
   const isContractAddress = contract?.isContract === true;
@@ -1014,463 +1121,294 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Page Header */}
       <div className="bg-gray-800 border-b border-gray-700">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex items-center gap-3 mb-4">
-            <UserIcon className="w-8 h-8 text-blue-400" />
-            <h1 className="text-3xl font-bold text-gray-100">Address Details</h1>
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="bg-blue-500/20 p-2 rounded-lg">
+              <UserIcon className="w-6 h-6 text-blue-400" />
+            </div>
+            <div>
+              <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400 mr-2">
+                Address
+              </span>
+              <h1 className="text-2xl font-bold text-gray-100 inline">{formatAddress(resolvedParams.address)}</h1>
+            </div>
           </div>
-          <p className="text-gray-400">
-            Account information and transaction history for {formatAddress(resolvedParams.address)}
-          </p>
+          <div className="flex items-center gap-2 mt-3">
+            <span className="font-mono text-gray-400 text-sm">{resolvedParams.address}</span>
+            <button
+              onClick={() => copyToClipboard(resolvedParams.address)}
+              className="p-1 text-gray-400 hover:text-blue-400 transition-colors"
+              title="Copy address"
+            >
+              <ClipboardDocumentIcon className="w-4 h-4" />
+            </button>
+            {copiedItem === resolvedParams.address && (
+              <span className="text-green-400 text-xs">Copied!</span>
+            )}
+          </div>
         </div>
       </div>
 
-      <main className="container mx-auto px-4 py-8">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          {summaryStats.map((stat, idx) => (
-            <SummaryCard key={idx} {...stat} />
-          ))}
-        </div>
-
-        {/* Account Information */}
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-100 mb-4">Account Information</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">Address</label>
-                <div className="bg-gray-700 rounded p-3 flex items-center justify-between">
-                  <span className="text-white font-mono text-sm break-all">
-                    {resolvedParams.address}
+      <main className="container mx-auto px-4 py-6">
+        {/* Overview Section - GnosisScan Style 2 Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          {/* Left Column - Overview */}
+          <div className="lg:col-span-2 space-y-4">
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <h3 className="text-lg font-semibold text-gray-100 mb-4 flex items-center gap-2">
+                <CurrencyDollarIcon className="w-5 h-5 text-blue-400" />
+                Overview
+              </h3>
+              
+              <div className="space-y-4">
+                {/* Balance */}
+                <div className="flex justify-between items-center py-3 border-b border-gray-700">
+                  <span className="text-gray-400">{currencySymbol} Balance</span>
+                  <span className="text-white font-medium">
+                    {account ? formatValue(account.balance) : `0 ${currencySymbol}`}
                   </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => copyToClipboard(resolvedParams.address)}
-                      className="p-1 text-gray-400 hover:text-white hover:bg-gray-600 rounded transition-all duration-200"
-                      title="Copy to clipboard"
-                    >
-                      <ClipboardDocumentIcon className="w-4 h-4" />
-                    </button>
-                    {copiedItem === resolvedParams.address && (
-                      <span className="text-green-400 text-sm font-mono">Copied!</span>
-                    )}
-                  </div>
+                </div>
+                
+                {/* Transaction Count */}
+                <div className="flex justify-between items-center py-3 border-b border-gray-700">
+                  <span className="text-gray-400">Transactions</span>
+                  <span className="text-white font-medium">
+                    {account?.transactionCount?.toLocaleString() || '0'}
+                  </span>
+                </div>
+                
+                {/* Token Transfers */}
+                <div className="flex justify-between items-center py-3 border-b border-gray-700">
+                  <span className="text-gray-400">Token Transfers</span>
+                  <span className="text-white font-medium">
+                    {account?.tokenTransferCount?.toLocaleString() || '0'}
+                  </span>
+                </div>
+
+                {/* Blocks Mined */}
+                <div className="flex justify-between items-center py-3">
+                  <span className="text-gray-400">Blocks Mined</span>
+                  <span className="text-white font-medium">
+                    {account?.blocksMined?.toLocaleString() || '0'}
+                  </span>
                 </div>
               </div>
+            </div>
+          </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">Type</label>
-                  <div className="text-blue-400 text-lg font-semibold">{getAddressType()}</div>
+          {/* Right Column - More Info */}
+          <div className="space-y-4">
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <h3 className="text-lg font-semibold text-gray-100 mb-4 flex items-center gap-2">
+                <ClockIcon className="w-5 h-5 text-purple-400" />
+                More Info
+              </h3>
+              
+              <div className="space-y-4">
+                {/* First Seen */}
+                <div className="py-3 border-b border-gray-700">
+                  <div className="text-gray-400 text-sm mb-1">First Seen</div>
+                  <span className="text-white font-medium">
+                    {(() => {
+                      if (!account?.firstSeen) return 'Unknown';
+                      if (account.firstSeen.includes('(') && account.firstSeen.includes(')')) {
+                        const [, agoPart] = account.firstSeen.split(' (');
+                        const ago = agoPart?.replace(')', '');
+                        return ago || 'Unknown';
+                      }
+                      const date = parseDate(account.firstSeen);
+                      return date ? getTimeAgo(Math.floor(date.getTime() / 1000)) : 'Unknown';
+                    })()}
+                  </span>
                 </div>
-                {getAddressName() && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-400 mb-2">Name</label>
-                    <div className="text-green-400 text-lg font-semibold">{getAddressName()}</div>
+
+                {/* Last Activity */}
+                <div className="py-3 border-b border-gray-700">
+                  <div className="text-gray-400 text-sm mb-1">Last Activity</div>
+                  <span className="text-white font-medium">
+                    {(() => {
+                      if (!account?.lastActivity) return 'Unknown';
+                      if (account.lastActivity.includes('(') && account.lastActivity.includes(')')) {
+                        const [, agoPart] = account.lastActivity.split(' (');
+                        const ago = agoPart?.replace(')', '');
+                        return ago || 'Unknown';
+                      }
+                      const date = parseDate(account.lastActivity);
+                      return date ? getTimeAgo(Math.floor(date.getTime() / 1000)) : 'Unknown';
+                    })()}
+                  </span>
+                </div>
+
+                {/* Rank */}
+                {account?.rank && (
+                  <div className="py-3 border-b border-gray-700">
+                    <div className="text-gray-400 text-sm mb-1">Rank</div>
+                    <span className="text-yellow-400 font-medium">#{account.rank.toLocaleString()}</span>
+                  </div>
+                )}
+
+                {/* Percentage */}
+                {account?.percentage && (
+                  <div className="py-3">
+                    <div className="text-gray-400 text-sm mb-1">Percentage of Supply</div>
+                    <span className="text-white font-medium">{parseFloat(account.percentage).toFixed(4)}%</span>
                   </div>
                 )}
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">Balance</label>
-                  <div className="text-green-400 text-lg font-semibold">
-                    {account ? formatValue(account.balance) : '0 VBC'}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">
-                    Transaction Count
-                  </label>
-                  <div className="text-blue-400 text-lg font-semibold">
-                    {account?.transactionCount?.toLocaleString() || '0'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">
-                    Token Transfers
-                  </label>
-                  <div className="text-purple-400 text-lg font-semibold">
-                    {account?.tokenTransferCount?.toLocaleString() || '0'}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">
-                    Blocks Mined
-                  </label>
-                  <div className="text-yellow-400 text-lg font-semibold">
-                    {account?.blocksMined?.toLocaleString() || '0'}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">First Seen</label>
-                <div className="text-white">
-                  {(() => {
-                    if (!account?.firstSeen) return 'Unknown';
-
-                    // APIから返される形式: "2025-06-14 7:46:26 AM GMT+9 (36 days ago)"
-                    if (account.firstSeen.includes('(') && account.firstSeen.includes(')')) {
-                      const [datePart, agoPart] = account.firstSeen.split(' (');
-                      const ago = agoPart?.replace(')', '');
-
-                      // 日付部分をDateオブジェクトに変換
-                      const dateMatch = datePart.match(
-                        /(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2} [AP]M)/
-                      );
-                      if (dateMatch) {
-                        const dateStr = dateMatch[1];
-                        const date = new Date(dateStr);
-                        if (!isNaN(date.getTime())) {
-                          return (
-                            <div>
-                              <div className="text-sm text-gray-300">{ago}</div>
-                              <div className="text-xs text-gray-500">
-                                {date.toLocaleString(undefined, { timeZoneName: 'short' })}
-                              </div>
-                            </div>
-                          );
-                        }
-                      }
-
-                      // パースに失敗した場合は元の形式を表示
-                      return (
-                        <div>
-                          <div className="text-sm text-gray-300">{ago}</div>
-                          <div className="text-xs text-gray-500">{datePart}</div>
-                        </div>
-                      );
-                    }
-
-                    // フォールバック: 古い形式の場合
-                    const firstSeenDate = parseDate(account.firstSeen);
-                    if (!firstSeenDate) return 'Unknown';
-                    return firstSeenDate.toLocaleString(undefined, { timeZoneName: 'short' });
-                  })()}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Last Activity
-                </label>
-                <div className="text-white">
-                  {(() => {
-                    if (!account?.lastActivity) return 'Unknown';
-                    // APIから返される形式: "2025-06-17 16:09:06 JST (29 days ago)"
-                    if (account.lastActivity.includes('(') && account.lastActivity.includes(')')) {
-                      const [datePart, agoPart] = account.lastActivity.split(' (');
-                      const ago = agoPart?.replace(')', '');
-
-                      // 日付部分をDateオブジェクトに変換
-                      const dateMatch = datePart.match(
-                        /(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2} [AP]M)/
-                      );
-                      if (dateMatch) {
-                        const dateStr = dateMatch[1];
-                        const date = new Date(dateStr);
-                        if (!isNaN(date.getTime())) {
-                          return (
-                            <div>
-                              <div className="text-sm text-gray-300">{ago}</div>
-                              <div className="text-xs text-gray-500">
-                                {date.toLocaleString(undefined, { timeZoneName: 'short' })}
-                              </div>
-                            </div>
-                          );
-                        }
-                      }
-
-                      // パースに失敗した場合は元の形式を表示
-
-                      return (
-                        <div>
-                          <div className="text-sm text-gray-300">{ago}</div>
-                          <div className="text-xs text-gray-500">{datePart}</div>
-                        </div>
-                      );
-                    }
-                    // フォールバック: 古い形式の場合
-                    const lastActivityDate = parseDate(account.lastActivity);
-                    if (!lastActivityDate) return 'Unknown';
-                    const timestamp = Math.floor(lastActivityDate.getTime() / 1000);
-                    return (
-                      <div>
-                        <div className="text-sm text-gray-300">{getTimeAgo(timestamp)}</div>
-                        <div className="text-xs text-gray-500">{formatTimestamp(timestamp)}</div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {account?.rank && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">Rank</label>
-                  <div className="text-purple-400 text-lg font-semibold">
-                    #{account.rank.toLocaleString()}
-                  </div>
-                </div>
-              )}
-
-              {account?.percentage && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">Percentage</label>
-                  <div className="text-gray-200">{parseFloat(account.percentage).toFixed(4)}%</div>
-                </div>
-              )}
             </div>
           </div>
         </div>
 
-        {/* Transactions */}
-        <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-100">Transactions</h2>
-          </div>
-
-          {/* Tab Navigation */}
-          <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-700">
-            <button
-              onClick={() => setActiveTab('transactions')}
-              className={`group relative px-4 py-2 rounded-t-lg font-medium transition-all duration-300 ${
-                activeTab === 'transactions'
-                  ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
-              }`}
-            >
-              <span className="relative z-10">Regular Transactions ({regularCount})</span>
-              {activeTab === 'transactions' && (
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-blue-600/20 rounded-t-lg"></div>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('mining')}
-              className={`group relative px-4 py-2 rounded-t-lg font-medium transition-all duration-300 ${
-                activeTab === 'mining'
-                  ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 text-white shadow-lg'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:text-white'
-              }`}
-            >
-              <span className="relative z-10">Mining Rewards ({miningCount})</span>
-              {activeTab === 'mining' && (
-                <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 rounded-t-lg"></div>
-              )}
-            </button>
+        {/* Transactions Section */}
+        <div className="bg-gray-800 rounded-lg border border-gray-700">
+          <div className="border-b border-gray-700">
+            <div className="flex gap-1 px-4 overflow-x-auto">
+              <button
+                onClick={() => setActiveTab('transactions')}
+                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+                  activeTab === 'transactions'
+                    ? 'text-blue-400 border-b-2 border-blue-400'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                <ArrowPathIcon className="w-5 h-5" />
+                Transactions
+                <span className="ml-1 px-2 py-0.5 bg-gray-700 rounded-full text-xs">
+                  {regularCount.toLocaleString()}
+                </span>
+              </button>
+              <button
+                onClick={() => setActiveTab('tokens')}
+                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+                  activeTab === 'tokens'
+                    ? 'text-green-400 border-b-2 border-green-400'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                <CurrencyDollarIcon className="w-5 h-5" />
+                Token Holdings
+                <span className="ml-1 px-2 py-0.5 bg-gray-700 rounded-full text-xs">
+                  {tokenHoldingsCount.toLocaleString()}
+                </span>
+              </button>
+              <button
+                onClick={() => setActiveTab('transfers')}
+                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+                  activeTab === 'transfers'
+                    ? 'text-purple-400 border-b-2 border-purple-400'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                <ArrowUpIcon className="w-5 h-5" />
+                Token Transfers
+                <span className="ml-1 px-2 py-0.5 bg-gray-700 rounded-full text-xs">
+                  {tokenTransferCount.toLocaleString()}
+                </span>
+              </button>
+              <button
+                onClick={() => setActiveTab('mining')}
+                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+                  activeTab === 'mining'
+                    ? 'text-yellow-400 border-b-2 border-yellow-400'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                <CubeIcon className="w-5 h-5" />
+                Mining Rewards
+                <span className="ml-1 px-2 py-0.5 bg-gray-700 rounded-full text-xs">
+                  {miningCount.toLocaleString()}
+                </span>
+              </button>
+            </div>
           </div>
 
           {/* Tab Content */}
-          <div className="min-h-[400px] relative overflow-hidden">
-            <div
-              key={activeTab}
-              className="animate-tabSlideIn"
-              style={{
-                animation: 'tabSlideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-              }}
-            >
-              {activeTab === 'transactions' ? (
-                <>
-                  {regularTransactions.length === 0 ? (
-                    <>
-                      <p className="text-gray-400">No transactions for this address.</p>
-                      <div className="mt-4 text-center">
-                        <Link
-                          href={`/address/${resolvedParams.address}/transactions`}
-                          className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
-                        >
-                          View all {regularCount} transactions →
-                        </Link>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead>
-                            <tr className="border-b border-gray-600">
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
-                                Tx Hash
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
-                                Type
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
-                                From
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
-                                To
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
-                                Value
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
-                                Age
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-600">
-                            {regularTransactions.slice(0, 10).map((tx) => (
-                              <tr key={tx.hash} className="hover:bg-gray-700/50 transition-colors">
-                                <td className="py-3 px-4">
+          <div className="p-6">
+            {activeTab === 'transactions' ? (
+              <>
+                {regularTransactions.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-400">No transactions for this address.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-4 text-sm text-gray-400">
+                      Latest 10 from a total of {regularCount.toLocaleString()} transactions
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-gray-600">
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Tx Hash
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Type
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Block
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              From
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              To
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Value
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Age
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-600">
+                          {regularTransactions.slice(0, 10).map((tx) => (
+                            <tr key={tx.hash} className="hover:bg-gray-700/50 transition-colors">
+                              <td className="py-3 px-4">
+                                <Link
+                                  href={`/tx/${tx.hash}`}
+                                  className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors"
+                                  title={tx.hash}
+                                >
+                                  {formatAddress(tx.hash)}
+                                </Link>
+                              </td>
+                              <td className="py-3 px-4">{getTransactionTypeBadge(tx)}</td>
+                              <td className="py-3 px-4">
+                                <Link
+                                  href={`/block/${tx.blockNumber}`}
+                                  className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
+                                >
+                                  {tx.blockNumber.toLocaleString()}
+                                </Link>
+                              </td>
+                              <td className="py-3 px-4">
+                                {tx.from === '0x0000000000000000000000000000000000000000' ? (
+                                  <span className="text-yellow-400 text-sm">System</span>
+                                ) : tx.from.toLowerCase() ===
+                                  resolvedParams.address.toLowerCase() ? (
+                                  <span className="text-gray-400 font-mono text-sm">You</span>
+                                ) : (
                                   <Link
-                                    href={`/tx/${tx.hash}`}
-                                    className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors"
-                                    title={tx.hash}
+                                    href={`/address/${tx.from}`}
+                                    className="text-green-400 hover:text-green-300 font-mono text-sm transition-colors"
+                                    title={tx.from}
                                   >
-                                    {formatAddress(tx.hash)}
+                                    {formatAddress(tx.from)}
                                   </Link>
-                                </td>
-                                <td className="py-3 px-4">{getTransactionTypeBadge(tx)}</td>
-                                <td className="py-3 px-4">
-                                  {tx.from === '0x0000000000000000000000000000000000000000' ? (
-                                    <span className="text-yellow-400 text-sm">System</span>
-                                  ) : tx.from.toLowerCase() ===
-                                    resolvedParams.address.toLowerCase() ? (
-                                    <span className="text-gray-400 font-mono text-sm">You</span>
-                                  ) : (
-                                    <Link
-                                      href={`/address/${tx.from}`}
-                                      className="text-green-400 hover:text-green-300 font-mono text-sm transition-colors"
-                                      title={tx.from}
-                                    >
-                                      {formatAddress(tx.from)}
-                                    </Link>
-                                  )}
-                                </td>
-                                <td className="py-3 px-4">
-                                  {!tx.to ||
-                                  tx.to === '0x0000000000000000000000000000000000000000' ? (
-                                    <span className="text-indigo-400 text-sm">
-                                      Contract Created
-                                    </span>
-                                  ) : tx.to.toLowerCase() ===
-                                    resolvedParams.address.toLowerCase() ? (
-                                    <span className="text-gray-400 font-mono text-sm">You</span>
-                                  ) : (
-                                    <Link
-                                      href={`/address/${tx.to}`}
-                                      className="text-red-400 hover:text-red-300 font-mono text-sm transition-colors"
-                                      title={tx.to}
-                                    >
-                                      {formatAddress(tx.to)}
-                                    </Link>
-                                  )}
-                                </td>
-                                <td className="py-3 px-4">
-                                  <div className="flex flex-col">
-                                    {/* ネイティブ通貨 */}
-                                    {parseFloat(tx.value) > 0 && (
-                                      <span
-                                        className={
-                                          tx.direction === 'in' ? 'text-green-400' : 'text-red-400'
-                                        }
-                                      >
-                                        {tx.direction === 'in' ? '+' : '-'}
-                                        {formatValue(tx.value)}
-                                      </span>
-                                    )}
-                                    {/* トークン転送 */}
-                                    {tx.tokenInfo && (
-                                      <div className="text-sm">{formatTokenValue(tx)}</div>
-                                    )}
-                                    {/* 値がない場合 */}
-                                    {parseFloat(tx.value) === 0 && !tx.tokenInfo && (
-                                      <span className="text-gray-500">-</span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="py-3 px-4">
-                                  <div className="flex items-center gap-2">
-                                    <ClockIcon className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                                    <div className="text-sm">
-                                      <div className="text-gray-300">
-                                        {getTimeAgo(tx.timestamp)}
-                                      </div>
-                                      <div className="text-gray-500 text-xs">
-                                        {formatTimestamp(tx.timestamp)}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      <div className="mt-4 text-center">
-                        <Link
-                          href={`/address/${resolvedParams.address}/transactions`}
-                          className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
-                        >
-                          View all {regularCount} transactions →
-                        </Link>
-                      </div>
-                    </>
-                  )}
-                </>
-              ) : (
-                <>
-                  {miningRewards.length === 0 ? (
-                    <>
-                      <p className="text-gray-400">No mining rewards for this address.</p>
-                      <div className="mt-4 text-center">
-                        <Link
-                          href={`/address/${resolvedParams.address}/mining`}
-                          className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
-                        >
-                          View all {miningCount} mining rewards →
-                        </Link>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="overflow-x-auto">
-                        <table className="w-full">
-                          <thead>
-                            <tr className="border-b border-gray-600">
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
-                                Transaction Hash
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
-                                From
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
-                                To
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
-                                Value
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
-                                Status
-                              </th>
-                              <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
-                                Age
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-600">
-                            {miningRewards.slice(0, 10).map((tx) => (
-                              <tr key={tx.hash} className="hover:bg-gray-700/50 transition-colors">
-                                <td className="py-3 px-4">
-                                  <Link
-                                    href={`/tx/${tx.hash}`}
-                                    className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors"
-                                    title={tx.hash}
-                                  >
-                                    {formatAddress(tx.hash)}
-                                  </Link>
-                                </td>
-                                <td className="py-3 px-4">
-                                  <span className="text-gray-400 font-mono text-sm">System</span>
-                                </td>
-                                <td className="py-3 px-4">
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {!tx.to ||
+                                tx.to === '0x0000000000000000000000000000000000000000' ? (
+                                  <span className="text-indigo-400 text-sm">
+                                    Contract Created
+                                  </span>
+                                ) : tx.to.toLowerCase() ===
+                                  resolvedParams.address.toLowerCase() ? (
+                                  <span className="text-gray-400 font-mono text-sm">You</span>
+                                ) : (
                                   <Link
                                     href={`/address/${tx.to}`}
                                     className="text-red-400 hover:text-red-300 font-mono text-sm transition-colors"
@@ -1478,44 +1416,320 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                                   >
                                     {formatAddress(tx.to)}
                                   </Link>
-                                </td>
-                                <td className="py-3 px-4">
-                                  <span className="text-yellow-400">{formatValue(tx.value)}</span>
-                                </td>
-                                <td className="py-3 px-4">
-                                  <span className="text-green-400">Success</span>
-                                </td>
-                                <td className="py-3 px-4">
-                                  <div className="flex items-center gap-2">
-                                    <ClockIcon className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                                    <div className="text-sm">
-                                      <div className="text-gray-300">
-                                        {getTimeAgo(tx.timestamp)}
-                                      </div>
-                                      <div className="text-gray-500 text-xs">
-                                        {formatTimestamp(tx.timestamp)}
-                                      </div>
-                                    </div>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="flex flex-col">
+                                  {parseFloat(tx.value) > 0 && (
+                                    <span
+                                      className={
+                                        tx.direction === 'in' ? 'text-green-400' : 'text-red-400'
+                                      }
+                                    >
+                                      {tx.direction === 'in' ? '+' : '-'}
+                                      {formatValue(tx.value)}
+                                    </span>
+                                  )}
+                                  {(tx.tokenTransfers || tx.tokenInfo) && (
+                                    <div className="text-sm">{formatTokenValue(tx)}</div>
+                                  )}
+                                  {parseFloat(tx.value) === 0 && !tx.tokenInfo && !tx.tokenTransfers && (
+                                    <span className="text-gray-500">-</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="text-sm">
+                                  <div className="text-gray-300">{getTimeAgo(tx.timestamp)}</div>
+                                  <div className="text-gray-500 text-xs">
+                                    {formatTimestamp(tx.timestamp)}
                                   </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      <div className="mt-4 text-center">
-                        <Link
-                          href={`/address/${resolvedParams.address}/mining`}
-                          className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
-                        >
-                          View all {miningCount} mining rewards →
-                        </Link>
-                      </div>
-                    </>
-                  )}
-                </>
-              )}
-            </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="mt-4 text-center">
+                      <Link
+                        href={`/address/${resolvedParams.address}/transactions`}
+                        className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
+                      >
+                        View all {regularCount.toLocaleString()} transactions →
+                      </Link>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : activeTab === 'tokens' ? (
+              <>
+                {tokenHoldings.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-400">No token holdings for this address.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-4 text-sm text-gray-400">
+                      {tokenHoldingsCount.toLocaleString()} token{tokenHoldingsCount !== 1 ? 's' : ''} held by this address
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-gray-600">
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Token
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Type
+                            </th>
+                            <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">
+                              Balance
+                            </th>
+                            <th className="text-right py-3 px-4 text-sm font-medium text-gray-400">
+                              % of Supply
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-600">
+                          {tokenHoldings.map((token) => {
+                            const iconUrl = getTokenIcon(token.symbol, token.address);
+                            return (
+                            <tr key={token.address} className="hover:bg-gray-700/50 transition-colors">
+                              <td className="py-3 px-4">
+                                <Link
+                                  href={`/token/${token.address}`}
+                                  className="flex items-center gap-2 text-blue-400 hover:text-blue-300 transition-colors"
+                                >
+                                  <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md overflow-hidden`}>
+                                    {iconUrl ? (
+                                      <Image
+                                        src={iconUrl}
+                                        alt={token.symbol || ''}
+                                        width={28}
+                                        height={28}
+                                        className="object-contain"
+                                      />
+                                    ) : (
+                                      <span className="font-bold text-white text-xs">
+                                        {token.symbol?.charAt(0) || '?'}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <div className="font-medium">{token.name}</div>
+                                    <div className="text-xs text-gray-400">{token.symbol}</div>
+                                  </div>
+                                </Link>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                  token.type === 'VRC-20' || token.type === 'ERC20'
+                                    ? 'bg-blue-500/20 text-blue-400'
+                                    : token.type === 'VRC-721' || token.type === 'ERC721'
+                                      ? 'bg-purple-500/20 text-purple-400'
+                                      : 'bg-gray-500/20 text-gray-400'
+                                }`}>
+                                  {token.type}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <span className="text-green-400 font-medium">
+                                  {formatTokenBalance(token.balance, token.decimals, token.symbol)}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <span className="text-gray-300">
+                                  {token.percentage ? `${token.percentage.toFixed(4)}%` : '-'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : activeTab === 'transfers' ? (
+              <>
+                {tokenTransfers.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-400">No token transfers for this address.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-4 text-sm text-gray-400">
+                      Latest token transfers for this address
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-gray-600">
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Tx Hash
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Type
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Token
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              From
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              To
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Value
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Age
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-600">
+                          {tokenTransfers.slice(0, 10).map((tx) => (
+                            <tr key={tx.hash} className="hover:bg-gray-700/50 transition-colors">
+                              <td className="py-3 px-4">
+                                <Link
+                                  href={`/tx/${tx.hash}`}
+                                  className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors"
+                                  title={tx.hash}
+                                >
+                                  {formatAddress(tx.hash)}
+                                </Link>
+                              </td>
+                              <td className="py-3 px-4">{getTransactionTypeBadge(tx)}</td>
+                              <td className="py-3 px-4">
+                                {tx.tokenInfo ? (
+                                  <Link
+                                    href={`/token/${tx.tokenInfo.address}`}
+                                    className="text-purple-400 hover:text-purple-300 text-sm transition-colors"
+                                  >
+                                    {tx.tokenInfo.symbol || tx.tokenInfo.name || 'Unknown'}
+                                  </Link>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {tx.from.toLowerCase() === resolvedParams.address.toLowerCase() ? (
+                                  <span className="text-gray-400 font-mono text-sm">You</span>
+                                ) : (
+                                  <Link
+                                    href={`/address/${tx.from}`}
+                                    className="text-green-400 hover:text-green-300 font-mono text-sm transition-colors"
+                                    title={tx.from}
+                                  >
+                                    {formatAddress(tx.from)}
+                                  </Link>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {tx.to.toLowerCase() === resolvedParams.address.toLowerCase() ? (
+                                  <span className="text-gray-400 font-mono text-sm">You</span>
+                                ) : (
+                                  <Link
+                                    href={`/address/${tx.to}`}
+                                    className="text-red-400 hover:text-red-300 font-mono text-sm transition-colors"
+                                    title={tx.to}
+                                  >
+                                    {formatAddress(tx.to)}
+                                  </Link>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {(tx.tokenTransfers || tx.tokenInfo) ? (
+                                  <div className="text-sm">{formatTokenValue(tx)}</div>
+                                ) : (
+                                  <span className="text-gray-500">-</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="text-sm">
+                                  <div className="text-gray-300">{getTimeAgo(tx.timestamp)}</div>
+                                  <div className="text-gray-500 text-xs">
+                                    {formatTimestamp(tx.timestamp)}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : activeTab === 'mining' ? (
+              <>
+                {miningRewards.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-400">No mining rewards for this address.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-4 text-sm text-gray-400">
+                      Latest 10 from a total of {miningCount.toLocaleString()} mining rewards
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-gray-600">
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Block Hash
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Reward
+                            </th>
+                            <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                              Age
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-600">
+                          {miningRewards.slice(0, 10).map((tx) => (
+                            <tr key={tx.hash} className="hover:bg-gray-700/50 transition-colors">
+                              <td className="py-3 px-4">
+                                <Link
+                                  href={`/tx/${tx.hash}`}
+                                  className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors"
+                                  title={tx.hash}
+                                >
+                                  {formatAddress(tx.hash)}
+                                </Link>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="text-yellow-400">{formatValue(tx.value)}</span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="text-sm">
+                                  <div className="text-gray-300">{getTimeAgo(tx.timestamp)}</div>
+                                  <div className="text-gray-500 text-xs">
+                                    {formatTimestamp(tx.timestamp)}
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="mt-4 text-center">
+                      <Link
+                        href={`/address/${resolvedParams.address}/mining`}
+                        className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
+                      >
+                        View all {miningCount.toLocaleString()} mining rewards →
+                      </Link>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : null}
           </div>
         </div>
       </main>

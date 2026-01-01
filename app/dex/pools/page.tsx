@@ -187,7 +187,13 @@ export default function PoolsPage() {
                 <p className="text-gray-400 mt-1">All liquidity pools on VirBiCoin DEX</p>
               </div>
             </div>
-            <nav className="hidden md:flex items-center gap-1 bg-gray-800/50 rounded-xl p-1">
+            <nav className="hidden md:flex items-center gap-2 bg-gray-800/50 rounded-xl p-1">
+              {nativePrice !== null && nativeSymbol && (
+                <div className="px-3 py-2 text-sm">
+                  <span className="text-gray-400">{nativeSymbol} </span>
+                  <span className="text-green-400 font-semibold">${nativePrice.toFixed(6)}</span>
+                </div>
+              )}
               <Link
                 href="/dex"
                 className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
@@ -222,22 +228,18 @@ export default function PoolsPage() {
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
-            <div className="text-gray-400 text-sm mb-1 flex items-center gap-1">
-              Total Value Locked
-              <span className="text-xs text-blue-400">(DefiLlama)</span>
-            </div>
+            <div className="text-gray-400 text-sm mb-1">Total Value Locked</div>
             <div className="text-2xl font-bold text-white">
               $
-              {(externalTVL ?? totalTVL).toLocaleString(undefined, {
+              {totalTVL.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
             </div>
           </div>
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
-            <div className="text-gray-400 text-sm mb-1 flex items-center gap-1">
-              {nativeSymbol || 'Native'} Price
-              <span className="text-xs text-green-400">(Exbitron)</span>
+            <div className="text-gray-400 text-sm mb-1">
+              {nativeSymbol || 'VBC'} Price
             </div>
             <div className="text-2xl font-bold text-white">
               $
@@ -310,7 +312,7 @@ export default function PoolsPage() {
                     <td className="px-6 py-4 text-right">
                       <div className="text-white font-medium">{pool.price.toFixed(6)}</div>
                       <div className="text-xs text-gray-500">
-                        {pool.baseToken.symbol}/{pool.quoteToken.symbol}
+                        {pool.quoteToken.symbol} per {pool.baseToken.symbol}
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right text-gray-400">$0.00</td>
@@ -340,15 +342,6 @@ export default function PoolsPage() {
           </div>
         </div>
 
-        {/* API Info for GeckoTerminal */}
-        <div className="mt-8 p-4 bg-gray-800/30 rounded-xl border border-gray-700/30">
-          <h3 className="text-gray-400 text-sm mb-2">API Endpoints</h3>
-          <div className="space-y-1 text-xs font-mono text-gray-500">
-            <div>GET /api/dex/geckoterminal/pools - All pools data</div>
-            <div>GET /api/dex/geckoterminal/info - DEX information</div>
-            <div>GET /api/dex/geckoterminal/ohlcv/[pool] - Price history</div>
-          </div>
-        </div>
       </div>
     </div>
   );

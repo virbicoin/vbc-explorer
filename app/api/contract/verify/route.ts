@@ -729,12 +729,21 @@ export async function POST(request: NextRequest) {
     });
 
     if (isVerified) {
+      // Extract license from source code
+      let license = 'None';
+      const spdxMatch = cleanedSourceCode.match(/SPDX-License-Identifier:\s*([^\s\n\r*]+)/i);
+      if (spdxMatch && spdxMatch[1]) {
+        license = spdxMatch[1].trim();
+      }
+
       // Save to database
       const contractData = {
         address: address.toLowerCase(),
         contractName: actualContractName,
         compilerVersion: finalCompilerVersion,
         optimization: optimization || false,
+        optimizationRuns: 200,
+        license: license,
         sourceCode: cleanedSourceCode,
         abi: JSON.stringify(compiledContract.abi),
         byteCode: onchainBytecode,

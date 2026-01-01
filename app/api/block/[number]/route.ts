@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getTransactionTypeGlobal } from '../../../../lib/transaction-utils';
 import { getWeb3 } from '../../../../lib/web3';
 import { apiCache, CACHE_TTL } from '../../../../lib/cache';
+import {
+  isValidBlockNumber,
+  checkRateLimit,
+  getClientIp,
+  getSecurityHeaders,
+} from '../../../../lib/security';
 
 // Utility: recursively converts BigInt values inside unknown structures to string while preserving shape
 function convertBigIntToString(obj: unknown): unknown {
@@ -45,20 +51,36 @@ export async function GET(
   { params }: { params: Promise<{ number: string }> }
 ) {
   try {
+    // Rate limiting
+    const clientIp = getClientIp(request);
+    const rateLimit = checkRateLimit(`block:${clientIp}`, 60, 30);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
+        { status: 429, headers: getSecurityHeaders() }
+      );
+    }
+
     const web3 = getWeb3();
 
     const resolvedParams = await params;
     const blockNumber = resolvedParams.number;
+
+    // Validate block number
+    if (!isValidBlockNumber(blockNumber)) {
+      return NextResponse.json(
+        { error: 'Invalid block number format' },
+        { status: 400, headers: getSecurityHeaders() }
+      );
+    }
 
     // Get block information
     const block = await web3.eth.getBlock(blockNumber, true);
 
     if (!block) {
       return NextResponse.json(
-        {
-          error: 'Block not found',
-        },
-        { status: 404 }
+        { error: 'Block not found' },
+        { status: 404, headers: getSecurityHeaders() }
       );
     }
 
@@ -135,7 +157,7 @@ export async function GET(
       transactions: convertBigIntToString(formattedTransactions),
     };
 
-    return NextResponse.json(responseData);
+    return NextResponse.json(responseData, { headers: getSecurityHeaders() });
   } catch (error) {
     console.error('Error fetching block data:', error);
     return NextResponse.json(
@@ -143,7 +165,7 @@ export async function GET(
         error: 'Failed to fetch block data',
         details: error instanceof Error ? error.message : 'Unknown error',
       },
-      { status: 500 }
+      { status: 500, headers: getSecurityHeaders() }
     );
   }
 }

@@ -1,4 +1,5 @@
 import { loadConfig } from '@/lib/config';
+import { getNativePrice } from '@/lib/price-service';
 import Web3 from 'web3';
 
 // Cache for external price data (5 minute TTL)
@@ -77,34 +78,6 @@ const ERC20_ABI = [
     type: 'function',
   },
 ];
-
-async function fetchExbitronPrice(nativeSymbol: string): Promise<number> {
-  try {
-    const response = await fetch('https://api.exbitron.com/api/v1/cg/tickers', {
-      next: { revalidate: 300 },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Exbitron API error: ${response.status}`);
-    }
-
-    const tickers = await response.json();
-
-    // Find native token / USDT ticker (e.g., VBC-USDT)
-    const nativeUsdt = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${nativeSymbol}-USDT`
-    );
-
-    if (nativeUsdt && nativeUsdt.last_price) {
-      return parseFloat(nativeUsdt.last_price);
-    }
-
-    return 0;
-  } catch (error) {
-    console.error('Failed to fetch Exbitron price:', error);
-    return 0;
-  }
-}
 
 /**
  * Calculate TVL directly from blockchain data
@@ -243,8 +216,10 @@ export async function getExternalPriceData(): Promise<ExternalPriceData> {
     return cachedData;
   }
 
-  // First fetch the native token price
-  const nativePriceUsd = await fetchExbitronPrice(nativeSymbol);
+  // Get price from price service (uses Market DB first, then Exbitron)
+  const priceData = await getNativePrice();
+  const nativePriceUsd = priceData?.priceUSD || 0;
+  const priceSource = priceData?.source === 'database' ? 'Market DB' : 'Exbitron';
 
   // Then calculate TVL from blockchain using the native price
   const totalTvlUsd = await calculateTvlFromBlockchain(nativePriceUsd);
@@ -256,7 +231,7 @@ export async function getExternalPriceData(): Promise<ExternalPriceData> {
     totalTvlUsd,
     lastUpdated: Date.now(),
     source: {
-      price: 'Exbitron',
+      price: priceSource,
       tvl: 'Calculated',
     },
   };

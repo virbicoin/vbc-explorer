@@ -103,6 +103,17 @@ export async function GET(
       });
     }
 
+    // Extract license from source code if not stored in DB
+    let license = (contractDoc as Record<string, unknown>).license as string || '';
+    if ((!license || license === 'None') && contractDoc.sourceCode) {
+      const sourceCode = contractDoc.sourceCode as string;
+      // Try to extract SPDX license identifier
+      const spdxMatch = sourceCode.match(/SPDX-License-Identifier:\s*([^\s\n\r*]+)/i);
+      if (spdxMatch && spdxMatch[1]) {
+        license = spdxMatch[1].trim();
+      }
+    }
+
     return NextResponse.json({
       verified: contractDoc.verified || false,
       contractName: contractDoc.contractName,
@@ -110,7 +121,7 @@ export async function GET(
       optimization: contractDoc.optimization,
       optimizationRuns: (contractDoc as Record<string, unknown>).optimizationRuns || 200,
       evmVersion: (contractDoc as Record<string, unknown>).evmVersion || 'default',
-      license: (contractDoc as Record<string, unknown>).license || 'None',
+      license: license || 'None',
       verifiedAt: contractDoc.verifiedAt,
       hasSourceCode: !!contractDoc.sourceCode,
       hasABI: !!contractDoc.abi,

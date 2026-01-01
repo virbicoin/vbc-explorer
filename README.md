@@ -48,7 +48,13 @@ The explorer includes a built-in decentralized exchange (DEX) with the following
 - Add/remove liquidity for token pairs
 - LP token management
 - Real-time pool statistics
-- Trading fee earnings (0.3%)
+- Trading fee earnings (0.3%: 0.25% to LPs, 0.05% protocol)
+
+### DEX API Integrations
+- **GeckoTerminal Compatible** - `/api/dex/geckoterminal/pools`, `/api/dex/geckoterminal/ohlcv/[pool]`
+- **CoinMarketCap Compatible** - `/api/dex/cmc/summary`, `/api/dex/cmc/ticker`, `/api/dex/cmc/assets`
+- **DefiLlama Compatible** - `/api/dex/defillama`, `/api/dex/defillama/tvl`, `/api/dex/defillama/pools`
+- **Price Data** - `/api/dex/external-price` (Exbitron + DEX on-chain fallback)
 
 ### Yield Farming
 - Stake LP tokens to earn reward tokens
@@ -557,6 +563,15 @@ You can reference environment variables in `config.json` using `${VAR_NAME}` syn
 3. **Enable rate limiting** - Protect API endpoints from abuse
 4. **Use HTTPS** - Enable Strict-Transport-Security in production
 5. **Regular audits** - Run `npm audit` periodically
+
+### Security Features (v0.7.5)
+
+- ✅ **Input Validation** - All addresses, hashes, and pagination parameters validated
+- ✅ **Rate Limiting** - Token bucket algorithm per client IP (100 req/min default)
+- ✅ **Security Headers** - X-Content-Type-Options, X-Frame-Options, X-XSS-Protection
+- ✅ **ReDoS Protection** - Safe RegExp patterns with input sanitization
+- ✅ **Method Whitelist** - Contract interaction limited to read-only methods
+- ✅ **Content-Type Validation** - API endpoints validate request content types
 
 For detailed security information, see [SECURITY.md](SECURITY.md).
 

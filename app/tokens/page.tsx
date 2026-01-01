@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import Image from 'next/image';
 import { CubeTransparentIcon, CheckCircleIcon, PhotoIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState } from 'react';
 import {
@@ -8,6 +9,7 @@ import {
   initializeCurrencyConfig,
 } from '../../lib/client-config';
 import { initializeCurrency } from '../../lib/bigint-utils';
+import { getTokenIcon, getTokenColor } from '../../lib/token-icons';
 
 type Token = {
   symbol: string;
@@ -283,15 +285,34 @@ export default function TokensPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredTokens.map((token, index) => (
+                  filteredTokens.map((token, index) => {
+                    const iconUrl = getTokenIcon(token.symbol, token.address);
+                    return (
                     <tr
                       key={`${token.address}-${index}`}
                       className="hover:bg-gray-700/50 transition-colors"
                     >
                       <td className="py-3 px-4">
-                        <div>
-                          <div className="font-bold text-gray-200">{token.symbol}</div>
-                          <div className="text-sm text-gray-400">{token.name}</div>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md overflow-hidden`}>
+                            {iconUrl ? (
+                              <Image
+                                src={iconUrl}
+                                alt={token.symbol}
+                                width={28}
+                                height={28}
+                                className="object-contain"
+                              />
+                            ) : (
+                              <span className="font-bold text-white text-xs">
+                                {token.symbol?.charAt(0) || '?'}
+                              </span>
+                            )}
+                          </div>
+                          <div>
+                            <div className="font-bold text-gray-200">{token.symbol}</div>
+                            <div className="text-sm text-gray-400">{token.name}</div>
+                          </div>
                         </div>
                       </td>
                       <td className="py-3 px-4">
@@ -365,7 +386,8 @@ export default function TokensPage() {
                         </span>
                       </td>
                     </tr>
-                  ))
+                  );
+                  })
                 )}
               </tbody>
             </table>

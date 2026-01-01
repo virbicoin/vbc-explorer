@@ -249,10 +249,25 @@ export async function GET(
         gasPrice: txData.gasPrice,
       };
 
-      // トークン情報を追加
+      // トークン情報を追加（複数のトークン転送に対応）
       const tokenTransfersForTx = tokenTransferMap.get(hash);
       if (tokenTransfersForTx && tokenTransfersForTx.length > 0) {
-        const tt = tokenTransfersForTx[0];
+        // このアドレスに関連する転送を優先
+        // 1. このアドレスが受け取った転送（in）
+        // 2. このアドレスが送った転送（out）
+        const addressLower = address.toLowerCase();
+        
+        // 受け取り（in）を優先的に表示
+        const incomingTransfer = tokenTransfersForTx.find(
+          (t) => (t.to as string).toLowerCase() === addressLower
+        );
+        const outgoingTransfer = tokenTransfersForTx.find(
+          (t) => (t.from as string).toLowerCase() === addressLower
+        );
+        
+        // 受け取りを優先、なければ送金を表示
+        const primaryTransfer = incomingTransfer || outgoingTransfer || tokenTransfersForTx[0];
+        const tt = primaryTransfer;
         const tokenAddr = (tt.tokenAddress as string).toLowerCase();
         const tokenInfo = tokenInfoMap.get(tokenAddr);
 
@@ -265,6 +280,25 @@ export async function GET(
           value: tt.value,
           tokenId: tt.tokenId,
         };
+
+        // 全てのトークン転送情報を追加
+        result.tokenTransfers = tokenTransfersForTx.map((t) => {
+          const addr = (t.tokenAddress as string).toLowerCase();
+          const info = tokenInfoMap.get(addr);
+          const isIncoming = (t.to as string).toLowerCase() === addressLower;
+          return {
+            address: t.tokenAddress,
+            name: info?.name || 'Unknown Token',
+            symbol: info?.symbol || '???',
+            decimals: info?.decimals || 18,
+            type: info?.type || 'VRC-20',
+            value: t.value,
+            tokenId: t.tokenId,
+            from: t.from,
+            to: t.to,
+            direction: isIncoming ? 'in' : 'out',
+          };
+        });
 
         // NFTの場合
         if (tt.tokenId !== undefined && tt.tokenId !== null) {

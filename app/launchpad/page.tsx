@@ -152,7 +152,7 @@ function LaunchpadPageContent() {
 
 function InfoSection() {
   return (
-    <div className="max-w-4xl mx-auto mt-12 px-4">
+    <div className="max-w-4xl mx-auto mt-12">
       {/* How to Create Token */}
       <div className="bg-gradient-to-b from-gray-800/90 to-gray-900/90 backdrop-blur-xl rounded-3xl p-6 border border-gray-700/50 mb-8">
         <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
