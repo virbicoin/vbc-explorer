@@ -8,6 +8,24 @@ import { getNativePrice } from '@/lib/price-service';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// GeckoTerminal API headers
+const API_HEADERS = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Accept, Content-Type',
+  'Cache-Control': 'public, max-age=30',
+  'X-API-Version': '20230203',
+};
+
+// GeckoTerminal error response format
+function errorResponse(status: number, title: string) {
+  return NextResponse.json(
+    { errors: [{ status: String(status), title }] },
+    { status, headers: API_HEADERS }
+  );
+}
+
 const PAIR_ABI = [
   'function getReserves() view returns (uint256 reserve0, uint256 reserve1)',
   'function token0() view returns (address)',
@@ -195,17 +213,7 @@ export async function GET() {
   try {
     // Check cache
     if (poolsCache && Date.now() - poolsCache.timestamp < CACHE_DURATION) {
-      return NextResponse.json(
-        {
-          data: poolsCache.data,
-        },
-        {
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'public, max-age=30',
-          },
-        }
-      );
+      return NextResponse.json({ data: poolsCache.data }, { headers: API_HEADERS });
     }
 
     // Connect to database
@@ -532,30 +540,20 @@ export async function GET() {
     // Update cache
     poolsCache = { data: pools, timestamp: Date.now() };
 
-    return NextResponse.json(
-      {
-        data: pools,
-      },
-      {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'public, max-age=30',
-        },
-      }
-    );
+    return NextResponse.json({ data: pools }, { headers: API_HEADERS });
   } catch (error) {
     console.error('GeckoTerminal Pools API error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return errorResponse(500, 'Internal server error');
   }
 }
 
 export async function OPTIONS() {
   return new NextResponse(null, {
-    status: 200,
+    status: 204,
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Accept, Content-Type',
     },
   });
 }

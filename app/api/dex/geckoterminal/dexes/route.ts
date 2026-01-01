@@ -1,5 +1,5 @@
-// GeckoTerminal Networks API - Returns network/chain information
-// Format: https://docs.geckoterminal.com/reference/get_networks
+// GeckoTerminal Dexes API - Returns list of DEXes on the network
+// Format: https://docs.geckoterminal.com/reference/get_networks-network-dexes
 import { NextResponse } from 'next/server';
 import { loadConfig } from '@/lib/config';
 
@@ -33,22 +33,17 @@ export async function GET() {
     }
 
     const networkSlug = 'virbicoin';
-    const chainId = config.network?.chainId || 329;
+    const dexName = config.dex?.name || 'VirBiCoin DEX';
 
     return NextResponse.json(
       {
         data: [
           {
-            id: networkSlug,
-            type: 'network',
+            id: `${networkSlug}_dex`,
+            type: 'dex',
             attributes: {
-              name: 'VirBiCoin',
-              short_name: 'VBC',
-              coingecko_asset_platform_id: null,
-              identifier: networkSlug,
-              chain_id: chainId,
-              native_coin_id: null,
-              image_url: null,
+              name: dexName,
+              identifier: `${networkSlug}_dex`,
             },
           },
         ],
@@ -56,7 +51,7 @@ export async function GET() {
       { headers: API_HEADERS }
     );
   } catch (error) {
-    console.error('GeckoTerminal Networks API error:', error);
+    console.error('GeckoTerminal Dexes API error:', error);
     return errorResponse(500, 'Internal server error');
   }
 }

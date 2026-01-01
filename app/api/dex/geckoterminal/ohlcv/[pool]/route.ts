@@ -1,6 +1,7 @@
 // GeckoTerminal OHLCV API - Returns historical price data for a pool
 // Format: https://docs.geckoterminal.com/reference/get_networks-network-pools-pool_address-ohlcv-timeframe
 import { NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { ethers } from 'ethers';
 import { loadConfig } from '@/lib/config';
 import { connectDB, DexSwap, Contract } from '@/models';
@@ -8,6 +9,24 @@ import { getNativePrice } from '@/lib/price-service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+// GeckoTerminal API headers
+const API_HEADERS = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Accept, Content-Type',
+  'Cache-Control': 'public, max-age=60',
+  'X-API-Version': '20230203',
+};
+
+// GeckoTerminal error response format
+function errorResponse(status: number, title: string) {
+  return NextResponse.json(
+    { errors: [{ status: String(status), title }] },
+    { status, headers: API_HEADERS }
+  );
+}
 
 const PAIR_ABI = [
   'function getReserves() view returns (uint256 reserve0, uint256 reserve1)',
@@ -99,7 +118,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
 
     // Validate pool address
     if (!ethers.isAddress(poolAddress)) {
-      return NextResponse.json({ error: 'Invalid pool address' }, { status: 400 });
+      return errorResponse(400, 'Invalid pool address');
     }
 
     // GeckoTerminal parameters with validation
@@ -121,7 +140,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
 
     const config = loadConfig();
     if (!config.dex?.enabled) {
-      return NextResponse.json({ error: 'DEX feature is not enabled' }, { status: 404 });
+      return errorResponse(404, 'DEX feature is not enabled');
     }
 
     const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
@@ -130,11 +149,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
     // Get pool info
     const pairContract = new ethers.Contract(poolAddress, PAIR_ABI, provider);
 
-    const [reserves, token0Address, token1Address] = await Promise.all([
-      pairContract.getReserves(),
-      pairContract.token0(),
-      pairContract.token1(),
-    ]);
+    let reserves, token0Address, token1Address;
+    try {
+      [reserves, token0Address, token1Address] = await Promise.all([
+        pairContract.getReserves(),
+        pairContract.token0(),
+        pairContract.token1(),
+      ]);
+    } catch {
+      return errorResponse(404, 'Pool not found');
+    }
 
     const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
     const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
@@ -255,8 +279,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
     return NextResponse.json(
       {
         data: {
-          id: `virbicoin_${poolAddress.toLowerCase()}`,
-          type: 'pool_ohlcv',
+          id: randomUUID(),
+          type: 'ohlcv_request_response',
           attributes: {
             ohlcv_list: ohlcvList,
           },
@@ -276,26 +300,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
           },
         },
       },
-      {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'public, max-age=60',
-        },
-      }
+      { headers: API_HEADERS }
     );
   } catch (error) {
     console.error('GeckoTerminal OHLCV API error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return errorResponse(500, 'Internal server error');
   }
 }
 
 export async function OPTIONS() {
   return new NextResponse(null, {
-    status: 200,
+    status: 204,
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Accept, Content-Type',
     },
   });
 }

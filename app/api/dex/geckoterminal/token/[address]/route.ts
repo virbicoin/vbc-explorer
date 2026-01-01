@@ -9,6 +9,24 @@ import { getNativePrice } from '@/lib/price-service';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// GeckoTerminal API headers
+const API_HEADERS = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Accept, Content-Type',
+  'Cache-Control': 'public, max-age=60',
+  'X-API-Version': '20230203',
+};
+
+// GeckoTerminal error response format
+function errorResponse(status: number, title: string) {
+  return NextResponse.json(
+    { errors: [{ status: String(status), title }] },
+    { status, headers: API_HEADERS }
+  );
+}
+
 const ERC20_ABI = [
   'function symbol() external view returns (string)',
   'function name() external view returns (string)',
@@ -28,7 +46,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
 
     const config = loadConfig();
     if (!config.dex?.enabled) {
-      return NextResponse.json({ error: 'DEX feature is not enabled' }, { status: 404 });
+      return errorResponse(404, 'DEX feature is not enabled');
     }
 
     const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
@@ -38,7 +56,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
 
     // Validate address
     if (!ethers.isAddress(tokenAddress)) {
-      return NextResponse.json({ error: 'Invalid token address' }, { status: 400 });
+      return errorResponse(400, 'Invalid token address');
     }
 
     const normalizedAddress = tokenAddress.toLowerCase();
@@ -49,12 +67,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     // Get token info from blockchain
     const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
 
-    const [symbol, name, decimals, totalSupply] = await Promise.all([
-      tokenContract.symbol().catch(() => 'UNKNOWN'),
-      tokenContract.name().catch(() => 'Unknown Token'),
-      tokenContract.decimals().catch(() => 18),
-      tokenContract.totalSupply().catch(() => BigInt(0)),
-    ]);
+    let symbol, name, decimals, totalSupply;
+    try {
+      [symbol, name, decimals, totalSupply] = await Promise.all([
+        tokenContract.symbol().catch(() => 'UNKNOWN'),
+        tokenContract.name().catch(() => 'Unknown Token'),
+        tokenContract.decimals().catch(() => 18),
+        tokenContract.totalSupply().catch(() => BigInt(0)),
+      ]);
+    } catch {
+      return errorResponse(404, 'Token not found');
+    }
 
     const isWrappedNative = normalizedAddress === wrappedNativeAddress;
     const displaySymbol = symbol === 'WVBC' ? 'VBC' : symbol;
@@ -241,26 +264,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
           },
         },
       },
-      {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'public, max-age=60',
-        },
-      }
+      { headers: API_HEADERS }
     );
   } catch (error) {
     console.error('GeckoTerminal Token API error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return errorResponse(500, 'Internal server error');
   }
 }
 
 export async function OPTIONS() {
   return new NextResponse(null, {
-    status: 200,
+    status: 204,
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Accept, Content-Type',
     },
   });
 }

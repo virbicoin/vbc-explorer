@@ -442,6 +442,34 @@ export default function DocsPage() {
                     <span className="text-gray-300">/api/dex/geckoterminal/info</span>
                     <span className="text-gray-500 text-xs ml-2">- DEX metadata</span>
                   </div>
+                  <div className="flex items-start gap-2">
+                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
+                    <span className="text-gray-300">/api/dex/geckoterminal/dexes</span>
+                    <span className="text-gray-500 text-xs ml-2">- DEX list</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
+                    <span className="text-gray-300">/api/dex/geckoterminal/trending_pools</span>
+                    <span className="text-gray-500 text-xs ml-2">- Trending</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
+                    <span className="text-gray-300">/api/dex/geckoterminal/new_pools</span>
+                    <span className="text-gray-500 text-xs ml-2">- New pools</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
+                    <span className="text-gray-300">/api/dex/geckoterminal/search/pools</span>
+                    <span className="text-gray-500 text-xs ml-2">- Search</span>
+                  </div>
                 </div>
               </div>
 

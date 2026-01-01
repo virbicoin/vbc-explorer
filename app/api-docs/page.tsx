@@ -728,6 +728,39 @@ const apiCategories: ApiCategory[] = [
           '{"name": "VirBiCoin DEX", "network": {...}, "contracts": {...}, "features": {...}}',
         example: 'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/info"',
       },
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/dexes',
+        description: 'List of DEXes on the network',
+        response:
+          '{"data": [{"id": "virbicoin_dex", "type": "dex", "attributes": {"name": "VirBiCoin DEX"}}]}',
+        example: 'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/dexes"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/trending_pools',
+        description: 'Trending pools sorted by 24h volume',
+        params: ['page (optional: 1-100, default 1)'],
+        response: '{"data": [{"id": "virbicoin_0x...", "type": "pool", "attributes": {...}}]}',
+        example: 'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/trending_pools"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/new_pools',
+        description: 'Recently created pools',
+        params: ['page (optional: 1-100, default 1)'],
+        response: '{"data": [{"id": "virbicoin_0x...", "type": "pool", "attributes": {...}}]}',
+        example: 'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/new_pools"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/search/pools',
+        description: 'Search pools by token symbol, name, or address',
+        params: ['query (required: 2-100 chars)', 'page (optional: 1-100, default 1)'],
+        response: '{"data": [{"id": "virbicoin_0x...", "type": "pool", "attributes": {...}}]}',
+        example:
+          'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/search/pools?query=VBC"',
+      },
     ],
   },
   {

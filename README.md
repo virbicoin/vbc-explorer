@@ -56,12 +56,16 @@ The explorer includes a built-in decentralized exchange (DEX) with the following
 | Endpoint | Description |
 |----------|-------------|
 | `/api/dex/geckoterminal/networks` | Network/chain information |
+| `/api/dex/geckoterminal/dexes` | DEX list |
 | `/api/dex/geckoterminal/pools` | All pools with statistics |
 | `/api/dex/geckoterminal/pool/[address]` | Single pool detail with tokens |
 | `/api/dex/geckoterminal/token/[address]` | Token information |
 | `/api/dex/geckoterminal/ohlcv/[pool]` | OHLCV candlestick data |
 | `/api/dex/geckoterminal/trades/[pool]` | Recent trades/swaps |
 | `/api/dex/geckoterminal/simple/price` | Batch token prices |
+| `/api/dex/geckoterminal/trending_pools` | Trending pools by volume |
+| `/api/dex/geckoterminal/new_pools` | Recently created pools |
+| `/api/dex/geckoterminal/search/pools` | Search pools by query |
 | `/api/dex/geckoterminal/info` | DEX metadata |
 
 #### CoinMarketCap Compatible
