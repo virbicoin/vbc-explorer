@@ -4,13 +4,13 @@ import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import {
-  getCachedVBCPrice,
   getCachedPoolInfo,
   getCachedPoolStats,
   getLPAddresses,
   getWrappedNativeAddress,
   getUSDTAddress,
 } from '@/lib/dex/cache-service';
+import { getVbcPriceFromDex, getVbcgPriceFromDex, ADDRESSES } from '@/lib/dex/priceUtils';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -101,8 +101,11 @@ export async function GET() {
     const usdtAddress = getUSDTAddress();
     const lpAddresses = getLPAddresses();
 
-    // Get VBC price (cached)
-    const vbcPriceUsd = await getCachedVBCPrice();
+    // Get VBC and VBCG prices from DEX (not external API)
+    const [vbcPriceUsd, vbcgPriceUsd] = await Promise.all([
+      getVbcPriceFromDex(),
+      getVbcgPriceFromDex(),
+    ]);
 
     const pools: PoolData[] = [];
 
@@ -186,6 +189,8 @@ export async function GET() {
               baseAddress.toLowerCase() === wrappedNativeAddress || baseSymbol === 'VBC';
             const isQuoteUSDT = quoteAddress.toLowerCase() === usdtAddress;
             const isBaseUSDT = baseAddress.toLowerCase() === usdtAddress;
+            const isQuoteVBCG = quoteAddress.toLowerCase() === ADDRESSES.VBCG;
+            const isBaseVBCG = baseAddress.toLowerCase() === ADDRESSES.VBCG;
 
             if (isBaseVBC && isQuoteUSDT) {
               // VBC/USDT pair - use USDT reserve to value VBC (50/50 pool)
@@ -194,6 +199,12 @@ export async function GET() {
               const dexVbcPrice = quoteReserve / baseReserve; // DEX price of VBC in USD
               baseTokenPriceUsd = dexVbcPrice.toString();
               quoteTokenPriceUsd = '1';
+            } else if (isBaseVBC && isQuoteVBCG) {
+              // VBC/VBCG pair - use DEX VBC price to calculate both values
+              baseReserveUsd = baseReserve * vbcPriceUsd;
+              quoteReserveUsd = quoteReserve * vbcgPriceUsd;
+              baseTokenPriceUsd = vbcPriceUsd.toString();
+              quoteTokenPriceUsd = vbcgPriceUsd.toString();
             } else if (isBaseUSDT) {
               // USDT/X pair - use USDT reserve to value X (50/50 pool)
               baseReserveUsd = baseReserve; // USDT = 1 USD
@@ -201,15 +212,22 @@ export async function GET() {
               const quoteTokenPrice = baseReserve / quoteReserve; // DEX price
               baseTokenPriceUsd = '1';
               quoteTokenPriceUsd = quoteTokenPrice.toString();
+            } else if (isBaseVBCG) {
+              // VBCG/X pair - use DEX VBCG price
+              baseReserveUsd = baseReserve * vbcgPriceUsd;
+              const quoteTokenPrice = (baseReserve / quoteReserve) * vbcgPriceUsd;
+              quoteReserveUsd = quoteReserve * quoteTokenPrice;
+              baseTokenPriceUsd = vbcgPriceUsd.toString();
+              quoteTokenPriceUsd = quoteTokenPrice.toString();
             } else if (isBaseVBC) {
-              // VBC/X pair (no stablecoin) - use external price
+              // VBC/X pair (no stablecoin, not VBCG) - use DEX VBC price
               baseReserveUsd = baseReserve * vbcPriceUsd;
               const quoteTokenPrice = (baseReserve / quoteReserve) * vbcPriceUsd;
               quoteReserveUsd = quoteReserve * quoteTokenPrice;
               baseTokenPriceUsd = vbcPriceUsd.toString();
               quoteTokenPriceUsd = quoteTokenPrice.toString();
             } else {
-              // Fallback - use external price
+              // Fallback - use DEX VBC price
               baseReserveUsd = baseReserve * vbcPriceUsd;
               quoteReserveUsd = quoteReserve * vbcPriceUsd;
               baseTokenPriceUsd = vbcPriceUsd.toString();
