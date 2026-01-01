@@ -1,10 +1,16 @@
 // GeckoTerminal Search Pools API - Search for pools by query
 // Format: https://docs.geckoterminal.com/reference/get_search-pools
+// Optimized with centralized caching
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import { loadConfig } from '@/lib/config';
-import { connectDB } from '@/models/index';
-import { getNativePrice } from '@/lib/price-service';
+import { apiCache, CACHE_TTL } from '@/lib/cache';
+import {
+  getCachedVBCPrice,
+  getCachedPoolInfo,
+  getWrappedNativeAddress,
+  getLPAddresses,
+} from '@/lib/dex/cache-service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -27,17 +33,8 @@ function errorResponse(status: number, title: string) {
   );
 }
 
-const PAIR_ABI = [
-  'function getReserves() view returns (uint256 reserve0, uint256 reserve1)',
-  'function token0() view returns (address)',
-  'function token1() view returns (address)',
-];
-
-const ERC20_ABI = [
-  'function symbol() external view returns (string)',
-  'function name() external view returns (string)',
-  'function decimals() external view returns (uint8)',
-];
+// Response cache
+const SEARCH_CACHE_PREFIX = 'geckoterminal:search:';
 
 export async function GET(request: Request) {
   try {
@@ -54,80 +51,73 @@ export async function GET(request: Request) {
       return errorResponse(400, 'query must be at least 2 characters');
     }
 
+    // Check response cache
+    const cacheKey = `${SEARCH_CACHE_PREFIX}${query}:${page}`;
+    const cached = apiCache.get<{ data: unknown[] }>(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached, { headers: API_HEADERS });
+    }
+
     const config = loadConfig();
     if (!config.dex?.enabled) {
       return errorResponse(404, 'DEX feature is not enabled');
     }
 
-    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
-    const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';
+    const wrappedNativeAddress = getWrappedNativeAddress();
     const networkSlug = 'virbicoin';
 
-    await connectDB();
-
-    // Get VBC price
-    let vbcPriceUsd = 0;
-    const priceData = await getNativePrice();
-    if (priceData) {
-      vbcPriceUsd = priceData.priceUSD;
-    }
+    // Get VBC price (cached)
+    const vbcPriceUsd = await getCachedVBCPrice();
 
     // Get all LP pools from config
-    const lpTokens = (config.dex?.lpTokens || {}) as Record<
-      string,
-      { address: string; name?: string }
-    >;
-    const lpAddresses = Object.values(lpTokens).map((lp) => lp.address.toLowerCase());
+    const lpAddresses = getLPAddresses();
 
     const matchingPools = [];
 
     // Search through pools
     for (const lpAddress of lpAddresses) {
       try {
-        const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
-        const [reserves, token0Addr, token1Addr] = await Promise.all([
-          pairContract.getReserves(),
-          pairContract.token0(),
-          pairContract.token1(),
-        ]);
+        // Get cached pool info
+        const poolInfo = await getCachedPoolInfo(lpAddress);
+        if (!poolInfo) continue;
 
-        const token0Contract = new ethers.Contract(token0Addr, ERC20_ABI, provider);
-        const token1Contract = new ethers.Contract(token1Addr, ERC20_ABI, provider);
-
-        const [symbol0, name0, decimals0, symbol1, name1, decimals1] = await Promise.all([
-          token0Contract.symbol(),
-          token0Contract.name(),
-          token0Contract.decimals(),
-          token1Contract.symbol(),
-          token1Contract.name(),
-          token1Contract.decimals(),
-        ]);
+        const { token0, token1, reserve0, reserve1 } = poolInfo;
 
         // Check if query matches pool name, token symbols, or addresses
-        const poolName = `${symbol0}/${symbol1}`;
+        const poolName = `${token0.symbol}/${token1.symbol}`;
         const searchableText = [
           poolName.toLowerCase(),
-          symbol0.toLowerCase(),
-          symbol1.toLowerCase(),
-          name0.toLowerCase(),
-          name1.toLowerCase(),
+          token0.symbol.toLowerCase(),
+          token1.symbol.toLowerCase(),
+          token0.name.toLowerCase(),
+          token1.name.toLowerCase(),
           lpAddress,
-          token0Addr.toLowerCase(),
-          token1Addr.toLowerCase(),
+          token0.address.toLowerCase(),
+          token1.address.toLowerCase(),
         ].join(' ');
 
         if (!searchableText.includes(query)) {
           continue;
         }
 
-        const isToken0VBC = token0Addr.toLowerCase() === wrappedNativeAddress;
-        const baseSymbol = isToken0VBC ? (symbol0 === 'WVBC' ? 'VBC' : symbol0) : symbol1;
-        const quoteSymbol = isToken0VBC ? symbol1 : symbol1 === 'WVBC' ? 'VBC' : symbol0;
-        const baseAddress = isToken0VBC ? token0Addr : token1Addr;
-        const quoteAddress = isToken0VBC ? token1Addr : token0Addr;
+        const isToken0VBC = token0.address.toLowerCase() === wrappedNativeAddress;
+        const baseSymbol = isToken0VBC
+          ? token0.symbol === 'WVBC'
+            ? 'VBC'
+            : token0.symbol
+          : token1.symbol === 'WVBC'
+            ? 'VBC'
+            : token1.symbol;
+        const quoteSymbol = isToken0VBC
+          ? token1.symbol === 'WVBC'
+            ? 'VBC'
+            : token1.symbol
+          : token0.symbol;
+        const baseAddress = isToken0VBC ? token0.address : token1.address;
+        const quoteAddress = isToken0VBC ? token1.address : token0.address;
 
-        const reserve0Num = Number(ethers.formatUnits(reserves[0], decimals0));
-        const reserve1Num = Number(ethers.formatUnits(reserves[1], decimals1));
+        const reserve0Num = Number(ethers.formatUnits(reserve0, token0.decimals));
+        const reserve1Num = Number(ethers.formatUnits(reserve1, token1.decimals));
 
         let reserveUsd = '0';
         if (isToken0VBC && vbcPriceUsd > 0) {
@@ -157,9 +147,6 @@ export async function GET(request: Request) {
             dex: {
               data: { id: `${networkSlug}_dex`, type: 'dex' },
             },
-            network: {
-              data: { id: networkSlug, type: 'network' },
-            },
           },
         });
       } catch (error) {
@@ -167,11 +154,20 @@ export async function GET(request: Request) {
       }
     }
 
-    // Paginate results
+    // Sort by reserve (liquidity)
+    matchingPools.sort(
+      (a, b) =>
+        parseFloat(b.attributes.reserve_in_usd) - parseFloat(a.attributes.reserve_in_usd)
+    );
+
+    // Paginate
     const startIndex = (page - 1) * 10;
     const paginatedPools = matchingPools.slice(startIndex, startIndex + 10);
 
-    return NextResponse.json({ data: paginatedPools }, { headers: API_HEADERS });
+    const response = { data: paginatedPools };
+    apiCache.set(cacheKey, response, CACHE_TTL.MEDIUM); // 60s cache
+
+    return NextResponse.json(response, { headers: API_HEADERS });
   } catch (error) {
     console.error('GeckoTerminal Search Pools API error:', error);
     return errorResponse(500, 'Internal server error');

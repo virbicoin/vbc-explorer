@@ -1,10 +1,20 @@
 // GeckoTerminal Token Info API - Returns token information
 // Format: https://docs.geckoterminal.com/reference/get_networks-network-tokens-address
+// Optimized with centralized caching
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import { loadConfig } from '@/lib/config';
 import { connectDB, Contract, DexSwap } from '@/models/index';
-import { getNativePrice } from '@/lib/price-service';
+import { apiCache, CACHE_TTL } from '@/lib/cache';
+import {
+  getCachedVBCPrice,
+  getCachedTokenInfo,
+  getCachedPoolInfo,
+  getWrappedNativeAddress,
+  getUSDTAddress,
+  getLPAddresses,
+  getProvider,
+} from '@/lib/dex/cache-service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -27,18 +37,10 @@ function errorResponse(status: number, title: string) {
   );
 }
 
-const ERC20_ABI = [
-  'function symbol() external view returns (string)',
-  'function name() external view returns (string)',
-  'function decimals() external view returns (uint8)',
-  'function totalSupply() external view returns (uint256)',
-];
+const ERC20_ABI = ['function totalSupply() external view returns (uint256)'];
 
-const PAIR_ABI = [
-  'function getReserves() view returns (uint256 reserve0, uint256 reserve1)',
-  'function token0() view returns (address)',
-  'function token1() view returns (address)',
-];
+// Response cache
+const TOKEN_CACHE_PREFIX = 'geckoterminal:token:';
 
 export async function GET(request: Request, { params }: { params: Promise<{ address: string }> }) {
   try {
@@ -49,11 +51,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
       return errorResponse(404, 'DEX feature is not enabled');
     }
 
-    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
-    const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';
-    const usdtAddress = config.dex?.tokens?.usdt?.address?.toLowerCase() || '';
-    const networkSlug = 'virbicoin';
-
     // Validate address
     if (!ethers.isAddress(tokenAddress)) {
       return errorResponse(400, 'Invalid token address');
@@ -61,22 +58,36 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
 
     const normalizedAddress = tokenAddress.toLowerCase();
 
+    // Check response cache
+    const cacheKey = `${TOKEN_CACHE_PREFIX}${normalizedAddress}`;
+    const cached = apiCache.get<object>(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached, { headers: API_HEADERS });
+    }
+
+    const wrappedNativeAddress = getWrappedNativeAddress();
+    const usdtAddress = getUSDTAddress();
+    const networkSlug = 'virbicoin';
+
     // Connect to database
     await connectDB();
 
-    // Get token info from blockchain
-    const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
-
-    let symbol, name, decimals, totalSupply;
-    try {
-      [symbol, name, decimals, totalSupply] = await Promise.all([
-        tokenContract.symbol().catch(() => 'UNKNOWN'),
-        tokenContract.name().catch(() => 'Unknown Token'),
-        tokenContract.decimals().catch(() => 18),
-        tokenContract.totalSupply().catch(() => BigInt(0)),
-      ]);
-    } catch {
+    // Get token info (cached)
+    const tokenInfo = await getCachedTokenInfo(normalizedAddress);
+    if (!tokenInfo) {
       return errorResponse(404, 'Token not found');
+    }
+
+    const { symbol, name, decimals } = tokenInfo;
+
+    // Get total supply
+    const provider = getProvider();
+    let totalSupply = BigInt(0);
+    try {
+      const tokenContract = new ethers.Contract(normalizedAddress, ERC20_ABI, provider);
+      totalSupply = await tokenContract.totalSupply().catch(() => BigInt(0));
+    } catch {
+      // Ignore
     }
 
     const isWrappedNative = normalizedAddress === wrappedNativeAddress;
@@ -92,12 +103,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     let totalReserveInUsd = '0';
     let volume24h = '0';
 
-    // Get VBC price
-    let vbcPriceUsd = 0;
-    const priceData = await getNativePrice();
-    if (priceData) {
-      vbcPriceUsd = priceData.priceUSD;
-    }
+    // Get VBC price (cached)
+    const vbcPriceUsd = await getCachedVBCPrice();
 
     if (isWrappedNative || symbol === 'VBC') {
       // Native token (VBC)
@@ -114,52 +121,41 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
         fdvUsd = totalSupplyNum.toFixed(2);
       }
     } else {
-      // Other tokens - calculate from DEX pools
-      const lpTokens = config.dex?.lpTokens || {};
+      // Other tokens - calculate from DEX pools using cached data
+      const lpAddresses = getLPAddresses();
 
-      for (const [, lpInfo] of Object.entries(lpTokens)) {
+      for (const lpAddress of lpAddresses) {
         try {
-          const lpAddress = (lpInfo as { address: string }).address;
-          const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
+          const poolInfo = await getCachedPoolInfo(lpAddress);
+          if (!poolInfo) continue;
 
-          const [token0, token1, reserves] = await Promise.all([
-            pairContract.token0(),
-            pairContract.token1(),
-            pairContract.getReserves(),
-          ]);
+          const { token0, token1, reserve0, reserve1 } = poolInfo;
 
-          const token0Lower = token0.toLowerCase();
-          const token1Lower = token1.toLowerCase();
+          if (
+            token0.address.toLowerCase() === normalizedAddress ||
+            token1.address.toLowerCase() === normalizedAddress
+          ) {
+            const isToken0 = token0.address.toLowerCase() === normalizedAddress;
+            const pairedToken = isToken0 ? token1.address.toLowerCase() : token0.address.toLowerCase();
 
-          if (token0Lower === normalizedAddress || token1Lower === normalizedAddress) {
-            const isToken0 = token0Lower === normalizedAddress;
-            const pairedToken = isToken0 ? token1Lower : token0Lower;
-
-            const token0Contract = new ethers.Contract(token0, ERC20_ABI, provider);
-            const token1Contract = new ethers.Contract(token1, ERC20_ABI, provider);
-            const [dec0, dec1] = await Promise.all([
-              token0Contract.decimals(),
-              token1Contract.decimals(),
-            ]);
-
-            const reserve0 = Number(ethers.formatUnits(reserves[0], dec0));
-            const reserve1 = Number(ethers.formatUnits(reserves[1], dec1));
+            const reserveNum0 = Number(ethers.formatUnits(reserve0, token0.decimals));
+            const reserveNum1 = Number(ethers.formatUnits(reserve1, token1.decimals));
 
             if (pairedToken === wrappedNativeAddress && vbcPriceUsd > 0) {
               // Paired with VBC
               const tokenPrice = isToken0
-                ? (reserve1 / reserve0) * vbcPriceUsd
-                : (reserve0 / reserve1) * vbcPriceUsd;
+                ? (reserveNum1 / reserveNum0) * vbcPriceUsd
+                : (reserveNum0 / reserveNum1) * vbcPriceUsd;
               priceUsd = tokenPrice.toString();
 
-              const tokenReserve = isToken0 ? reserve0 : reserve1;
+              const tokenReserve = isToken0 ? reserveNum0 : reserveNum1;
               totalReserveInUsd = (tokenReserve * tokenPrice * 2).toFixed(2);
             } else if (pairedToken === usdtAddress) {
               // Paired with USDT
-              const tokenPrice = isToken0 ? reserve1 / reserve0 : reserve0 / reserve1;
+              const tokenPrice = isToken0 ? reserveNum1 / reserveNum0 : reserveNum0 / reserveNum1;
               priceUsd = tokenPrice.toString();
 
-              const tokenReserve = isToken0 ? reserve0 : reserve1;
+              const tokenReserve = isToken0 ? reserveNum0 : reserveNum1;
               totalReserveInUsd = (tokenReserve * tokenPrice * 2).toFixed(2);
             }
 
@@ -177,25 +173,32 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
       }
     }
 
-    // Get 24h volume for this token
-    const h24Ago = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
-    const volumeAgg = await DexSwap.aggregate([
-      {
-        $match: {
-          $or: [{ token0: normalizedAddress }, { token1: normalizedAddress }],
-          timestamp: { $gte: h24Ago },
+    // Get 24h volume for this token (use aggregation cache)
+    const volumeCacheKey = `token_volume:${normalizedAddress}`;
+    const cachedVolume = apiCache.get<string>(volumeCacheKey);
+    if (cachedVolume) {
+      volume24h = cachedVolume;
+    } else {
+      const h24Ago = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
+      const volumeAgg = await DexSwap.aggregate([
+        {
+          $match: {
+            $or: [{ token0: normalizedAddress }, { token1: normalizedAddress }],
+            timestamp: { $gte: h24Ago },
+          },
         },
-      },
-      {
-        $group: {
-          _id: null,
-          totalVolume: { $sum: '$amountUSD' },
+        {
+          $group: {
+            _id: null,
+            totalVolume: { $sum: '$amountUSD' },
+          },
         },
-      },
-    ]);
+      ]);
 
-    if (volumeAgg.length > 0) {
-      volume24h = volumeAgg[0].totalVolume.toFixed(2);
+      if (volumeAgg.length > 0) {
+        volume24h = volumeAgg[0].totalVolume.toFixed(2);
+      }
+      apiCache.set(volumeCacheKey, volume24h, CACHE_TTL.SHORT);
     }
 
     // Determine coingecko_coin_id
@@ -206,20 +209,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
       coingeckoCoinId = 'tether';
     }
 
-    // Get pools that include this token
+    // Get pools that include this token (use cached pool info)
     const pools: Array<{ id: string; type: string }> = [];
-    const lpTokens = config.dex?.lpTokens || {};
+    const lpAddresses = getLPAddresses();
 
-    for (const [, lpInfo] of Object.entries(lpTokens)) {
+    for (const lpAddress of lpAddresses) {
       try {
-        const lpAddress = (lpInfo as { address: string }).address;
-        const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
-
-        const [token0, token1] = await Promise.all([pairContract.token0(), pairContract.token1()]);
+        const poolInfo = await getCachedPoolInfo(lpAddress);
+        if (!poolInfo) continue;
 
         if (
-          token0.toLowerCase() === normalizedAddress ||
-          token1.toLowerCase() === normalizedAddress
+          poolInfo.token0.address.toLowerCase() === normalizedAddress ||
+          poolInfo.token1.address.toLowerCase() === normalizedAddress
         ) {
           pools.push({
             id: `${networkSlug}_${lpAddress.toLowerCase()}`,
@@ -231,41 +232,43 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
       }
     }
 
-    return NextResponse.json(
-      {
-        data: {
-          id: `${networkSlug}_${normalizedAddress}`,
-          type: 'token',
-          attributes: {
-            address: normalizedAddress,
-            name: displayName,
-            symbol: displaySymbol,
-            decimals: Number(decimals),
-            image_url: contractInfo?.image_url || null,
-            coingecko_coin_id: coingeckoCoinId,
-            websites: [],
-            description: contractInfo?.description || null,
-            gt_score: null,
-            discord_url: null,
-            telegram_handle: null,
-            twitter_handle: null,
-            total_supply: totalSupply.toString(),
-            price_usd: priceUsd,
-            fdv_usd: fdvUsd,
-            total_reserve_in_usd: totalReserveInUsd,
-            volume_usd: {
-              h24: volume24h,
-            },
+    const response = {
+      data: {
+        id: `${networkSlug}_${normalizedAddress}`,
+        type: 'token',
+        attributes: {
+          address: normalizedAddress,
+          name: displayName,
+          symbol: displaySymbol,
+          decimals: Number(decimals),
+          image_url: contractInfo?.image_url || null,
+          coingecko_coin_id: coingeckoCoinId,
+          websites: [],
+          description: contractInfo?.description || null,
+          gt_score: null,
+          discord_url: null,
+          telegram_handle: null,
+          twitter_handle: null,
+          total_supply: totalSupply.toString(),
+          price_usd: priceUsd,
+          fdv_usd: fdvUsd,
+          total_reserve_in_usd: totalReserveInUsd,
+          volume_usd: {
+            h24: volume24h,
           },
-          relationships: {
-            top_pools: {
-              data: pools.slice(0, 10),
-            },
+        },
+        relationships: {
+          top_pools: {
+            data: pools.slice(0, 10),
           },
         },
       },
-      { headers: API_HEADERS }
-    );
+    };
+
+    // Cache response for 30 seconds
+    apiCache.set(cacheKey, response, CACHE_TTL.SHORT);
+
+    return NextResponse.json(response, { headers: API_HEADERS });
   } catch (error) {
     console.error('GeckoTerminal Token API error:', error);
     return errorResponse(500, 'Internal server error');

@@ -1,10 +1,17 @@
 // GeckoTerminal Trending Pools API - Returns trending pools by volume
 // Format: https://docs.geckoterminal.com/reference/get_networks-network-trending_pools
+// Optimized with centralized caching
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import { loadConfig } from '@/lib/config';
 import { connectDB, DexSwap } from '@/models/index';
-import { getNativePrice } from '@/lib/price-service';
+import { apiCache, CACHE_TTL } from '@/lib/cache';
+import {
+  getCachedVBCPrice,
+  getCachedPoolInfo,
+  getWrappedNativeAddress,
+  getLPAddresses,
+} from '@/lib/dex/cache-service';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -27,17 +34,8 @@ function errorResponse(status: number, title: string) {
   );
 }
 
-const PAIR_ABI = [
-  'function getReserves() view returns (uint256 reserve0, uint256 reserve1)',
-  'function token0() view returns (address)',
-  'function token1() view returns (address)',
-];
-
-const ERC20_ABI = [
-  'function symbol() external view returns (string)',
-  'function name() external view returns (string)',
-  'function decimals() external view returns (uint8)',
-];
+// Response cache key
+const TRENDING_CACHE_PREFIX = 'geckoterminal:trending:page:';
 
 export async function GET(request: Request) {
   try {
@@ -45,27 +43,28 @@ export async function GET(request: Request) {
     const pageRaw = parseInt(searchParams.get('page') || '1');
     const page = Math.max(1, Math.min(isNaN(pageRaw) ? 1 : pageRaw, 100)); // 1-100 range
 
+    // Check response cache
+    const cacheKey = `${TRENDING_CACHE_PREFIX}${page}`;
+    const cached = apiCache.get<{ data: unknown[] }>(cacheKey);
+    if (cached) {
+      return NextResponse.json(cached, { headers: API_HEADERS });
+    }
+
     const config = loadConfig();
     if (!config.dex?.enabled) {
       return errorResponse(404, 'DEX feature is not enabled');
     }
 
-    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
-    const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';
+    const wrappedNativeAddress = getWrappedNativeAddress();
     const networkSlug = 'virbicoin';
 
     await connectDB();
 
-    // Get VBC price
-    let vbcPriceUsd = 0;
-    const priceData = await getNativePrice();
-    if (priceData) {
-      vbcPriceUsd = priceData.priceUSD;
-    }
+    // Get VBC price (cached)
+    const vbcPriceUsd = await getCachedVBCPrice();
 
     // Get all LP pools from config
-    const lpTokens = (config.dex?.lpTokens || {}) as Record<string, { address: string }>;
-    const lpAddresses = Object.values(lpTokens).map((lp) => lp.address.toLowerCase());
+    const lpAddresses = getLPAddresses();
 
     // Get volume data for last 24h and sort by volume
     const h24Ago = Math.floor(Date.now() / 1000) - 24 * 60 * 60;
@@ -79,36 +78,35 @@ export async function GET(request: Request) {
 
     const pools = [];
 
+    // Process with limited concurrency
     for (const vol of volumeData) {
       try {
         const lpAddress = vol._id;
-        const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
-        const [reserves, token0Addr, token1Addr] = await Promise.all([
-          pairContract.getReserves(),
-          pairContract.token0(),
-          pairContract.token1(),
-        ]);
 
-        const token0Contract = new ethers.Contract(token0Addr, ERC20_ABI, provider);
-        const token1Contract = new ethers.Contract(token1Addr, ERC20_ABI, provider);
+        // Get cached pool info
+        const poolInfo = await getCachedPoolInfo(lpAddress);
+        if (!poolInfo) continue;
 
-        const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
-          token0Contract.symbol(),
-          token0Contract.decimals(),
-          token1Contract.symbol(),
-          token1Contract.decimals(),
-        ]);
+        const { token0, token1, reserve0, reserve1 } = poolInfo;
 
-        const isToken0VBC = token0Addr.toLowerCase() === wrappedNativeAddress;
-        const baseSymbol = isToken0VBC ? (symbol0 === 'WVBC' ? 'VBC' : symbol0) : symbol1;
-        const quoteSymbol = isToken0VBC ? symbol1 : symbol1 === 'WVBC' ? 'VBC' : symbol0;
-        const baseAddress = isToken0VBC ? token0Addr : token1Addr;
-        const quoteAddress = isToken0VBC ? token1Addr : token0Addr;
-        const baseDecimals = isToken0VBC ? Number(decimals0) : Number(decimals1);
-        const quoteDecimals = isToken0VBC ? Number(decimals1) : Number(decimals0);
+        const isToken0VBC = token0.address.toLowerCase() === wrappedNativeAddress;
+        const baseSymbol = isToken0VBC
+          ? token0.symbol === 'WVBC'
+            ? 'VBC'
+            : token0.symbol
+          : token1.symbol === 'WVBC'
+            ? 'VBC'
+            : token1.symbol;
+        const quoteSymbol = isToken0VBC
+          ? token1.symbol === 'WVBC'
+            ? 'VBC'
+            : token1.symbol
+          : token0.symbol;
+        const baseAddress = isToken0VBC ? token0.address : token1.address;
+        const quoteAddress = isToken0VBC ? token1.address : token0.address;
 
-        const reserve0Num = Number(ethers.formatUnits(reserves[0], decimals0));
-        const reserve1Num = Number(ethers.formatUnits(reserves[1], decimals1));
+        const reserve0Num = Number(ethers.formatUnits(reserve0, token0.decimals));
+        const reserve1Num = Number(ethers.formatUnits(reserve1, token1.decimals));
 
         let reserveUsd = '0';
         if (isToken0VBC && vbcPriceUsd > 0) {
@@ -151,7 +149,10 @@ export async function GET(request: Request) {
       }
     }
 
-    return NextResponse.json({ data: pools }, { headers: API_HEADERS });
+    const response = { data: pools };
+    apiCache.set(cacheKey, response, CACHE_TTL.MEDIUM); // 60s cache
+
+    return NextResponse.json(response, { headers: API_HEADERS });
   } catch (error) {
     console.error('GeckoTerminal Trending Pools API error:', error);
     return errorResponse(500, 'Internal server error');
