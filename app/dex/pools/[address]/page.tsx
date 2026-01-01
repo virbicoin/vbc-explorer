@@ -323,7 +323,7 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
             <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
               <ArrowTrendingUpIcon className="w-4 h-4" />
-              APR
+              Fee APR
             </div>
             <div className="text-2xl font-bold text-green-400">
               {pool.apr !== null ? `${pool.apr.toFixed(2)}%` : '--'}

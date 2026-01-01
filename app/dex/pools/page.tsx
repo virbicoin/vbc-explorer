@@ -288,7 +288,7 @@ export default function PoolsPage() {
                   <th className="text-right px-6 py-4 text-gray-400 font-medium">TVL</th>
                   <th className="text-right px-6 py-4 text-gray-400 font-medium">Price</th>
                   <th className="text-right px-6 py-4 text-gray-400 font-medium">24h Volume</th>
-                  <th className="text-right px-6 py-4 text-gray-400 font-medium">APR</th>
+                  <th className="text-right px-6 py-4 text-gray-400 font-medium">Fee APR</th>
                   <th className="text-center px-6 py-4 text-gray-400 font-medium">Actions</th>
                 </tr>
               </thead>
