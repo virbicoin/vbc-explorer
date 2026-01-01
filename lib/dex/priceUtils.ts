@@ -8,7 +8,12 @@
 import { ethers } from 'ethers';
 import { loadConfig } from '@/lib/config';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
-import { getProvider, getCachedPoolInfo, getCachedTokenInfo, getLPAddresses } from './cache-service';
+import {
+  getProvider,
+  getCachedPoolInfo,
+  getCachedTokenInfo,
+  getLPAddresses,
+} from './cache-service';
 
 // Known contract addresses
 export const ADDRESSES = {
@@ -227,9 +232,11 @@ export async function calculatePoolTvlUsd(
   const token1Info = await getCachedTokenInfo(normalized1);
 
   const isToken0Stable =
-    normalized0 === ADDRESSES.USDT || STABLECOIN_SYMBOLS.has(token0Info?.symbol?.toUpperCase() || '');
+    normalized0 === ADDRESSES.USDT ||
+    STABLECOIN_SYMBOLS.has(token0Info?.symbol?.toUpperCase() || '');
   const isToken1Stable =
-    normalized1 === ADDRESSES.USDT || STABLECOIN_SYMBOLS.has(token1Info?.symbol?.toUpperCase() || '');
+    normalized1 === ADDRESSES.USDT ||
+    STABLECOIN_SYMBOLS.has(token1Info?.symbol?.toUpperCase() || '');
 
   if (isToken0Stable) {
     // Token0 is stablecoin - use its reserve * 2

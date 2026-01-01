@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { loadConfig } from '@/lib/config';
 import { getLPAddresses, getCachedPoolInfo, getCachedPoolStats } from '@/lib/dex/cache-service';
-import { getVbcPriceFromDex, getVbcgPriceFromDex, calculatePoolTvlUsd, ADDRESSES } from '@/lib/dex/priceUtils';
+import {
+  getVbcPriceFromDex,
+  getVbcgPriceFromDex,
+  calculatePoolTvlUsd,
+  ADDRESSES,
+} from '@/lib/dex/priceUtils';
 import { connectDB, DexSwap } from '@/models/index';
 import { ethers } from 'ethers';
 
@@ -114,11 +119,15 @@ export async function GET() {
       },
       tvl: {
         total: totalTvlUsd,
-        byPool: poolsData.map(p => ({ address: p.address, name: p.name, tvlUsd: p.tvlUsd })),
+        byPool: poolsData.map((p) => ({ address: p.address, name: p.name, tvlUsd: p.tvlUsd })),
       },
       volume: {
         h24: totalVolume24h,
-        byPool: poolsData.map(p => ({ address: p.address, name: p.name, volume24h: p.volume24h })),
+        byPool: poolsData.map((p) => ({
+          address: p.address,
+          name: p.name,
+          volume24h: p.volume24h,
+        })),
       },
       fees: {
         h24: totalFees24h,

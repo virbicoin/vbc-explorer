@@ -120,8 +120,10 @@ export async function GET(request: Request) {
         let baseTokenPriceUsd: string | null = null;
         let quoteTokenPriceUsd: string | null = null;
 
-        const isToken0Stable = token0.address.toLowerCase() === usdtAddress || isStablecoin(token0.symbol);
-        const isToken1Stable = token1.address.toLowerCase() === usdtAddress || isStablecoin(token1.symbol);
+        const isToken0Stable =
+          token0.address.toLowerCase() === usdtAddress || isStablecoin(token0.symbol);
+        const isToken1Stable =
+          token1.address.toLowerCase() === usdtAddress || isStablecoin(token1.symbol);
 
         if (isToken0Stable) {
           // Token0 is stablecoin (e.g., USDT)

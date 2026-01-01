@@ -77,7 +77,8 @@ export async function GET() {
       forkedFrom: ['Uniswap V2'],
       oracles: [],
       listedAt: Math.floor(Date.now() / 1000),
-      methodology: 'TVL is calculated by summing the USD value of all tokens locked in liquidity pools.',
+      methodology:
+        'TVL is calculated by summing the USD value of all tokens locked in liquidity pools.',
       chainTvls: {
         [chainName]: totalTvlUsd,
       },
