@@ -7,7 +7,6 @@ import { loadConfig } from '@/lib/config';
 import { connectDB, Contract, DexSwap } from '@/models/index';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import {
-  getCachedVBCPrice,
   getCachedTokenInfo,
   getCachedPoolInfo,
   getWrappedNativeAddress,
@@ -15,6 +14,12 @@ import {
   getLPAddresses,
   getProvider,
 } from '@/lib/dex/cache-service';
+import {
+  getVbcPriceFromDex,
+  getTokenPriceUsd,
+  ADDRESSES,
+  isStablecoin,
+} from '@/lib/dex/priceUtils';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -97,81 +102,96 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     // Get token info from Contract collection
     const contractInfo = await Contract.findOne({ address: normalizedAddress }).lean();
 
-    // Calculate token price in USD
+    // Calculate token price in USD using DEX prices
     let priceUsd: string | null = null;
     let fdvUsd: string | null = null;
     let totalReserveInUsd = '0';
     let volume24h = '0';
 
-    // Get VBC price (cached)
-    const vbcPriceUsd = await getCachedVBCPrice();
+    // Get VBC price from DEX (not external API)
+    const vbcPriceUsd = await getVbcPriceFromDex();
 
     if (isWrappedNative || symbol === 'VBC') {
-      // Native token (VBC)
+      // Native token (VBC) - use DEX price
       priceUsd = vbcPriceUsd.toString();
       if (vbcPriceUsd > 0 && totalSupply > 0n) {
         const totalSupplyNum = Number(ethers.formatUnits(totalSupply, decimals));
         fdvUsd = (totalSupplyNum * vbcPriceUsd).toFixed(2);
       }
-    } else if (normalizedAddress === usdtAddress) {
-      // USDT
+    } else if (normalizedAddress === usdtAddress || symbol === 'USDT') {
+      // USDT - stablecoin is always 1.0
+      priceUsd = '1';
+      if (totalSupply > 0n) {
+        const totalSupplyNum = Number(ethers.formatUnits(totalSupply, decimals));
+        fdvUsd = totalSupplyNum.toFixed(2);
+      }
+    } else if (isStablecoin(symbol)) {
+      // Other stablecoins
       priceUsd = '1';
       if (totalSupply > 0n) {
         const totalSupplyNum = Number(ethers.formatUnits(totalSupply, decimals));
         fdvUsd = totalSupplyNum.toFixed(2);
       }
     } else {
-      // Other tokens - calculate from DEX pools using cached data
-      const lpAddresses = getLPAddresses();
-
-      for (const lpAddress of lpAddresses) {
-        try {
-          const poolInfo = await getCachedPoolInfo(lpAddress);
-          if (!poolInfo) continue;
-
-          const { token0, token1, reserve0, reserve1 } = poolInfo;
-
-          if (
-            token0.address.toLowerCase() === normalizedAddress ||
-            token1.address.toLowerCase() === normalizedAddress
-          ) {
-            const isToken0 = token0.address.toLowerCase() === normalizedAddress;
-            const pairedToken = isToken0
-              ? token1.address.toLowerCase()
-              : token0.address.toLowerCase();
-
-            const reserveNum0 = Number(ethers.formatUnits(reserve0, token0.decimals));
-            const reserveNum1 = Number(ethers.formatUnits(reserve1, token1.decimals));
-
-            if (pairedToken === wrappedNativeAddress && vbcPriceUsd > 0) {
-              // Paired with VBC
-              const tokenPrice = isToken0
-                ? (reserveNum1 / reserveNum0) * vbcPriceUsd
-                : (reserveNum0 / reserveNum1) * vbcPriceUsd;
-              priceUsd = tokenPrice.toString();
-
-              const tokenReserve = isToken0 ? reserveNum0 : reserveNum1;
-              totalReserveInUsd = (tokenReserve * tokenPrice * 2).toFixed(2);
-            } else if (pairedToken === usdtAddress) {
-              // Paired with USDT
-              const tokenPrice = isToken0 ? reserveNum1 / reserveNum0 : reserveNum0 / reserveNum1;
-              priceUsd = tokenPrice.toString();
-
-              const tokenReserve = isToken0 ? reserveNum0 : reserveNum1;
-              totalReserveInUsd = (tokenReserve * tokenPrice * 2).toFixed(2);
-            }
-
-            if (priceUsd) break;
-          }
-        } catch {
-          continue;
+      // Other tokens - calculate from DEX pools
+      const tokenPrice = await getTokenPriceUsd(normalizedAddress);
+      if (tokenPrice > 0) {
+        priceUsd = tokenPrice.toString();
+        if (totalSupply > 0n) {
+          const totalSupplyNum = Number(ethers.formatUnits(totalSupply, decimals));
+          fdvUsd = (totalSupplyNum * tokenPrice).toFixed(2);
         }
-      }
+      } else {
+        // Fallback: try to find from pools directly
+        const lpAddresses = getLPAddresses();
 
-      // Calculate FDV if we have price
-      if (priceUsd && totalSupply > 0n) {
-        const totalSupplyNum = Number(ethers.formatUnits(totalSupply, decimals));
-        fdvUsd = (totalSupplyNum * parseFloat(priceUsd)).toFixed(2);
+        for (const lpAddress of lpAddresses) {
+          try {
+            const poolInfo = await getCachedPoolInfo(lpAddress);
+            if (!poolInfo) continue;
+
+            const { token0, token1, reserve0, reserve1 } = poolInfo;
+
+            if (
+              token0.address.toLowerCase() === normalizedAddress ||
+              token1.address.toLowerCase() === normalizedAddress
+            ) {
+              const isToken0 = token0.address.toLowerCase() === normalizedAddress;
+              const pairedToken = isToken0
+                ? token1.address.toLowerCase()
+                : token0.address.toLowerCase();
+
+              const reserveNum0 = Number(ethers.formatUnits(reserve0, token0.decimals));
+              const reserveNum1 = Number(ethers.formatUnits(reserve1, token1.decimals));
+
+              // Paired with USDT
+              if (pairedToken === usdtAddress) {
+                const tokenPrice = isToken0 ? reserveNum1 / reserveNum0 : reserveNum0 / reserveNum1;
+                priceUsd = tokenPrice.toString();
+                const tokenReserve = isToken0 ? reserveNum0 : reserveNum1;
+                totalReserveInUsd = (tokenReserve * tokenPrice * 2).toFixed(2);
+              } else if (pairedToken === wrappedNativeAddress && vbcPriceUsd > 0) {
+                // Paired with VBC
+                const tokenPrice = isToken0
+                  ? (reserveNum1 / reserveNum0) * vbcPriceUsd
+                  : (reserveNum0 / reserveNum1) * vbcPriceUsd;
+                priceUsd = tokenPrice.toString();
+                const tokenReserve = isToken0 ? reserveNum0 : reserveNum1;
+                totalReserveInUsd = (tokenReserve * tokenPrice * 2).toFixed(2);
+              }
+
+              if (priceUsd) break;
+            }
+          } catch {
+            continue;
+          }
+        }
+
+        // Calculate FDV if we have price
+        if (priceUsd && totalSupply > 0n) {
+          const totalSupplyNum = Number(ethers.formatUnits(totalSupply, decimals));
+          fdvUsd = (totalSupplyNum * parseFloat(priceUsd)).toFixed(2);
+        }
       }
     }
 

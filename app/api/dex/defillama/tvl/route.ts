@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getExternalPriceData } from '@/lib/dex/external-price';
+import { loadConfig } from '@/lib/config';
+import { getLPAddresses, getCachedPoolInfo } from '@/lib/dex/cache-service';
+import { calculatePoolTvlUsd } from '@/lib/dex/priceUtils';
 
 /**
  * DefiLlama TVL API
@@ -13,9 +15,32 @@ export const revalidate = 0;
 
 export async function GET() {
   try {
-    // Get external price data
-    const priceData = await getExternalPriceData();
-    const totalTvlUsd = priceData.totalTvlUsd;
+    const config = loadConfig();
+    const chainName = config.network?.name || 'Virbicoin';
+
+    // Calculate total TVL from all pools using DEX prices
+    const lpAddresses = getLPAddresses();
+    let totalTvlUsd = 0;
+
+    for (const lpAddress of lpAddresses) {
+      try {
+        const poolInfo = await getCachedPoolInfo(lpAddress);
+        if (!poolInfo) continue;
+
+        const { token0, token1, reserve0, reserve1 } = poolInfo;
+        const tvl = await calculatePoolTvlUsd(
+          reserve0,
+          reserve1,
+          token0.address,
+          token1.address,
+          token0.decimals,
+          token1.decimals
+        );
+        totalTvlUsd += tvl;
+      } catch {
+        continue;
+      }
+    }
 
     // DefiLlama TVL response format (simple number)
     // This matches: GET /tvl/{protocol}

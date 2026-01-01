@@ -7,11 +7,18 @@ import { loadConfig } from '@/lib/config';
 import { connectDB, DexSwap } from '@/models/index';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import {
-  getCachedVBCPrice,
   getCachedPoolInfo,
   getWrappedNativeAddress,
+  getUSDTAddress,
   getLPAddresses,
 } from '@/lib/dex/cache-service';
+import {
+  getVbcPriceFromDex,
+  getTokenPriceUsd,
+  calculatePoolTvlUsd,
+  ADDRESSES,
+  isStablecoin,
+} from '@/lib/dex/priceUtils';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -60,8 +67,9 @@ export async function GET(request: Request) {
 
     await connectDB();
 
-    // Get VBC price (cached)
-    const vbcPriceUsd = await getCachedVBCPrice();
+    // Get VBC price from DEX (not external API)
+    const vbcPriceUsd = await getVbcPriceFromDex();
+    const usdtAddress = getUSDTAddress();
 
     // Get all LP pools from config
     const lpAddresses = getLPAddresses();
@@ -106,11 +114,43 @@ export async function GET(request: Request) {
         const reserve0Num = Number(ethers.formatUnits(reserve0, token0.decimals));
         const reserve1Num = Number(ethers.formatUnits(reserve1, token1.decimals));
 
+        // Calculate TVL using proper method
+        // For stablecoin pairs, use stablecoin reserve * 2
         let reserveUsd = '0';
-        if (isToken0VBC && vbcPriceUsd > 0) {
-          reserveUsd = (reserve0Num * vbcPriceUsd * 2).toFixed(2);
-        } else if (!isToken0VBC && vbcPriceUsd > 0) {
-          reserveUsd = (reserve1Num * vbcPriceUsd * 2).toFixed(2);
+        let baseTokenPriceUsd: string | null = null;
+        let quoteTokenPriceUsd: string | null = null;
+
+        const isToken0Stable = token0.address.toLowerCase() === usdtAddress || isStablecoin(token0.symbol);
+        const isToken1Stable = token1.address.toLowerCase() === usdtAddress || isStablecoin(token1.symbol);
+
+        if (isToken0Stable) {
+          // Token0 is stablecoin (e.g., USDT)
+          reserveUsd = (reserve0Num * 2).toFixed(2);
+          // Calculate VBC price from this pool
+          if (reserve1Num > 0) {
+            const impliedVbcPrice = reserve0Num / reserve1Num;
+            baseTokenPriceUsd = isToken0VBC ? impliedVbcPrice.toString() : '1';
+            quoteTokenPriceUsd = isToken0VBC ? '1' : impliedVbcPrice.toString();
+          }
+        } else if (isToken1Stable) {
+          // Token1 is stablecoin
+          reserveUsd = (reserve1Num * 2).toFixed(2);
+          if (reserve0Num > 0) {
+            const impliedPrice = reserve1Num / reserve0Num;
+            baseTokenPriceUsd = isToken0VBC ? impliedPrice.toString() : impliedPrice.toString();
+            quoteTokenPriceUsd = '1';
+          }
+        } else if (vbcPriceUsd > 0) {
+          // No stablecoin - use VBC price
+          if (isToken0VBC) {
+            reserveUsd = (reserve0Num * vbcPriceUsd * 2).toFixed(2);
+            baseTokenPriceUsd = vbcPriceUsd.toString();
+            quoteTokenPriceUsd = ((reserve0Num / reserve1Num) * vbcPriceUsd).toString();
+          } else {
+            reserveUsd = (reserve1Num * vbcPriceUsd * 2).toFixed(2);
+            baseTokenPriceUsd = ((reserve1Num / reserve0Num) * vbcPriceUsd).toString();
+            quoteTokenPriceUsd = vbcPriceUsd.toString();
+          }
         }
 
         // Convert first swap timestamp to ISO date
@@ -124,8 +164,8 @@ export async function GET(request: Request) {
           attributes: {
             name: `${baseSymbol}/${quoteSymbol}`,
             address: lpAddress,
-            base_token_price_usd: vbcPriceUsd > 0 ? vbcPriceUsd.toString() : null,
-            quote_token_price_usd: null,
+            base_token_price_usd: baseTokenPriceUsd,
+            quote_token_price_usd: quoteTokenPriceUsd,
             reserve_in_usd: reserveUsd,
             pool_created_at: createdAt,
           },

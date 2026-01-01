@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { loadConfig } from '@/lib/config';
-import { getExternalPriceData } from '@/lib/dex/external-price';
-import { headers } from 'next/headers';
+import {
+  getVbcPriceFromDex,
+  getVbcgPriceFromDex,
+  getTokenPriceUsd,
+  ADDRESSES,
+  isStablecoin,
+} from '@/lib/dex/priceUtils';
+import { getLPAddresses, getCachedPoolInfo, getCachedTokenInfo } from '@/lib/dex/cache-service';
+import { ethers } from 'ethers';
 
 /**
  * DefiLlama Prices API
@@ -15,14 +22,6 @@ import { headers } from 'next/headers';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-// Helper function to get base URL
-async function getBaseUrl(): Promise<string> {
-  const headersList = await headers();
-  const host = headersList.get('host') || 'localhost:3000';
-  const protocol = headersList.get('x-forwarded-proto') || 'http';
-  return `${protocol}://${host}`;
-}
 
 interface TokenPrice {
   decimals: number;
@@ -42,97 +41,105 @@ export async function GET() {
     const nativeSymbol = config.currency?.symbol || 'VBC';
     const chainName = config.network?.name || 'Virbicoin';
 
-    // Get external price data
-    const priceData = await getExternalPriceData();
-    const nativePriceUsd = priceData.nativePriceUsd;
+    // Get VBC and VBCG prices from DEX (not external API)
+    const [vbcPriceUsd, vbcgPriceUsd] = await Promise.all([
+      getVbcPriceFromDex(),
+      getVbcgPriceFromDex(),
+    ]);
 
     const coins: Record<string, TokenPrice> = {};
     const timestamp = Math.floor(Date.now() / 1000);
 
-    // Add native token price
-    const nativeAddress = '0x0000000000000000000000000000000000000000';
-    const wrappedNativeAddress = config.dex?.wrappedNative?.address;
-
-    // Native token
-    coins[`${chainName.toLowerCase()}:${nativeAddress}`] = {
+    // Native token (zero address)
+    coins[`${chainName.toLowerCase()}:${ADDRESSES.NATIVE}`] = {
       decimals: config.currency?.decimals || 18,
       symbol: nativeSymbol,
-      price: nativePriceUsd,
+      price: vbcPriceUsd,
       timestamp: timestamp,
-      confidence: nativePriceUsd > 0 ? 0.99 : 0,
+      confidence: vbcPriceUsd > 0 ? 0.99 : 0,
     };
 
-    // Wrapped native token
-    if (wrappedNativeAddress) {
-      coins[`${chainName.toLowerCase()}:${wrappedNativeAddress.toLowerCase()}`] = {
-        decimals: config.dex?.wrappedNative?.decimals || 18,
-        symbol: `W${nativeSymbol}`,
-        price: nativePriceUsd,
-        timestamp: timestamp,
-        confidence: nativePriceUsd > 0 ? 0.99 : 0,
-      };
-    }
+    // Wrapped native token (WVBC)
+    coins[`${chainName.toLowerCase()}:${ADDRESSES.WVBC}`] = {
+      decimals: 18,
+      symbol: `W${nativeSymbol}`,
+      price: vbcPriceUsd,
+      timestamp: timestamp,
+      confidence: vbcPriceUsd > 0 ? 0.99 : 0,
+    };
+
+    // VBCG (reward token)
+    coins[`${chainName.toLowerCase()}:${ADDRESSES.VBCG}`] = {
+      decimals: 18,
+      symbol: 'VBCG',
+      price: vbcgPriceUsd,
+      timestamp: timestamp,
+      confidence: vbcgPriceUsd > 0 ? 0.9 : 0,
+    };
+
+    // USDT - stablecoin is always 1.0
+    coins[`${chainName.toLowerCase()}:${ADDRESSES.USDT}`] = {
+      decimals: 6,
+      symbol: 'USDT',
+      price: 1.0, // Stablecoin is always 1.0
+      timestamp: timestamp,
+      confidence: 0.99,
+    };
 
     // Calculate other token prices from DEX pairs
     try {
-      const baseUrl = await getBaseUrl();
-      const pairsResponse = await fetch(`${baseUrl}/api/dex/pairs`, {
-        cache: 'no-store',
-      });
+      const lpAddresses = getLPAddresses();
+      const processedTokens = new Set([
+        ADDRESSES.NATIVE,
+        ADDRESSES.WVBC,
+        ADDRESSES.VBCG,
+        ADDRESSES.USDT,
+      ]);
 
-      if (pairsResponse.ok) {
-        const pairsData = await pairsResponse.json();
-        const pairsArray = pairsData.data?.pairs || pairsData.data || [];
+      for (const lpAddress of lpAddresses) {
+        try {
+          const poolInfo = await getCachedPoolInfo(lpAddress);
+          if (!poolInfo) continue;
 
-        const tokenPrices: Map<string, { price: number; symbol: string; decimals: number }> =
-          new Map();
+          const { token0, token1, reserve0, reserve1 } = poolInfo;
 
-        for (const pair of pairsArray) {
-          const token0 = pair.baseToken?.address?.toLowerCase();
-          const token1 = pair.quoteToken?.address?.toLowerCase();
-          const price = parseFloat(pair.price || '0');
-          const wrappedAddr = wrappedNativeAddress?.toLowerCase();
-
-          // If quote token is native/wrapped native, base token price = native price * price
-          if ((token1 === nativeAddress || token1 === wrappedAddr) && price > 0 && token0) {
-            const basePriceUsd = nativePriceUsd * price;
-            if (!tokenPrices.has(token0) || tokenPrices.get(token0)!.price === 0) {
-              tokenPrices.set(token0, {
-                price: basePriceUsd,
-                symbol: pair.baseToken?.symbol || 'UNKNOWN',
-                decimals: pair.baseToken?.decimals || 18,
-              });
+          // Process token0 if not already processed
+          const token0Addr = token0.address.toLowerCase();
+          if (!processedTokens.has(token0Addr)) {
+            const tokenPrice = await getTokenPriceUsd(token0Addr);
+            if (tokenPrice > 0) {
+              coins[`${chainName.toLowerCase()}:${token0Addr}`] = {
+                decimals: token0.decimals,
+                symbol: token0.symbol,
+                price: tokenPrice,
+                timestamp: timestamp,
+                confidence: tokenPrice > 0 ? 0.9 : 0,
+              };
+              processedTokens.add(token0Addr);
             }
           }
 
-          // If base token is native/wrapped native, quote token price = native price / price
-          if ((token0 === nativeAddress || token0 === wrappedAddr) && price > 0 && token1) {
-            const quotePriceUsd = nativePriceUsd / price;
-            if (!tokenPrices.has(token1) || tokenPrices.get(token1)!.price === 0) {
-              tokenPrices.set(token1, {
-                price: quotePriceUsd,
-                symbol: pair.quoteToken?.symbol || 'UNKNOWN',
-                decimals: pair.quoteToken?.decimals || 18,
-              });
+          // Process token1 if not already processed
+          const token1Addr = token1.address.toLowerCase();
+          if (!processedTokens.has(token1Addr)) {
+            const tokenPrice = await getTokenPriceUsd(token1Addr);
+            if (tokenPrice > 0) {
+              coins[`${chainName.toLowerCase()}:${token1Addr}`] = {
+                decimals: token1.decimals,
+                symbol: token1.symbol,
+                price: tokenPrice,
+                timestamp: timestamp,
+                confidence: tokenPrice > 0 ? 0.9 : 0,
+              };
+              processedTokens.add(token1Addr);
             }
           }
-        }
-
-        // Add calculated token prices
-        for (const [address, data] of tokenPrices) {
-          if (address !== nativeAddress && address !== wrappedNativeAddress?.toLowerCase()) {
-            coins[`${chainName.toLowerCase()}:${address}`] = {
-              decimals: data.decimals,
-              symbol: data.symbol,
-              price: data.price,
-              timestamp: timestamp,
-              confidence: data.price > 0 ? 0.9 : 0,
-            };
-          }
+        } catch {
+          continue;
         }
       }
     } catch (fetchError) {
-      console.error('Fetch error:', fetchError);
+      console.error('Error calculating token prices:', fetchError);
     }
 
     const response: PricesResponse = { coins };
