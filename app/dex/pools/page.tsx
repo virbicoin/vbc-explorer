@@ -269,7 +269,8 @@ export default function PoolsPage() {
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
             <div className="text-gray-400 text-sm mb-1">24h Volume</div>
             <div className="text-2xl font-bold text-white">
-              ${totalVolume24h.toLocaleString(undefined, {
+              $
+              {totalVolume24h.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
@@ -332,7 +333,8 @@ export default function PoolsPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-right text-white">
-                      ${pool.volume24h.toLocaleString(undefined, {
+                      $
+                      {pool.volume24h.toLocaleString(undefined, {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}

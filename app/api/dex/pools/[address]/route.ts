@@ -20,24 +20,19 @@ const ERC20_ABI = [
   'function decimals() external view returns (uint8)',
 ];
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ address: string }> }
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ address: string }> }) {
   try {
     const { address } = await params;
-    
+
     if (!address || !ethers.isAddress(address)) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid pool address' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Invalid pool address' }, { status: 400 });
     }
 
     const appConfig = loadConfig();
-    const rpcUrl = appConfig.network?.rpcUrl || appConfig.web3Provider?.url || 'http://localhost:8545';
+    const rpcUrl =
+      appConfig.network?.rpcUrl || appConfig.web3Provider?.url || 'http://localhost:8545';
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-    
+
     // Get USDT and wrapped native addresses
     const usdtAddress = (appConfig.dex?.tokens?.usdt?.address || '').toLowerCase();
     const wrappedNativeAddress = (appConfig.dex?.wrappedNative?.address || '').toLowerCase();
@@ -129,9 +124,10 @@ export async function GET(
 
     // Calculate APR
     const totalLiquidityUsd = reserve0Usd + reserve1Usd;
-    const apr = totalLiquidityUsd > 0 && volume24h > 0
-      ? ((volume24h * 0.003 * 365) / totalLiquidityUsd) * 100
-      : null;
+    const apr =
+      totalLiquidityUsd > 0 && volume24h > 0
+        ? ((volume24h * 0.003 * 365) / totalLiquidityUsd) * 100
+        : null;
 
     return NextResponse.json({
       success: true,

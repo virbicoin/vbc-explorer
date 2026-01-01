@@ -173,10 +173,7 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-400 mb-4">{error || 'Pool not found'}</h1>
-          <Link
-            href="/dex/pools"
-            className="text-green-400 hover:text-green-300 transition-colors"
-          >
+          <Link href="/dex/pools" className="text-green-400 hover:text-green-300 transition-colors">
             ← Back to Pools
           </Link>
         </div>
@@ -287,7 +284,8 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
               Total Liquidity
             </div>
             <div className="text-2xl font-bold text-green-400">
-              ${pool.totalLiquidityUsd.toLocaleString(undefined, {
+              $
+              {pool.totalLiquidityUsd.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
@@ -300,7 +298,8 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
               24h Volume
             </div>
             <div className="text-2xl font-bold text-white">
-              ${pool.volume24h.toLocaleString(undefined, {
+              $
+              {pool.volume24h.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
@@ -313,7 +312,8 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
               24h Fees
             </div>
             <div className="text-2xl font-bold text-white">
-              ${pool.fees24h.toLocaleString(undefined, {
+              $
+              {pool.fees24h.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
@@ -380,7 +380,8 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
               <div className="flex justify-between items-center py-2 border-b border-gray-700/50">
                 <span className="text-gray-400">Value (USD)</span>
                 <span className="text-white font-medium">
-                  ${pool.token0.reserveUsd.toLocaleString(undefined, {
+                  $
+                  {pool.token0.reserveUsd.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}
@@ -420,7 +421,8 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
               <div className="flex justify-between items-center py-2 border-b border-gray-700/50">
                 <span className="text-gray-400">Value (USD)</span>
                 <span className="text-white font-medium">
-                  ${pool.token1.reserveUsd.toLocaleString(undefined, {
+                  $
+                  {pool.token1.reserveUsd.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}
