@@ -12,7 +12,7 @@
 If you discover a security vulnerability within VBC Explorer, please report it responsibly:
 
 1. **DO NOT** create a public GitHub issue for security vulnerabilities
-2. Email security concerns to: security@digitalregion.jp
+2. Report via [GitHub Security Advisories](https://github.com/virbicoin/vbc-explorer/security/advisories/new)
 3. Include detailed information about the vulnerability
 4. Allow up to 48 hours for an initial response
 
@@ -254,8 +254,7 @@ npm audit --json
 
 For security-related inquiries:
 
-- Email: security@digitalregion.jp
-- PGP Key: Available upon request
+- GitHub: [Security Advisories](https://github.com/virbicoin/vbc-explorer/security/advisories/new)
 
 ---
 

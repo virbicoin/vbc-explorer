@@ -380,55 +380,67 @@ export default function DocsPage() {
               </p>
 
               <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
-                <h4 className="font-bold text-white mb-3">GeckoTerminal Compatible</h4>
+                <h4 className="font-bold text-white mb-3">GeckoTerminal Compatible (V2 API)</h4>
+                <p className="text-gray-400 text-sm mb-3">
+                  Full GeckoTerminal V2 API compatibility for DEX aggregator integration. All
+                  endpoints validate addresses and sanitize parameters.
+                </p>
                 <div className="space-y-2 font-mono text-sm">
                   <div className="flex items-start gap-2">
                     <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
                     <span className="text-gray-300">/api/dex/geckoterminal/networks</span>
+                    <span className="text-gray-500 text-xs ml-2">- Chain info</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
                     <span className="text-gray-300">/api/dex/geckoterminal/pools</span>
+                    <span className="text-gray-500 text-xs ml-2">- All pools</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
                     <span className="text-gray-300">/api/dex/geckoterminal/pool/[address]</span>
+                    <span className="text-gray-500 text-xs ml-2">- Pool detail</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
                     <span className="text-gray-300">/api/dex/geckoterminal/token/[address]</span>
+                    <span className="text-gray-500 text-xs ml-2">- Token info</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
                     <span className="text-gray-300">/api/dex/geckoterminal/ohlcv/[pool]</span>
+                    <span className="text-gray-500 text-xs ml-2">- Candlestick</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
                     <span className="text-gray-300">/api/dex/geckoterminal/trades/[pool]</span>
+                    <span className="text-gray-500 text-xs ml-2">- Recent trades</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
                     <span className="text-gray-300">/api/dex/geckoterminal/simple/price</span>
+                    <span className="text-gray-500 text-xs ml-2">- Batch prices</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
                     <span className="text-gray-300">/api/dex/geckoterminal/info</span>
+                    <span className="text-gray-500 text-xs ml-2">- DEX metadata</span>
                   </div>
                 </div>
               </div>
@@ -565,12 +577,14 @@ export default function DocsPage() {
                   How can I report a security vulnerability?
                 </summary>
                 <div className="px-4 pb-4 text-gray-300">
-                  Please report security vulnerabilities responsibly by emailing{' '}
+                  Please report security vulnerabilities responsibly through our{' '}
                   <a
-                    href="mailto:security@digitalregion.jp"
+                    href="https://github.com/virbicoin/vbc-explorer/security"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="text-green-400 hover:underline"
                   >
-                    security@digitalregion.jp
+                    GitHub Security page
                   </a>
                   . Do not create public issues for security matters. We aim to respond within 48
                   hours.

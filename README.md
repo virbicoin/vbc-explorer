@@ -51,10 +51,27 @@ The explorer includes a built-in decentralized exchange (DEX) with the following
 - Trading fee earnings (0.3%: 0.25% to LPs, 0.05% protocol)
 
 ### DEX API Integrations
-- **GeckoTerminal Compatible** - `/api/dex/geckoterminal/pools`, `/api/dex/geckoterminal/ohlcv/[pool]`
-- **CoinMarketCap Compatible** - `/api/dex/cmc/summary`, `/api/dex/cmc/ticker`, `/api/dex/cmc/assets`
-- **DefiLlama Compatible** - `/api/dex/defillama`, `/api/dex/defillama/tvl`, `/api/dex/defillama/pools`
-- **Price Data** - `/api/dex/external-price` (Exbitron + DEX on-chain fallback)
+
+#### GeckoTerminal Compatible (Full V2 API)
+| Endpoint | Description |
+|----------|-------------|
+| `/api/dex/geckoterminal/networks` | Network/chain information |
+| `/api/dex/geckoterminal/pools` | All pools with statistics |
+| `/api/dex/geckoterminal/pool/[address]` | Single pool detail with tokens |
+| `/api/dex/geckoterminal/token/[address]` | Token information |
+| `/api/dex/geckoterminal/ohlcv/[pool]` | OHLCV candlestick data |
+| `/api/dex/geckoterminal/trades/[pool]` | Recent trades/swaps |
+| `/api/dex/geckoterminal/simple/price` | Batch token prices |
+| `/api/dex/geckoterminal/info` | DEX metadata |
+
+#### CoinMarketCap Compatible
+- `/api/dex/cmc/summary`, `/api/dex/cmc/ticker`, `/api/dex/cmc/assets`
+
+#### DefiLlama Compatible
+- `/api/dex/defillama`, `/api/dex/defillama/tvl`, `/api/dex/defillama/pools`
+
+#### Price Data
+- `/api/dex/external-price` - Exbitron + DEX on-chain fallback
 
 ### Yield Farming
 - Stake LP tokens to earn reward tokens

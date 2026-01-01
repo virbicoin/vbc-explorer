@@ -97,14 +97,33 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
     const { pool: poolAddress } = await params;
     const { searchParams } = new URL(request.url);
 
-    // GeckoTerminal parameters
-    const timeframe = searchParams.get('timeframe') || 'hour'; // minute, hour, day
-    const aggregate = parseInt(searchParams.get('aggregate') || '1'); // aggregation multiplier
-    const limit = Math.min(parseInt(searchParams.get('limit') || '100'), 1000);
-    const currency = searchParams.get('currency') || 'usd';
-    const token = searchParams.get('token') || 'base'; // base or quote
+    // Validate pool address
+    if (!ethers.isAddress(poolAddress)) {
+      return NextResponse.json({ error: 'Invalid pool address' }, { status: 400 });
+    }
+
+    // GeckoTerminal parameters with validation
+    const timeframeParam = searchParams.get('timeframe') || 'hour';
+    const validTimeframes = ['minute', 'hour', 'day'];
+    const timeframe = validTimeframes.includes(timeframeParam) ? timeframeParam : 'hour';
+
+    const aggregateRaw = parseInt(searchParams.get('aggregate') || '1');
+    const aggregate = Math.max(1, Math.min(aggregateRaw || 1, 60)); // 1-60 range
+
+    const limitRaw = parseInt(searchParams.get('limit') || '100');
+    const limit = Math.max(1, Math.min(limitRaw || 100, 1000)); // 1-1000 range
+
+    const currencyParam = searchParams.get('currency') || 'usd';
+    const currency = ['usd', 'token'].includes(currencyParam) ? currencyParam : 'usd';
+
+    const tokenParam = searchParams.get('token') || 'base';
+    const token = ['base', 'quote'].includes(tokenParam) ? tokenParam : 'base';
 
     const config = loadConfig();
+    if (!config.dex?.enabled) {
+      return NextResponse.json({ error: 'DEX feature is not enabled' }, { status: 404 });
+    }
+
     const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';
 

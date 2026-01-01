@@ -641,8 +641,85 @@ const apiCategories: ApiCategory[] = [
   {
     name: 'GeckoTerminal APIs',
     icon: <ChartBarIcon className="w-6 h-6" />,
-    description: 'GeckoTerminal-compatible endpoints for DEX metadata and pools.',
+    description: 'GeckoTerminal V2 compatible API endpoints for DEX aggregators.',
     endpoints: [
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/networks',
+        description: 'Network/chain information',
+        response:
+          '{"data": [{"id": "virbicoin", "type": "network", "attributes": {"name": "VirBiCoin", "chain_id": 329}}]}',
+        example: 'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/networks"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/pools',
+        description: 'All pools with statistics (volume, transactions, liquidity)',
+        params: ['include (optional: base_token,quote_token,dex)'],
+        response:
+          '{"data": [{"id": "virbicoin_0x...", "attributes": {"name": "VBC/USDT", "reserve_in_usd": "111.12", "volume_usd": {...}}}]}',
+        example: 'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/pools"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/pool/[address]',
+        description: 'Single pool detail with included token and DEX info',
+        params: ['address (required) - Pool contract address (validated)'],
+        response:
+          '{"data": {...pool data...}, "included": [{...token0...}, {...token1...}, {...dex...}]}',
+        example:
+          'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/pool/0xa67d40496bd61f9c30efdb040cfcfe6701653d55"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/token/[address]',
+        description: 'Token information with price and top pools',
+        params: ['address (required) - Token contract address (validated)'],
+        response:
+          '{"data": {"id": "virbicoin_0x...", "attributes": {"symbol": "VBC", "price_usd": "0.000126", ...}}}',
+        example:
+          'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/token/0x52cb9f0d65d9d4de08cf103153c7a1a97567bb9b"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/ohlcv/[pool]',
+        description: 'OHLCV candlestick data from real swap events',
+        params: [
+          'pool (required) - Pool address (validated)',
+          'timeframe (optional: minute, hour, day)',
+          'aggregate (optional: 1-60, aggregation multiplier)',
+          'limit (optional: 1-1000, default 100)',
+          'currency (optional: usd or token)',
+        ],
+        response:
+          '{"data": {"attributes": {"ohlcv_list": [[timestamp, open, high, low, close, volume], ...]}}, "meta": {...}}',
+        example:
+          'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/ohlcv/0xa67d...?timeframe=hour&limit=50"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/trades/[pool]',
+        description: 'Recent trades/swaps for a pool',
+        params: [
+          'pool (required) - Pool address (validated)',
+          'limit (optional: 1-300, default 50)',
+          'trade_volume_in_usd_greater_than (optional)',
+        ],
+        response:
+          '{"data": [{"id": "virbicoin_0x...", "attributes": {"kind": "buy", "volume_in_usd": "0.92", ...}}]}',
+        example:
+          'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/trades/0xa67d...?limit=10"',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/geckoterminal/simple/price',
+        description: 'Batch token prices in USD',
+        params: ['addresses (required) - Comma-separated token addresses (max 30)'],
+        response:
+          '{"data": {"attributes": {"token_prices": {"virbicoin_0x...": {"price_usd": "0.000126"}}}}}',
+        example:
+          'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/simple/price?addresses=0x52cb...,0xdf13..."',
+      },
       {
         method: 'GET',
         path: '/api/dex/geckoterminal/info',
@@ -650,30 +727,6 @@ const apiCategories: ApiCategory[] = [
         response:
           '{"name": "VirBiCoin DEX", "network": {...}, "contracts": {...}, "features": {...}}',
         example: 'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/info"',
-      },
-      {
-        method: 'GET',
-        path: '/api/dex/geckoterminal/pools',
-        description: 'Pool data in GeckoTerminal format',
-        params: ['include (optional: base_token,quote_token,dex)'],
-        response:
-          '{"data": [{"id": "virbicoin_0x...", "attributes": {"name": "VBCG/VBC", "reserve_in_usd": "90.42", ...}}]}',
-        example: 'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/pools"',
-      },
-      {
-        method: 'GET',
-        path: '/api/dex/geckoterminal/ohlcv/[pool]',
-        description: 'OHLCV candlestick data for a pool',
-        params: [
-          'pool (required) - Pool contract address',
-          'aggregate (optional: minutes, default 1)',
-          'limit (optional: default 100)',
-          'currency (optional: usd or token)',
-        ],
-        response:
-          '{"data": {"id": "virbicoin_0x...", "attributes": {"ohlcv_list": [["timestamp", "open", "high", "low", "close", "volume"], ...]}}}',
-        example:
-          'curl "https://explorer.digitalregion.jp/api/dex/geckoterminal/ohlcv/0x...?aggregate=15&limit=50"',
       },
     ],
   },
@@ -1023,12 +1076,14 @@ export default function ApiDocsPage() {
             <li>• Input validation is enforced on all endpoints (addresses, hashes, pagination)</li>
             <li>• Contract interaction is limited to read-only methods for security</li>
             <li>
-              • Report security vulnerabilities to:{' '}
+              • Report security vulnerabilities via our{' '}
               <a
-                href="mailto:security@digitalregion.jp"
+                href="https://github.com/virbicoin/vbc-explorer/security"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-yellow-400 hover:underline"
               >
-                security@digitalregion.jp
+                GitHub Security page
               </a>
             </li>
           </ul>

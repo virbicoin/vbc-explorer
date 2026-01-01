@@ -45,11 +45,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
     const { pool: poolAddress } = await params;
     const { searchParams } = new URL(request.url);
 
-    // GeckoTerminal parameters
-    const tradeVolumeInUsdGreaterThan = parseFloat(
-      searchParams.get('trade_volume_in_usd_greater_than') || '0'
-    );
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 300);
+    // GeckoTerminal parameters with validation
+    const volumeRaw = parseFloat(searchParams.get('trade_volume_in_usd_greater_than') || '0');
+    const tradeVolumeInUsdGreaterThan = Math.max(0, isNaN(volumeRaw) ? 0 : volumeRaw);
+
+    const limitRaw = parseInt(searchParams.get('limit') || '50');
+    const limit = Math.max(1, Math.min(isNaN(limitRaw) ? 50 : limitRaw, 300)); // 1-300 range
 
     const config = loadConfig();
     if (!config.dex?.enabled) {
