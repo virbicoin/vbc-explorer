@@ -156,8 +156,7 @@ export async function GET(request: Request) {
 
     // Sort by reserve (liquidity)
     matchingPools.sort(
-      (a, b) =>
-        parseFloat(b.attributes.reserve_in_usd) - parseFloat(a.attributes.reserve_in_usd)
+      (a, b) => parseFloat(b.attributes.reserve_in_usd) - parseFloat(a.attributes.reserve_in_usd)
     );
 
     // Paginate

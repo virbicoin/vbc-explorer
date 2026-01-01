@@ -136,7 +136,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
             token1.address.toLowerCase() === normalizedAddress
           ) {
             const isToken0 = token0.address.toLowerCase() === normalizedAddress;
-            const pairedToken = isToken0 ? token1.address.toLowerCase() : token0.address.toLowerCase();
+            const pairedToken = isToken0
+              ? token1.address.toLowerCase()
+              : token0.address.toLowerCase();
 
             const reserveNum0 = Number(ethers.formatUnits(reserve0, token0.decimals));
             const reserveNum1 = Number(ethers.formatUnits(reserve1, token1.decimals));

@@ -36,9 +36,9 @@ export interface PoolInfo {
   address: string;
   token0: TokenInfo;
   token1: TokenInfo;
-  reserve0: bigint;
-  reserve1: bigint;
-  totalSupply: bigint;
+  reserve0: string; // BigInt as string for cache serialization
+  reserve1: string;
+  totalSupply: string;
 }
 
 export interface PoolStats {
@@ -108,14 +108,15 @@ export async function getCachedTokenInfo(tokenAddress: string): Promise<TokenInf
 
     const info: TokenInfo = {
       address: tokenAddress.toLowerCase(),
-      symbol,
-      name,
+      symbol: String(symbol),
+      name: String(name),
       decimals: Number(decimals),
     };
 
     apiCache.set(cacheKey, info, CACHE_TTL.VERY_LONG); // 30 min cache
     return info;
-  } catch {
+  } catch (error) {
+    console.error(`Error fetching token info for ${tokenAddress}:`, error);
     return null;
   }
 }
@@ -150,14 +151,15 @@ export async function getCachedPoolInfo(poolAddress: string): Promise<PoolInfo |
       address: poolAddress.toLowerCase(),
       token0: token0Info,
       token1: token1Info,
-      reserve0: reserves[0],
-      reserve1: reserves[1],
-      totalSupply,
+      reserve0: reserves[0].toString(),
+      reserve1: reserves[1].toString(),
+      totalSupply: totalSupply.toString(),
     };
 
     apiCache.set(cacheKey, info, CACHE_TTL.SHORT); // 10s for reserves
     return info;
-  } catch {
+  } catch (error) {
+    console.error(`Error fetching pool info for ${poolAddress}:`, error);
     return null;
   }
 }
