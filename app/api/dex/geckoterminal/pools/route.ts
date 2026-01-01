@@ -175,6 +175,8 @@ export async function GET() {
             const priceInverse = baseReserve / quoteReserve;
 
             // Calculate USD values
+            // For pools with stablecoins (USDT/USDC), use the stablecoin reserve to value the other token
+            // This reflects the actual DEX price, not external CEX price
             let baseReserveUsd = 0;
             let quoteReserveUsd = 0;
             let baseTokenPriceUsd: string | null = null;
@@ -186,22 +188,28 @@ export async function GET() {
             const isBaseUSDT = baseAddress.toLowerCase() === usdtAddress;
 
             if (isBaseVBC && isQuoteUSDT) {
-              baseReserveUsd = baseReserve * vbcPriceUsd;
-              quoteReserveUsd = quoteReserve;
-              baseTokenPriceUsd = vbcPriceUsd.toString();
+              // VBC/USDT pair - use USDT reserve to value VBC (50/50 pool)
+              baseReserveUsd = quoteReserve; // VBC value = USDT value
+              quoteReserveUsd = quoteReserve; // USDT = 1 USD
+              const dexVbcPrice = quoteReserve / baseReserve; // DEX price of VBC in USD
+              baseTokenPriceUsd = dexVbcPrice.toString();
               quoteTokenPriceUsd = '1';
             } else if (isBaseUSDT) {
-              baseReserveUsd = baseReserve;
-              quoteReserveUsd = quoteReserve * vbcPriceUsd;
+              // USDT/X pair - use USDT reserve to value X (50/50 pool)
+              baseReserveUsd = baseReserve; // USDT = 1 USD
+              quoteReserveUsd = baseReserve; // X value = USDT value
+              const quoteTokenPrice = baseReserve / quoteReserve; // DEX price
               baseTokenPriceUsd = '1';
-              quoteTokenPriceUsd = vbcPriceUsd.toString();
+              quoteTokenPriceUsd = quoteTokenPrice.toString();
             } else if (isBaseVBC) {
+              // VBC/X pair (no stablecoin) - use external price
               baseReserveUsd = baseReserve * vbcPriceUsd;
               const quoteTokenPrice = (baseReserve / quoteReserve) * vbcPriceUsd;
               quoteReserveUsd = quoteReserve * quoteTokenPrice;
               baseTokenPriceUsd = vbcPriceUsd.toString();
               quoteTokenPriceUsd = quoteTokenPrice.toString();
             } else {
+              // Fallback - use external price
               baseReserveUsd = baseReserve * vbcPriceUsd;
               quoteReserveUsd = quoteReserve * vbcPriceUsd;
               baseTokenPriceUsd = vbcPriceUsd.toString();

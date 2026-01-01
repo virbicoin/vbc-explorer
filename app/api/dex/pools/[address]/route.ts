@@ -83,24 +83,28 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     const priceInverse = reserve0Num / reserve1Num;
 
     // Calculate USD values
+    // For pools with stablecoins (USDT/USDC), use the stablecoin reserve to value the other token
+    // This reflects the actual DEX price, not external CEX price
     let reserve0Usd = 0;
     let reserve1Usd = 0;
 
     if (token0Address.toLowerCase() === usdtAddress) {
-      // Token0 is USDT
-      reserve0Usd = reserve0Num;
-      reserve1Usd = reserve1Num * vbcPriceUsd;
+      // Token0 is USDT - use USDT reserve to value token1
+      // In a 50/50 AMM pool, both sides should have equal USD value
+      reserve0Usd = reserve0Num; // USDT = 1 USD
+      reserve1Usd = reserve0Num; // Token1 value = Token0 value (50/50 pool)
     } else if (token1Address.toLowerCase() === usdtAddress) {
-      // Token1 is USDT - token0 is VBC or other token
-      reserve0Usd = reserve0Num * vbcPriceUsd;
+      // Token1 is USDT - use USDT reserve to value token0
+      // In a 50/50 AMM pool, both sides should have equal USD value
+      reserve0Usd = reserve1Num; // Token0 value = Token1 value (50/50 pool)
       reserve1Usd = reserve1Num; // USDT = 1 USD
     } else if (token0Address.toLowerCase() === wrappedNativeAddress) {
-      // Token0 is WVBC
+      // Token0 is WVBC - use external price
       reserve0Usd = reserve0Num * vbcPriceUsd;
       const token1Price = (reserve0Num / reserve1Num) * vbcPriceUsd;
       reserve1Usd = reserve1Num * token1Price;
     } else if (token1Address.toLowerCase() === wrappedNativeAddress) {
-      // Token1 is WVBC
+      // Token1 is WVBC - use external price
       const token0Price = (reserve1Num / reserve0Num) * vbcPriceUsd;
       reserve0Usd = reserve0Num * token0Price;
       reserve1Usd = reserve1Num * vbcPriceUsd;
