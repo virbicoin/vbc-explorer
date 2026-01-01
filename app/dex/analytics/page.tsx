@@ -95,6 +95,8 @@ export default function AnalyticsPage() {
         const externalPrice = await externalPriceRes.json();
 
         let totalTVL = 0;
+        let totalVolume24h = 0;
+        let totalFees24h = 0;
         const pools: Pool[] = data.data.map(
           (pool: {
             attributes: {
@@ -105,13 +107,17 @@ export default function AnalyticsPage() {
             };
           }) => {
             const tvl = parseFloat(pool.attributes.reserve_in_usd);
+            const volume24h = parseFloat(pool.attributes.volume_usd?.h24 || '0');
+            const fees24h = volume24h * 0.003; // 0.3% fee
             totalTVL += tvl;
+            totalVolume24h += volume24h;
+            totalFees24h += fees24h;
             return {
               address: pool.attributes.address,
               name: pool.attributes.name,
               tvl,
-              volume24h: parseFloat(pool.attributes.volume_usd?.h24 || '0'),
-              fees24h: parseFloat(pool.attributes.volume_usd?.h24 || '0') * 0.003, // 0.3% fee
+              volume24h,
+              fees24h,
             };
           }
         );
@@ -143,8 +149,8 @@ export default function AnalyticsPage() {
         setStats({
           totalTVL,
           externalTVL,
-          totalVolume24h: 0,
-          totalFees24h: 0,
+          totalVolume24h,
+          totalFees24h,
           totalPools: pools.length,
           topPools: pools.slice(0, 10),
           nativePrice,

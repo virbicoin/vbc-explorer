@@ -1,8 +1,58 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState, use, useMemo } from 'react';
 import Link from 'next/link';
-import { ethers } from 'ethers';
+import Image from 'next/image';
+import { useDexConfig } from '@/hooks/useDexConfig';
+import {
+  ArrowsRightLeftIcon,
+  PlusCircleIcon,
+  ChartBarIcon,
+  CurrencyDollarIcon,
+  CircleStackIcon,
+  ArrowTrendingUpIcon,
+} from '@heroicons/react/24/outline';
+
+const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+// Token icon mapping
+const TOKEN_ICONS: Record<string, { icon: string; color: string }> = {
+  VBC: { icon: '/img/VBC.svg', color: 'from-green-400 to-teal-500' },
+  WVBC: { icon: '/img/VBC.svg', color: 'from-green-400 to-teal-500' },
+  USDT: { icon: '/img/USDT.svg', color: 'from-green-400 to-emerald-500' },
+  VBCG: { icon: '/img/VBCG.png', color: 'from-yellow-400 to-amber-500' },
+};
+
+function TokenIcon({ symbol, size = 32 }: { symbol: string; size?: number }) {
+  const tokenInfo = TOKEN_ICONS[symbol];
+
+  if (tokenInfo?.icon) {
+    return (
+      <div
+        className="rounded-full overflow-hidden border-2 border-gray-700 bg-gray-900 flex items-center justify-center"
+        style={{ width: size, height: size }}
+      >
+        <Image
+          src={tokenInfo.icon}
+          alt={symbol}
+          width={size - 4}
+          height={size - 4}
+          className="object-contain"
+        />
+      </div>
+    );
+  }
+
+  // Fallback to gradient circle with initials
+  return (
+    <div
+      className={`rounded-full bg-gradient-to-br ${tokenInfo?.color || 'from-gray-400 to-gray-600'} flex items-center justify-center text-white text-xs font-bold border-2 border-gray-700`}
+      style={{ width: size, height: size }}
+    >
+      {symbol.slice(0, 2)}
+    </div>
+  );
+}
 
 interface PoolDetails {
   address: string;
@@ -27,149 +77,56 @@ interface PoolDetails {
   priceInverse: number;
   totalLiquidityUsd: number;
   lpTokenSupply: string;
-  createdAt?: string;
+  volume24h: number;
+  fees24h: number;
+  apr: number | null;
+  vbcPriceUsd?: number;
 }
-
-const PAIR_ABI = [
-  'function getReserves() view returns (uint256, uint256, uint32)',
-  'function token0() view returns (address)',
-  'function token1() view returns (address)',
-  'function totalSupply() view returns (uint256)',
-  'function decimals() view returns (uint8)',
-];
-
-const ERC20_ABI = [
-  'function symbol() external view returns (string)',
-  'function name() external view returns (string)',
-  'function decimals() external view returns (uint8)',
-];
 
 export default function PoolDetailPage({ params }: { params: Promise<{ address: string }> }) {
   const { address } = use(params);
   const [pool, setPool] = useState<PoolDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [vbcPriceUsd, setVbcPriceUsd] = useState(0);
+  const [nativePrice, setNativePrice] = useState<number | null>(null);
+  const [nativeSymbol, setNativeSymbol] = useState<string>('VBC');
+
+  // Get wrapped native token address from config
+  const { config: dexConfig } = useDexConfig();
+  const wrappedNativeAddress = dexConfig?.contracts?.wrappedNative?.toLowerCase() || '';
+
+  // Convert wrapped native address to native token address for DEX compatibility
+  const normalizeTokenAddress = useMemo(() => {
+    return (tokenAddress: string): string => {
+      if (wrappedNativeAddress && tokenAddress.toLowerCase() === wrappedNativeAddress) {
+        return NATIVE_TOKEN_ADDRESS;
+      }
+      return tokenAddress;
+    };
+  }, [wrappedNativeAddress]);
 
   useEffect(() => {
     async function fetchPoolDetails() {
       try {
-        // First get config
-        const configRes = await fetch('/api/dex/config');
-        const config = await configRes.json();
-
-        const provider = new ethers.JsonRpcProvider(config.rpcUrl);
-        const usdtAddress = config.tokens?.usdt?.address?.toLowerCase();
-        const wrappedNativeAddress = config.wrappedNative?.address?.toLowerCase();
-
-        // Get VBC price in USD from USDT/WVBC pool
-        if (config.lpTokens?.usdtWvbc?.address) {
-          try {
-            const usdtPairContract = new ethers.Contract(
-              config.lpTokens.usdtWvbc.address,
-              PAIR_ABI,
-              provider
-            );
-            const usdtReserves = await usdtPairContract.getReserves();
-            const usdtToken0 = await usdtPairContract.token0();
-
-            const usdtToken0Contract = new ethers.Contract(usdtToken0, ERC20_ABI, provider);
-            const usdtToken1Address = await usdtPairContract.token1();
-            const usdtToken1Contract = new ethers.Contract(usdtToken1Address, ERC20_ABI, provider);
-            const [dec0, dec1] = await Promise.all([
-              usdtToken0Contract.decimals(),
-              usdtToken1Contract.decimals(),
-            ]);
-
-            const r0 = Number(ethers.formatUnits(usdtReserves[0], dec0));
-            const r1 = Number(ethers.formatUnits(usdtReserves[1], dec1));
-
-            if (usdtToken0.toLowerCase() === usdtAddress) {
-              setVbcPriceUsd(r0 / r1);
-            } else {
-              setVbcPriceUsd(r1 / r0);
-            }
-          } catch {
-            console.warn('Could not fetch VBC price');
-          }
-        }
-
-        // Fetch pool details
-        const pairContract = new ethers.Contract(address, PAIR_ABI, provider);
-
-        const [reserves, token0Address, token1Address, totalSupply] = await Promise.all([
-          pairContract.getReserves(),
-          pairContract.token0(),
-          pairContract.token1(),
-          pairContract.totalSupply(),
+        // Fetch pool details and external price in parallel
+        const [poolRes, priceRes] = await Promise.all([
+          fetch(`/api/dex/pools/${address}`),
+          fetch('/api/dex/external-price'),
         ]);
 
-        const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
-        const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
+        const poolData = await poolRes.json();
+        const priceData = await priceRes.json();
 
-        const [symbol0, name0, decimals0, symbol1, name1, decimals1] = await Promise.all([
-          token0Contract.symbol(),
-          token0Contract.name(),
-          token0Contract.decimals(),
-          token1Contract.symbol(),
-          token1Contract.name(),
-          token1Contract.decimals(),
-        ]);
-
-        const reserve0 = ethers.formatUnits(reserves[0], decimals0);
-        const reserve1 = ethers.formatUnits(reserves[1], decimals1);
-        const lpSupply = ethers.formatUnits(totalSupply, 18);
-
-        const reserve0Num = Number(reserve0);
-        const reserve1Num = Number(reserve1);
-        const price = reserve1Num / reserve0Num;
-        const priceInverse = reserve0Num / reserve1Num;
-
-        // Calculate USD values
-        let reserve0Usd = 0;
-        let reserve1Usd = 0;
-
-        if (token0Address.toLowerCase() === usdtAddress) {
-          reserve0Usd = reserve0Num;
-          reserve1Usd = reserve1Num * vbcPriceUsd;
-        } else if (token1Address.toLowerCase() === usdtAddress) {
-          reserve0Usd = reserve0Num * (reserve1Num / reserve0Num);
-          reserve1Usd = reserve1Num;
-        } else if (token0Address.toLowerCase() === wrappedNativeAddress) {
-          reserve0Usd = reserve0Num * vbcPriceUsd;
-          reserve1Usd = reserve1Num * ((reserve0Num / reserve1Num) * vbcPriceUsd);
-        } else if (token1Address.toLowerCase() === wrappedNativeAddress) {
-          reserve0Usd = reserve0Num * ((reserve1Num / reserve0Num) * vbcPriceUsd);
-          reserve1Usd = reserve1Num * vbcPriceUsd;
+        if (!poolData.success) {
+          throw new Error(poolData.error || 'Failed to fetch pool details');
         }
 
-        const displaySymbol0 = symbol0 === 'WVBC' ? 'VBC' : symbol0;
-        const displaySymbol1 = symbol1 === 'WVBC' ? 'VBC' : symbol1;
+        setPool(poolData.data);
 
-        setPool({
-          address,
-          name: `${displaySymbol0}/${displaySymbol1}`,
-          token0: {
-            address: token0Address,
-            symbol: displaySymbol0,
-            name: name0,
-            decimals: decimals0,
-            reserve: reserve0,
-            reserveUsd: reserve0Usd,
-          },
-          token1: {
-            address: token1Address,
-            symbol: displaySymbol1,
-            name: name1,
-            decimals: decimals1,
-            reserve: reserve1,
-            reserveUsd: reserve1Usd,
-          },
-          price,
-          priceInverse,
-          totalLiquidityUsd: reserve0Usd + reserve1Usd,
-          lpTokenSupply: lpSupply,
-        });
+        if (priceData.success && priceData.data) {
+          setNativePrice(priceData.data.nativePriceUsd);
+          setNativeSymbol(priceData.data.nativeSymbol || 'VBC');
+        }
       } catch (err) {
         console.error('Failed to fetch pool details:', err);
         setError('Failed to load pool details');
@@ -181,15 +138,30 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
     fetchPoolDetails();
     const interval = setInterval(fetchPoolDetails, 30000);
     return () => clearInterval(interval);
-  }, [address, vbcPriceUsd]);
+  }, [address]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 py-8 px-4">
-        <div className="max-w-7xl mx-auto">
+      <div className="min-h-screen bg-gray-900">
+        <div className="bg-gradient-to-r from-blue-900/50 to-indigo-900/50 border-b border-gray-800">
+          <div className="max-w-7xl mx-auto px-4 py-8">
+            <div className="animate-pulse space-y-4">
+              <div className="h-12 bg-gray-700 rounded w-1/3"></div>
+              <div className="h-6 bg-gray-700 rounded w-1/4"></div>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto px-4 py-8">
           <div className="animate-pulse space-y-4">
-            <div className="h-12 bg-gray-700 rounded w-1/3"></div>
-            <div className="h-64 bg-gray-700 rounded"></div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-32 bg-gray-700 rounded-2xl"></div>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="h-64 bg-gray-700 rounded-2xl"></div>
+              <div className="h-64 bg-gray-700 rounded-2xl"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -198,10 +170,13 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
 
   if (error || !pool) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 py-8 px-4">
-        <div className="max-w-7xl mx-auto text-center">
-          <h1 className="text-2xl font-bold text-red-400">{error || 'Pool not found'}</h1>
-          <Link href="/dex/pools" className="text-green-400 hover:underline mt-4 inline-block">
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-400 mb-4">{error || 'Pool not found'}</h1>
+          <Link
+            href="/dex/pools"
+            className="text-green-400 hover:text-green-300 transition-colors"
+          >
             ← Back to Pools
           </Link>
         </div>
@@ -210,98 +185,190 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 py-8 px-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
-          <Link href="/dex" className="hover:text-white transition-colors">
-            DEX
-          </Link>
-          <span>/</span>
-          <Link href="/dex/pools" className="hover:text-white transition-colors">
-            Pools
-          </Link>
-          <span>/</span>
-          <span className="text-white">{pool.name}</span>
-        </div>
+    <div className="min-h-screen bg-gray-900">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-900/50 to-indigo-900/50 border-b border-gray-800">
+        <div className="max-w-7xl mx-auto px-4 py-8">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+            {/* Pool Info */}
+            <div className="flex items-center gap-4">
+              <div className="flex -space-x-3">
+                <TokenIcon symbol={pool.token0.symbol} size={48} />
+                <TokenIcon symbol={pool.token1.symbol} size={48} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
+                  <Link href="/dex" className="hover:text-white transition-colors">
+                    DEX
+                  </Link>
+                  <span>/</span>
+                  <Link href="/dex/pools" className="hover:text-white transition-colors">
+                    Pools
+                  </Link>
+                  <span>/</span>
+                  <span className="text-white">{pool.name}</span>
+                </div>
+                <h1 className="text-3xl font-bold text-white">{pool.name}</h1>
+                <div className="text-gray-400 font-mono text-sm mt-1">
+                  {pool.address.slice(0, 10)}...{pool.address.slice(-8)}
+                </div>
+              </div>
+            </div>
 
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-          <div className="flex items-center gap-4">
-            <div className="flex -space-x-3">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white font-bold border-3 border-gray-800 z-10">
-                {pool.token0.symbol.slice(0, 2)}
-              </div>
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white font-bold border-3 border-gray-800">
-                {pool.token1.symbol.slice(0, 2)}
-              </div>
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-white">{pool.name}</h1>
-              <div className="text-gray-400 font-mono text-sm">{pool.address}</div>
+            {/* Navigation & Actions */}
+            <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+              {/* Price Display */}
+              {nativePrice !== null && (
+                <div className="px-3 py-2 text-sm bg-gray-800/50 rounded-lg">
+                  <span className="text-gray-400">{nativeSymbol} </span>
+                  <span className="text-green-400 font-semibold">${nativePrice.toFixed(6)}</span>
+                </div>
+              )}
+
+              {/* Navigation */}
+              <nav className="flex items-center gap-2 bg-gray-800/50 rounded-xl p-1">
+                <Link
+                  href="/dex"
+                  className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+                >
+                  Trade
+                </Link>
+                <Link
+                  href="/dex/pools"
+                  className="px-4 py-2 text-sm font-medium bg-blue-500/20 text-blue-400 rounded-lg"
+                >
+                  Pools
+                </Link>
+                <Link
+                  href="/dex/analytics"
+                  className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+                >
+                  Analytics
+                </Link>
+                <Link
+                  href="/dex/docs"
+                  className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg transition-colors"
+                >
+                  Docs
+                </Link>
+              </nav>
             </div>
           </div>
-          <div className="flex gap-3">
-            <Link
-              href={`/dex?tab=swap&from=${pool.token0.address}&to=${pool.token1.address}`}
-              className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:opacity-90 transition-opacity font-semibold"
-            >
-              Swap
-            </Link>
-            <Link
-              href={`/dex?tab=pool&pair=${pool.address}`}
-              className="px-6 py-3 bg-gray-700 text-white rounded-xl hover:bg-gray-600 transition-colors font-semibold"
-            >
-              Add Liquidity
-            </Link>
-          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {/* Action Buttons */}
+        <div className="flex gap-3 mb-8">
+          <Link
+            href={`/dex?tab=swap&from=${normalizeTokenAddress(pool.token0.address)}&to=${normalizeTokenAddress(pool.token1.address)}`}
+            className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 rounded-xl transition-all font-bold shadow-lg"
+            style={{ color: '#ffffff' }}
+          >
+            <ArrowsRightLeftIcon className="w-5 h-5" />
+            Swap
+          </Link>
+          <Link
+            href={`/dex?tab=pool&tokenA=${normalizeTokenAddress(pool.token0.address)}&tokenB=${normalizeTokenAddress(pool.token1.address)}`}
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl transition-all font-bold shadow-lg"
+            style={{ color: '#ffffff' }}
+          >
+            <PlusCircleIcon className="w-5 h-5" />
+            Add Liquidity
+          </Link>
         </div>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
-            <div className="text-gray-400 text-sm mb-1">Total Liquidity</div>
-            <div className="text-2xl font-bold text-white">
-              $
-              {pool.totalLiquidityUsd.toLocaleString(undefined, {
+            <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
+              <CircleStackIcon className="w-4 h-4" />
+              Total Liquidity
+            </div>
+            <div className="text-2xl font-bold text-green-400">
+              ${pool.totalLiquidityUsd.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2,
               })}
             </div>
           </div>
+
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
-            <div className="text-gray-400 text-sm mb-1">Price</div>
-            <div className="text-2xl font-bold text-white">{pool.price.toFixed(6)}</div>
-            <div className="text-xs text-gray-500">
-              {pool.token0.symbol}/{pool.token1.symbol}
+            <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
+              <ChartBarIcon className="w-4 h-4" />
+              24h Volume
+            </div>
+            <div className="text-2xl font-bold text-white">
+              ${pool.volume24h.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </div>
           </div>
+
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
-            <div className="text-gray-400 text-sm mb-1">24h Volume</div>
-            <div className="text-2xl font-bold text-white">$0.00</div>
-          </div>
-          <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
-            <div className="text-gray-400 text-sm mb-1">LP Supply</div>
+            <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
+              <CurrencyDollarIcon className="w-4 h-4" />
+              24h Fees
+            </div>
             <div className="text-2xl font-bold text-white">
-              {Number(pool.lpTokenSupply).toLocaleString(undefined, { maximumFractionDigits: 4 })}
+              ${pool.fees24h.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </div>
+          </div>
+
+          <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
+            <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
+              <ArrowTrendingUpIcon className="w-4 h-4" />
+              APR
+            </div>
+            <div className="text-2xl font-bold text-green-400">
+              {pool.apr !== null ? `${pool.apr.toFixed(2)}%` : '--'}
+            </div>
+          </div>
+        </div>
+
+        {/* Price Info */}
+        <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50 mb-8">
+          <h2 className="text-lg font-semibold text-white mb-4">Price</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="flex items-center gap-4">
+              <TokenIcon symbol={pool.token0.symbol} size={40} />
+              <div>
+                <div className="text-gray-400 text-sm">1 {pool.token0.symbol} =</div>
+                <div className="text-xl font-bold text-white">
+                  {pool.price.toFixed(6)} {pool.token1.symbol}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <TokenIcon symbol={pool.token1.symbol} size={40} />
+              <div>
+                <div className="text-gray-400 text-sm">1 {pool.token1.symbol} =</div>
+                <div className="text-xl font-bold text-white">
+                  {pool.priceInverse.toFixed(6)} {pool.token0.symbol}
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Token Details */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          {/* Token 0 */}
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center text-white font-bold">
-                {pool.token0.symbol.slice(0, 2)}
-              </div>
+            <div className="flex items-center gap-3 mb-6">
+              <TokenIcon symbol={pool.token0.symbol} size={48} />
               <div>
-                <div className="font-semibold text-white">{pool.token0.symbol}</div>
-                <div className="text-xs text-gray-500">{pool.token0.name}</div>
+                <div className="font-semibold text-white text-lg">{pool.token0.symbol}</div>
+                <div className="text-sm text-gray-500">{pool.token0.name}</div>
               </div>
             </div>
-            <div className="space-y-3">
-              <div className="flex justify-between">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center py-2 border-b border-gray-700/50">
                 <span className="text-gray-400">Reserve</span>
                 <span className="text-white font-medium">
                   {Number(pool.token0.reserve).toLocaleString(undefined, {
@@ -310,40 +377,38 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
                   {pool.token0.symbol}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center py-2 border-b border-gray-700/50">
                 <span className="text-gray-400">Value (USD)</span>
                 <span className="text-white font-medium">
-                  $
-                  {pool.token0.reserveUsd.toLocaleString(undefined, {
+                  ${pool.token0.reserveUsd.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center py-2">
                 <span className="text-gray-400">Contract</span>
                 <Link
-                  href={`/address/${pool.token0.address}`}
-                  className="text-green-400 hover:underline font-mono text-sm"
+                  href={`/token/${pool.token0.address}`}
+                  className="text-green-400 hover:text-green-300 transition-colors font-mono text-sm"
                 >
-                  {pool.token0.address.slice(0, 10)}...{pool.token0.address.slice(-8)}
+                  {pool.token0.address.slice(0, 6)}...{pool.token0.address.slice(-4)}
                 </Link>
               </div>
             </div>
           </div>
 
+          {/* Token 1 */}
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white font-bold">
-                {pool.token1.symbol.slice(0, 2)}
-              </div>
+            <div className="flex items-center gap-3 mb-6">
+              <TokenIcon symbol={pool.token1.symbol} size={48} />
               <div>
-                <div className="font-semibold text-white">{pool.token1.symbol}</div>
-                <div className="text-xs text-gray-500">{pool.token1.name}</div>
+                <div className="font-semibold text-white text-lg">{pool.token1.symbol}</div>
+                <div className="text-sm text-gray-500">{pool.token1.name}</div>
               </div>
             </div>
-            <div className="space-y-3">
-              <div className="flex justify-between">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center py-2 border-b border-gray-700/50">
                 <span className="text-gray-400">Reserve</span>
                 <span className="text-white font-medium">
                   {Number(pool.token1.reserve).toLocaleString(undefined, {
@@ -352,23 +417,22 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
                   {pool.token1.symbol}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center py-2 border-b border-gray-700/50">
                 <span className="text-gray-400">Value (USD)</span>
                 <span className="text-white font-medium">
-                  $
-                  {pool.token1.reserveUsd.toLocaleString(undefined, {
+                  ${pool.token1.reserveUsd.toLocaleString(undefined, {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2,
                   })}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center py-2">
                 <span className="text-gray-400">Contract</span>
                 <Link
-                  href={`/address/${pool.token1.address}`}
-                  className="text-green-400 hover:underline font-mono text-sm"
+                  href={`/token/${pool.token1.address}`}
+                  className="text-green-400 hover:text-green-300 transition-colors font-mono text-sm"
                 >
-                  {pool.token1.address.slice(0, 10)}...{pool.token1.address.slice(-8)}
+                  {pool.token1.address.slice(0, 6)}...{pool.token1.address.slice(-4)}
                 </Link>
               </div>
             </div>
@@ -377,22 +441,28 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
 
         {/* Pool Contract Info */}
         <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
-          <h2 className="text-xl font-bold text-white mb-4">Pool Contract</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <h2 className="text-lg font-semibold text-white mb-4">Pool Information</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div>
               <div className="text-gray-400 text-sm mb-1">LP Token Address</div>
               <Link
-                href={`/address/${pool.address}`}
-                className="text-green-400 hover:underline font-mono break-all"
+                href={`/token/${pool.address}`}
+                className="text-green-400 hover:text-green-300 transition-colors font-mono text-sm break-all"
               >
                 {pool.address}
               </Link>
             </div>
             <div>
-              <div className="text-gray-400 text-sm mb-1">View on Explorer</div>
-              <Link href={`/address/${pool.address}`} className="text-green-400 hover:underline">
-                View Contract →
-              </Link>
+              <div className="text-gray-400 text-sm mb-1">LP Token Supply</div>
+              <div className="text-white font-medium">
+                {Number(pool.lpTokenSupply).toLocaleString(undefined, {
+                  maximumFractionDigits: 8,
+                })}
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-400 text-sm mb-1">Swap Fee</div>
+              <div className="text-white font-medium">0.3%</div>
             </div>
           </div>
         </div>

@@ -56,12 +56,22 @@ interface Pool {
   reserve1: string;
   price: number;
   liquidityUsd: number;
+  volume24h: number;
+}
+
+// Calculate APR based on 24h volume and TVL
+// APR = (volume24h * fee_rate * 365) / TVL * 100
+const FEE_RATE = 0.003; // 0.3% fee
+function calculateAPR(volume24h: number, tvl: number): number | null {
+  if (tvl <= 0 || volume24h <= 0) return null;
+  return ((volume24h * FEE_RATE * 365) / tvl) * 100;
 }
 
 export default function PoolsPage() {
   const [pools, setPools] = useState<Pool[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalTVL, setTotalTVL] = useState(0);
+  const [totalVolume24h, setTotalVolume24h] = useState(0);
   const [externalTVL, setExternalTVL] = useState<number | null>(null);
   const [nativePrice, setNativePrice] = useState<number | null>(null);
   const [nativeSymbol, setNativeSymbol] = useState<string>('');
@@ -106,6 +116,7 @@ export default function PoolsPage() {
               address: string;
               reserve_in_usd: string;
               base_token_price_native_currency: string;
+              volume_usd?: { h24?: string };
             };
             relationships: {
               base_token: { data: { id: string } };
@@ -129,12 +140,14 @@ export default function PoolsPage() {
               reserve1: '0',
               price: parseFloat(pool.attributes.base_token_price_native_currency),
               liquidityUsd: parseFloat(pool.attributes.reserve_in_usd),
+              volume24h: parseFloat(pool.attributes.volume_usd?.h24 || '0'),
             };
           }
         );
 
         setPools(formattedPools);
         setTotalTVL(formattedPools.reduce((acc: number, p: Pool) => acc + p.liquidityUsd, 0));
+        setTotalVolume24h(formattedPools.reduce((acc: number, p: Pool) => acc + p.volume24h, 0));
       } catch (error) {
         console.error('Failed to fetch pools:', error);
       } finally {
@@ -255,7 +268,12 @@ export default function PoolsPage() {
           </div>
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
             <div className="text-gray-400 text-sm mb-1">24h Volume</div>
-            <div className="text-2xl font-bold text-white">$0.00</div>
+            <div className="text-2xl font-bold text-white">
+              ${totalVolume24h.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </div>
           </div>
         </div>
 
@@ -313,9 +331,18 @@ export default function PoolsPage() {
                         {pool.quoteToken.symbol} per {pool.baseToken.symbol}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-right text-gray-400">$0.00</td>
+                    <td className="px-6 py-4 text-right text-white">
+                      ${pool.volume24h.toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </td>
                     <td className="px-6 py-4 text-right">
-                      <span className="text-green-400">--</span>
+                      {(() => {
+                        const apr = calculateAPR(pool.volume24h, pool.liquidityUsd);
+                        if (apr === null) return <span className="text-gray-400">--</span>;
+                        return <span className="text-green-400">{apr.toFixed(2)}%</span>;
+                      })()}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-center gap-2">
