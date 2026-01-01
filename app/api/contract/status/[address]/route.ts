@@ -104,7 +104,7 @@ export async function GET(
     }
 
     // Extract license from source code if not stored in DB
-    let license = (contractDoc as Record<string, unknown>).license as string || '';
+    let license = ((contractDoc as Record<string, unknown>).license as string) || '';
     if ((!license || license === 'None') && contractDoc.sourceCode) {
       const sourceCode = contractDoc.sourceCode as string;
       // Try to extract SPDX license identifier

@@ -595,10 +595,13 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
 
       case 'transfers':
         // MetaMask準拠のトランザクションタイプバッジを生成（他のページと統一）
-        const getTransferTypeBadge = (from: string | null | undefined, to: string | null | undefined) => {
+        const getTransferTypeBadge = (
+          from: string | null | undefined,
+          to: string | null | undefined
+        ) => {
           const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
           const DEAD_ADDR = '0x000000000000000000000000000000000000dead';
-          
+
           const fromLower = (from || '').toLowerCase();
           const toLower = (to || '').toLowerCase();
 
@@ -778,9 +781,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
         return (
           <div className="text-center py-12">
             <CodeBracketIcon className="w-16 h-16 text-gray-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-100 mb-2">
-              Contract Source Code
-            </h3>
+            <h3 className="text-lg font-semibold text-gray-100 mb-2">Contract Source Code</h3>
             <p className="text-gray-400 mb-6">
               View contract source code, ABI, and bytecode on the contract page.
             </p>
@@ -1130,13 +1131,15 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                  tokenData?.token?.type === 'VRC-721'
-                    ? 'bg-purple-500/20 text-purple-400'
-                    : tokenData?.token?.type === 'VRC-1155'
-                      ? 'bg-orange-500/20 text-orange-400'
-                      : 'bg-blue-500/20 text-blue-400'
-                }`}>
+                <span
+                  className={`px-2 py-0.5 rounded text-xs font-medium ${
+                    tokenData?.token?.type === 'VRC-721'
+                      ? 'bg-purple-500/20 text-purple-400'
+                      : tokenData?.token?.type === 'VRC-1155'
+                        ? 'bg-orange-500/20 text-orange-400'
+                        : 'bg-blue-500/20 text-blue-400'
+                  }`}
+                >
                   {tokenData?.token?.type || 'Token'}
                 </span>
                 <h1 className="text-2xl font-bold text-gray-100">
@@ -1169,7 +1172,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                 <UsersIcon className="w-5 h-5 text-blue-400" />
                 Overview
               </h3>
-              
+
               <div className="space-y-4">
                 {/* Max Total Supply */}
                 <div className="flex justify-between items-center py-3 border-b border-gray-700">
@@ -1178,7 +1181,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                     {tokenData?.token?.totalSupply || '0'} {tokenData?.token?.symbol || ''}
                   </span>
                 </div>
-                
+
                 {/* Holders */}
                 <div className="flex justify-between items-center py-3 border-b border-gray-700">
                   <span className="text-gray-400">Holders</span>
@@ -1186,12 +1189,16 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                     {(tokenData?.statistics?.holders || 0).toLocaleString()} addresses
                   </span>
                 </div>
-                
+
                 {/* Total Transfers */}
                 <div className="flex justify-between items-center py-3 border-b border-gray-700">
                   <span className="text-gray-400">Total Transfers</span>
                   <span className="text-white font-medium">
-                    {(tokenData?.statistics?.transfers || tokenData?.transfers?.length || 0).toLocaleString()}
+                    {(
+                      tokenData?.statistics?.transfers ||
+                      tokenData?.transfers?.length ||
+                      0
+                    ).toLocaleString()}
                   </span>
                 </div>
 
@@ -1213,16 +1220,17 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                 <CodeBracketIcon className="w-5 h-5 text-purple-400" />
                 More Info
               </h3>
-              
+
               <div className="space-y-4">
                 {/* Contract */}
                 <div className="py-3 border-b border-gray-700">
                   <div className="text-gray-400 text-sm mb-1">Contract</div>
-                  <Link 
+                  <Link
                     href={`/contract/${tokenData?.token?.address}`}
                     className="text-blue-400 hover:text-blue-300 font-mono text-sm break-all"
                   >
-                    {tokenData?.token?.address?.slice(0, 10)}...{tokenData?.token?.address?.slice(-8)}
+                    {tokenData?.token?.address?.slice(0, 10)}...
+                    {tokenData?.token?.address?.slice(-8)}
                   </Link>
                 </div>
 
@@ -1230,7 +1238,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                 {tokenData?.token?.creator && (
                   <div className="py-3 border-b border-gray-700">
                     <div className="text-gray-400 text-sm mb-1">Creator</div>
-                    <Link 
+                    <Link
                       href={`/address/${tokenData.token.creator}`}
                       className="text-blue-400 hover:text-blue-300 font-mono text-sm break-all"
                     >

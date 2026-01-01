@@ -135,10 +135,14 @@ export interface FarmPoolConfig {
 // DEX configuration
 export interface DexConfig {
   enabled: boolean;
+  name?: string;
+  url?: string;
+  networkSlug?: string;
   router?: `0x${string}`;
   factory?: `0x${string}`;
   masterChef?: `0x${string}`;
   wrappedNative?: WrappedNativeConfig;
+  usdt?: { address?: `0x${string}`; symbol?: string; decimals?: number };
   rewardToken?: RewardTokenConfig & { address?: `0x${string}`; decimals?: number };
   tokens?: Record<string, TokenConfig>;
   lpTokens?: Record<string, LPTokenConfig>;

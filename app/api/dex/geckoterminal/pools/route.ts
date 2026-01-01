@@ -27,6 +27,7 @@ interface PoolData {
   type: string;
   attributes: {
     name: string;
+    pool_name: string | null;
     address: string;
     base_token_price_usd: string | null;
     quote_token_price_usd: string | null;
@@ -38,6 +39,8 @@ interface PoolData {
     reserve_in_usd: string;
     fdv_usd: string | null;
     market_cap_usd: string | null;
+    locked_liquidity_percentage: string | null;
+    pool_fee_percentage: string;
     price_change_percentage: {
       m5: string;
       m15: string;
@@ -74,11 +77,32 @@ interface PoolData {
 interface PoolStats {
   volume: { m5: number; m15: number; m30: number; h1: number; h6: number; h24: number };
   txCount: { m5: number; m15: number; m30: number; h1: number; h6: number; h24: number };
-  uniqueTraders: { m5: Set<string>; m15: Set<string>; m30: Set<string>; h1: Set<string>; h6: Set<string>; h24: Set<string> };
+  uniqueTraders: {
+    m5: Set<string>;
+    m15: Set<string>;
+    m30: Set<string>;
+    h1: Set<string>;
+    h6: Set<string>;
+    h24: Set<string>;
+  };
   buys: { m5: number; m15: number; m30: number; h1: number; h6: number; h24: number };
   sells: { m5: number; m15: number; m30: number; h1: number; h6: number; h24: number };
-  buyers: { m5: Set<string>; m15: Set<string>; m30: Set<string>; h1: Set<string>; h6: Set<string>; h24: Set<string> };
-  sellers: { m5: Set<string>; m15: Set<string>; m30: Set<string>; h1: Set<string>; h6: Set<string>; h24: Set<string> };
+  buyers: {
+    m5: Set<string>;
+    m15: Set<string>;
+    m30: Set<string>;
+    h1: Set<string>;
+    h6: Set<string>;
+    h24: Set<string>;
+  };
+  sellers: {
+    m5: Set<string>;
+    m15: Set<string>;
+    m30: Set<string>;
+    h1: Set<string>;
+    h6: Set<string>;
+    h24: Set<string>;
+  };
 }
 
 // Time intervals in seconds
@@ -97,11 +121,32 @@ async function getPoolStats(pairAddress: string): Promise<PoolStats> {
   const stats: PoolStats = {
     volume: { m5: 0, m15: 0, m30: 0, h1: 0, h6: 0, h24: 0 },
     txCount: { m5: 0, m15: 0, m30: 0, h1: 0, h6: 0, h24: 0 },
-    uniqueTraders: { m5: new Set(), m15: new Set(), m30: new Set(), h1: new Set(), h6: new Set(), h24: new Set() },
+    uniqueTraders: {
+      m5: new Set(),
+      m15: new Set(),
+      m30: new Set(),
+      h1: new Set(),
+      h6: new Set(),
+      h24: new Set(),
+    },
     buys: { m5: 0, m15: 0, m30: 0, h1: 0, h6: 0, h24: 0 },
     sells: { m5: 0, m15: 0, m30: 0, h1: 0, h6: 0, h24: 0 },
-    buyers: { m5: new Set(), m15: new Set(), m30: new Set(), h1: new Set(), h6: new Set(), h24: new Set() },
-    sellers: { m5: new Set(), m15: new Set(), m30: new Set(), h1: new Set(), h6: new Set(), h24: new Set() },
+    buyers: {
+      m5: new Set(),
+      m15: new Set(),
+      m30: new Set(),
+      h1: new Set(),
+      h6: new Set(),
+      h24: new Set(),
+    },
+    sellers: {
+      m5: new Set(),
+      m15: new Set(),
+      m30: new Set(),
+      h1: new Set(),
+      h6: new Set(),
+      h24: new Set(),
+    },
   };
 
   try {
@@ -336,8 +381,7 @@ export async function GET() {
         let quoteTokenPriceUsd: string | null = null;
 
         const isBaseVBC =
-          baseAddress.toLowerCase() === wrappedNativeAddress ||
-          baseSymbol === 'VBC';
+          baseAddress.toLowerCase() === wrappedNativeAddress || baseSymbol === 'VBC';
         const isQuoteUSDT = quoteAddress.toLowerCase() === usdtAddress;
         const isBaseUSDT = baseAddress.toLowerCase() === usdtAddress;
 
@@ -383,6 +427,7 @@ export async function GET() {
           type: 'pool',
           attributes: {
             name: `${baseSymbol}/${quoteSymbol}`,
+            pool_name: null,
             address: lpAddress,
             base_token_price_usd: baseTokenPriceUsd,
             quote_token_price_usd: quoteTokenPriceUsd,
@@ -394,6 +439,8 @@ export async function GET() {
             reserve_in_usd: totalLiquidityUsd.toFixed(2),
             fdv_usd: null,
             market_cap_usd: null,
+            locked_liquidity_percentage: null,
+            pool_fee_percentage: '0.3',
             price_change_percentage: {
               m5: '0', // Price change requires historical price tracking
               m15: '0',
@@ -403,12 +450,42 @@ export async function GET() {
               h24: '0',
             },
             transactions: {
-              m5: { buys: poolStats.buys.m5, sells: poolStats.sells.m5, buyers: poolStats.buyers.m5.size, sellers: poolStats.sellers.m5.size },
-              m15: { buys: poolStats.buys.m15, sells: poolStats.sells.m15, buyers: poolStats.buyers.m15.size, sellers: poolStats.sellers.m15.size },
-              m30: { buys: poolStats.buys.m30, sells: poolStats.sells.m30, buyers: poolStats.buyers.m30.size, sellers: poolStats.sellers.m30.size },
-              h1: { buys: poolStats.buys.h1, sells: poolStats.sells.h1, buyers: poolStats.buyers.h1.size, sellers: poolStats.sellers.h1.size },
-              h6: { buys: poolStats.buys.h6, sells: poolStats.sells.h6, buyers: poolStats.buyers.h6.size, sellers: poolStats.sellers.h6.size },
-              h24: { buys: poolStats.buys.h24, sells: poolStats.sells.h24, buyers: poolStats.buyers.h24.size, sellers: poolStats.sellers.h24.size },
+              m5: {
+                buys: poolStats.buys.m5,
+                sells: poolStats.sells.m5,
+                buyers: poolStats.buyers.m5.size,
+                sellers: poolStats.sellers.m5.size,
+              },
+              m15: {
+                buys: poolStats.buys.m15,
+                sells: poolStats.sells.m15,
+                buyers: poolStats.buyers.m15.size,
+                sellers: poolStats.sellers.m15.size,
+              },
+              m30: {
+                buys: poolStats.buys.m30,
+                sells: poolStats.sells.m30,
+                buyers: poolStats.buyers.m30.size,
+                sellers: poolStats.sellers.m30.size,
+              },
+              h1: {
+                buys: poolStats.buys.h1,
+                sells: poolStats.sells.h1,
+                buyers: poolStats.buyers.h1.size,
+                sellers: poolStats.sellers.h1.size,
+              },
+              h6: {
+                buys: poolStats.buys.h6,
+                sells: poolStats.sells.h6,
+                buyers: poolStats.buyers.h6.size,
+                sellers: poolStats.sellers.h6.size,
+              },
+              h24: {
+                buys: poolStats.buys.h24,
+                sells: poolStats.sells.h24,
+                buyers: poolStats.buyers.h24.size,
+                sellers: poolStats.sellers.h24.size,
+              },
             },
             volume_usd: {
               m5: poolStats.volume.m5.toFixed(2),

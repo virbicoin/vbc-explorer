@@ -256,7 +256,7 @@ export async function GET(
         // 1. このアドレスが受け取った転送（in）
         // 2. このアドレスが送った転送（out）
         const addressLower = address.toLowerCase();
-        
+
         // 受け取り（in）を優先的に表示
         const incomingTransfer = tokenTransfersForTx.find(
           (t) => (t.to as string).toLowerCase() === addressLower
@@ -264,7 +264,7 @@ export async function GET(
         const outgoingTransfer = tokenTransfersForTx.find(
           (t) => (t.from as string).toLowerCase() === addressLower
         );
-        
+
         // 受け取りを優先、なければ送金を表示
         const primaryTransfer = incomingTransfer || outgoingTransfer || tokenTransfersForTx[0];
         const tt = primaryTransfer;

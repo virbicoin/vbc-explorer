@@ -178,16 +178,20 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
         if (tokenRes.ok) {
           const tokenData = await tokenRes.json();
           if (tokenData && tokenData.address) {
-            setContract(prev => prev ? {
-              ...prev,
-              isToken: true,
-              tokenName: tokenData.name,
-              tokenSymbol: tokenData.symbol,
-              tokenDecimals: tokenData.decimals,
-              tokenTotalSupply: tokenData.totalSupply,
-              tokenHolders: tokenData.holders,
-              tokenType: tokenData.type || 'VRC-20',
-            } : prev);
+            setContract((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    isToken: true,
+                    tokenName: tokenData.name,
+                    tokenSymbol: tokenData.symbol,
+                    tokenDecimals: tokenData.decimals,
+                    tokenTotalSupply: tokenData.totalSupply,
+                    tokenHolders: tokenData.holders,
+                    tokenType: tokenData.type || 'VRC-20',
+                  }
+                : prev
+            );
 
             // Set token transfers
             if (tokenData.transfers) {
@@ -219,24 +223,27 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
   }, [address]);
 
   // Fetch transactions with pagination
-  const fetchTransactions = useCallback(async (page: number) => {
-    try {
-      setTxLoading(true);
-      const response = await fetch(
-        `/api/address/${address}/transactions?page=${page}&limit=${txPerPage}`
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setTransactions(data.transactions || []);
-        setTxTotalPages(data.totalPages || 1);
-        setTotalTxCount(data.totalTransactions || 0);
+  const fetchTransactions = useCallback(
+    async (page: number) => {
+      try {
+        setTxLoading(true);
+        const response = await fetch(
+          `/api/address/${address}/transactions?page=${page}&limit=${txPerPage}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setTransactions(data.transactions || []);
+          setTxTotalPages(data.totalPages || 1);
+          setTotalTxCount(data.totalTransactions || 0);
+        }
+      } catch {
+        // ignore
+      } finally {
+        setTxLoading(false);
       }
-    } catch {
-      // ignore
-    } finally {
-      setTxLoading(false);
-    }
-  }, [address]);
+    },
+    [address]
+  );
 
   useEffect(() => {
     fetchContractData();
@@ -298,11 +305,17 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
         fracPart > 0n
           ? `${intPart}.${fracPart.toString().padStart(decimals, '0').slice(0, 4).replace(/0+$/, '')}`
           : intPart.toLocaleString();
-      const color = direction === 'in' ? 'text-green-400' : direction === 'out' ? 'text-red-400' : 'text-purple-400';
+      const color =
+        direction === 'in'
+          ? 'text-green-400'
+          : direction === 'out'
+            ? 'text-red-400'
+            : 'text-purple-400';
       const prefix = direction === 'in' ? '+' : direction === 'out' ? '-' : '';
       return (
         <span className={color}>
-          {prefix}{formatted} {symbol}
+          {prefix}
+          {formatted} {symbol}
         </span>
       );
     } catch {
@@ -342,10 +355,10 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
       const divisor = BigInt(10 ** decimals);
       const integerPart = numValue / divisor;
       const remainder = numValue % divisor;
-      
+
       const decimalStr = remainder.toString().padStart(decimals, '0');
       const significantDecimals = decimalStr.slice(0, 6).replace(/0+$/, '');
-      
+
       if (significantDecimals) {
         return `${integerPart.toLocaleString()}.${significantDecimals}`;
       }
@@ -365,18 +378,18 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
         if (numVal < 0.000001) return '<0.000001';
         return numVal.toLocaleString(undefined, { maximumFractionDigits: 6 });
       }
-      
+
       // Wei format - convert to VBC
       const numValue = BigInt(value);
       if (numValue === 0n) return '0';
-      
+
       const divisor = BigInt(10 ** 18);
       const integerPart = numValue / divisor;
       const remainder = numValue % divisor;
-      
+
       const decimalStr = remainder.toString().padStart(18, '0');
       const significantDecimals = decimalStr.slice(0, 6).replace(/0+$/, '');
-      
+
       if (significantDecimals) {
         return `${integerPart.toLocaleString()}.${significantDecimals}`;
       }
@@ -388,7 +401,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
 
   const formatTimestamp = (timestamp: number | string | Date | null | undefined) => {
     if (timestamp === null || timestamp === undefined) return 'Unknown';
-    
+
     let date: Date;
     if (timestamp instanceof Date) {
       date = timestamp;
@@ -400,14 +413,14 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
     } else {
       return 'Unknown';
     }
-    
+
     if (isNaN(date.getTime())) return 'Invalid Date';
     return date.toLocaleString(undefined, { timeZoneName: 'short' });
   };
 
   const getTimeAgo = (timestamp: number | string | Date | null | undefined) => {
     if (timestamp === null || timestamp === undefined) return 'Unknown';
-    
+
     let targetTime: number;
     if (timestamp instanceof Date) {
       targetTime = timestamp.getTime();
@@ -419,12 +432,12 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
     } else {
       return 'Unknown';
     }
-    
+
     if (isNaN(targetTime)) return 'Unknown';
-    
+
     const now = Date.now();
     const diff = Math.floor((now - targetTime) / 1000);
-    
+
     if (diff < 0) return 'just now';
     if (diff < 60) return `${diff}s ago`;
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
@@ -515,11 +528,13 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                  contract?.verified
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-yellow-500/20 text-yellow-400'
-                }`}>
+                <span
+                  className={`px-2 py-0.5 rounded text-xs font-medium ${
+                    contract?.verified
+                      ? 'bg-green-500/20 text-green-400'
+                      : 'bg-yellow-500/20 text-yellow-400'
+                  }`}
+                >
                   {contract?.verified ? 'Contract' : 'Unverified Contract'}
                 </span>
                 {contract?.isToken && (
@@ -527,9 +542,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                     {contract.tokenType}
                   </span>
                 )}
-                <h1 className="text-2xl font-bold text-gray-100">
-                  {contract?.name || 'Contract'}
-                </h1>
+                <h1 className="text-2xl font-bold text-gray-100">{contract?.name || 'Contract'}</h1>
               </div>
             </div>
           </div>
@@ -546,9 +559,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                 <ClipboardDocumentIcon className="w-4 h-4" />
               )}
             </button>
-            {copiedItem === 'address' && (
-              <span className="text-green-400 text-xs">Copied!</span>
-            )}
+            {copiedItem === 'address' && <span className="text-green-400 text-xs">Copied!</span>}
           </div>
         </div>
       </div>
@@ -564,7 +575,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                 </div>
                 <div>
                   <div className="text-sm text-gray-400">Token Tracker</div>
-                  <Link 
+                  <Link
                     href={`/token/${address}`}
                     className="text-lg font-semibold text-purple-400 hover:text-purple-300 transition-colors"
                   >
@@ -576,12 +587,17 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                 <div>
                   <span className="text-gray-400">Total Supply:</span>
                   <span className="ml-2 text-white font-medium">
-                    {contract.tokenTotalSupply ? formatSupplyValue(contract.tokenTotalSupply, contract.tokenDecimals || 18) : '0'} {contract.tokenSymbol}
+                    {contract.tokenTotalSupply
+                      ? formatSupplyValue(contract.tokenTotalSupply, contract.tokenDecimals || 18)
+                      : '0'}{' '}
+                    {contract.tokenSymbol}
                   </span>
                 </div>
                 <div>
                   <span className="text-gray-400">Holders:</span>
-                  <span className="ml-2 text-white font-medium">{contract.tokenHolders?.toLocaleString() || 0}</span>
+                  <span className="ml-2 text-white font-medium">
+                    {contract.tokenHolders?.toLocaleString() || 0}
+                  </span>
                 </div>
               </div>
             </div>
@@ -597,30 +613,37 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                 <CubeIcon className="w-5 h-5 text-blue-400" />
                 Overview
               </h3>
-              
+
               <div className="space-y-4">
                 {/* Balance */}
                 <div className="flex justify-between items-center py-3 border-b border-gray-700">
                   <span className="text-gray-400">VBC Balance</span>
                   <span className="text-white font-medium">{contract?.balance || '0'} VBC</span>
                 </div>
-                
+
                 {/* Token Holdings */}
                 {tokenHoldings.length > 0 && (
                   <div className="flex justify-between items-center py-3 border-b border-gray-700">
                     <span className="text-gray-400">Token Holdings</span>
                     <div className="text-right">
-                      <span className="text-blue-400 font-medium">{tokenHoldings.length} Token{tokenHoldings.length !== 1 ? 's' : ''}</span>
+                      <span className="text-blue-400 font-medium">
+                        {tokenHoldings.length} Token{tokenHoldings.length !== 1 ? 's' : ''}
+                      </span>
                       <div className="text-xs text-gray-500 mt-1">
                         {tokenHoldings.slice(0, 3).map((token, i) => (
                           <span key={token.address}>
                             {i > 0 && ', '}
-                            <Link href={`/token/${token.address}`} className="text-blue-400 hover:text-blue-300">
+                            <Link
+                              href={`/token/${token.address}`}
+                              className="text-blue-400 hover:text-blue-300"
+                            >
                               {token.symbol}
                             </Link>
                           </span>
                         ))}
-                        {tokenHoldings.length > 3 && <span className="text-gray-500"> +{tokenHoldings.length - 3} more</span>}
+                        {tokenHoldings.length > 3 && (
+                          <span className="text-gray-500"> +{tokenHoldings.length - 3} more</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -629,14 +652,18 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                 {/* Transaction Count */}
                 <div className="flex justify-between items-center py-3 border-b border-gray-700">
                   <span className="text-gray-400">Transactions</span>
-                  <span className="text-white font-medium">{(contract?.transactionCount || 0).toLocaleString()}</span>
+                  <span className="text-white font-medium">
+                    {(contract?.transactionCount || 0).toLocaleString()}
+                  </span>
                 </div>
 
                 {/* Token Transfers (if token) */}
                 {contract?.isToken && tokenTransfers.length > 0 && (
                   <div className="flex justify-between items-center py-3 border-b border-gray-700">
                     <span className="text-gray-400">Token Transfers</span>
-                    <span className="text-white font-medium">{tokenTransfers.length.toLocaleString()}</span>
+                    <span className="text-white font-medium">
+                      {tokenTransfers.length.toLocaleString()}
+                    </span>
                   </div>
                 )}
               </div>
@@ -650,13 +677,13 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                 <DocumentTextIcon className="w-5 h-5 text-purple-400" />
                 More Info
               </h3>
-              
+
               <div className="space-y-4">
                 {/* Creator */}
                 {contract?.creator && (
                   <div className="py-3 border-b border-gray-700">
                     <div className="text-gray-400 text-sm mb-1">Creator</div>
-                    <Link 
+                    <Link
                       href={`/address/${contract.creator}`}
                       className="text-blue-400 hover:text-blue-300 font-mono text-sm break-all"
                     >
@@ -664,7 +691,13 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                     </Link>
                     {contract.creationTx && (
                       <span className="text-gray-500 text-xs ml-2">
-                        at <Link href={`/tx/${contract.creationTx}`} className="text-blue-400 hover:text-blue-300">txn</Link>
+                        at{' '}
+                        <Link
+                          href={`/tx/${contract.creationTx}`}
+                          className="text-blue-400 hover:text-blue-300"
+                        >
+                          txn
+                        </Link>
                       </span>
                     )}
                   </div>
@@ -674,7 +707,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                 {contract?.blockNumber !== undefined && contract.blockNumber > 0 && (
                   <div className="py-3 border-b border-gray-700">
                     <div className="text-gray-400 text-sm mb-1">Created at Block</div>
-                    <Link 
+                    <Link
                       href={`/block/${contract.blockNumber}`}
                       className="text-blue-400 hover:text-blue-300 font-medium"
                     >
@@ -687,11 +720,13 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                 {contract?.isToken && (
                   <div className="py-3 border-b border-gray-700">
                     <div className="text-gray-400 text-sm mb-1">Token Tracker</div>
-                    <Link 
+                    <Link
                       href={`/token/${address}`}
                       className="text-purple-400 hover:text-purple-300 font-medium flex items-center gap-1"
                     >
-                      <span className="bg-purple-500/20 px-2 py-0.5 rounded text-xs">{contract.tokenType}</span>
+                      <span className="bg-purple-500/20 px-2 py-0.5 rounded text-xs">
+                        {contract.tokenType}
+                      </span>
                       {contract.tokenName} ({contract.tokenSymbol})
                     </Link>
                   </div>
@@ -706,7 +741,11 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       <span className="font-medium">Verified</span>
                       {contract.verifiedAt && (
                         <span className="text-xs text-gray-500">
-                          ({new Date(contract.verifiedAt).toLocaleString(undefined, { timeZoneName: 'short' })})
+                          (
+                          {new Date(contract.verifiedAt).toLocaleString(undefined, {
+                            timeZoneName: 'short',
+                          })}
+                          )
                         </span>
                       )}
                     </div>
@@ -755,8 +794,22 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
             <div className="flex gap-1 px-4 overflow-x-auto">
               {[
                 { id: 'code', label: 'Code', icon: CodeBracketIcon },
-                { id: 'transactions', label: 'Transactions', icon: DocumentTextIcon, count: totalTxCount || contract?.transactionCount },
-                ...(contract?.isToken ? [{ id: 'tokenTransfers', label: 'Token Transfers', icon: ArrowTopRightOnSquareIcon, count: tokenTransfers.length }] : []),
+                {
+                  id: 'transactions',
+                  label: 'Transactions',
+                  icon: DocumentTextIcon,
+                  count: totalTxCount || contract?.transactionCount,
+                },
+                ...(contract?.isToken
+                  ? [
+                      {
+                        id: 'tokenTransfers',
+                        label: 'Token Transfers',
+                        icon: ArrowTopRightOnSquareIcon,
+                        count: tokenTransfers.length,
+                      },
+                    ]
+                  : []),
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -838,62 +891,43 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                 {contract?.verified && contract?.sourceCode ? (
                   <div className="space-y-4">
                     {/* Contract Source Code */}
+                    <div className="bg-gray-950 rounded border border-gray-700 overflow-hidden">
+                      <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
+                        <span className="text-sm font-medium text-gray-300">
+                          Contract Source Code
+                        </span>
+                      </div>
+                      <pre className="p-4 overflow-x-auto text-sm text-gray-300 max-h-96 overflow-y-auto">
+                        <code className="whitespace-pre-wrap break-all">{contract.sourceCode}</code>
+                      </pre>
+                    </div>
+
+                    {/* Contract ABI */}
+                    {contract.abi && (
                       <div className="bg-gray-950 rounded border border-gray-700 overflow-hidden">
                         <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
-                          <span className="text-sm font-medium text-gray-300">
-                            Contract Source Code
-                          </span>
+                          <span className="text-sm font-medium text-gray-300">Contract ABI</span>
                         </div>
-                        <pre className="p-4 overflow-x-auto text-sm text-gray-300 max-h-96 overflow-y-auto">
+                        <pre className="p-4 overflow-x-auto text-sm text-gray-300 max-h-64 overflow-y-auto">
                           <code className="whitespace-pre-wrap break-all">
-                            {contract.sourceCode}
+                            {(() => {
+                              try {
+                                const parsed =
+                                  typeof contract.abi === 'string'
+                                    ? JSON.parse(contract.abi)
+                                    : contract.abi;
+                                return JSON.stringify(parsed, null, 2);
+                              } catch {
+                                return contract.abi;
+                              }
+                            })()}
                           </code>
                         </pre>
                       </div>
+                    )}
 
-                      {/* Contract ABI */}
-                      {contract.abi && (
-                        <div className="bg-gray-950 rounded border border-gray-700 overflow-hidden">
-                          <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
-                            <span className="text-sm font-medium text-gray-300">Contract ABI</span>
-                          </div>
-                          <pre className="p-4 overflow-x-auto text-sm text-gray-300 max-h-64 overflow-y-auto">
-                            <code className="whitespace-pre-wrap break-all">
-                              {(() => {
-                                try {
-                                  const parsed =
-                                    typeof contract.abi === 'string'
-                                      ? JSON.parse(contract.abi)
-                                      : contract.abi;
-                                  return JSON.stringify(parsed, null, 2);
-                                } catch {
-                                  return contract.abi;
-                                }
-                              })()}
-                            </code>
-                          </pre>
-                        </div>
-                      )}
-
-                      {/* Deployed Bytecode */}
-                      {contract.byteCode && (
-                        <div className="bg-gray-950 rounded border border-gray-700 overflow-hidden">
-                          <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
-                            <span className="text-sm font-medium text-gray-300">
-                              Deployed Bytecode
-                            </span>
-                          </div>
-                          <pre className="p-4 overflow-x-auto text-sm text-gray-300 max-h-96 overflow-y-auto">
-                            <code className="whitespace-pre-wrap break-all">
-                              {contract.byteCode}
-                            </code>
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {/* Deployed Bytecode */}
+                    {/* Deployed Bytecode */}
+                    {contract.byteCode && (
                       <div className="bg-gray-950 rounded border border-gray-700 overflow-hidden">
                         <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
                           <span className="text-sm font-medium text-gray-300">
@@ -901,51 +935,64 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                           </span>
                         </div>
                         <pre className="p-4 overflow-x-auto text-sm text-gray-300 max-h-96 overflow-y-auto">
-                          <code className="whitespace-pre-wrap break-all">
-                            {contract?.byteCode || '0x'}
-                          </code>
+                          <code className="whitespace-pre-wrap break-all">{contract.byteCode}</code>
                         </pre>
                       </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Deployed Bytecode */}
+                    <div className="bg-gray-950 rounded border border-gray-700 overflow-hidden">
+                      <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
+                        <span className="text-sm font-medium text-gray-300">Deployed Bytecode</span>
+                      </div>
+                      <pre className="p-4 overflow-x-auto text-sm text-gray-300 max-h-96 overflow-y-auto">
+                        <code className="whitespace-pre-wrap break-all">
+                          {contract?.byteCode || '0x'}
+                        </code>
+                      </pre>
+                    </div>
 
-                      {/* Verify & Push Button */}
-                      <div className="bg-gray-800 rounded-lg p-6 border border-gray-600">
-                        <div className="text-center">
-                          <CodeBracketIcon className="w-12 h-12 text-gray-500 mx-auto mb-4" />
-                          <h3 className="text-lg font-semibold text-gray-100 mb-2">
-                            Verify Contract Source Code
-                          </h3>
-                          <p className="text-gray-400 text-sm mb-6">
-                            Verify and publish the source code for this contract to make it readable
-                            and auditable.
-                          </p>
+                    {/* Verify & Push Button */}
+                    <div className="bg-gray-800 rounded-lg p-6 border border-gray-600">
+                      <div className="text-center">
+                        <CodeBracketIcon className="w-12 h-12 text-gray-500 mx-auto mb-4" />
+                        <h3 className="text-lg font-semibold text-gray-100 mb-2">
+                          Verify Contract Source Code
+                        </h3>
+                        <p className="text-gray-400 text-sm mb-6">
+                          Verify and publish the source code for this contract to make it readable
+                          and auditable.
+                        </p>
 
-                          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                            <Link
-                              href={`/contract/verify?address=${address}`}
-                              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                            >
-                              <CodeBracketIcon className="w-5 h-5" />
-                              Verify & Push
-                            </Link>
+                        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                          <Link
+                            href={`/contract/verify?address=${address}`}
+                            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                          >
+                            <CodeBracketIcon className="w-5 h-5" />
+                            Verify & Push
+                          </Link>
 
-                            <Link
-                              href={`/contract/interact?address=${address}`}
-                              className="inline-flex items-center gap-2 px-6 py-3 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
-                            >
-                              <PlayIcon className="w-5 h-5" />
-                              Interact
-                            </Link>
-                          </div>
+                          <Link
+                            href={`/contract/interact?address=${address}`}
+                            className="inline-flex items-center gap-2 px-6 py-3 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
+                          >
+                            <PlayIcon className="w-5 h-5" />
+                            Interact
+                          </Link>
+                        </div>
 
-                          <div className="mt-4 text-xs text-gray-500">
-                            <p>• Verify the source code to make it readable</p>
-                            <p>• Interact with the contract functions</p>
-                            <p>• View contract bytecode and metadata</p>
-                          </div>
+                        <div className="mt-4 text-xs text-gray-500">
+                          <p>• Verify the source code to make it readable</p>
+                          <p>• Interact with the contract functions</p>
+                          <p>• View contract bytecode and metadata</p>
                         </div>
                       </div>
                     </div>
-                  )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -958,7 +1005,9 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                 ) : transactions.length > 0 ? (
                   <>
                     <div className="mb-4 text-sm text-gray-400">
-                      Showing {((txPage - 1) * txPerPage) + 1} - {Math.min(txPage * txPerPage, totalTxCount)} of {totalTxCount.toLocaleString()} transactions
+                      Showing {(txPage - 1) * txPerPage + 1} -{' '}
+                      {Math.min(txPage * txPerPage, totalTxCount)} of{' '}
+                      {totalTxCount.toLocaleString()} transactions
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full">
@@ -998,9 +1047,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                                   {formatAddress(tx.hash)}
                                 </Link>
                               </td>
-                              <td className="py-3 px-4">
-                                {getTransactionTypeBadge(tx)}
-                              </td>
+                              <td className="py-3 px-4">{getTransactionTypeBadge(tx)}</td>
                               <td className="py-3 px-4">
                                 <Link
                                   href={`/block/${tx.blockNumber}`}
@@ -1037,9 +1084,9 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                                     </span>
                                   )}
                                   {formatTokenValue(tx)}
-                                  {parseFloat(tx.value) === 0 && !tx.tokenInfo && !tx.tokenTransfers && (
-                                    <span className="text-gray-500">-</span>
-                                  )}
+                                  {parseFloat(tx.value) === 0 &&
+                                    !tx.tokenInfo &&
+                                    !tx.tokenTransfers && <span className="text-gray-500">-</span>}
                                 </div>
                               </td>
                               <td className="py-3 px-4">
@@ -1103,7 +1150,9 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
 
                             {txPage < txTotalPages - 2 && (
                               <>
-                                {txPage < txTotalPages - 3 && <span className="text-gray-500">...</span>}
+                                {txPage < txTotalPages - 3 && (
+                                  <span className="text-gray-500">...</span>
+                                )}
                                 <button
                                   onClick={() => setTxPage(txTotalPages)}
                                   className="px-3 py-2 text-gray-300 hover:bg-gray-700 rounded-lg transition-colors font-medium"
@@ -1125,7 +1174,8 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
 
                         <div className="text-center mt-4 text-gray-400 text-sm">
                           Showing transactions {(txPage - 1) * txPerPage + 1} to{' '}
-                          {Math.min(txPage * txPerPage, totalTxCount)} of {totalTxCount.toLocaleString()} total
+                          {Math.min(txPage * txPerPage, totalTxCount)} of{' '}
+                          {totalTxCount.toLocaleString()} total
                         </div>
                       </div>
                     )}
@@ -1169,7 +1219,10 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       </thead>
                       <tbody className="divide-y divide-gray-700">
                         {tokenTransfers.slice(0, 25).map((transfer, index) => (
-                          <tr key={`${transfer.transactionHash}-${index}`} className="hover:bg-gray-700/50 transition-colors">
+                          <tr
+                            key={`${transfer.transactionHash}-${index}`}
+                            className="hover:bg-gray-700/50 transition-colors"
+                          >
                             <td className="py-3 px-4">
                               <Link
                                 href={`/tx/${transfer.transactionHash}`}
@@ -1203,7 +1256,11 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                               </Link>
                             </td>
                             <td className="py-3 px-4 text-yellow-400">
-                              {formatSupplyValue(transfer.value, transfer.tokenDecimals || contract?.tokenDecimals || 18)} {transfer.tokenSymbol || contract?.tokenSymbol}
+                              {formatSupplyValue(
+                                transfer.value,
+                                transfer.tokenDecimals || contract?.tokenDecimals || 18
+                              )}{' '}
+                              {transfer.tokenSymbol || contract?.tokenSymbol}
                             </td>
                             <td className="py-3 px-4">
                               <div className="flex items-center gap-2">

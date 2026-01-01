@@ -161,18 +161,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // トークン転送情報を取得
     const db = mongoose.connection.db;
     let tokenTransfers: Array<Record<string, unknown>> = [];
-    
+
     if (db) {
       const transfers = await db
         .collection('tokentransfers')
         .find({ transactionHash: hash })
         .toArray();
-      
+
       if (transfers.length > 0) {
         // トークン情報を取得
-        const tokenAddresses = [...new Set(transfers.map((t) => t.tokenAddress as string))].filter(Boolean);
-        const tokenInfoMap = new Map<string, { name: string; symbol: string; decimals: number; type: string }>();
-        
+        const tokenAddresses = [...new Set(transfers.map((t) => t.tokenAddress as string))].filter(
+          Boolean
+        );
+        const tokenInfoMap = new Map<
+          string,
+          { name: string; symbol: string; decimals: number; type: string }
+        >();
+
         if (tokenAddresses.length > 0) {
           const tokens = await db
             .collection('tokens')

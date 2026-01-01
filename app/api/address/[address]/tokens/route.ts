@@ -20,8 +20,7 @@ const tokenHolderSchema = new mongoose.Schema(
   { collection: 'tokenholders' }
 );
 
-const TokenHolder =
-  mongoose.models.TokenHolder || mongoose.model('TokenHolder', tokenHolderSchema);
+const TokenHolder = mongoose.models.TokenHolder || mongoose.model('TokenHolder', tokenHolderSchema);
 
 // Token schema
 const tokenSchema = new mongoose.Schema(
@@ -50,7 +49,10 @@ export async function GET(
     if (!rateLimit.allowed) {
       return NextResponse.json(
         { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        { status: 429, headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) } }
+        {
+          status: 429,
+          headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) },
+        }
       );
     }
 
@@ -74,25 +76,25 @@ export async function GET(
     }).lean();
 
     // Filter out zero balances
-    const nonZeroHoldings = holdings.filter(h => {
+    const nonZeroHoldings = holdings.filter((h) => {
       const balance = BigInt(h.balance || '0');
       return balance > 0n;
     });
 
     // Get token info for each holding
-    const tokenAddresses = nonZeroHoldings.map(h => h.tokenAddress);
+    const tokenAddresses = nonZeroHoldings.map((h) => h.tokenAddress);
     const tokens = await Token.find({
-      address: { $in: tokenAddresses.map(a => new RegExp(`^${a}$`, 'i')) },
+      address: { $in: tokenAddresses.map((a) => new RegExp(`^${a}$`, 'i')) },
     }).lean();
 
     // Create token info map
-    const tokenMap = new Map<string, typeof tokens[0]>();
+    const tokenMap = new Map<string, (typeof tokens)[0]>();
     for (const token of tokens) {
       tokenMap.set(token.address.toLowerCase(), token);
     }
 
     // Build response with token details
-    const tokenHoldings = nonZeroHoldings.map(holding => {
+    const tokenHoldings = nonZeroHoldings.map((holding) => {
       const tokenInfo = tokenMap.get(holding.tokenAddress.toLowerCase());
       return {
         address: holding.tokenAddress,

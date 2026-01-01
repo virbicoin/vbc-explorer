@@ -1016,10 +1016,21 @@ export default function ApiDocsPage() {
         <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-6">
           <h3 className="text-yellow-400 font-semibold mb-2">🔒 Security</h3>
           <ul className="text-gray-400 text-sm space-y-2">
-            <li>• All API responses include security headers (X-Content-Type-Options, X-Frame-Options, etc.)</li>
+            <li>
+              • All API responses include security headers (X-Content-Type-Options, X-Frame-Options,
+              etc.)
+            </li>
             <li>• Input validation is enforced on all endpoints (addresses, hashes, pagination)</li>
             <li>• Contract interaction is limited to read-only methods for security</li>
-            <li>• Report security vulnerabilities to: <a href="mailto:security@digitalregion.jp" className="text-yellow-400 hover:underline">security@digitalregion.jp</a></li>
+            <li>
+              • Report security vulnerabilities to:{' '}
+              <a
+                href="mailto:security@digitalregion.jp"
+                className="text-yellow-400 hover:underline"
+              >
+                security@digitalregion.jp
+              </a>
+            </li>
           </ul>
         </div>
       </div>

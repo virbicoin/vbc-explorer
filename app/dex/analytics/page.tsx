@@ -213,7 +213,9 @@ export default function AnalyticsPage() {
                 {stats.nativePrice > 0 && stats.nativeSymbol && (
                   <div className="px-3 py-2 text-sm">
                     <span className="text-gray-400">{stats.nativeSymbol} </span>
-                    <span className="text-green-400 font-semibold">${stats.nativePrice.toFixed(6)}</span>
+                    <span className="text-green-400 font-semibold">
+                      ${stats.nativePrice.toFixed(6)}
+                    </span>
                   </div>
                 )}
                 <Link

@@ -88,9 +88,7 @@ const PAIR_ABI = [
   'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
 ];
 
-const ERC20_ABI = [
-  'function decimals() external view returns (uint8)',
-];
+const ERC20_ABI = ['function decimals() external view returns (uint8)'];
 
 // Initialize database connection after config is loaded
 initDB();
@@ -106,10 +104,12 @@ const CACHE_DURATION = 60000; // 1 minute cache
 /**
  * Fetch price from Exbitron exchange API
  */
-const fetchExbitronPrice = async (symbol: string): Promise<{ quoteUSD: number; quoteBTC: number } | null> => {
+const fetchExbitronPrice = async (
+  symbol: string
+): Promise<{ quoteUSD: number; quoteBTC: number } | null> => {
   try {
     console.log('🔄 Fetching price from Exbitron...');
-    
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
@@ -130,14 +130,10 @@ const fetchExbitronPrice = async (symbol: string): Promise<{ quoteUSD: number; q
     const tickers = await response.json();
 
     // Find native token / USDT ticker (e.g., VBC-USDT)
-    const nativeUsdt = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${symbol}-USDT`
-    );
+    const nativeUsdt = tickers.find((t: { ticker_id: string }) => t.ticker_id === `${symbol}-USDT`);
 
     // Find native token / BTC ticker (e.g., VBC-BTC)
-    const nativeBtc = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${symbol}-BTC`
-    );
+    const nativeBtc = tickers.find((t: { ticker_id: string }) => t.ticker_id === `${symbol}-BTC`);
 
     if (nativeUsdt?.last_price || nativeBtc?.last_price) {
       const quoteUSD = nativeUsdt?.last_price ? parseFloat(nativeUsdt.last_price) : 0;
@@ -161,9 +157,7 @@ const fetchDexPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } |
   try {
     console.log('🔄 Fetching price from DEX...');
 
-    const provider = new ethers.JsonRpcProvider(
-      config.network?.rpcUrl || config.web3Provider?.url
-    );
+    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
 
     const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase();
     const usdtAddress = config.dex?.tokens?.usdt?.address?.toLowerCase();
@@ -192,8 +186,10 @@ const fetchDexPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } |
         ]);
 
         const isVbcUsdtPool =
-          (token0Address.toLowerCase() === wrappedNativeAddress && token1Address.toLowerCase() === usdtAddress) ||
-          (token1Address.toLowerCase() === wrappedNativeAddress && token0Address.toLowerCase() === usdtAddress);
+          (token0Address.toLowerCase() === wrappedNativeAddress &&
+            token1Address.toLowerCase() === usdtAddress) ||
+          (token1Address.toLowerCase() === wrappedNativeAddress &&
+            token0Address.toLowerCase() === usdtAddress);
 
         if (isVbcUsdtPool) {
           const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
@@ -327,7 +323,9 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
         const priceData = source.parser(data);
 
         if (priceData && (priceData.quoteUSD > 0 || priceData.quoteBTC > 0)) {
-          console.log(`✅ ${source.name} price: $${priceData.quoteUSD} USD, ${priceData.quoteBTC} BTC`);
+          console.log(
+            `✅ ${source.name} price: $${priceData.quoteUSD} USD, ${priceData.quoteBTC} BTC`
+          );
           const priceResult = {
             symbol: currency.symbol,
             timestamp: Date.now(),
@@ -590,9 +588,7 @@ const syncDexSwaps = async (vbcPrice: number): Promise<void> => {
       return;
     }
 
-    const provider = new ethers.JsonRpcProvider(
-      config.network?.rpcUrl || config.web3Provider?.url
-    );
+    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
 
     const currentBlock = await provider.getBlockNumber();
     const wrappedNativeAddress = (config.dex?.wrappedNative?.address || '').toLowerCase();
@@ -664,34 +660,28 @@ const startPriceMonitoring = async (): Promise<void> => {
   }
 
   // Set up periodic price updates (every 5 minutes)
-  setInterval(
-    async () => {
-      try {
-        const priceData = await fetchCryptoPrice();
-        if (priceData) {
-          await updatePriceData(priceData);
-          lastPriceUSD = priceData.quoteUSD;
-        }
-      } catch (error) {
-        console.error('❌ Error in periodic price update:', error);
+  setInterval(async () => {
+    try {
+      const priceData = await fetchCryptoPrice();
+      if (priceData) {
+        await updatePriceData(priceData);
+        lastPriceUSD = priceData.quoteUSD;
       }
-    },
-    PRICE_UPDATE_INTERVAL
-  );
+    } catch (error) {
+      console.error('❌ Error in periodic price update:', error);
+    }
+  }, PRICE_UPDATE_INTERVAL);
 
   // Set up periodic DEX sync (every 15 seconds)
-  setInterval(
-    async () => {
-      try {
-        if (lastPriceUSD > 0) {
-          await syncDexSwaps(lastPriceUSD);
-        }
-      } catch (error) {
-        console.error('❌ Error in periodic DEX sync:', error);
+  setInterval(async () => {
+    try {
+      if (lastPriceUSD > 0) {
+        await syncDexSwaps(lastPriceUSD);
       }
-    },
-    DEX_SYNC_INTERVAL
-  );
+    } catch (error) {
+      console.error('❌ Error in periodic DEX sync:', error);
+    }
+  }, DEX_SYNC_INTERVAL);
 };
 
 /**

@@ -386,19 +386,49 @@ export default function DocsPage() {
                     <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
+                    <span className="text-gray-300">/api/dex/geckoterminal/networks</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
                     <span className="text-gray-300">/api/dex/geckoterminal/pools</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
-                    <span className="text-gray-300">/api/dex/geckoterminal/info</span>
+                    <span className="text-gray-300">/api/dex/geckoterminal/pool/[address]</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
+                    <span className="text-gray-300">/api/dex/geckoterminal/token/[address]</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
                     <span className="text-gray-300">/api/dex/geckoterminal/ohlcv/[pool]</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
+                    <span className="text-gray-300">/api/dex/geckoterminal/trades/[pool]</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
+                    <span className="text-gray-300">/api/dex/geckoterminal/simple/price</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
+                      GET
+                    </span>
+                    <span className="text-gray-300">/api/dex/geckoterminal/info</span>
                   </div>
                 </div>
               </div>
@@ -524,9 +554,9 @@ export default function DocsPage() {
                   Are the API endpoints rate limited?
                 </summary>
                 <div className="px-4 pb-4 text-gray-300">
-                  Yes, all API endpoints are rate limited to prevent abuse. The limits are
-                  typically 100 requests per minute for most endpoints. If you need higher limits
-                  for your application, please contact us.
+                  Yes, all API endpoints are rate limited to prevent abuse. The limits are typically
+                  100 requests per minute for most endpoints. If you need higher limits for your
+                  application, please contact us.
                 </div>
               </details>
 
@@ -536,10 +566,14 @@ export default function DocsPage() {
                 </summary>
                 <div className="px-4 pb-4 text-gray-300">
                   Please report security vulnerabilities responsibly by emailing{' '}
-                  <a href="mailto:security@digitalregion.jp" className="text-green-400 hover:underline">
+                  <a
+                    href="mailto:security@digitalregion.jp"
+                    className="text-green-400 hover:underline"
+                  >
                     security@digitalregion.jp
                   </a>
-                  . Do not create public issues for security matters. We aim to respond within 48 hours.
+                  . Do not create public issues for security matters. We aim to respond within 48
+                  hours.
                 </div>
               </details>
             </div>

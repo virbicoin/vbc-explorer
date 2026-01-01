@@ -3,12 +3,12 @@
 
 export const TOKEN_ICONS: Record<string, string> = {
   // By symbol
-  'VBC': '/img/VBC.svg',
-  'VBCG': '/img/VBCG.png',
-  'VBCAT': '/img/VBCAT.png',
-  'USDT': '/img/USDT.svg',
-  'WVBC': '/img/VBC.svg',
-  
+  VBC: '/img/VBC.svg',
+  VBCG: '/img/VBCG.png',
+  VBCAT: '/img/VBCAT.png',
+  USDT: '/img/USDT.svg',
+  WVBC: '/img/VBC.svg',
+
   // LP tokens - use first token's icon or generic
   'WVBC-VBCG': '/img/VBCG.png',
   'WVBC-USDT': '/img/USDT.svg',
@@ -16,11 +16,11 @@ export const TOKEN_ICONS: Record<string, string> = {
 
 // Token color mapping (matching DEX page)
 export const TOKEN_COLORS: Record<string, string> = {
-  'VBC': 'from-blue-500 to-purple-600',
-  'WVBC': 'from-blue-500 to-purple-600',
-  'VBCG': 'from-yellow-400 to-orange-500',
-  'VBCAT': 'from-pink-400 to-purple-500',
-  'USDT': 'from-green-400 to-teal-500',
+  VBC: 'from-blue-500 to-purple-600',
+  WVBC: 'from-blue-500 to-purple-600',
+  VBCG: 'from-yellow-400 to-orange-500',
+  VBCAT: 'from-pink-400 to-purple-500',
+  USDT: 'from-green-400 to-teal-500',
   'WVBC-VBCG': 'from-yellow-400 to-orange-500',
   'WVBC-USDT': 'from-green-400 to-teal-500',
 };

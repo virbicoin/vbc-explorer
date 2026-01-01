@@ -238,9 +238,7 @@ export default function PoolsPage() {
             </div>
           </div>
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
-            <div className="text-gray-400 text-sm mb-1">
-              {nativeSymbol || 'VBC'} Price
-            </div>
+            <div className="text-gray-400 text-sm mb-1">{nativeSymbol || 'VBC'} Price</div>
             <div className="text-2xl font-bold text-white">
               $
               {nativePrice !== null
@@ -341,7 +339,6 @@ export default function PoolsPage() {
             </table>
           </div>
         </div>
-
       </div>
     </div>
   );

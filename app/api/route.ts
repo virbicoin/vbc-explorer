@@ -1094,7 +1094,12 @@ export async function GET(request: NextRequest) {
           searchParams.get('offset'),
           100
         );
-        return getTxListInternal(address || undefined, txhash || undefined, pagination.page, pagination.limit);
+        return getTxListInternal(
+          address || undefined,
+          txhash || undefined,
+          pagination.page,
+          pagination.limit
+        );
       }
       if (action === 'tokentx') {
         const address = searchParams.get('address');
@@ -1117,7 +1122,8 @@ export async function GET(request: NextRequest) {
         if (!address) return errorResponse('Missing address parameter');
         if (!contractaddress) return errorResponse('Missing contractaddress parameter');
         if (!isValidAddress(address)) return errorResponse('Invalid address format');
-        if (!isValidAddress(contractaddress)) return errorResponse('Invalid contractaddress format');
+        if (!isValidAddress(contractaddress))
+          return errorResponse('Invalid contractaddress format');
         return getTokenBalance(address, contractaddress);
       }
       if (action === 'getminedblocks') {
@@ -1169,18 +1175,28 @@ export async function GET(request: NextRequest) {
       if (action === 'gettoken' || action === 'tokeninfo') {
         const contractaddress = searchParams.get('contractaddress');
         if (!contractaddress) return errorResponse('Missing contractaddress parameter');
-        if (!isValidAddress(contractaddress)) return errorResponse('Invalid contractaddress format');
+        if (!isValidAddress(contractaddress))
+          return errorResponse('Invalid contractaddress format');
         return getTokenInfo(contractaddress);
       }
       if (action === 'gettokenholders') {
         const contractaddress = searchParams.get('contractaddress');
         if (!contractaddress) return errorResponse('Missing contractaddress parameter');
-        if (!isValidAddress(contractaddress)) return errorResponse('Invalid contractaddress format');
-        const pagination = validatePagination(searchParams.get('page'), searchParams.get('offset'), 100);
+        if (!isValidAddress(contractaddress))
+          return errorResponse('Invalid contractaddress format');
+        const pagination = validatePagination(
+          searchParams.get('page'),
+          searchParams.get('offset'),
+          100
+        );
         return getTokenHolders(contractaddress, pagination.page, pagination.limit);
       }
       if (action === 'tokenlist') {
-        const pagination = validatePagination(searchParams.get('page'), searchParams.get('offset'), 100);
+        const pagination = validatePagination(
+          searchParams.get('page'),
+          searchParams.get('offset'),
+          100
+        );
         return getTokenList(pagination.page, pagination.limit);
       }
     }
@@ -1193,7 +1209,8 @@ export async function GET(request: NextRequest) {
       if (action === 'tokensupply') {
         const contractaddress = searchParams.get('contractaddress');
         if (!contractaddress) return errorResponse('Missing contractaddress parameter');
-        if (!isValidAddress(contractaddress)) return errorResponse('Invalid contractaddress format');
+        if (!isValidAddress(contractaddress))
+          return errorResponse('Invalid contractaddress format');
         return getTokenSupply(contractaddress);
       }
       if (action === 'ethprice' || action === 'coinprice') {

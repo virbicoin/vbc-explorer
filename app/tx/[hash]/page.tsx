@@ -648,7 +648,11 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
                 {transaction.tokenTransfers.map((transfer, index) => {
                   // トークン値をフォーマット
                   const formatTokenAmount = () => {
-                    if (transfer.type === 'VRC-721' || transfer.type === 'ERC721' || transfer.tokenId !== undefined) {
+                    if (
+                      transfer.type === 'VRC-721' ||
+                      transfer.type === 'ERC721' ||
+                      transfer.tokenId !== undefined
+                    ) {
                       return `Token ID: #${transfer.tokenId}`;
                     }
                     try {
@@ -673,7 +677,9 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
                           {(() => {
                             const iconUrl = getTokenIcon(transfer.symbol, transfer.tokenAddress);
                             return (
-                              <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getTokenColor(transfer.symbol)} flex items-center justify-center shadow-md overflow-hidden`}>
+                              <div
+                                className={`w-8 h-8 rounded-full bg-gradient-to-br ${getTokenColor(transfer.symbol)} flex items-center justify-center shadow-md overflow-hidden`}
+                              >
                                 {iconUrl ? (
                                   <Image
                                     src={iconUrl}
@@ -726,9 +732,7 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
 
                         {/* Amount */}
                         <div className="text-right">
-                          <span className="text-purple-400 font-medium">
-                            {formatTokenAmount()}
-                          </span>
+                          <span className="text-purple-400 font-medium">{formatTokenAmount()}</span>
                         </div>
                       </div>
                     </div>

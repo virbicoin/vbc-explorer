@@ -54,10 +54,7 @@ export async function GET() {
     }
 
     // Get price from price service (uses Market DB first, then Exbitron)
-    const [priceData, totalTvlUsd] = await Promise.all([
-      getNativePrice(),
-      fetchDefiLlamaTvl(),
-    ]);
+    const [priceData, totalTvlUsd] = await Promise.all([getNativePrice(), fetchDefiLlamaTvl()]);
 
     const nativePriceUsd = priceData?.priceUSD || 0;
     const priceSource = priceData?.source === 'database' ? 'Market DB' : 'Exbitron';

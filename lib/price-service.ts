@@ -1,6 +1,6 @@
 /**
  * Price Service - Centralized price data access
- * 
+ *
  * This service provides access to price data stored by tools/price.ts
  * Uses Market model data as primary source, with Exbitron API as fallback
  */
@@ -26,7 +26,7 @@ const CACHE_TTL = 30000; // 30 seconds
 export async function getPriceFromDatabase(): Promise<PriceData | null> {
   try {
     const latestPrice = await Market.findOne().sort({ timestamp: -1 }).lean();
-    
+
     if (!latestPrice) {
       return null;
     }
@@ -70,13 +70,9 @@ export async function getPriceFromExbitron(symbol: string): Promise<PriceData | 
     }
 
     const tickers = await response.json();
-    
-    const usdtTicker = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${symbol}-USDT`
-    );
-    const btcTicker = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${symbol}-BTC`
-    );
+
+    const usdtTicker = tickers.find((t: { ticker_id: string }) => t.ticker_id === `${symbol}-USDT`);
+    const btcTicker = tickers.find((t: { ticker_id: string }) => t.ticker_id === `${symbol}-BTC`);
 
     if (usdtTicker?.last_price || btcTicker?.last_price) {
       return {

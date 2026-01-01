@@ -122,7 +122,9 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
 
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
   const [config, setConfig] = useState<Config | null>(null);
-  const [activeTab, setActiveTab] = useState<'transactions' | 'mining' | 'tokens' | 'transfers' | 'source'>('transactions');
+  const [activeTab, setActiveTab] = useState<
+    'transactions' | 'mining' | 'tokens' | 'transfers' | 'source'
+  >('transactions');
   const [tokenHoldings, setTokenHoldings] = useState<TokenHolding[]>([]);
   const [tokenTransfers, setTokenTransfers] = useState<Transaction[]>([]);
   const [transactionStats, setTransactionStats] = useState<{
@@ -212,7 +214,8 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
 
         // Filter token transfers from transactions
         const transfers = (data.transactions || []).filter(
-          (tx: Transaction) => tx.type === 'token_transfer' || tx.type === 'nft_transfer' || tx.tokenInfo
+          (tx: Transaction) =>
+            tx.type === 'token_transfer' || tx.type === 'nft_transfer' || tx.tokenInfo
         );
         setTokenTransfers(transfers);
       } catch (err) {
@@ -436,7 +439,8 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
       const prefix = direction === 'in' ? '+' : '-';
       return (
         <span className={color}>
-          {prefix}{formatted} {symbol}
+          {prefix}
+          {formatted} {symbol}
         </span>
       );
     } catch {
@@ -546,11 +550,11 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
       const divisor = BigInt(10 ** decimals);
       const intPart = balanceBigInt / divisor;
       const fracPart = balanceBigInt % divisor;
-      
+
       if (fracPart === 0n) {
         return `${intPart.toLocaleString()} ${symbol}`;
       }
-      
+
       const fracStr = fracPart.toString().padStart(decimals, '0').slice(0, 4).replace(/0+$/, '');
       if (fracStr) {
         return `${intPart.toLocaleString()}.${fracStr} ${symbol}`;
@@ -1130,7 +1134,9 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
               <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400 mr-2">
                 Address
               </span>
-              <h1 className="text-2xl font-bold text-gray-100 inline">{formatAddress(resolvedParams.address)}</h1>
+              <h1 className="text-2xl font-bold text-gray-100 inline">
+                {formatAddress(resolvedParams.address)}
+              </h1>
             </div>
           </div>
           <div className="flex items-center gap-2 mt-3">
@@ -1159,7 +1165,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                 <CurrencyDollarIcon className="w-5 h-5 text-blue-400" />
                 Overview
               </h3>
-              
+
               <div className="space-y-4">
                 {/* Balance */}
                 <div className="flex justify-between items-center py-3 border-b border-gray-700">
@@ -1168,7 +1174,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                     {account ? formatValue(account.balance) : `0 ${currencySymbol}`}
                   </span>
                 </div>
-                
+
                 {/* Transaction Count */}
                 <div className="flex justify-between items-center py-3 border-b border-gray-700">
                   <span className="text-gray-400">Transactions</span>
@@ -1176,7 +1182,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                     {account?.transactionCount?.toLocaleString() || '0'}
                   </span>
                 </div>
-                
+
                 {/* Token Transfers */}
                 <div className="flex justify-between items-center py-3 border-b border-gray-700">
                   <span className="text-gray-400">Token Transfers</span>
@@ -1203,7 +1209,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                 <ClockIcon className="w-5 h-5 text-purple-400" />
                 More Info
               </h3>
-              
+
               <div className="space-y-4">
                 {/* First Seen */}
                 <div className="py-3 border-b border-gray-700">
@@ -1228,7 +1234,10 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                   <span className="text-white font-medium">
                     {(() => {
                       if (!account?.lastActivity) return 'Unknown';
-                      if (account.lastActivity.includes('(') && account.lastActivity.includes(')')) {
+                      if (
+                        account.lastActivity.includes('(') &&
+                        account.lastActivity.includes(')')
+                      ) {
                         const [, agoPart] = account.lastActivity.split(' (');
                         const ago = agoPart?.replace(')', '');
                         return ago || 'Unknown';
@@ -1243,7 +1252,9 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                 {account?.rank && (
                   <div className="py-3 border-b border-gray-700">
                     <div className="text-gray-400 text-sm mb-1">Rank</div>
-                    <span className="text-yellow-400 font-medium">#{account.rank.toLocaleString()}</span>
+                    <span className="text-yellow-400 font-medium">
+                      #{account.rank.toLocaleString()}
+                    </span>
                   </div>
                 )}
 
@@ -1251,7 +1262,9 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                 {account?.percentage && (
                   <div className="py-3">
                     <div className="text-gray-400 text-sm mb-1">Percentage of Supply</div>
-                    <span className="text-white font-medium">{parseFloat(account.percentage).toFixed(4)}%</span>
+                    <span className="text-white font-medium">
+                      {parseFloat(account.percentage).toFixed(4)}%
+                    </span>
                   </div>
                 )}
               </div>
@@ -1402,11 +1415,8 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                               <td className="py-3 px-4">
                                 {!tx.to ||
                                 tx.to === '0x0000000000000000000000000000000000000000' ? (
-                                  <span className="text-indigo-400 text-sm">
-                                    Contract Created
-                                  </span>
-                                ) : tx.to.toLowerCase() ===
-                                  resolvedParams.address.toLowerCase() ? (
+                                  <span className="text-indigo-400 text-sm">Contract Created</span>
+                                ) : tx.to.toLowerCase() === resolvedParams.address.toLowerCase() ? (
                                   <span className="text-gray-400 font-mono text-sm">You</span>
                                 ) : (
                                   <Link
@@ -1433,9 +1443,9 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                                   {(tx.tokenTransfers || tx.tokenInfo) && (
                                     <div className="text-sm">{formatTokenValue(tx)}</div>
                                   )}
-                                  {parseFloat(tx.value) === 0 && !tx.tokenInfo && !tx.tokenTransfers && (
-                                    <span className="text-gray-500">-</span>
-                                  )}
+                                  {parseFloat(tx.value) === 0 &&
+                                    !tx.tokenInfo &&
+                                    !tx.tokenTransfers && <span className="text-gray-500">-</span>}
                                 </div>
                               </td>
                               <td className="py-3 px-4">
@@ -1471,7 +1481,8 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                 ) : (
                   <>
                     <div className="mb-4 text-sm text-gray-400">
-                      {tokenHoldingsCount.toLocaleString()} token{tokenHoldingsCount !== 1 ? 's' : ''} held by this address
+                      {tokenHoldingsCount.toLocaleString()} token
+                      {tokenHoldingsCount !== 1 ? 's' : ''} held by this address
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full">
@@ -1495,56 +1506,67 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                           {tokenHoldings.map((token) => {
                             const iconUrl = getTokenIcon(token.symbol, token.address);
                             return (
-                            <tr key={token.address} className="hover:bg-gray-700/50 transition-colors">
-                              <td className="py-3 px-4">
-                                <Link
-                                  href={`/token/${token.address}`}
-                                  className="flex items-center gap-2 text-blue-400 hover:text-blue-300 transition-colors"
-                                >
-                                  <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md overflow-hidden`}>
-                                    {iconUrl ? (
-                                      <Image
-                                        src={iconUrl}
-                                        alt={token.symbol || ''}
-                                        width={28}
-                                        height={28}
-                                        className="object-contain"
-                                      />
-                                    ) : (
-                                      <span className="font-bold text-white text-xs">
-                                        {token.symbol?.charAt(0) || '?'}
-                                      </span>
+                              <tr
+                                key={token.address}
+                                className="hover:bg-gray-700/50 transition-colors"
+                              >
+                                <td className="py-3 px-4">
+                                  <Link
+                                    href={`/token/${token.address}`}
+                                    className="flex items-center gap-2 text-blue-400 hover:text-blue-300 transition-colors"
+                                  >
+                                    <div
+                                      className={`w-8 h-8 rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md overflow-hidden`}
+                                    >
+                                      {iconUrl ? (
+                                        <Image
+                                          src={iconUrl}
+                                          alt={token.symbol || ''}
+                                          width={28}
+                                          height={28}
+                                          className="object-contain"
+                                        />
+                                      ) : (
+                                        <span className="font-bold text-white text-xs">
+                                          {token.symbol?.charAt(0) || '?'}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div>
+                                      <div className="font-medium">{token.name}</div>
+                                      <div className="text-xs text-gray-400">{token.symbol}</div>
+                                    </div>
+                                  </Link>
+                                </td>
+                                <td className="py-3 px-4">
+                                  <span
+                                    className={`px-2 py-1 rounded text-xs font-medium ${
+                                      token.type === 'VRC-20' || token.type === 'ERC20'
+                                        ? 'bg-blue-500/20 text-blue-400'
+                                        : token.type === 'VRC-721' || token.type === 'ERC721'
+                                          ? 'bg-purple-500/20 text-purple-400'
+                                          : 'bg-gray-500/20 text-gray-400'
+                                    }`}
+                                  >
+                                    {token.type}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 text-right">
+                                  <span className="text-green-400 font-medium">
+                                    {formatTokenBalance(
+                                      token.balance,
+                                      token.decimals,
+                                      token.symbol
                                     )}
-                                  </div>
-                                  <div>
-                                    <div className="font-medium">{token.name}</div>
-                                    <div className="text-xs text-gray-400">{token.symbol}</div>
-                                  </div>
-                                </Link>
-                              </td>
-                              <td className="py-3 px-4">
-                                <span className={`px-2 py-1 rounded text-xs font-medium ${
-                                  token.type === 'VRC-20' || token.type === 'ERC20'
-                                    ? 'bg-blue-500/20 text-blue-400'
-                                    : token.type === 'VRC-721' || token.type === 'ERC721'
-                                      ? 'bg-purple-500/20 text-purple-400'
-                                      : 'bg-gray-500/20 text-gray-400'
-                                }`}>
-                                  {token.type}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-right">
-                                <span className="text-green-400 font-medium">
-                                  {formatTokenBalance(token.balance, token.decimals, token.symbol)}
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-right">
-                                <span className="text-gray-300">
-                                  {token.percentage ? `${token.percentage.toFixed(4)}%` : '-'}
-                                </span>
-                              </td>
-                            </tr>
-                          );
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 text-right">
+                                  <span className="text-gray-300">
+                                    {token.percentage ? `${token.percentage.toFixed(4)}%` : '-'}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
                           })}
                         </tbody>
                       </table>
@@ -1642,7 +1664,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                                 )}
                               </td>
                               <td className="py-3 px-4">
-                                {(tx.tokenTransfers || tx.tokenInfo) ? (
+                                {tx.tokenTransfers || tx.tokenInfo ? (
                                   <div className="text-sm">{formatTokenValue(tx)}</div>
                                 ) : (
                                   <span className="text-gray-500">-</span>

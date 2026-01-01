@@ -487,7 +487,9 @@ function ContractVerifyPageInner() {
             </div>
             <div>
               <h1 className="text-3xl font-bold text-white">Verify Contract Source Code</h1>
-              <p className="text-gray-400 mt-1">Verify and publish your smart contract source code on the blockchain explorer</p>
+              <p className="text-gray-400 mt-1">
+                Verify and publish your smart contract source code on the blockchain explorer
+              </p>
             </div>
           </div>
         </div>

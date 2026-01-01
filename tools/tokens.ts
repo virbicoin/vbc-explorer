@@ -643,7 +643,9 @@ async function updateAllErc20Tokens() {
     }
 
     // VRC-20 tokens and LP tokens (LP tokens use same transfer format as ERC20)
-    const tokens = await Token.find({ type: { $in: ['VRC-20', 'ERC20', 'LP', 'SLP', 'SLP-V2', 'UNI-V2', 'CAKE-LP'] } });
+    const tokens = await Token.find({
+      type: { $in: ['VRC-20', 'ERC20', 'LP', 'SLP', 'SLP-V2', 'UNI-V2', 'CAKE-LP'] },
+    });
     console.log(`💰 Found ${tokens.length} VRC-20/LP tokens to update`);
 
     // Process tokens sequentially to avoid overwhelming the RPC
@@ -1205,43 +1207,97 @@ const FACTORY_ABI = [
 
 // LP Token (Pair) ABI for getting token info
 const LP_TOKEN_ABI = [
-  { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'symbol', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'decimals', outputs: [{ name: '', type: 'uint8' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'totalSupply', outputs: [{ name: '', type: 'uint256' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'token0', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'token1', outputs: [{ name: '', type: 'address' }], stateMutability: 'view', type: 'function' },
+  {
+    inputs: [],
+    name: 'name',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'symbol',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'decimals',
+    outputs: [{ name: '', type: 'uint8' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'totalSupply',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'token0',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'token1',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ];
 
 // ERC20 ABI for getting token symbol
 const ERC20_BASIC_ABI = [
-  { inputs: [], name: 'symbol', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
-  { inputs: [], name: 'name', outputs: [{ name: '', type: 'string' }], stateMutability: 'view', type: 'function' },
+  {
+    inputs: [],
+    name: 'symbol',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'name',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ];
 
 // Helper function to get pair-based LP token name and symbol
 async function getLPPairInfo(pairAddress: string): Promise<{ name: string; symbol: string }> {
   try {
     const lpContract = new web3.eth.Contract(LP_TOKEN_ABI as any, pairAddress);
-    
+
     // Get token0 and token1 addresses
     const [token0Address, token1Address] = await Promise.all([
       lpContract.methods.token0().call(),
       lpContract.methods.token1().call(),
     ]);
-    
+
     // Get symbols for both tokens
     const token0Contract = new web3.eth.Contract(ERC20_BASIC_ABI as any, String(token0Address));
     const token1Contract = new web3.eth.Contract(ERC20_BASIC_ABI as any, String(token1Address));
-    
+
     const [symbol0, symbol1] = await Promise.all([
-      token0Contract.methods.symbol().call().catch(() => 'UNKNOWN'),
-      token1Contract.methods.symbol().call().catch(() => 'UNKNOWN'),
+      token0Contract.methods
+        .symbol()
+        .call()
+        .catch(() => 'UNKNOWN'),
+      token1Contract.methods
+        .symbol()
+        .call()
+        .catch(() => 'UNKNOWN'),
     ]);
-    
+
     const s0 = String(symbol0);
     const s1 = String(symbol1);
-    
+
     return {
       name: `${s0}-${s1} LP`,
       symbol: `${s0}-${s1}`,
@@ -1260,7 +1316,7 @@ async function syncLPTokensFromFactory() {
     // Get factory address from config
     const config = loadConfig();
     const factoryAddress = config.dex?.factory;
-    
+
     if (!factoryAddress) {
       console.log('⚠️ No DEX factory address configured, skipping LP token sync');
       return;
@@ -1289,22 +1345,23 @@ async function syncLPTokensFromFactory() {
         const pairAddressResult = await factory.methods.allPairs(i).call();
         const pairAddress = String(pairAddressResult);
         const normalizedAddress = pairAddress.toLowerCase();
-        
+
         // Check if LP token already exists with proper name
         const existingToken = await Token.findOne({ address: normalizedAddress });
         if (existingToken) {
           // Update type if not set correctly
           if (!LP_TOKEN_TYPES.includes(existingToken.type as any)) {
             console.log(`🔧 Updating token type for ${normalizedAddress}`);
-            await Token.updateOne(
-              { address: normalizedAddress },
-              { $set: { type: 'LP' } }
-            );
+            await Token.updateOne({ address: normalizedAddress }, { $set: { type: 'LP' } });
           }
-          
+
           // Update name and symbol if they are generic (SLP-V2, UNI-V2, etc.)
-          if (existingToken.symbol === 'SLP-V2' || existingToken.symbol === 'UNI-V2' || 
-              existingToken.name === 'Simple LP Token V2' || existingToken.name === 'Uniswap V2') {
+          if (
+            existingToken.symbol === 'SLP-V2' ||
+            existingToken.symbol === 'UNI-V2' ||
+            existingToken.name === 'Simple LP Token V2' ||
+            existingToken.name === 'Uniswap V2'
+          ) {
             console.log(`🔧 Updating LP token name/symbol for ${normalizedAddress}...`);
             const pairInfo = await getLPPairInfo(pairAddress);
             await Token.updateOne(
@@ -1338,11 +1395,9 @@ async function syncLPTokensFromFactory() {
           verified: true,
         };
 
-        await db.collection('tokens').updateOne(
-          { address: normalizedAddress },
-          { $set: tokenDoc },
-          { upsert: true }
-        );
+        await db
+          .collection('tokens')
+          .updateOne({ address: normalizedAddress }, { $set: tokenDoc }, { upsert: true });
 
         console.log(`✅ Registered LP token: ${pairInfo.symbol} (${normalizedAddress})`);
 

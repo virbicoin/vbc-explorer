@@ -288,105 +288,107 @@ export default function TokensPage() {
                   filteredTokens.map((token, index) => {
                     const iconUrl = getTokenIcon(token.symbol, token.address);
                     return (
-                    <tr
-                      key={`${token.address}-${index}`}
-                      className="hover:bg-gray-700/50 transition-colors"
-                    >
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md overflow-hidden`}>
-                            {iconUrl ? (
-                              <Image
-                                src={iconUrl}
-                                alt={token.symbol}
-                                width={28}
-                                height={28}
-                                className="object-contain"
-                              />
+                      <tr
+                        key={`${token.address}-${index}`}
+                        className="hover:bg-gray-700/50 transition-colors"
+                      >
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-3">
+                            <div
+                              className={`w-8 h-8 rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md overflow-hidden`}
+                            >
+                              {iconUrl ? (
+                                <Image
+                                  src={iconUrl}
+                                  alt={token.symbol}
+                                  width={28}
+                                  height={28}
+                                  className="object-contain"
+                                />
+                              ) : (
+                                <span className="font-bold text-white text-xs">
+                                  {token.symbol?.charAt(0) || '?'}
+                                </span>
+                              )}
+                            </div>
+                            <div>
+                              <div className="font-bold text-gray-200">{token.symbol}</div>
+                              <div className="text-sm text-gray-400">{token.name}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span
+                            className={`px-3 py-1 rounded text-sm font-medium ${
+                              token.type === 'Native'
+                                ? 'bg-cyan-500/20 text-cyan-400'
+                                : token.type === 'VRC-20'
+                                  ? 'bg-blue-500/20 text-blue-400'
+                                  : token.type === 'VRC-721'
+                                    ? 'bg-purple-500/20 text-purple-400'
+                                    : token.type === 'VRC-1155'
+                                      ? 'bg-orange-500/20 text-orange-400'
+                                      : 'bg-gray-500/20 text-gray-400'
+                            }`}
+                          >
+                            {token.type}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            {token.type === 'Native' ? (
+                              <span className="font-mono text-gray-400 break-all">N/A</span>
+                            ) : token.address === 'N/A' ? (
+                              <span className="font-mono text-gray-400 break-all">N/A</span>
                             ) : (
-                              <span className="font-bold text-white text-xs">
-                                {token.symbol?.charAt(0) || '?'}
-                              </span>
+                              <Link
+                                href={`/token/${token.address}`}
+                                className="font-mono text-blue-400 hover:text-blue-300 transition-colors break-all"
+                              >
+                                {token.address}
+                              </Link>
                             )}
                           </div>
-                          <div>
-                            <div className="font-bold text-gray-200">{token.symbol}</div>
-                            <div className="text-sm text-gray-400">{token.name}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`px-3 py-1 rounded text-sm font-medium ${
-                            token.type === 'Native'
-                              ? 'bg-cyan-500/20 text-cyan-400'
-                              : token.type === 'VRC-20'
-                                ? 'bg-blue-500/20 text-blue-400'
-                                : token.type === 'VRC-721'
-                                  ? 'bg-purple-500/20 text-purple-400'
-                                  : token.type === 'VRC-1155'
-                                    ? 'bg-orange-500/20 text-orange-400'
-                                    : 'bg-gray-500/20 text-gray-400'
-                          }`}
-                        >
-                          {token.type}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          {token.type === 'Native' ? (
-                            <span className="font-mono text-gray-400 break-all">N/A</span>
-                          ) : token.address === 'N/A' ? (
-                            <span className="font-mono text-gray-400 break-all">N/A</span>
+                        </td>
+                        <td className="py-3 px-4 w-24">
+                          {token.type !== 'Native' &&
+                            token.address !== 'N/A' &&
+                            !isNFTToken(token.type) && (
+                              <button
+                                onClick={() => addToMetaMask(token)}
+                                className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                                title="Add to MetaMask"
+                              >
+                                🦊
+                              </button>
+                            )}
+                        </td>
+                        <td className="py-3 px-4 w-32">
+                          {token.type !== 'Native' && token.verified ? (
+                            <span className="flex items-center gap-1 px-3 py-1 bg-green-500/20 text-green-400 rounded text-sm font-medium w-fit">
+                              <CheckCircleIcon className="w-4 h-4" />
+                              <span>Verified</span>
+                            </span>
                           ) : (
-                            <Link
-                              href={`/token/${token.address}`}
-                              className="font-mono text-blue-400 hover:text-blue-300 transition-colors break-all"
-                            >
-                              {token.address}
-                            </Link>
+                            <span className="text-gray-400 text-xs">-</span>
                           )}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 w-24">
-                        {token.type !== 'Native' &&
-                          token.address !== 'N/A' &&
-                          !isNFTToken(token.type) && (
-                            <button
-                              onClick={() => addToMetaMask(token)}
-                              className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
-                              title="Add to MetaMask"
-                            >
-                              🦊
-                            </button>
-                          )}
-                      </td>
-                      <td className="py-3 px-4 w-32">
-                        {token.type !== 'Native' && token.verified ? (
-                          <span className="flex items-center gap-1 px-3 py-1 bg-green-500/20 text-green-400 rounded text-sm font-medium w-fit">
-                            <CheckCircleIcon className="w-4 h-4" />
-                            <span>Verified</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-yellow-400 text-lg font-bold">
+                            {token.holders?.toLocaleString?.() ?? '-'}
                           </span>
-                        ) : (
-                          <span className="text-gray-400 text-xs">-</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="text-yellow-400 text-lg font-bold">
-                          {token.holders?.toLocaleString?.() ?? '-'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="text-green-400 text-lg font-bold">
-                          {token.type === 'Native'
-                            ? `${nativeSupply} ${currencySymbol}`
-                            : token.supply
-                              ? `${token.supply} ${token.symbol}`
-                              : '-'}
-                        </span>
-                      </td>
-                    </tr>
-                  );
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-green-400 text-lg font-bold">
+                            {token.type === 'Native'
+                              ? `${nativeSupply} ${currencySymbol}`
+                              : token.supply
+                                ? `${token.supply} ${token.symbol}`
+                                : '-'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
                   })
                 )}
               </tbody>

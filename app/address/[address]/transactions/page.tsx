@@ -206,7 +206,8 @@ export default function AddressTransactionsPage({
       const prefix = direction === 'in' ? '+' : '-';
       return (
         <span className={color}>
-          {prefix}{formatted} {symbol}
+          {prefix}
+          {formatted} {symbol}
         </span>
       );
     } catch {
@@ -412,7 +413,9 @@ export default function AddressTransactionsPage({
                                 {formatValue(tx.value)}
                               </span>
                             )}
-                            {(tx.tokenTransfers || tx.tokenInfo) && <div className="text-sm">{formatTokenValue(tx)}</div>}
+                            {(tx.tokenTransfers || tx.tokenInfo) && (
+                              <div className="text-sm">{formatTokenValue(tx)}</div>
+                            )}
                             {parseFloat(tx.value) === 0 && !tx.tokenInfo && !tx.tokenTransfers && (
                               <span className="text-gray-500">-</span>
                             )}
