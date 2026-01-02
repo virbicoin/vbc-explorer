@@ -19,6 +19,34 @@ const isBlacklisted = (address: string): boolean => {
   return BLACKLISTED_TOKENS.includes(addr) || BLACKLISTED_LP_PAIRS.includes(addr);
 };
 
+// TokenFactoryV2 ABI for getting token metadata (logoUrl)
+const TOKEN_FACTORY_V2_ABI = [
+  {
+    inputs: [{ name: 'token', type: 'address' }],
+    name: 'tokenInfo',
+    outputs: [
+      { name: 'creator', type: 'address' },
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'decimals', type: 'uint8' },
+      { name: 'totalSupply', type: 'uint256' },
+      { name: 'createdAt', type: 'uint256' },
+      { name: 'logoUrl', type: 'string' },
+      { name: 'description', type: 'string' },
+      { name: 'website', type: 'string' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'token', type: 'address' }],
+    name: 'isFactoryToken',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+];
+
 // Router ABI to get factory address
 const ROUTER_ABI = [
   {
@@ -229,14 +257,47 @@ export async function GET() {
         // Create a map for quick lookup
         const contractsMap = new Map(dbContracts.map((c) => [c.address.toLowerCase(), c]));
 
+        // Try to get logoUrl from TokenFactoryV2 for launchpad tokens
+        const RPC_URL =
+          appConfig.network?.rpcUrl || appConfig.web3Provider?.url || 'http://localhost:8545';
+        const web3 = new Web3(RPC_URL);
+        const factoryV2Address = appConfig.launchpad?.factoryAddressV2;
+        const logoUrlCache = new Map<string, string>();
+
+        // If TokenFactoryV2 is configured, try to get logoUrl for launchpad tokens
+        if (factoryV2Address && factoryV2Address !== '0x0000000000000000000000000000000000000000') {
+          const factoryV2 = new web3.eth.Contract(TOKEN_FACTORY_V2_ABI, factoryV2Address);
+          
+          // Check launchpad tokens (source === 'launchpad') for logoUrl
+          const launchpadTokens = dbTokens.filter((t) => t.source === 'launchpad');
+          
+          for (const token of launchpadTokens) {
+            try {
+              const isFactoryToken = await factoryV2.methods.isFactoryToken(token.address).call();
+              if (isFactoryToken) {
+                const tokenInfo = await factoryV2.methods.tokenInfo(token.address).call() as {
+                  logoUrl: string;
+                };
+                if (tokenInfo.logoUrl) {
+                  logoUrlCache.set(token.address.toLowerCase(), tokenInfo.logoUrl);
+                }
+              }
+            } catch (err) {
+              // Token might not be from V2 factory, ignore
+            }
+          }
+        }
+
         for (const token of dbTokens) {
           const contractInfo = contractsMap.get(token.address.toLowerCase());
+          // Priority: 1. contracts collection image_url, 2. TokenFactoryV2 logoUrl
+          const logoURI = contractInfo?.image_url || logoUrlCache.get(token.address.toLowerCase()) || undefined;
           resultTokens.push({
             address: token.address as `0x${string}`,
             name: token.name || 'Unknown Token',
             symbol: token.symbol || '???',
             decimals: token.decimals || 18,
-            logoURI: contractInfo?.image_url || undefined,
+            logoURI,
             verified: token.verified || false,
             holders: token.holders || 0,
           });
