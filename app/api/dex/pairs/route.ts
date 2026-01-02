@@ -99,6 +99,34 @@ const ERC20_ABI = [
   },
 ];
 
+// TokenFactoryV2 ABI for checking launchpad tokens and getting logoUrl
+const TOKEN_FACTORY_V2_ABI = [
+  {
+    inputs: [{ name: 'token', type: 'address' }],
+    name: 'isFactoryToken',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'token', type: 'address' }],
+    name: 'tokenInfo',
+    outputs: [
+      { name: 'creator', type: 'address' },
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'decimals', type: 'uint8' },
+      { name: 'totalSupply', type: 'uint256' },
+      { name: 'createdAt', type: 'uint256' },
+      { name: 'logoUrl', type: 'string' },
+      { name: 'description', type: 'string' },
+      { name: 'website', type: 'string' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+];
+
 interface TokenInfo {
   address: string;
   name: string;
@@ -352,13 +380,51 @@ export async function GET() {
       }
     }
 
-    // Second pass: Fetch logo URIs from database for tokens not in config
+    // Second pass: Fetch logoUrl from TokenFactoryV2 for Launchpad tokens (not in config)
+    const factoryV2Address = appConfig.launchpad?.factoryAddressV2;
+    if (factoryV2Address && factoryV2Address !== '0x0000000000000000000000000000000000000000') {
+      const factoryV2 = new web3.eth.Contract(TOKEN_FACTORY_V2_ABI, factoryV2Address);
+      
+      // Collect token addresses that don't have icons yet
+      const tokensNeedingIcons: { address: string; isBase: boolean; pairIndex: number }[] = [];
+      pairs.forEach((pair, index) => {
+        if (!pair.baseToken.logoURI) {
+          tokensNeedingIcons.push({ address: pair.baseToken.address, isBase: true, pairIndex: index });
+        }
+        if (!pair.quoteToken.logoURI) {
+          tokensNeedingIcons.push({ address: pair.quoteToken.address, isBase: false, pairIndex: index });
+        }
+      });
+
+      // Check each token against TokenFactoryV2
+      for (const tokenInfo of tokensNeedingIcons) {
+        try {
+          const isFactoryToken = await factoryV2.methods.isFactoryToken(tokenInfo.address).call();
+          if (isFactoryToken) {
+            const info = await factoryV2.methods.tokenInfo(tokenInfo.address).call() as {
+              logoUrl: string;
+            };
+            if (info.logoUrl) {
+              if (tokenInfo.isBase) {
+                pairs[tokenInfo.pairIndex].baseToken.logoURI = info.logoUrl;
+              } else {
+                pairs[tokenInfo.pairIndex].quoteToken.logoURI = info.logoUrl;
+              }
+            }
+          }
+        } catch (err) {
+          // Token is not from factory or error occurred, ignore
+        }
+      }
+    }
+
+    // Third pass: Fetch logo URIs from database for remaining tokens
     try {
       await dbConnect();
       const db = mongoose.connection.db;
       
       if (db) {
-        // Collect token addresses that don't have icons yet
+        // Collect token addresses that still don't have icons
         const tokenAddresses = new Set<string>();
         for (const pair of pairs) {
           if (!pair.baseToken.logoURI) {
@@ -402,7 +468,7 @@ export async function GET() {
       }
     } catch (dbError) {
       console.error('Error fetching logo URIs from database:', dbError);
-      // Continue with config icons only
+      // Continue with icons already set
     }
 
     return NextResponse.json({
