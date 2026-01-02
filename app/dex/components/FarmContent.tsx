@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { ethers } from 'ethers';
 import Image from 'next/image';
 import { useFarming, type PoolData } from '@/hooks/useFarming';
 import { useTokenConfig } from '@/hooks/useTokenConfig';
+import { useDexConfig } from '@/hooks/useDexConfig';
 
 // Default color for unknown tokens
 const DEFAULT_COLOR = 'from-gray-500 to-gray-600';
@@ -12,11 +13,13 @@ const DEFAULT_COLOR = 'from-gray-500 to-gray-600';
 // Token Icon Component - uses config for icons/colors
 function FarmTokenIcon({
   symbol,
+  logoURI,
   size = 32,
   getIcon,
   getColor,
 }: {
   symbol: string;
+  logoURI?: string;
   size?: number;
   getIcon: (symbol: string) => string | null;
   getColor: (symbol: string) => string;
@@ -24,6 +27,7 @@ function FarmTokenIcon({
   const iconPath = getIcon(symbol);
   const color = getColor(symbol);
 
+  // Priority: 1. Built-in icon (VBC, WVBC, VBCG, USDT), 2. logoURI from database
   if (iconPath) {
     return (
       <div
@@ -36,6 +40,25 @@ function FarmTokenIcon({
           width={size - 4}
           height={size - 4}
           className="object-contain"
+        />
+      </div>
+    );
+  }
+
+  // Use logoURI from token (e.g., Launchpad tokens)
+  if (logoURI) {
+    return (
+      <div
+        className="rounded-full bg-gray-900 flex items-center justify-center border-2 border-gray-700 overflow-hidden"
+        style={{ width: size, height: size }}
+      >
+        <Image
+          src={logoURI}
+          alt={symbol}
+          width={size - 4}
+          height={size - 4}
+          className="object-contain"
+          unoptimized
         />
       </div>
     );
@@ -69,6 +92,8 @@ function FarmPoolCard({
   getTokenIcon,
   getTokenColor,
   displaySymbol,
+  token0LogoURI,
+  token1LogoURI,
 }: {
   pool: PoolData;
   userStaked: bigint;
@@ -84,6 +109,8 @@ function FarmPoolCard({
   getTokenIcon: (symbol: string) => string | null;
   getTokenColor: (symbol: string) => string;
   displaySymbol: (symbol: string) => string;
+  token0LogoURI?: string;
+  token1LogoURI?: string;
 }) {
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -149,12 +176,14 @@ function FarmPoolCard({
           <div className="flex -space-x-2">
             <FarmTokenIcon
               symbol={pool.token0Symbol}
+              logoURI={token0LogoURI}
               size={32}
               getIcon={getTokenIcon}
               getColor={getTokenColor}
             />
             <FarmTokenIcon
               symbol={pool.token1Symbol}
+              logoURI={token1LogoURI}
               size={32}
               getIcon={getTokenIcon}
               getColor={getTokenColor}
@@ -354,6 +383,23 @@ export default function FarmContent() {
     isLoading: tokenConfigLoading,
   } = useTokenConfig();
 
+  // DEX config for logo URIs
+  const { config: dexConfig } = useDexConfig();
+
+  // Build logo URI map from DEX config pools
+  const logoMap = useMemo(() => {
+    const map = new Map<string, { token0LogoURI?: string; token1LogoURI?: string }>();
+    if (dexConfig?.farming?.pools) {
+      for (const pool of dexConfig.farming.pools) {
+        map.set(pool.lpToken.toLowerCase(), {
+          token0LogoURI: pool.token0?.logoURI,
+          token1LogoURI: pool.token1?.logoURI,
+        });
+      }
+    }
+    return map;
+  }, [dexConfig?.farming?.pools]);
+
   // Loading state while config is being loaded
   if (!configReady || tokenConfigLoading) {
     return (
@@ -457,6 +503,7 @@ export default function FarmContent() {
                 lpBalance: 0n,
                 allowance: 0n,
               };
+              const logos = logoMap.get(pool.lpToken.toLowerCase());
               return (
                 <FarmPoolCard
                   key={pool.pid}
@@ -474,6 +521,8 @@ export default function FarmContent() {
                   getTokenIcon={getTokenIcon}
                   getTokenColor={getTokenColor}
                   displaySymbol={displaySymbol}
+                  token0LogoURI={logos?.token0LogoURI}
+                  token1LogoURI={logos?.token1LogoURI}
                 />
               );
             })}

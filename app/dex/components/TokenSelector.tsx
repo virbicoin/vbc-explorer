@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import Image from 'next/image';
 import { type Token, DEFAULT_TOKENS } from '@/lib/dex/config';
+import { useTokenConfig } from '@/hooks/useTokenConfig';
 
 interface TokenSelectorProps {
   selectedToken: Token;
@@ -11,48 +12,29 @@ interface TokenSelectorProps {
   tokens?: Token[];
 }
 
-// Token colors based on symbol
-const getTokenColor = (symbol: string): string => {
-  const colors: Record<string, string> = {
-    VBC: 'from-green-500 to-emerald-600',
-    WVBC: 'from-green-400 to-teal-500',
-    TEST: 'from-purple-500 to-pink-500',
-    VBCG: 'from-yellow-400 to-amber-500',
-    USDT: 'from-green-400 to-emerald-500',
-    USDC: 'from-blue-400 to-blue-600',
-    ETH: 'from-blue-400 to-purple-500',
-    WETH: 'from-blue-400 to-purple-500',
-  };
-  return colors[symbol] || 'from-gray-500 to-gray-600';
-};
-
-// Check if token has custom icon
-const hasCustomIcon = (symbol: string): boolean => {
-  return ['VBC', 'WVBC', 'VBCG', 'USDT'].includes(symbol);
-};
-
-// Get custom icon path
-const getTokenIcon = (symbol: string): string | null => {
-  if (symbol === 'VBC' || symbol === 'WVBC') {
-    return '/img/VBC.svg';
-  }
-  if (symbol === 'VBCG') {
-    return '/img/VBCG.png';
-  }
-  if (symbol === 'USDT') {
-    return '/img/USDT.svg';
-  }
-  return null;
-};
+// Default color for unknown tokens
+const DEFAULT_COLOR = 'from-gray-500 to-gray-600';
 
 // Token Icon Component
-function TokenIcon({ token, size = 28 }: { token: Token; size?: number }) {
-  const iconPath = getTokenIcon(token.symbol);
+function TokenIcon({
+  token,
+  size = 28,
+  getIcon,
+  getColor,
+}: {
+  token: Token;
+  size?: number;
+  getIcon: (symbol: string) => string | null;
+  getColor: (symbol: string) => string;
+}) {
+  const iconPath = getIcon(token.symbol);
+  const color = getColor(token.symbol) || DEFAULT_COLOR;
 
+  // Priority: 1. Config icon, 2. logoURI from database
   if (iconPath) {
     return (
       <div
-        className={`rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md overflow-hidden`}
+        className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center shadow-md overflow-hidden`}
         style={{ width: size, height: size }}
       >
         <Image
@@ -66,9 +48,28 @@ function TokenIcon({ token, size = 28 }: { token: Token; size?: number }) {
     );
   }
 
+  // Use logoURI from database (e.g., Launchpad tokens)
+  if (token.logoURI) {
+    return (
+      <div
+        className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center shadow-md overflow-hidden`}
+        style={{ width: size, height: size }}
+      >
+        <Image
+          src={token.logoURI}
+          alt={token.symbol}
+          width={size - 4}
+          height={size - 4}
+          className="object-contain"
+          unoptimized
+        />
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md`}
+      className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center shadow-md`}
       style={{ width: size, height: size }}
     >
       <span className="font-bold text-white" style={{ fontSize: size * 0.4 }}>
@@ -86,6 +87,7 @@ export function TokenSelector({
 }: TokenSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const { getTokenIcon, getTokenColor } = useTokenConfig();
 
   const handleSelect = useCallback(
     (token: Token) => {
@@ -132,7 +134,12 @@ export function TokenSelector({
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-4 py-3 bg-gray-700/80 hover:bg-gray-600/80 rounded-xl transition-all border border-gray-600 hover:border-gray-500 shadow-lg"
       >
-        <TokenIcon token={selectedToken} size={28} />
+        <TokenIcon
+          token={selectedToken}
+          size={28}
+          getIcon={getTokenIcon}
+          getColor={getTokenColor}
+        />
         <span className="font-semibold text-white">{selectedToken.symbol}</span>
         <svg
           className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
@@ -216,7 +223,12 @@ export function TokenSelector({
                         : ''
                     }`}
                   >
-                    <TokenIcon token={token} size={36} />
+                    <TokenIcon
+                      token={token}
+                      size={36}
+                      getIcon={getTokenIcon}
+                      getColor={getTokenColor}
+                    />
                     <div className="text-left flex-1">
                       <div className="font-semibold text-white">{token.symbol}</div>
                       <div className="text-xs text-gray-400">{token.name}</div>

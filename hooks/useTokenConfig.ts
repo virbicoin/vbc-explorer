@@ -32,20 +32,6 @@ interface UseTokenConfigResult {
 // Default fallback colors
 const DEFAULT_COLOR = 'from-gray-500 to-gray-600';
 
-// Well-known token colors
-const TOKEN_COLORS: Record<string, string> = {
-  USDT: 'from-green-400 to-emerald-500',
-  USDC: 'from-blue-400 to-blue-600',
-  ETH: 'from-blue-400 to-purple-500',
-  BTC: 'from-orange-400 to-orange-600',
-  DAI: 'from-yellow-400 to-yellow-600',
-};
-
-// Well-known token icons
-const TOKEN_ICONS: Record<string, string> = {
-  USDT: '/img/USDT.svg',
-};
-
 // Cache for client-side
 let clientCache: TokenConfigData | null = null;
 let clientCacheTimestamp = 0;
@@ -84,8 +70,8 @@ export function useTokenConfig(): UseTokenConfigResult {
           additionalTokens[tokenData.symbol] = {
             symbol: tokenData.symbol,
             name: tokenData.name,
-            icon: tokenData.icon || TOKEN_ICONS[tokenData.symbol] || null,
-            color: tokenData.color || TOKEN_COLORS[tokenData.symbol] || DEFAULT_COLOR,
+            icon: tokenData.icon || null,
+            color: tokenData.color || DEFAULT_COLOR,
             decimals: tokenData.decimals || 18,
           };
         }
@@ -138,8 +124,8 @@ export function useTokenConfig(): UseTokenConfigResult {
   const getTokenIcon = useCallback(
     (symbol: string): string | null => {
       if (!config) {
-        // Fallback to well-known icons
-        return TOKEN_ICONS[symbol] || null;
+        // Config not loaded yet
+        return null;
       }
 
       // Check if it's native token
@@ -158,8 +144,8 @@ export function useTokenConfig(): UseTokenConfigResult {
       if (config.additionalTokens[symbol]) {
         return config.additionalTokens[symbol].icon;
       }
-      // Fallback to well-known icons
-      return TOKEN_ICONS[symbol] || null;
+      // Not found in config
+      return null;
     },
     [config]
   );
@@ -168,7 +154,7 @@ export function useTokenConfig(): UseTokenConfigResult {
   const getTokenColor = useCallback(
     (symbol: string): string => {
       if (!config) {
-        return TOKEN_COLORS[symbol] || DEFAULT_COLOR;
+        return DEFAULT_COLOR;
       }
 
       if (symbol === config.native.symbol) {
@@ -184,7 +170,7 @@ export function useTokenConfig(): UseTokenConfigResult {
         return config.additionalTokens[symbol].color;
       }
 
-      return TOKEN_COLORS[symbol] || DEFAULT_COLOR;
+      return DEFAULT_COLOR;
     },
     [config]
   );
@@ -193,8 +179,7 @@ export function useTokenConfig(): UseTokenConfigResult {
   const getTokenDecimals = useCallback(
     (symbol: string): number => {
       if (!config) {
-        // Well-known decimals (USDT, USDC are 6 decimals)
-        if (symbol === 'USDT' || symbol === 'USDC') return 6;
+        // Default to 18 decimals
         return 18;
       }
 
@@ -211,8 +196,7 @@ export function useTokenConfig(): UseTokenConfigResult {
         return config.additionalTokens[symbol].decimals || 18;
       }
 
-      // Well-known decimals
-      if (symbol === 'USDT' || symbol === 'USDC') return 6;
+      // Default to 18 decimals
       return 18;
     },
     [config]

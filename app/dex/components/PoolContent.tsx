@@ -42,11 +42,13 @@ const DEFAULT_TOKEN_COLOR = 'from-gray-500 to-gray-600';
 // Token Icon Component for Pool - uses config for icons/colors
 function PoolTokenIcon({
   symbol,
+  logoURI,
   size = 20,
   getIcon,
   getColor,
 }: {
   symbol: string;
+  logoURI?: string;
   size?: number;
   getIcon: (symbol: string) => string | null;
   getColor: (symbol: string) => string;
@@ -54,6 +56,7 @@ function PoolTokenIcon({
   const iconPath = getIcon(symbol);
   const color = getColor(symbol);
 
+  // Priority: 1. Built-in icon (VBC, WVBC, VBCG, USDT), 2. logoURI from database
   if (iconPath) {
     return (
       <div
@@ -66,6 +69,25 @@ function PoolTokenIcon({
           width={size - 4}
           height={size - 4}
           className="object-contain"
+        />
+      </div>
+    );
+  }
+
+  // Use logoURI from token (e.g., Launchpad tokens)
+  if (logoURI) {
+    return (
+      <div
+        className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center border-2 border-gray-800 overflow-hidden`}
+        style={{ width: size, height: size }}
+      >
+        <Image
+          src={logoURI}
+          alt={symbol}
+          width={size - 4}
+          height={size - 4}
+          className="object-contain"
+          unoptimized
         />
       </div>
     );
@@ -1027,12 +1049,14 @@ export function PoolContent({
                   <div className="flex -space-x-1">
                     <PoolTokenIcon
                       symbol={tokenA.symbol}
+                      logoURI={tokenA.logoURI}
                       size={20}
                       getIcon={getTokenIcon}
                       getColor={getTokenColor}
                     />
                     <PoolTokenIcon
                       symbol={tokenB?.symbol || '?'}
+                      logoURI={tokenB?.logoURI}
                       size={20}
                       getIcon={getTokenIcon}
                       getColor={getTokenColor}
@@ -1231,12 +1255,14 @@ export function PoolContent({
                     <div className="flex -space-x-2">
                       <PoolTokenIcon
                         symbol={position.token0.symbol}
+                        logoURI={position.token0.logoURI}
                         size={32}
                         getIcon={getTokenIcon}
                         getColor={getTokenColor}
                       />
                       <PoolTokenIcon
                         symbol={position.token1.symbol}
+                        logoURI={position.token1.logoURI}
                         size={32}
                         getIcon={getTokenIcon}
                         getColor={getTokenColor}

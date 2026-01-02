@@ -2,6 +2,8 @@
 import { NextResponse } from 'next/server';
 import { fetchDexConfig, setMinimalConfig, getNativeToken } from '@/lib/dex/contract-service';
 import { loadConfig } from '@/lib/config';
+import dbConnect from '@/lib/db';
+import mongoose from 'mongoose';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -66,6 +68,54 @@ export async function GET(request: Request) {
       decimals: wrappedNativeConfig?.decimals || 18,
     };
 
+    // Fetch logo URIs from database for pool tokens
+    let poolsWithLogos = config.pools;
+    try {
+      await dbConnect();
+      const db = mongoose.connection.db;
+      if (db && config.pools.length > 0) {
+        // Collect all unique token addresses from pools
+        const tokenAddresses = new Set<string>();
+        for (const pool of config.pools) {
+          tokenAddresses.add(pool.token0.address.toLowerCase());
+          tokenAddresses.add(pool.token1.address.toLowerCase());
+        }
+
+        // Fetch contracts with image_url from database
+        const contracts = await db
+          .collection('contracts')
+          .find({
+            address: { $in: Array.from(tokenAddresses) },
+            image_url: { $exists: true, $ne: null },
+          })
+          .toArray();
+
+        // Build logo map
+        const logoMap = new Map<string, string>();
+        for (const contract of contracts) {
+          if (contract.image_url) {
+            logoMap.set(contract.address.toLowerCase(), contract.image_url);
+          }
+        }
+
+        // Update pool tokens with logo URIs
+        poolsWithLogos = config.pools.map((pool) => ({
+          ...pool,
+          token0: {
+            ...pool.token0,
+            logoURI: logoMap.get(pool.token0.address.toLowerCase()),
+          },
+          token1: {
+            ...pool.token1,
+            logoURI: logoMap.get(pool.token1.address.toLowerCase()),
+          },
+        }));
+      }
+    } catch (dbError) {
+      console.error('Error fetching logo URIs from database:', dbError);
+      // Continue without logos
+    }
+
     // Build response with all DEX info
     const responseData = {
       success: true,
@@ -85,7 +135,7 @@ export async function GET(request: Request) {
         farming: {
           rewardPerBlock: config.rewardPerBlock,
           rewardPerBlockFormatted: config.rewardPerBlockFormatted,
-          pools: config.pools,
+          pools: poolsWithLogos,
         },
         tokens: {
           native: nativeToken,

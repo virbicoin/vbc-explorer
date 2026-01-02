@@ -17,7 +17,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
 import { initializeCurrency, formatGasUnit } from '../../../lib/bigint-utils';
-import { getTokenIcon, getTokenColor } from '../../../lib/token-icons';
+import { useTokenConfig } from '../../../hooks/useTokenConfig';
 
 interface Config {
   miners: Record<string, string>;
@@ -104,6 +104,9 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
 
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
   const [currencySymbol, setCurrencySymbol] = useState<string>('');
+
+  // Get token icon/color functions from config
+  const { getTokenIcon, getTokenColor } = useTokenConfig();
 
   useEffect(() => {
     // 設定を取得
@@ -675,7 +678,7 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
                         {/* Token info */}
                         <div className="flex items-center gap-2">
                           {(() => {
-                            const iconUrl = getTokenIcon(transfer.symbol, transfer.tokenAddress);
+                            const iconUrl = getTokenIcon(transfer.symbol);
                             return (
                               <div
                                 className={`w-8 h-8 rounded-full bg-gradient-to-br ${getTokenColor(transfer.symbol)} flex items-center justify-center shadow-md overflow-hidden`}

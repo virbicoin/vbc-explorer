@@ -210,6 +210,7 @@ export async function GET() {
       );
 
       if (pairTokenAddresses.length > 0) {
+        // Get tokens from tokens collection
         const dbTokens = await db
           .collection('tokens')
           .find({
@@ -217,12 +218,25 @@ export async function GET() {
           })
           .toArray();
 
+        // Get contracts for image_url (from contracts collection)
+        const dbContracts = await db
+          .collection('contracts')
+          .find({
+            address: { $in: pairTokenAddresses },
+          })
+          .toArray();
+
+        // Create a map for quick lookup
+        const contractsMap = new Map(dbContracts.map((c) => [c.address.toLowerCase(), c]));
+
         for (const token of dbTokens) {
+          const contractInfo = contractsMap.get(token.address.toLowerCase());
           resultTokens.push({
             address: token.address as `0x${string}`,
             name: token.name || 'Unknown Token',
             symbol: token.symbol || '???',
             decimals: token.decimals || 18,
+            logoURI: contractInfo?.image_url || undefined,
             verified: token.verified || false,
             holders: token.holders || 0,
           });

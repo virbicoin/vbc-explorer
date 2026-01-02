@@ -138,6 +138,8 @@ export interface PoolData {
   apr: number;
   token0Symbol: string;
   token1Symbol: string;
+  token0LogoURI?: string;
+  token1LogoURI?: string;
 }
 
 // User pool data interface

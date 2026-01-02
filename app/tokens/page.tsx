@@ -9,7 +9,7 @@ import {
   initializeCurrencyConfig,
 } from '../../lib/client-config';
 import { initializeCurrency } from '../../lib/bigint-utils';
-import { getTokenIcon, getTokenColor } from '../../lib/token-icons';
+import { useTokenConfig } from '../../hooks/useTokenConfig';
 
 type Token = {
   symbol: string;
@@ -82,6 +82,9 @@ export default function TokensPage() {
 
   const [activeTab, setActiveTab] = useState<'all' | 'nft'>('all');
   const [nativeSupply, setNativeSupply] = useState<string>('0');
+
+  // Get token icon/color functions from config
+  const { getTokenIcon, getTokenColor } = useTokenConfig();
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -286,7 +289,8 @@ export default function TokensPage() {
                   </tr>
                 ) : (
                   filteredTokens.map((token, index) => {
-                    const iconUrl = getTokenIcon(token.symbol, token.address);
+                    // Use logoUrl from API if available, otherwise fall back to config
+                    const iconUrl = token.logoUrl || getTokenIcon(token.symbol);
                     return (
                       <tr
                         key={`${token.address}-${index}`}

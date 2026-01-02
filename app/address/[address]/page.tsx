@@ -20,7 +20,7 @@ import {
 import SummaryCard from '../../components/SummaryCard';
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
 import { initializeCurrency } from '../../../lib/bigint-utils';
-import { getTokenIcon, getTokenColor } from '../../../lib/token-icons';
+import { useTokenConfig } from '../../../hooks/useTokenConfig';
 
 interface Account {
   address: string;
@@ -140,6 +140,9 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
     compilerVersion?: string;
     optimization?: boolean;
   } | null>(null);
+
+  // Get token icon/color functions from config
+  const { getTokenIcon, getTokenColor } = useTokenConfig();
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -1504,7 +1507,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                         </thead>
                         <tbody className="divide-y divide-gray-600">
                           {tokenHoldings.map((token) => {
-                            const iconUrl = getTokenIcon(token.symbol, token.address);
+                            const iconUrl = getTokenIcon(token.symbol);
                             return (
                               <tr
                                 key={token.address}

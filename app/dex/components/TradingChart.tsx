@@ -12,8 +12,12 @@ import {
 } from 'lightweight-charts';
 import Image from 'next/image';
 import { useDexConfig } from '@/hooks/useDexConfig';
+import { useTokenConfig } from '@/hooks/useTokenConfig';
 
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+// Default color for unknown tokens
+const DEFAULT_COLOR = 'from-gray-500 to-gray-600';
 
 interface PriceData {
   time: Time;
@@ -28,6 +32,7 @@ interface TokenInfo {
   name: string;
   symbol: string;
   decimals: number;
+  logoURI?: string;
 }
 
 interface TradingPair {
@@ -43,42 +48,28 @@ interface TradingPair {
   liquidity: string;
 }
 
-// Token color mapping
-const getTokenColor = (symbol: string): string => {
-  const colors: Record<string, string> = {
-    VBC: 'from-green-500 to-emerald-600',
-    WVBC: 'from-green-500 to-emerald-600',
-    VBCG: 'from-yellow-500 to-amber-600',
-    USDT: 'from-emerald-500 to-teal-600',
-    USDC: 'from-blue-500 to-indigo-600',
-    ETH: 'from-purple-500 to-indigo-600',
-    WETH: 'from-purple-500 to-indigo-600',
-  };
-  return colors[symbol] || 'from-gray-500 to-gray-600';
-};
-
-// Get custom icon path
-const getTokenIcon = (symbol: string): string | null => {
-  if (symbol === 'VBC' || symbol === 'WVBC') {
-    return '/img/VBC.svg';
-  }
-  if (symbol === 'VBCG') {
-    return '/img/VBCG.png';
-  }
-  if (symbol === 'USDT') {
-    return '/img/USDT.svg';
-  }
-  return null;
-};
-
 // Token Icon Component
-function TokenIcon({ symbol, size = 24 }: { symbol: string; size?: number }) {
-  const iconPath = getTokenIcon(symbol);
+function TokenIcon({
+  symbol,
+  logoURI,
+  size = 24,
+  getIcon,
+  getColor,
+}: {
+  symbol: string;
+  logoURI?: string;
+  size?: number;
+  getIcon: (symbol: string) => string | null;
+  getColor: (symbol: string) => string;
+}) {
+  const iconPath = getIcon(symbol);
+  const color = getColor(symbol) || DEFAULT_COLOR;
 
+  // Priority: 1. Config icon, 2. logoURI from database
   if (iconPath) {
     return (
       <div
-        className={`rounded-full bg-gradient-to-br ${getTokenColor(symbol)} flex items-center justify-center shadow-md overflow-hidden`}
+        className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center shadow-md overflow-hidden`}
         style={{ width: size, height: size }}
       >
         <Image
@@ -92,9 +83,28 @@ function TokenIcon({ symbol, size = 24 }: { symbol: string; size?: number }) {
     );
   }
 
+  // Use logoURI from database (e.g., Launchpad tokens)
+  if (logoURI) {
+    return (
+      <div
+        className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center shadow-md overflow-hidden`}
+        style={{ width: size, height: size }}
+      >
+        <Image
+          src={logoURI}
+          alt={symbol}
+          width={size - 4}
+          height={size - 4}
+          className="object-contain"
+          unoptimized
+        />
+      </div>
+    );
+  }
+
   return (
     <div
-      className={`rounded-full bg-gradient-to-br ${getTokenColor(symbol)} flex items-center justify-center shadow-md`}
+      className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center shadow-md`}
       style={{ width: size, height: size }}
     >
       <span className="font-bold text-white" style={{ fontSize: size * 0.4 }}>
@@ -198,6 +208,9 @@ export function TradingChart({
   // Get wrapped native address from config
   const { config: dexConfig } = useDexConfig();
   const wrappedNativeAddress = dexConfig?.contracts?.wrappedNative?.toLowerCase() || '';
+
+  // Get token icons/colors from config
+  const { getTokenIcon, getTokenColor } = useTokenConfig();
 
   const [pairs, setPairs] = useState<TradingPair[]>([]);
   const [selectedPair, setSelectedPair] = useState<TradingPair | null>(null);
@@ -513,8 +526,20 @@ export function TradingChart({
               className="flex items-center gap-2 px-4 py-2 bg-gray-800 rounded-xl hover:bg-gray-700 transition-colors"
             >
               <div className="flex -space-x-2">
-                <TokenIcon symbol={selectedPair.baseToken.symbol} size={24} />
-                <TokenIcon symbol={selectedPair.quoteToken.symbol} size={24} />
+                <TokenIcon
+                  symbol={selectedPair.baseToken.symbol}
+                  logoURI={selectedPair.baseToken.logoURI}
+                  size={24}
+                  getIcon={getTokenIcon}
+                  getColor={getTokenColor}
+                />
+                <TokenIcon
+                  symbol={selectedPair.quoteToken.symbol}
+                  logoURI={selectedPair.quoteToken.logoURI}
+                  size={24}
+                  getIcon={getTokenIcon}
+                  getColor={getTokenColor}
+                />
               </div>
               <span className="font-bold text-white">{selectedPair.name}</span>
               <svg
