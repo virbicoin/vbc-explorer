@@ -4,6 +4,7 @@ import { useEffect, useState, use, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useDexConfig } from '@/hooks/useDexConfig';
+import { useTokenConfig } from '@/hooks/useTokenConfig';
 import {
   ArrowsRightLeftIcon,
   PlusCircleIcon,
@@ -15,25 +16,28 @@ import {
 
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-// Token icon mapping
-const TOKEN_ICONS: Record<string, { icon: string; color: string }> = {
-  VBC: { icon: '/img/VBC.svg', color: 'from-green-400 to-teal-500' },
-  WVBC: { icon: '/img/VBC.svg', color: 'from-green-400 to-teal-500' },
-  USDT: { icon: '/img/USDT.svg', color: 'from-green-400 to-emerald-500' },
-  VBCG: { icon: '/img/VBCG.png', color: 'from-yellow-400 to-amber-500' },
-};
+function TokenIcon({
+  symbol,
+  size = 32,
+  getIcon,
+  getColor,
+}: {
+  symbol: string;
+  size?: number;
+  getIcon: (symbol: string) => string | null;
+  getColor: (symbol: string) => string;
+}) {
+  const iconPath = getIcon(symbol);
+  const color = getColor(symbol);
 
-function TokenIcon({ symbol, size = 32 }: { symbol: string; size?: number }) {
-  const tokenInfo = TOKEN_ICONS[symbol];
-
-  if (tokenInfo?.icon) {
+  if (iconPath) {
     return (
       <div
         className="rounded-full overflow-hidden border-2 border-gray-700 bg-gray-900 flex items-center justify-center"
         style={{ width: size, height: size }}
       >
         <Image
-          src={tokenInfo.icon}
+          src={iconPath}
           alt={symbol}
           width={size - 4}
           height={size - 4}
@@ -46,7 +50,7 @@ function TokenIcon({ symbol, size = 32 }: { symbol: string; size?: number }) {
   // Fallback to gradient circle with initials
   return (
     <div
-      className={`rounded-full bg-gradient-to-br ${tokenInfo?.color || 'from-gray-400 to-gray-600'} flex items-center justify-center text-white text-xs font-bold border-2 border-gray-700`}
+      className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center text-white text-xs font-bold border-2 border-gray-700`}
       style={{ width: size, height: size }}
     >
       {symbol.slice(0, 2)}
@@ -90,6 +94,9 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
   const [error, setError] = useState<string | null>(null);
   const [nativePrice, setNativePrice] = useState<number | null>(null);
   const [nativeSymbol, setNativeSymbol] = useState<string>('VBC');
+
+  // Get token icon/color functions from config
+  const { getTokenIcon, getTokenColor } = useTokenConfig();
 
   // Get wrapped native token address from config
   const { config: dexConfig } = useDexConfig();
@@ -190,8 +197,8 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
             {/* Pool Info */}
             <div className="flex items-center gap-4">
               <div className="flex -space-x-3">
-                <TokenIcon symbol={pool.token0.symbol} size={48} />
-                <TokenIcon symbol={pool.token1.symbol} size={48} />
+                <TokenIcon symbol={pool.token0.symbol} size={48} getIcon={getTokenIcon} getColor={getTokenColor} />
+                <TokenIcon symbol={pool.token1.symbol} size={48} getIcon={getTokenIcon} getColor={getTokenColor} />
               </div>
               <div>
                 <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
@@ -336,7 +343,7 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
           <h2 className="text-lg font-semibold text-white mb-4">Price</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="flex items-center gap-4">
-              <TokenIcon symbol={pool.token0.symbol} size={40} />
+              <TokenIcon symbol={pool.token0.symbol} size={40} getIcon={getTokenIcon} getColor={getTokenColor} />
               <div>
                 <div className="text-gray-400 text-sm">1 {pool.token0.symbol} =</div>
                 <div className="text-xl font-bold text-white">
@@ -345,7 +352,7 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <TokenIcon symbol={pool.token1.symbol} size={40} />
+              <TokenIcon symbol={pool.token1.symbol} size={40} getIcon={getTokenIcon} getColor={getTokenColor} />
               <div>
                 <div className="text-gray-400 text-sm">1 {pool.token1.symbol} =</div>
                 <div className="text-xl font-bold text-white">
@@ -361,7 +368,7 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
           {/* Token 0 */}
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
             <div className="flex items-center gap-3 mb-6">
-              <TokenIcon symbol={pool.token0.symbol} size={48} />
+              <TokenIcon symbol={pool.token0.symbol} size={48} getIcon={getTokenIcon} getColor={getTokenColor} />
               <div>
                 <div className="font-semibold text-white text-lg">{pool.token0.symbol}</div>
                 <div className="text-sm text-gray-500">{pool.token0.name}</div>
@@ -402,7 +409,7 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
           {/* Token 1 */}
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
             <div className="flex items-center gap-3 mb-6">
-              <TokenIcon symbol={pool.token1.symbol} size={48} />
+              <TokenIcon symbol={pool.token1.symbol} size={48} getIcon={getTokenIcon} getColor={getTokenColor} />
               <div>
                 <div className="font-semibold text-white text-lg">{pool.token1.symbol}</div>
                 <div className="text-sm text-gray-500">{pool.token1.name}</div>

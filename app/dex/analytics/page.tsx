@@ -13,6 +13,7 @@ import {
   DocumentTextIcon,
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
+import { useTokenConfig } from '@/hooks/useTokenConfig';
 
 interface Pool {
   address: string;
@@ -35,25 +36,19 @@ interface DexStats {
   tvlSource: string;
 }
 
-// Token icon images
-const TOKEN_ICONS: Record<string, string> = {
-  VBC: '/img/VBC.svg',
-  WVBC: '/img/VBC.svg',
-  USDT: '/img/USDT.svg',
-  VBCG: '/img/VBCG.png',
-};
-
 // Token icon component
 function TokenIcon({
   symbol,
   size = 32,
   className = '',
+  getIcon,
 }: {
   symbol: string;
   size?: number;
   className?: string;
+  getIcon: (symbol: string) => string | null;
 }) {
-  const iconPath = TOKEN_ICONS[symbol];
+  const iconPath = getIcon(symbol);
 
   if (iconPath) {
     return (
@@ -81,6 +76,9 @@ function TokenIcon({
 export default function AnalyticsPage() {
   const [stats, setStats] = useState<DexStats | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Get token icon function from config
+  const { getTokenIcon } = useTokenConfig();
 
   useEffect(() => {
     async function fetchStats() {
@@ -340,8 +338,8 @@ export default function AnalyticsPage() {
                           className="flex items-center gap-3 group"
                         >
                           <div className="flex -space-x-2">
-                            <TokenIcon symbol={token0 || ''} size={32} />
-                            <TokenIcon symbol={token1 || ''} size={32} />
+                            <TokenIcon symbol={token0 || ''} size={32} getIcon={getTokenIcon} />
+                            <TokenIcon symbol={token1 || ''} size={32} getIcon={getTokenIcon} />
                           </div>
                           <span className="font-semibold text-white group-hover:text-green-400 transition-colors">
                             {pool.name}

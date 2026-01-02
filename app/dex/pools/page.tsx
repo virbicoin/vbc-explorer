@@ -4,28 +4,32 @@ import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useDexConfig } from '@/hooks/useDexConfig';
+import { useTokenConfig } from '@/hooks/useTokenConfig';
 
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-// Token icon mapping
-const TOKEN_ICONS: Record<string, { icon: string; color: string }> = {
-  VBC: { icon: '/img/VBC.svg', color: 'from-green-400 to-teal-500' },
-  WVBC: { icon: '/img/VBC.svg', color: 'from-green-400 to-teal-500' },
-  USDT: { icon: '/img/USDT.svg', color: 'from-green-400 to-emerald-500' },
-  VBCG: { icon: '/img/VBCG.png', color: 'from-yellow-400 to-amber-500' },
-};
+function TokenIcon({
+  symbol,
+  size = 32,
+  getIcon,
+  getColor,
+}: {
+  symbol: string;
+  size?: number;
+  getIcon: (symbol: string) => string | null;
+  getColor: (symbol: string) => string;
+}) {
+  const iconPath = getIcon(symbol);
+  const color = getColor(symbol);
 
-function TokenIcon({ symbol, size = 32 }: { symbol: string; size?: number }) {
-  const tokenInfo = TOKEN_ICONS[symbol];
-
-  if (tokenInfo?.icon) {
+  if (iconPath) {
     return (
       <div
         className="rounded-full overflow-hidden border-2 border-gray-700 bg-gray-900 flex items-center justify-center"
         style={{ width: size, height: size }}
       >
         <Image
-          src={tokenInfo.icon}
+          src={iconPath}
           alt={symbol}
           width={size - 4}
           height={size - 4}
@@ -38,7 +42,7 @@ function TokenIcon({ symbol, size = 32 }: { symbol: string; size?: number }) {
   // Fallback to gradient circle with initials
   return (
     <div
-      className={`rounded-full bg-gradient-to-br ${tokenInfo?.color || 'from-gray-400 to-gray-600'} flex items-center justify-center text-white text-xs font-bold border-2 border-gray-700`}
+      className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center text-white text-xs font-bold border-2 border-gray-700`}
       style={{ width: size, height: size }}
     >
       {symbol.slice(0, 2)}
@@ -75,6 +79,9 @@ export default function PoolsPage() {
   const [externalTVL, setExternalTVL] = useState<number | null>(null);
   const [nativePrice, setNativePrice] = useState<number | null>(null);
   const [nativeSymbol, setNativeSymbol] = useState<string>('');
+
+  // Get token icon/color functions from config
+  const { getTokenIcon, getTokenColor } = useTokenConfig();
 
   // Get wrapped native token address from config
   const { config: dexConfig } = useDexConfig();
@@ -304,8 +311,8 @@ export default function PoolsPage() {
                         className="flex items-center gap-3 group"
                       >
                         <div className="flex -space-x-2">
-                          <TokenIcon symbol={pool.baseToken.symbol} size={36} />
-                          <TokenIcon symbol={pool.quoteToken.symbol} size={36} />
+                          <TokenIcon symbol={pool.baseToken.symbol} size={36} getIcon={getTokenIcon} getColor={getTokenColor} />
+                          <TokenIcon symbol={pool.quoteToken.symbol} size={36} getIcon={getTokenIcon} getColor={getTokenColor} />
                         </div>
                         <div>
                           <div className="font-semibold text-white group-hover:text-green-400 transition-colors">
