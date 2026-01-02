@@ -230,7 +230,8 @@ export async function GET(request: NextRequest) {
   const chainStats = await getChainStats();
 
   // Get tokenIcons from config for centralized icon lookup
-  const tokenIcons = (config as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
+  const tokenIcons =
+    (config as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
   const getIconUrl = (symbol: string): string | undefined => {
     const iconCfg = tokenIcons[symbol];
     return iconCfg?.icon ? `https://explorer.digitalregion.jp${iconCfg.icon}` : undefined;
@@ -384,7 +385,7 @@ export async function GET(request: NextRequest) {
 
       // Get icon from centralized tokenIcons by symbol
       const symbolIconUrl = getIconUrl(tokenSymbol);
-      
+
       // Build map of DEX token addresses to icons (for address-based lookup)
       const dexTokenIcons = new Map<string, string>();
       if (config.dex?.wrappedNative?.address && config.dex.wrappedNative.symbol) {

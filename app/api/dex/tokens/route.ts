@@ -198,7 +198,9 @@ export async function GET() {
     }
 
     // Get tokenIcons from config for icon lookup
-    const tokenIcons = (appConfig as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
+    const tokenIcons =
+      (appConfig as { tokenIcons?: Record<string, { icon?: string; color?: string }> })
+        .tokenIcons || {};
     const nativeSymbol = appConfig.currency?.symbol || 'ETH';
     const nativeIconConfig = tokenIcons[nativeSymbol] || {};
 
@@ -276,15 +278,15 @@ export async function GET() {
         // If TokenFactoryV2 is configured, try to get logoUrl for launchpad tokens
         if (factoryV2Address && factoryV2Address !== '0x0000000000000000000000000000000000000000') {
           const factoryV2 = new web3.eth.Contract(TOKEN_FACTORY_V2_ABI, factoryV2Address);
-          
+
           // Check launchpad tokens (source === 'launchpad') for logoUrl
           const launchpadTokens = dbTokens.filter((t) => t.source === 'launchpad');
-          
+
           for (const token of launchpadTokens) {
             try {
               const isFactoryToken = await factoryV2.methods.isFactoryToken(token.address).call();
               if (isFactoryToken) {
-                const tokenInfo = await factoryV2.methods.tokenInfo(token.address).call() as {
+                const tokenInfo = (await factoryV2.methods.tokenInfo(token.address).call()) as {
                   logoUrl: string;
                 };
                 if (tokenInfo.logoUrl) {
@@ -298,27 +300,31 @@ export async function GET() {
         }
 
         // Build a map of configured token icons from tokenIcons in config.json
-        const tokenIcons = (appConfig as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
+        const tokenIcons =
+          (appConfig as { tokenIcons?: Record<string, { icon?: string; color?: string }> })
+            .tokenIcons || {};
         const configuredTokenIcons = new Map<string, { icon?: string; color?: string }>();
-        
+
         // Helper to get icon config by symbol
         const getIconBySymbol = (symbol: string) => tokenIcons[symbol] || {};
-        
+
         // Add wrapped native icon
         if (appConfig.dex?.wrappedNative?.address && appConfig.dex.wrappedNative.symbol) {
           const iconCfg = getIconBySymbol(appConfig.dex.wrappedNative.symbol);
           configuredTokenIcons.set(appConfig.dex.wrappedNative.address.toLowerCase(), iconCfg);
         }
-        
+
         // Add reward token icon
         if (appConfig.dex?.rewardToken?.address && appConfig.dex.rewardToken.symbol) {
           const iconCfg = getIconBySymbol(appConfig.dex.rewardToken.symbol);
           configuredTokenIcons.set(appConfig.dex.rewardToken.address.toLowerCase(), iconCfg);
         }
-        
+
         // Add additional configured tokens
         if (appConfig.dex?.tokens) {
-          for (const [, tokenData] of Object.entries(appConfig.dex.tokens as Record<string, { address: string; symbol?: string }>)) {
+          for (const [, tokenData] of Object.entries(
+            appConfig.dex.tokens as Record<string, { address: string; symbol?: string }>
+          )) {
             if (tokenData.address && tokenData.symbol) {
               const iconCfg = getIconBySymbol(tokenData.symbol);
               configuredTokenIcons.set(tokenData.address.toLowerCase(), iconCfg);
@@ -332,7 +338,12 @@ export async function GET() {
           // Also check tokenIcons directly by symbol
           const symbolIconCfg = getIconBySymbol(token.symbol);
           // Priority: 1. contracts collection image_url, 2. config.json icon by address, 3. config.json icon by symbol, 4. TokenFactoryV2 logoUrl
-          const logoURI = contractInfo?.image_url || configuredIcon?.icon || symbolIconCfg.icon || logoUrlCache.get(token.address.toLowerCase()) || undefined;
+          const logoURI =
+            contractInfo?.image_url ||
+            configuredIcon?.icon ||
+            symbolIconCfg.icon ||
+            logoUrlCache.get(token.address.toLowerCase()) ||
+            undefined;
           resultTokens.push({
             address: token.address as `0x${string}`,
             name: token.name || 'Unknown Token',

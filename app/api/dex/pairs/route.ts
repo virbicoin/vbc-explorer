@@ -333,50 +333,76 @@ export async function GET() {
       }
     }
 
-    // Fetch logo URIs from database for all tokens
+    // Get tokenIcons from config.json for centralized icon lookup (always available)
+    const tokenIcons = (appConfig as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
+    const getIconBySymbol = (symbol: string): string | undefined => {
+      const cfg = tokenIcons[symbol];
+      return cfg?.icon || undefined;
+    };
+
+    // First pass: Set icons from config (always available, no DB required)
+    for (const pair of pairs) {
+      const baseConfigIcon = getIconBySymbol(pair.baseToken.symbol);
+      const quoteConfigIcon = getIconBySymbol(pair.quoteToken.symbol);
+      if (baseConfigIcon) {
+        pair.baseToken.logoURI = baseConfigIcon;
+      }
+      if (quoteConfigIcon) {
+        pair.quoteToken.logoURI = quoteConfigIcon;
+      }
+    }
+
+    // Second pass: Fetch logo URIs from database for tokens not in config
     try {
       await dbConnect();
       const db = mongoose.connection.db;
+      
       if (db) {
-        // Collect all unique token addresses
+        // Collect token addresses that don't have icons yet
         const tokenAddresses = new Set<string>();
         for (const pair of pairs) {
-          tokenAddresses.add(pair.baseToken.address.toLowerCase());
-          tokenAddresses.add(pair.quoteToken.address.toLowerCase());
-        }
-
-        // Fetch contracts with image_url from database
-        const contracts = await db
-          .collection('contracts')
-          .find({
-            address: { $in: Array.from(tokenAddresses) },
-            image_url: { $exists: true, $ne: null },
-          })
-          .toArray();
-
-        // Build logo cache
-        const logoMap = new Map<string, string>();
-        for (const contract of contracts) {
-          if (contract.image_url) {
-            logoMap.set(contract.address.toLowerCase(), contract.image_url);
+          if (!pair.baseToken.logoURI) {
+            tokenAddresses.add(pair.baseToken.address.toLowerCase());
+          }
+          if (!pair.quoteToken.logoURI) {
+            tokenAddresses.add(pair.quoteToken.address.toLowerCase());
           }
         }
 
-        // Update token info with logo URIs
-        for (const pair of pairs) {
-          const baseLogoURI = logoMap.get(pair.baseToken.address.toLowerCase());
-          const quoteLogoURI = logoMap.get(pair.quoteToken.address.toLowerCase());
-          if (baseLogoURI) {
-            pair.baseToken.logoURI = baseLogoURI;
+        if (tokenAddresses.size > 0) {
+          // Fetch contracts with image_url from database
+          const contracts = await db
+            .collection('contracts')
+            .find({
+              address: { $in: Array.from(tokenAddresses) },
+              image_url: { $exists: true, $ne: null },
+            })
+            .toArray();
+
+          // Build logo cache from database
+          const logoMap = new Map<string, string>();
+          for (const contract of contracts) {
+            if (contract.image_url) {
+              logoMap.set(contract.address.toLowerCase(), contract.image_url);
+            }
           }
-          if (quoteLogoURI) {
-            pair.quoteToken.logoURI = quoteLogoURI;
+
+          // Update token info with database logo URIs
+          for (const pair of pairs) {
+            if (!pair.baseToken.logoURI) {
+              const baseDbIcon = logoMap.get(pair.baseToken.address.toLowerCase());
+              if (baseDbIcon) pair.baseToken.logoURI = baseDbIcon;
+            }
+            if (!pair.quoteToken.logoURI) {
+              const quoteDbIcon = logoMap.get(pair.quoteToken.address.toLowerCase());
+              if (quoteDbIcon) pair.quoteToken.logoURI = quoteDbIcon;
+            }
           }
         }
       }
     } catch (dbError) {
       console.error('Error fetching logo URIs from database:', dbError);
-      // Continue without logos
+      // Continue with config icons only
     }
 
     return NextResponse.json({

@@ -13,10 +13,10 @@ export async function GET() {
 
     // Get tokenIcons from config (centralized icon/color definitions)
     const tokenIcons = (config as { tokenIcons?: Record<string, TokenIconEntry> }).tokenIcons || {};
-    
+
     // Helper to get icon/color from tokenIcons by symbol
     const getIconConfig = (symbol: string): TokenIconEntry => tokenIcons[symbol] || {};
-    
+
     // Get native token symbol
     const nativeSymbol = config.currency?.symbol || 'ETH';
     const wrappedSymbol = config.dex?.wrappedNative?.symbol || `W${nativeSymbol}`;
@@ -57,26 +57,35 @@ export async function GET() {
             factory: config.dex.factory || '',
             router: config.dex.router || '',
             masterChef: config.dex.masterChef || '',
-            wrappedNative: config.dex.wrappedNative ? {
-              ...config.dex.wrappedNative,
-              icon: getIconConfig(wrappedSymbol).icon || null,
-              color: getIconConfig(wrappedSymbol).color || 'from-gray-500 to-gray-600',
-            } : null,
-            rewardToken: config.dex.rewardToken ? {
-              ...config.dex.rewardToken,
-              icon: rewardSymbol ? getIconConfig(rewardSymbol).icon || null : null,
-              color: rewardSymbol ? getIconConfig(rewardSymbol).color || 'from-gray-500 to-gray-600' : 'from-gray-500 to-gray-600',
-            } : null,
+            wrappedNative: config.dex.wrappedNative
+              ? {
+                  ...config.dex.wrappedNative,
+                  icon: getIconConfig(wrappedSymbol).icon || null,
+                  color: getIconConfig(wrappedSymbol).color || 'from-gray-500 to-gray-600',
+                }
+              : null,
+            rewardToken: config.dex.rewardToken
+              ? {
+                  ...config.dex.rewardToken,
+                  icon: rewardSymbol ? getIconConfig(rewardSymbol).icon || null : null,
+                  color: rewardSymbol
+                    ? getIconConfig(rewardSymbol).color || 'from-gray-500 to-gray-600'
+                    : 'from-gray-500 to-gray-600',
+                }
+              : null,
             // Additional token definitions with icons from tokenIcons
             tokens: Object.fromEntries(
               Object.entries(config.dex.tokens || {}).map(([key, token]) => {
                 const t = token as unknown as { symbol?: string; [key: string]: unknown };
                 const sym = t.symbol || '';
-                return [key, {
-                  ...t,
-                  icon: getIconConfig(sym).icon || null,
-                  color: getIconConfig(sym).color || 'from-gray-500 to-gray-600',
-                }];
+                return [
+                  key,
+                  {
+                    ...t,
+                    icon: getIconConfig(sym).icon || null,
+                    color: getIconConfig(sym).color || 'from-gray-500 to-gray-600',
+                  },
+                ];
               })
             ),
             // LP token addresses

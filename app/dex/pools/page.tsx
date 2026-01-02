@@ -311,8 +311,18 @@ export default function PoolsPage() {
                         className="flex items-center gap-3 group"
                       >
                         <div className="flex -space-x-2">
-                          <TokenIcon symbol={pool.baseToken.symbol} size={36} getIcon={getTokenIcon} getColor={getTokenColor} />
-                          <TokenIcon symbol={pool.quoteToken.symbol} size={36} getIcon={getTokenIcon} getColor={getTokenColor} />
+                          <TokenIcon
+                            symbol={pool.baseToken.symbol}
+                            size={36}
+                            getIcon={getTokenIcon}
+                            getColor={getTokenColor}
+                          />
+                          <TokenIcon
+                            symbol={pool.quoteToken.symbol}
+                            size={36}
+                            getIcon={getTokenIcon}
+                            getColor={getTokenColor}
+                          />
                         </div>
                         <div>
                           <div className="font-semibold text-white group-hover:text-green-400 transition-colors">

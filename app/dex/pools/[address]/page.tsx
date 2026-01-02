@@ -197,8 +197,18 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
             {/* Pool Info */}
             <div className="flex items-center gap-4">
               <div className="flex -space-x-3">
-                <TokenIcon symbol={pool.token0.symbol} size={48} getIcon={getTokenIcon} getColor={getTokenColor} />
-                <TokenIcon symbol={pool.token1.symbol} size={48} getIcon={getTokenIcon} getColor={getTokenColor} />
+                <TokenIcon
+                  symbol={pool.token0.symbol}
+                  size={48}
+                  getIcon={getTokenIcon}
+                  getColor={getTokenColor}
+                />
+                <TokenIcon
+                  symbol={pool.token1.symbol}
+                  size={48}
+                  getIcon={getTokenIcon}
+                  getColor={getTokenColor}
+                />
               </div>
               <div>
                 <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
@@ -343,7 +353,12 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
           <h2 className="text-lg font-semibold text-white mb-4">Price</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="flex items-center gap-4">
-              <TokenIcon symbol={pool.token0.symbol} size={40} getIcon={getTokenIcon} getColor={getTokenColor} />
+              <TokenIcon
+                symbol={pool.token0.symbol}
+                size={40}
+                getIcon={getTokenIcon}
+                getColor={getTokenColor}
+              />
               <div>
                 <div className="text-gray-400 text-sm">1 {pool.token0.symbol} =</div>
                 <div className="text-xl font-bold text-white">
@@ -352,7 +367,12 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <TokenIcon symbol={pool.token1.symbol} size={40} getIcon={getTokenIcon} getColor={getTokenColor} />
+              <TokenIcon
+                symbol={pool.token1.symbol}
+                size={40}
+                getIcon={getTokenIcon}
+                getColor={getTokenColor}
+              />
               <div>
                 <div className="text-gray-400 text-sm">1 {pool.token1.symbol} =</div>
                 <div className="text-xl font-bold text-white">
@@ -368,7 +388,12 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
           {/* Token 0 */}
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
             <div className="flex items-center gap-3 mb-6">
-              <TokenIcon symbol={pool.token0.symbol} size={48} getIcon={getTokenIcon} getColor={getTokenColor} />
+              <TokenIcon
+                symbol={pool.token0.symbol}
+                size={48}
+                getIcon={getTokenIcon}
+                getColor={getTokenColor}
+              />
               <div>
                 <div className="font-semibold text-white text-lg">{pool.token0.symbol}</div>
                 <div className="text-sm text-gray-500">{pool.token0.name}</div>
@@ -409,7 +434,12 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
           {/* Token 1 */}
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
             <div className="flex items-center gap-3 mb-6">
-              <TokenIcon symbol={pool.token1.symbol} size={48} getIcon={getTokenIcon} getColor={getTokenColor} />
+              <TokenIcon
+                symbol={pool.token1.symbol}
+                size={48}
+                getIcon={getTokenIcon}
+                getColor={getTokenColor}
+              />
               <div>
                 <div className="font-semibold text-white text-lg">{pool.token1.symbol}</div>
                 <div className="text-sm text-gray-500">{pool.token1.name}</div>

@@ -261,11 +261,11 @@ export async function getLPAddresses(): Promise<string[]> {
 
   const config = loadConfig();
   const addresses = new Set<string>();
-  
+
   // Add configured LP tokens and farm pools as base
   const lpTokens = (config.dex?.lpTokens || {}) as Record<string, { address: string }>;
   const farmPools = (config.dex?.farmPools || []) as Array<{ lpToken: string }>;
-  
+
   Object.values(lpTokens).forEach((lp) => addresses.add(lp.address.toLowerCase()));
   farmPools.forEach((pool) => addresses.add(pool.lpToken.toLowerCase()));
 
@@ -279,13 +279,13 @@ export async function getLPAddresses(): Promise<string[]> {
         ['function factory() view returns (address)'],
         provider
       );
-      
+
       const factoryAddress = await routerContract.factory();
       const factoryContract = new ethers.Contract(factoryAddress, FACTORY_ABI, provider);
-      
+
       const pairsLength = await factoryContract.allPairsLength();
       const numPairs = Number(pairsLength);
-      
+
       // Fetch all pairs from factory
       for (let i = 0; i < numPairs; i++) {
         try {
@@ -295,8 +295,10 @@ export async function getLPAddresses(): Promise<string[]> {
           console.error(`Error fetching pair ${i} from factory:`, e);
         }
       }
-      
-      console.log(`[DEX Cache] Found ${numPairs} pairs from factory, total unique: ${addresses.size}`);
+
+      console.log(
+        `[DEX Cache] Found ${numPairs} pairs from factory, total unique: ${addresses.size}`
+      );
     } catch (e) {
       console.error('[DEX Cache] Error fetching pairs from factory:', e);
     }
