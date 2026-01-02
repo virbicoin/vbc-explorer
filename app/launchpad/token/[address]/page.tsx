@@ -91,7 +91,6 @@ function TokenDetailContent() {
     }
   }, [tokenAddress]);
 
-  const isV2 = config?.useV2 ?? true;
   const ITEMS_PER_PAGE = 20;
 
   // Fetch basic token info from factory (creator, name, symbol, decimals, totalSupply, createdAt)
@@ -104,7 +103,7 @@ function TokenDetailContent() {
     abi: TokenFactoryV2ABI,
     functionName: 'getTokenDetails',
     args: [tokenAddress as Address],
-    query: { enabled: !!activeFactoryAddress && !!tokenAddress && isV2 },
+    query: { enabled: !!activeFactoryAddress && !!tokenAddress },
   });
 
   // Fetch mutable metadata directly from token contract (logoUrl, description, website)
@@ -112,35 +111,35 @@ function TokenDetailContent() {
     address: tokenAddress as Address,
     abi: LaunchpadTokenV2ABI,
     functionName: 'logoUrl',
-    query: { enabled: !!tokenAddress && isV2 },
+    query: { enabled: !!tokenAddress },
   });
 
   const { data: tokenDescription, refetch: refetchDescription } = useReadContract({
     address: tokenAddress as Address,
     abi: LaunchpadTokenV2ABI,
     functionName: 'description',
-    query: { enabled: !!tokenAddress && isV2 },
+    query: { enabled: !!tokenAddress },
   });
 
   const { data: tokenWebsite, refetch: refetchWebsite } = useReadContract({
     address: tokenAddress as Address,
     abi: LaunchpadTokenV2ABI,
     functionName: 'website',
-    query: { enabled: !!tokenAddress && isV2 },
+    query: { enabled: !!tokenAddress },
   });
 
   const { data: isPaused, refetch: refetchPaused } = useReadContract({
     address: tokenAddress as Address,
     abi: LaunchpadTokenV2ABI,
     functionName: 'paused',
-    query: { enabled: !!tokenAddress && isV2 },
+    query: { enabled: !!tokenAddress },
   });
 
   const { data: owner } = useReadContract({
     address: tokenAddress as Address,
     abi: LaunchpadTokenV2ABI,
     functionName: 'owner',
-    query: { enabled: !!tokenAddress && isV2 },
+    query: { enabled: !!tokenAddress },
   });
 
   const { data: userBalance } = useReadContract({
@@ -395,22 +394,13 @@ function TokenDetailContent() {
         );
         return;
       }
-      if (isV2) {
-        writeAction({
-          address: tokenAddress as Address,
-          abi: LaunchpadTokenV2ABI,
-          functionName: 'burn',
-          args: [amountToBurn],
-        });
-      } else {
-        const DEAD_ADDRESS = '0x000000000000000000000000000000000000dEaD' as Address;
-        writeAction({
-          address: tokenAddress as Address,
-          abi: ERC20ABI,
-          functionName: 'transfer',
-          args: [DEAD_ADDRESS, amountToBurn],
-        });
-      }
+      // Use native burn function
+      writeAction({
+        address: tokenAddress as Address,
+        abi: LaunchpadTokenV2ABI,
+        functionName: 'burn',
+        args: [amountToBurn],
+      });
     } catch {
       setActionError(`Invalid amount format: ${actionAmount}`);
     }

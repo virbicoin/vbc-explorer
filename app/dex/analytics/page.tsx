@@ -14,6 +14,7 @@ import {
   InformationCircleIcon,
 } from '@heroicons/react/24/outline';
 import { useTokenConfig } from '@/hooks/useTokenConfig';
+import { isValidImageUrl } from '@/lib/security/validation';
 
 interface Pool {
   address: string;
@@ -52,9 +53,10 @@ function TokenIcon({
   className?: string;
   getIcon: (symbol: string) => string | null;
 }) {
-  // First priority: logoURI from API (for Launchpad tokens like VBCAT)
+  // First priority: logoURI from API (for Launchpad tokens like VBCAT) - validate for security
   // Second priority: icon from config (for native/fixed tokens)
-  const iconPath = logoURI || getIcon(symbol);
+  const validatedLogoURI = logoURI && isValidImageUrl(logoURI) ? logoURI : null;
+  const iconPath = validatedLogoURI || getIcon(symbol);
 
   if (iconPath) {
     return (
@@ -361,8 +363,18 @@ export default function AnalyticsPage() {
                           className="flex items-center gap-3 group"
                         >
                           <div className="flex -space-x-2">
-                            <TokenIcon symbol={token0 || ''} logoURI={stats.tokenLogos[token0 || '']} size={32} getIcon={getTokenIcon} />
-                            <TokenIcon symbol={token1 || ''} logoURI={stats.tokenLogos[token1 || '']} size={32} getIcon={getTokenIcon} />
+                            <TokenIcon
+                              symbol={token0 || ''}
+                              logoURI={stats.tokenLogos[token0 || '']}
+                              size={32}
+                              getIcon={getTokenIcon}
+                            />
+                            <TokenIcon
+                              symbol={token1 || ''}
+                              logoURI={stats.tokenLogos[token1 || '']}
+                              size={32}
+                              getIcon={getTokenIcon}
+                            />
                           </div>
                           <span className="font-semibold text-white group-hover:text-green-400 transition-colors">
                             {pool.name}

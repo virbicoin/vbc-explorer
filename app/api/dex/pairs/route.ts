@@ -362,7 +362,9 @@ export async function GET() {
     }
 
     // Get tokenIcons from config.json for centralized icon lookup (always available)
-    const tokenIcons = (appConfig as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
+    const tokenIcons =
+      (appConfig as { tokenIcons?: Record<string, { icon?: string; color?: string }> })
+        .tokenIcons || {};
     const getIconBySymbol = (symbol: string): string | undefined => {
       const cfg = tokenIcons[symbol];
       return cfg?.icon || undefined;
@@ -381,18 +383,26 @@ export async function GET() {
     }
 
     // Second pass: Fetch logoUrl from TokenFactoryV2 for Launchpad tokens (not in config)
-    const factoryV2Address = appConfig.launchpad?.factoryAddressV2;
+    const factoryV2Address = appConfig.launchpad?.factoryAddress;
     if (factoryV2Address && factoryV2Address !== '0x0000000000000000000000000000000000000000') {
       const factoryV2 = new web3.eth.Contract(TOKEN_FACTORY_V2_ABI, factoryV2Address);
-      
+
       // Collect token addresses that don't have icons yet
       const tokensNeedingIcons: { address: string; isBase: boolean; pairIndex: number }[] = [];
       pairs.forEach((pair, index) => {
         if (!pair.baseToken.logoURI) {
-          tokensNeedingIcons.push({ address: pair.baseToken.address, isBase: true, pairIndex: index });
+          tokensNeedingIcons.push({
+            address: pair.baseToken.address,
+            isBase: true,
+            pairIndex: index,
+          });
         }
         if (!pair.quoteToken.logoURI) {
-          tokensNeedingIcons.push({ address: pair.quoteToken.address, isBase: false, pairIndex: index });
+          tokensNeedingIcons.push({
+            address: pair.quoteToken.address,
+            isBase: false,
+            pairIndex: index,
+          });
         }
       });
 
@@ -401,7 +411,7 @@ export async function GET() {
         try {
           const isFactoryToken = await factoryV2.methods.isFactoryToken(tokenInfo.address).call();
           if (isFactoryToken) {
-            const info = await factoryV2.methods.tokenInfo(tokenInfo.address).call() as {
+            const info = (await factoryV2.methods.tokenInfo(tokenInfo.address).call()) as {
               logoUrl: string;
             };
             if (info.logoUrl) {
@@ -422,7 +432,7 @@ export async function GET() {
     try {
       await dbConnect();
       const db = mongoose.connection.db;
-      
+
       if (db) {
         // Collect token addresses that still don't have icons
         const tokenAddresses = new Set<string>();

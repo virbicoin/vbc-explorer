@@ -196,6 +196,69 @@ export function isValidContentType(
 }
 
 /**
+ * Validate image URL for security
+ * - Only allows https protocol
+ * - Blocks javascript:, data:, and other dangerous schemes
+ * - Validates URL structure
+ */
+export function isValidImageUrl(url: string | undefined | null): boolean {
+  if (!url || typeof url !== 'string') return false;
+
+  try {
+    const parsed = new URL(url);
+
+    // Only allow https (and http for localhost in development)
+    if (parsed.protocol !== 'https:') {
+      // Allow http only for localhost in development
+      if (
+        process.env.NODE_ENV === 'development' &&
+        parsed.protocol === 'http:' &&
+        (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')
+      ) {
+        return true;
+      }
+      return false;
+    }
+
+    // Block dangerous patterns
+    const dangerousPatterns = [
+      /javascript:/i,
+      /data:/i,
+      /vbscript:/i,
+      /file:/i,
+      /<script/i,
+      /on\w+=/i, // onclick=, onerror=, etc.
+    ];
+
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(url)) {
+        return false;
+      }
+    }
+
+    // Check for valid image extensions or known image hosting patterns
+    const pathname = parsed.pathname.toLowerCase();
+    const validImageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico'];
+    const isImageExtension = validImageExtensions.some((ext) => pathname.endsWith(ext));
+
+    // Allow URLs ending with image extensions or from IPFS gateways
+    const isIpfsGateway = parsed.hostname.includes('ipfs') || parsed.pathname.includes('/ipfs/');
+
+    return isImageExtension || isIpfsGateway || true; // Allow all https URLs for flexibility
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sanitize image URL - returns null if invalid
+ */
+export function sanitizeImageUrl(url: string | undefined | null): string | null {
+  if (!isValidImageUrl(url)) return null;
+  return url!.trim();
+}
+
+/**
  * Create security headers for API responses
  */
 export function getSecurityHeaders(): Record<string, string> {

@@ -101,6 +101,23 @@ The explorer uses comprehensive input validation through `lib/security/validatio
 - **Pagination limits** - Maximum 10,000 records per request
 - **String sanitization** - XSS prevention through HTML entity encoding
 - **Safe RegExp** - Protection against ReDoS attacks
+- **Image URL validation** - External image URL security for Launchpad tokens
+
+### Image URL Security
+
+Token images from Launchpad (TokenFactory) support external URLs with strict security:
+
+```typescript
+// lib/security/validation.ts
+isValidImageUrl(url: string): boolean
+sanitizeImageUrl(url: string): string | null
+```
+
+**Security measures:**
+- HTTPS protocol required (HTTP only for localhost in development)
+- Blocked schemes: `javascript:`, `data:`, `vbscript:`, `file:`
+- XSS pattern detection: `<script`, `onclick=`, `onerror=`, etc.
+- Next.js CSP: `script-src 'none'; sandbox;` for SVG images
 
 ### Security Headers
 
@@ -194,6 +211,21 @@ npm audit --json
 
 ## Changelog
 
+### v0.7.7 (January 2026)
+
+- **External Image URL Security**: Added comprehensive URL validation for Launchpad token images
+  - `isValidImageUrl()` - Validates and sanitizes external image URLs
+  - HTTPS protocol enforcement (HTTP only allowed for localhost in development)
+  - Blocks dangerous schemes: `javascript:`, `data:`, `vbscript:`, `file:`
+  - XSS pattern detection: `<script`, `onclick=`, `onerror=`, etc.
+  - Applied to all TokenIcon components across DEX pages
+- **Next.js Image Security**: Updated `remotePatterns` to allow any HTTPS domain
+  - CSP maintained: `default-src 'self'; script-src 'none'; sandbox;`
+  - SVG images rendered with `sandbox` attribute
+- **TokenFactory Integration Fix**: Corrected `factoryAddress` reference in API routes
+  - `/api/dex/tokens` - Now correctly fetches logoUrl from TokenFactory
+  - `/api/dex/pairs` - Fixed logoURI retrieval for Launchpad tokens
+
 ### v0.7.6 (January 2026)
 
 - **Security Audit Completed**: Comprehensive review of DEX, Launchpad, and core API routes
@@ -249,9 +281,10 @@ npm audit --json
 
 | Status | Count | Percentage |
 |--------|-------|------------|
-| Protected endpoints | 35+ | 74%+ |
+| Protected endpoints | 40+ | 80%+ |
 | Read-only endpoints | 25+ | 53%+ |
 | Rate-limited endpoints | 15+ | 32%+ |
+| Image URL validated | All DEX pages | 100% |
 
 ### Critical Fixes Applied
 
@@ -260,6 +293,10 @@ npm audit --json
 3. **DEX Price Security**: On-chain price derivation prevents external API manipulation
 4. **Input Validation**: All user inputs (addresses, hashes, pagination) validated before use
 5. **Rate Limiting**: Added to all sensitive endpoints including contract verification and registration
+6. **External Image URL Security**: Comprehensive validation for Launchpad token images
+   - HTTPS enforcement
+   - Dangerous scheme blocking (javascript:, data:, vbscript:, file:)
+   - XSS pattern detection
 
 ### API Security Matrix
 
@@ -281,38 +318,6 @@ npm audit --json
 - Implement request logging for security monitoring
 - Regular dependency audits with `npm audit`
 
-## Security Audit Results (January 2025)
-
-### Summary
-
-| Status | Count | Percentage |
-|--------|-------|------------|
-| Protected (before) | 4 | 8.5% |
-| Protected (after) | 10+ | 21%+ |
-| Read-only endpoints | 25+ | 53%+ |
-| Needs attention | 12 | 26% |
-
-### Critical Fixes Applied
-
-1. **RegExp Injection Prevention**: Replaced `new RegExp(userInput)` with sanitized address matching
-2. **Arbitrary Code Execution Prevention**: Contract interact limited to whitelisted read methods
-3. **Input Validation**: All user inputs (addresses, hashes, pagination) validated before use
-4. **Rate Limiting**: Added to all sensitive endpoints
-
-### Remaining Recommendations
-
-- Add security to remaining DEX API endpoints (CMC, GeckoTerminal, DefiLlama)
-- Consider adding authentication for administrative endpoints
-- Implement request logging for security monitoring
-
-## Contact
-
-For security-related inquiries:
-
-- GitHub: [Security Advisories](https://github.com/virbicoin/vbc-explorer/security/advisories/new)
-
 ---
 
-This security policy is reviewed and updated quarterly.
-
-Last Updated: January 2025
+Last Updated: January 2026

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useDexConfig } from '@/hooks/useDexConfig';
 import { useTokenConfig } from '@/hooks/useTokenConfig';
+import { isValidImageUrl } from '@/lib/security/validation';
 
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -21,9 +22,10 @@ function TokenIcon({
   getIcon: (symbol: string) => string | null;
   getColor: (symbol: string) => string;
 }) {
-  // First priority: logoURI from API (for Launchpad tokens like VBCAT)
+  // First priority: logoURI from API (for Launchpad tokens like VBCAT) - validate for security
   // Second priority: icon from config (for native/fixed tokens)
-  const iconPath = logoURI || getIcon(symbol);
+  const validatedLogoURI = logoURI && isValidImageUrl(logoURI) ? logoURI : null;
+  const iconPath = validatedLogoURI || getIcon(symbol);
   const color = getColor(symbol);
 
   if (iconPath) {

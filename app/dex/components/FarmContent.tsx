@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useFarming, type PoolData } from '@/hooks/useFarming';
 import { useTokenConfig } from '@/hooks/useTokenConfig';
 import { useDexConfig } from '@/hooks/useDexConfig';
+import { isValidImageUrl } from '@/lib/security/validation';
 
 // Default color for unknown tokens
 const DEFAULT_COLOR = 'from-gray-500 to-gray-600';
@@ -27,7 +28,7 @@ function FarmTokenIcon({
   const iconPath = getIcon(symbol);
   const color = getColor(symbol);
 
-  // Priority: 1. Built-in icon (VBC, WVBC, VBCG, USDT), 2. logoURI from database
+  // Priority: 1. Built-in icon (VBC, WVBC, VBCG, USDT), 2. logoURI from database (with security validation)
   if (iconPath) {
     return (
       <div
@@ -45,8 +46,8 @@ function FarmTokenIcon({
     );
   }
 
-  // Use logoURI from token (e.g., Launchpad tokens)
-  if (logoURI) {
+  // Use logoURI from token (e.g., Launchpad tokens) - validate URL for security
+  if (logoURI && isValidImageUrl(logoURI)) {
     return (
       <div
         className="rounded-full bg-gray-900 flex items-center justify-center border-2 border-gray-700 overflow-hidden"

@@ -35,6 +35,7 @@ import { useDexTokens } from '@/hooks/useDexTokens';
 import { useTokenConfig } from '@/hooks/useTokenConfig';
 import { useDexConfig } from '@/hooks/useDexConfig';
 import { ERC20ABI } from '@/abi/TokenFactoryABI';
+import { isValidImageUrl } from '@/lib/security/validation';
 
 // Default color for unknown tokens
 const DEFAULT_TOKEN_COLOR = 'from-gray-500 to-gray-600';
@@ -56,7 +57,7 @@ function PoolTokenIcon({
   const iconPath = getIcon(symbol);
   const color = getColor(symbol);
 
-  // Priority: 1. Built-in icon (VBC, WVBC, VBCG, USDT), 2. logoURI from database
+  // Priority: 1. Built-in icon (VBC, WVBC, VBCG, USDT), 2. logoURI from database (with security validation)
   if (iconPath) {
     return (
       <div
@@ -74,8 +75,8 @@ function PoolTokenIcon({
     );
   }
 
-  // Use logoURI from token (e.g., Launchpad tokens)
-  if (logoURI) {
+  // Use logoURI from token (e.g., Launchpad tokens) - validate URL for security
+  if (logoURI && isValidImageUrl(logoURI)) {
     return (
       <div
         className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center border-2 border-gray-800 overflow-hidden`}
@@ -183,17 +184,29 @@ export function PoolContent({
         const res = await fetch('/api/dex/pairs');
         const data = await res.json();
         if (data.success && data.data?.pairs) {
-          setAllPairs(data.data.pairs.map((p: { 
-            address: string; 
-            name: string; 
-            baseToken: { address: string; symbol: string; logoURI?: string };
-            quoteToken: { address: string; symbol: string; logoURI?: string };
-          }) => ({
-            address: p.address,
-            name: p.name,
-            token0: { address: p.baseToken.address, symbol: p.baseToken.symbol, logoURI: p.baseToken.logoURI },
-            token1: { address: p.quoteToken.address, symbol: p.quoteToken.symbol, logoURI: p.quoteToken.logoURI },
-          })));
+          setAllPairs(
+            data.data.pairs.map(
+              (p: {
+                address: string;
+                name: string;
+                baseToken: { address: string; symbol: string; logoURI?: string };
+                quoteToken: { address: string; symbol: string; logoURI?: string };
+              }) => ({
+                address: p.address,
+                name: p.name,
+                token0: {
+                  address: p.baseToken.address,
+                  symbol: p.baseToken.symbol,
+                  logoURI: p.baseToken.logoURI,
+                },
+                token1: {
+                  address: p.quoteToken.address,
+                  symbol: p.quoteToken.symbol,
+                  logoURI: p.quoteToken.logoURI,
+                },
+              })
+            )
+          );
         }
       } catch (err) {
         console.error('Failed to fetch pairs:', err);
@@ -306,12 +319,12 @@ export function PoolContent({
 
     // Build positions from all pairs
     if (!allPairs.length) return [];
-    
+
     return allPairs
       .map((pair, index) => {
         const walletBalance = (allPairBalances?.[index]?.result as bigint | undefined) || 0n;
         const stakedBalance = stakedMap.get(pair.address.toLowerCase()) || 0n;
-        
+
         return {
           lpToken: pair.address,
           token0: pair.token0,

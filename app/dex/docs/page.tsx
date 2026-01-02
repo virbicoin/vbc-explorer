@@ -618,6 +618,18 @@ export default function DocsPage() {
                   hours.
                 </div>
               </details>
+
+              <details className="bg-gray-800/50 rounded-xl border border-gray-700/50 group">
+                <summary className="p-4 cursor-pointer font-medium text-white hover:text-green-400 transition-colors">
+                  Are Launchpad token images safe?
+                </summary>
+                <div className="px-4 pb-4 text-gray-300">
+                  Yes. Launchpad tokens can use external image URLs for their logos, but all URLs
+                  are validated before display. Only HTTPS URLs are allowed, and malicious patterns
+                  (javascript:, data: URIs, XSS attempts) are blocked. SVG images are rendered with
+                  strict Content Security Policy restrictions.
+                </div>
+              </details>
             </div>
           </section>
         </div>

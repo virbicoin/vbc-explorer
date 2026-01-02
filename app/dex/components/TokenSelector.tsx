@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 import Image from 'next/image';
 import { type Token, DEFAULT_TOKENS } from '@/lib/dex/config';
 import { useTokenConfig } from '@/hooks/useTokenConfig';
+import { isValidImageUrl } from '@/lib/security/validation';
 
 interface TokenSelectorProps {
   selectedToken: Token;
@@ -30,7 +31,7 @@ function TokenIcon({
   const iconPath = getIcon(token.symbol);
   const color = getColor(token.symbol) || DEFAULT_COLOR;
 
-  // Priority: 1. Config icon, 2. logoURI from database
+  // Priority: 1. Config icon, 2. logoURI from database (with security validation)
   if (iconPath) {
     return (
       <div
@@ -48,8 +49,8 @@ function TokenIcon({
     );
   }
 
-  // Use logoURI from database (e.g., Launchpad tokens)
-  if (token.logoURI) {
+  // Use logoURI from database (e.g., Launchpad tokens) - validate URL for security
+  if (token.logoURI && isValidImageUrl(token.logoURI)) {
     return (
       <div
         className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center shadow-md overflow-hidden`}

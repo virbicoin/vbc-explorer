@@ -17,4 +17,6 @@ export {
   getClientIp,
   isValidContentType,
   getSecurityHeaders,
+  isValidImageUrl,
+  sanitizeImageUrl,
 } from './validation';

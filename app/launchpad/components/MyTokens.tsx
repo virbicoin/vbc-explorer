@@ -5,7 +5,7 @@ import { useAccount } from 'wagmi';
 import { formatUnits, type Address } from 'viem';
 import { useReadContract, useReadContracts } from 'wagmi';
 import { TokenFactoryV2ABI, LaunchpadTokenV2ABI } from '@/abi/TokenFactoryV2ABI';
-import { TokenFactoryABI, ERC20ABI } from '@/abi/TokenFactoryABI';
+import { ERC20ABI } from '@/abi/TokenFactoryABI';
 import { useLaunchpadConfig } from '@/hooks/useLaunchpadConfig';
 import { ConnectWalletButton } from './ConnectWalletButton';
 import Link from 'next/link';
@@ -30,8 +30,8 @@ export function MyTokens() {
   const { config, isLoading: isConfigLoading, activeFactoryAddress } = useLaunchpadConfig();
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const isV2 = config?.useV2 ?? true;
-  const factoryABI = isV2 ? TokenFactoryV2ABI : TokenFactoryABI;
+  // Always use V2 factory ABI
+  const factoryABI = TokenFactoryV2ABI;
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((prev) => prev + 1);
@@ -54,7 +54,7 @@ export function MyTokens() {
   const tokenInfoContracts = (userTokenAddresses || []).map((tokenAddress: Address) => ({
     address: activeFactoryAddress as Address,
     abi: factoryABI,
-    functionName: isV2 ? 'getTokenDetails' : 'tokenInfo',
+    functionName: 'getTokenDetails',
     args: [tokenAddress] as const,
   }));
 
@@ -83,29 +83,22 @@ export function MyTokens() {
     query: { enabled: balanceContracts.length > 0 && !!address },
   });
 
-  const pauseContracts = isV2
-    ? (userTokenAddresses || []).map((tokenAddress: Address) => ({
-        address: tokenAddress,
-        abi: LaunchpadTokenV2ABI,
-        functionName: 'paused' as const,
-        args: [] as const,
-      }))
-    : [];
+  const pauseContracts = (userTokenAddresses || []).map((tokenAddress: Address) => ({
+    address: tokenAddress,
+    abi: LaunchpadTokenV2ABI,
+    functionName: 'paused' as const,
+    args: [] as const,
+  }));
 
   const { data: pauseResults, refetch: refetchPause } = useReadContracts({
     contracts: pauseContracts,
-    query: { enabled: isV2 && pauseContracts.length > 0 },
+    query: { enabled: pauseContracts.length > 0 },
   });
 
   const refreshAllData = useCallback(async () => {
-    await Promise.all([
-      refetchTokens(),
-      refetchTokenInfo(),
-      refetchBalances(),
-      isV2 ? refetchPause() : Promise.resolve(),
-    ]);
+    await Promise.all([refetchTokens(), refetchTokenInfo(), refetchBalances(), refetchPause()]);
     triggerRefresh();
-  }, [refetchTokens, refetchTokenInfo, refetchBalances, refetchPause, triggerRefresh, isV2]);
+  }, [refetchTokens, refetchTokenInfo, refetchBalances, refetchPause, triggerRefresh]);
 
   // Suppress unused variable warning - refreshAllData is for future use
   void refreshAllData;
@@ -123,59 +116,39 @@ export function MyTokens() {
       if (result.status === 'success' && result.result) {
         let tokenData: TokenInfo;
 
-        if (isV2) {
-          const [
-            creator,
-            name,
-            symbol,
-            decimals,
-            totalSupply,
-            createdAt,
-            logoUrl,
-            description,
-            website,
-          ] = result.result as [
-            string,
-            string,
-            string,
-            number,
-            bigint,
-            bigint,
-            string,
-            string,
-            string,
-          ];
-          tokenData = {
-            address: userTokenAddresses[i] as string,
-            name,
-            symbol,
-            decimals,
-            totalSupply,
-            creator,
-            createdAt: Number(createdAt),
-            logoUrl,
-            description,
-            website,
-          };
-        } else {
-          const [creator, name, symbol, decimals, totalSupply, createdAt] = result.result as [
-            string,
-            string,
-            string,
-            number,
-            bigint,
-            bigint,
-          ];
-          tokenData = {
-            address: userTokenAddresses[i] as string,
-            name,
-            symbol,
-            decimals,
-            totalSupply,
-            creator,
-            createdAt: Number(createdAt),
-          };
-        }
+        const [
+          creator,
+          name,
+          symbol,
+          decimals,
+          totalSupply,
+          createdAt,
+          logoUrl,
+          description,
+          website,
+        ] = result.result as [
+          string,
+          string,
+          string,
+          number,
+          bigint,
+          bigint,
+          string,
+          string,
+          string,
+        ];
+        tokenData = {
+          address: userTokenAddresses[i] as string,
+          name,
+          symbol,
+          decimals,
+          totalSupply,
+          creator,
+          createdAt: Number(createdAt),
+          logoUrl,
+          description,
+          website,
+        };
 
         const userBalance =
           balanceResult?.status === 'success' ? (balanceResult.result as bigint) : BigInt(0);
@@ -191,7 +164,7 @@ export function MyTokens() {
     processedTokens.sort((a, b) => b.createdAt - a.createdAt);
     return processedTokens;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userTokenAddresses, tokenInfoResults, balanceResults, pauseResults, isV2, refreshKey]);
+  }, [userTokenAddresses, tokenInfoResults, balanceResults, pauseResults, refreshKey]);
 
   const isLoading = isConfigLoading || isTokensLoading || isInfoLoading || isBalanceLoading;
   const isFactoryDeployed =

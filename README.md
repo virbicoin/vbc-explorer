@@ -97,15 +97,22 @@ To enable DEX features, deploy and configure the following contracts:
 
 Configure contract addresses in `config.json` under the `dex` section.
 
-## 🎨 Token Launchpad (V2)
+## 🎨 Token Launchpad
 
 The explorer includes a Token Launchpad feature for creating and managing custom tokens:
 
 ### Create Tokens
 - **No-Code Token Creation** - Create ERC-20 tokens without writing code
 - **Custom Metadata** - Set logo URL, description, and website
+- **External Image Support** - Use any HTTPS image URL for token logo
 - **Configurable Supply** - Define total supply and decimals
 - **Creation Fee** - Configurable fee per token creation
+
+### Security Features
+- **HTTPS-Only Images** - Only secure HTTPS URLs allowed for token logos
+- **XSS Protection** - Malicious URL patterns blocked (javascript:, data:, etc.)
+- **SVG Sandboxing** - External SVG images rendered with CSP restrictions
+- **Input Validation** - All token metadata validated before display
 
 ### Manage Your Tokens
 - **📤 Transfer** - Send tokens to other addresses
@@ -122,9 +129,9 @@ The explorer includes a Token Launchpad feature for creating and managing custom
 
 ### Contract Requirements
 
-Deploy a TokenFactory V2 contract and configure the address in `config.json` under the `launchpad` section.
+Deploy a TokenFactory contract and configure the address in `config.json` under the `launchpad` section.
 
-### V2 Token Features
+### Token Features
 - Native `burn()` function for token burning
 - `pause()` / `unpause()` functions for owner control
 - On-chain metadata (logo URL, description, website)

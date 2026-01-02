@@ -11,7 +11,7 @@ import {
 import { parseUnits, formatUnits, parseEventLogs, type Address } from 'viem';
 import { useWriteContract, useReadContract } from 'wagmi';
 import { TokenFactoryV2ABI } from '@/abi/TokenFactoryV2ABI';
-import { TokenFactoryABI } from '@/abi/TokenFactoryABI';
+
 import { useLaunchpadConfig, getActiveFactoryAddress } from '@/hooks/useLaunchpadConfig';
 import { ConnectWalletButton } from './ConnectWalletButton';
 
@@ -37,9 +37,8 @@ export function CreateTokenForm() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [deployedAddress, setDeployedAddress] = useState<string | null>(null);
 
-  // Determine which ABI to use based on V2 flag
-  const isV2 = config?.useV2 ?? true;
-  const factoryABI = isV2 ? TokenFactoryV2ABI : TokenFactoryABI;
+  // Always use V2 factory ABI
+  const factoryABI = TokenFactoryV2ABI;
 
   // Get user balance
   const { data: balance } = useBalance({
@@ -87,7 +86,7 @@ export function CreateTokenForm() {
         body: JSON.stringify({
           tokenAddress,
           creator: creatorAddress,
-          metadata: isV2 ? { logoUrl, description, website } : undefined,
+          metadata: { logoUrl, description, website },
         }),
       });
       const data = await response.json();
@@ -117,24 +116,22 @@ export function CreateTokenForm() {
 
       // Use viem's parseEventLogs to decode the TokenCreated event
       try {
-        // Try TokenCreatedWithMetadata first (V2)
-        if (isV2) {
-          try {
-            const parsedLogsV2 = parseEventLogs({
-              abi: TokenFactoryV2ABI,
-              logs: receipt.logs,
-              eventName: 'TokenCreatedWithMetadata',
-            });
-            if (parsedLogsV2.length > 0) {
-              foundTokenAddress = parsedLogsV2[0].args.token;
-              console.log(
-                'Extracted token address from TokenCreatedWithMetadata:',
-                foundTokenAddress
-              );
-            }
-          } catch {
-            // Try regular TokenCreated
+        // Try TokenCreatedWithMetadata first
+        try {
+          const parsedLogsV2 = parseEventLogs({
+            abi: TokenFactoryV2ABI,
+            logs: receipt.logs,
+            eventName: 'TokenCreatedWithMetadata',
+          });
+          if (parsedLogsV2.length > 0) {
+            foundTokenAddress = parsedLogsV2[0].args.token;
+            console.log(
+              'Extracted token address from TokenCreatedWithMetadata:',
+              foundTokenAddress
+            );
           }
+        } catch {
+          // Try regular TokenCreated
         }
 
         // Fall back to TokenCreated
@@ -202,7 +199,7 @@ export function CreateTokenForm() {
       setShowSuccess(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConfirmed, receipt, activeFactoryAddress, address, isV2]);
+  }, [isConfirmed, receipt, activeFactoryAddress, address]);
 
   // Validation
   const isValidForm =
@@ -233,7 +230,7 @@ export function CreateTokenForm() {
   const isCorrectChain = config?.chainId ? chainId === config.chainId : true;
 
   // Determine if using metadata
-  const hasMetadata = isV2 && (logoUrl.trim() || description.trim() || website.trim());
+  const hasMetadata = logoUrl.trim() || description.trim() || website.trim();
 
   // Handle create token
   const handleCreateToken = async () => {
@@ -266,8 +263,8 @@ export function CreateTokenForm() {
       const supplyWithDecimals = parseUnits(totalSupply, parseInt(decimals));
       console.log('[CreateToken] Creating token with supply:', supplyWithDecimals.toString());
 
-      if (isV2 && hasMetadata) {
-        // Use createTokenWithMetadata for V2 with metadata
+      if (hasMetadata) {
+        // Use createTokenWithMetadata with metadata
         writeContract({
           address: activeFactoryAddress as Address,
           abi: TokenFactoryV2ABI,
@@ -599,31 +596,15 @@ export function CreateTokenForm() {
             </div>
           </div>
 
-          {/* Advanced Options Toggle (V2 only) */}
-          {isV2 && (
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="w-full py-3 px-4 bg-gray-700/30 hover:bg-gray-700/50 border border-gray-600 rounded-xl text-gray-300 flex items-center justify-between transition-colors"
-            >
-              <span className="flex items-center gap-2">
-                <svg
-                  className="w-5 h-5 text-purple-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
-                  />
-                </svg>
-                Token Metadata (Optional)
-              </span>
+          {/* Advanced Options Toggle */}
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="w-full py-3 px-4 bg-gray-700/30 hover:bg-gray-700/50 border border-gray-600 rounded-xl text-gray-300 flex items-center justify-between transition-colors"
+          >
+            <span className="flex items-center gap-2">
               <svg
-                className={`w-5 h-5 transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
+                className="w-5 h-5 text-purple-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -632,14 +613,28 @@ export function CreateTokenForm() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
+                  d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
                 />
               </svg>
-            </button>
-          )}
+              Token Metadata (Optional)
+            </span>
+            <svg
+              className={`w-5 h-5 transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
 
           {/* Advanced Options Panel */}
-          {isV2 && showAdvanced && (
+          {showAdvanced && (
             <div className="space-y-4 p-4 bg-gray-800/30 rounded-xl border border-gray-700">
               <p className="text-xs text-gray-400 mb-2">
                 📝 Add metadata to make your token more discoverable. You can edit these later.

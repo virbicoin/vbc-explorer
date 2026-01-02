@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { formatUnits, type Address } from 'viem';
 import { useReadContract, useReadContracts } from 'wagmi';
 import { TokenFactoryV2ABI } from '@/abi/TokenFactoryV2ABI';
-import { TokenFactoryABI, ERC20ABI } from '@/abi/TokenFactoryABI';
+import { ERC20ABI } from '@/abi/TokenFactoryABI';
 import { useLaunchpadConfig } from '@/hooks/useLaunchpadConfig';
 import Link from 'next/link';
 
@@ -32,8 +32,8 @@ export function TokenList() {
   const [searchQuery, setSearchQuery] = useState('');
   const tokensPerPage = 10;
 
-  const isV2 = config?.useV2 ?? true;
-  const factoryABI = isV2 ? TokenFactoryV2ABI : TokenFactoryABI;
+  // Always use V2 factory ABI
+  const factoryABI = TokenFactoryV2ABI;
 
   // Get token count from factory
   const { data: tokenCount, isLoading: isCountLoading } = useReadContract({
@@ -55,11 +55,11 @@ export function TokenList() {
     },
   });
 
-  // Prepare contracts for batch reading token info (V2 uses getTokenDetails for metadata)
+  // Prepare contracts for batch reading token info
   const tokenInfoContracts = (allTokens || []).map((tokenAddress: Address) => ({
     address: activeFactoryAddress as Address,
     abi: factoryABI,
-    functionName: isV2 ? 'getTokenDetails' : 'tokenInfo',
+    functionName: 'getTokenDetails',
     args: [tokenAddress] as const,
   }));
 
@@ -127,52 +127,21 @@ export function TokenList() {
 
         let tokenData: TokenInfo;
 
-        if (isV2) {
-          // V2: getTokenDetails returns more fields including metadata
-          const [creator, name, symbol, decimals, , createdAt, logoUrl, description, website] =
-            result.result as [
-              string,
-              string,
-              string,
-              number,
-              bigint,
-              bigint,
-              string,
-              string,
-              string,
-            ];
-          tokenData = {
-            address: allTokens[i] as string,
-            name,
-            symbol,
-            decimals,
-            totalSupply: actualTotalSupply, // Use actual totalSupply from token contract
-            creator,
-            createdAt: Number(createdAt),
-            logoUrl,
-            description,
-            website,
-          };
-        } else {
-          // V1: tokenInfo returns basic fields
-          const [creator, name, symbol, decimals, , createdAt] = result.result as [
-            string,
-            string,
-            string,
-            number,
-            bigint,
-            bigint,
-          ];
-          tokenData = {
-            address: allTokens[i] as string,
-            name,
-            symbol,
-            decimals,
-            totalSupply: actualTotalSupply, // Use actual totalSupply from token contract
-            creator,
-            createdAt: Number(createdAt),
-          };
-        }
+        // getTokenDetails returns fields including metadata
+        const [creator, name, symbol, decimals, , createdAt, logoUrl, description, website] =
+          result.result as [string, string, string, number, bigint, bigint, string, string, string];
+        tokenData = {
+          address: allTokens[i] as string,
+          name,
+          symbol,
+          decimals,
+          totalSupply: actualTotalSupply, // Use actual totalSupply from token contract
+          creator,
+          createdAt: Number(createdAt),
+          logoUrl,
+          description,
+          website,
+        };
 
         const deadBalance =
           deadBalanceResult?.status === 'success'
@@ -195,7 +164,7 @@ export function TokenList() {
     // Sort by creation time (newest first)
     processedTokens.sort((a, b) => b.createdAt - a.createdAt);
     return processedTokens;
-  }, [allTokens, tokenInfoResults, totalSupplyResults, deadBalanceResults, isV2]);
+  }, [allTokens, tokenInfoResults, totalSupplyResults, deadBalanceResults]);
 
   // Filter tokens by search query
   const filteredTokens = tokens.filter(
@@ -347,7 +316,7 @@ export function TokenList() {
         ) : (
           <div className="space-y-3">
             {paginatedTokens.map((token) => (
-              <TokenCard key={token.address} token={token} isV2={isV2} />
+              <TokenCard key={token.address} token={token} />
             ))}
           </div>
         )}
@@ -403,7 +372,7 @@ export function TokenList() {
   );
 }
 
-function TokenCard({ token, isV2 }: { token: TokenInfo; isV2: boolean }) {
+function TokenCard({ token }: { token: TokenInfo }) {
   const [isVerified, setIsVerified] = useState(false);
   const formattedSupply = formatUnits(token.totalSupply, token.decimals);
   const dateObj = new Date(token.createdAt * 1000);
@@ -442,9 +411,6 @@ function TokenCard({ token, isV2 }: { token: TokenInfo; isV2: boolean }) {
       console.error('Failed to add token to MetaMask:', err);
     }
   };
-
-  // Suppress unused variable warning
-  void isV2;
 
   return (
     <Link

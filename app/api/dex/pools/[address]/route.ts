@@ -101,8 +101,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     let logoUrl1: string | undefined = getConfigIcon(symbol1);
 
     // Try TokenFactoryV2 for tokens without config icons
-    const factoryContract = new ethers.Contract(TOKEN_FACTORY_V2_ADDRESS, TOKEN_FACTORY_V2_ABI, provider);
-    
+    const factoryContract = new ethers.Contract(
+      TOKEN_FACTORY_V2_ADDRESS,
+      TOKEN_FACTORY_V2_ABI,
+      provider
+    );
+
     if (!logoUrl0) {
       try {
         const tokenInfo = await factoryContract.tokenInfo(token0Address);
@@ -113,7 +117,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
         // Not a Launchpad token
       }
     }
-    
+
     if (!logoUrl1) {
       try {
         const tokenInfo = await factoryContract.tokenInfo(token1Address);

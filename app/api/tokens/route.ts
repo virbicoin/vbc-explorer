@@ -266,8 +266,29 @@ export async function GET(request: NextRequest) {
 
       // Get actual holder count and supply for each token
       let actualHolders = token.holders || 0;
-      let actualSupply = token.supply || token.totalSupply || '0';
       const decimals = typeof token.decimals === 'number' ? token.decimals : 18;
+
+      // Format supply from DB if available (may be raw wei value)
+      let actualSupply = '0';
+      const dbSupply = String(token.supply || token.totalSupply || '0');
+      if (dbSupply && dbSupply !== '0') {
+        try {
+          // Check if it's a raw wei value (very large number without formatting)
+          const cleanSupply = dbSupply.replace(/[,\s]/g, '');
+          if (/^\d+$/.test(cleanSupply) && cleanSupply.length > 10) {
+            // Looks like raw wei value, format it
+            const value = BigInt(cleanSupply);
+            const divisor = BigInt(10 ** decimals);
+            const integerPart = value / divisor;
+            actualSupply = Number(integerPart).toLocaleString();
+          } else {
+            // Already formatted or small value
+            actualSupply = dbSupply;
+          }
+        } catch {
+          actualSupply = dbSupply;
+        }
+      }
 
       try {
         // For VRC-20 tokens, fetch real-time totalSupply and holder count
@@ -368,7 +389,7 @@ export async function GET(request: NextRequest) {
 
             actualSupply = mintCount.toString();
           } else {
-            actualSupply = token.totalSupply;
+            actualSupply = String(token.totalSupply || '0');
           }
         }
       } catch (error) {

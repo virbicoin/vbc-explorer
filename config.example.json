@@ -208,11 +208,8 @@
   },
   "launchpad": {
     "enabled": true,
-    "useV2": true,
-    "factoryAddressV2": "0x0000000000000000000000000000000000000000",
     "factoryAddress": "0x0000000000000000000000000000000000000000",
-    "creationFee": "10000000000000000000",
-    "note": "factoryAddressV2 = TokenFactory V2 (recommended), factoryAddress = TokenFactory V1 (legacy)"
+    "creationFee": "10000000000000000000"
   },
   "tokenLogos": {
     "0x0000000000000000000000000000000000000001": "https://example.com/img/token1.svg",

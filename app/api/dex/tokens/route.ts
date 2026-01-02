@@ -272,29 +272,35 @@ export async function GET() {
         const RPC_URL =
           appConfig.network?.rpcUrl || appConfig.web3Provider?.url || 'http://localhost:8545';
         const web3 = new Web3(RPC_URL);
-        const factoryV2Address = appConfig.launchpad?.factoryAddressV2;
+        const factoryV2Address = appConfig.launchpad?.factoryAddress;
         const logoUrlCache = new Map<string, string>();
 
-        // If TokenFactoryV2 is configured, try to get logoUrl for launchpad tokens
+        // If TokenFactoryV2 is configured, try to get logoUrl for factory tokens
         if (factoryV2Address && factoryV2Address !== '0x0000000000000000000000000000000000000000') {
           const factoryV2 = new web3.eth.Contract(TOKEN_FACTORY_V2_ABI, factoryV2Address);
 
-          // Check launchpad tokens (source === 'launchpad') for logoUrl
-          const launchpadTokens = dbTokens.filter((t) => t.source === 'launchpad');
-
-          for (const token of launchpadTokens) {
+          // Check all tokens in parallel for better performance
+          const logoPromises = pairTokenAddresses.map(async (tokenAddr) => {
             try {
-              const isFactoryToken = await factoryV2.methods.isFactoryToken(token.address).call();
+              const isFactoryToken = await factoryV2.methods.isFactoryToken(tokenAddr).call();
               if (isFactoryToken) {
-                const tokenInfo = (await factoryV2.methods.tokenInfo(token.address).call()) as {
+                const tokenInfo = (await factoryV2.methods.tokenInfo(tokenAddr).call()) as {
                   logoUrl: string;
                 };
                 if (tokenInfo.logoUrl) {
-                  logoUrlCache.set(token.address.toLowerCase(), tokenInfo.logoUrl);
+                  return { address: tokenAddr.toLowerCase(), logoUrl: tokenInfo.logoUrl };
                 }
               }
             } catch (err) {
               // Token might not be from V2 factory, ignore
+            }
+            return null;
+          });
+
+          const logoResults = await Promise.all(logoPromises);
+          for (const result of logoResults) {
+            if (result) {
+              logoUrlCache.set(result.address, result.logoUrl);
             }
           }
         }
@@ -337,12 +343,12 @@ export async function GET() {
           const configuredIcon = configuredTokenIcons.get(token.address.toLowerCase());
           // Also check tokenIcons directly by symbol
           const symbolIconCfg = getIconBySymbol(token.symbol);
-          // Priority: 1. contracts collection image_url, 2. config.json icon by address, 3. config.json icon by symbol, 4. TokenFactoryV2 logoUrl
+          // Priority: 1. config.json icon by symbol, 2. TokenFactoryV2 logoUrl, 3. contracts collection image_url, 4. config.json icon by address
           const logoURI =
-            contractInfo?.image_url ||
-            configuredIcon?.icon ||
             symbolIconCfg.icon ||
             logoUrlCache.get(token.address.toLowerCase()) ||
+            contractInfo?.image_url ||
+            configuredIcon?.icon ||
             undefined;
           resultTokens.push({
             address: token.address as `0x${string}`,

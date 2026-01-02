@@ -13,6 +13,7 @@ import {
 import Image from 'next/image';
 import { useDexConfig } from '@/hooks/useDexConfig';
 import { useTokenConfig } from '@/hooks/useTokenConfig';
+import { isValidImageUrl } from '@/lib/security/validation';
 
 const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -65,7 +66,7 @@ function TokenIcon({
   const iconPath = getIcon(symbol);
   const color = getColor(symbol) || DEFAULT_COLOR;
 
-  // Priority: 1. Config icon, 2. logoURI from database
+  // Priority: 1. Config icon, 2. logoURI from database (with security validation)
   if (iconPath) {
     return (
       <div
@@ -83,8 +84,8 @@ function TokenIcon({
     );
   }
 
-  // Use logoURI from database (e.g., Launchpad tokens)
-  if (logoURI) {
+  // Use logoURI from database (e.g., Launchpad tokens) - validate URL for security
+  if (logoURI && isValidImageUrl(logoURI)) {
     return (
       <div
         className={`rounded-full bg-gradient-to-br ${color} flex items-center justify-center shadow-md overflow-hidden`}

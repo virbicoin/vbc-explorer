@@ -97,36 +97,12 @@ const nextConfig: NextConfig = {
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
+    // Allow any https domain for Launchpad token images
+    // Security is enforced via URL validation in lib/security/validation.ts
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 'explorer.digitalregion.jp',
-        pathname: '/img/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'sugar.digitalregion.jp',
-        pathname: '/image/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'picsum.photos',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'ipfs.io',
-        pathname: '/ipfs/**',
-      },
-      {
-        protocol: 'https',
-        hostname: '*.ipfs.io',
-        pathname: '/**',
-      },
-      {
-        protocol: 'https',
-        hostname: 'gateway.pinata.cloud',
-        pathname: '/ipfs/**',
+        hostname: '**',
       },
     ],
   },

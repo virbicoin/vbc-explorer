@@ -190,7 +190,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Get tokenIcons from config for centralized icon lookup
     const tokenIcons =
-      (config as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
+      (config as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons ||
+      {};
     const getIconUrl = (symbol: string): string | undefined => {
       const iconCfg = tokenIcons[symbol];
       return iconCfg?.icon || undefined;
@@ -234,13 +235,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           }
 
           // For tokens not in DB or without logoUrl, try TokenFactoryV2
-          const factoryContract = new web3.eth.Contract(TOKEN_FACTORY_V2_ABI, TOKEN_FACTORY_V2_ADDRESS);
-          
+          const factoryContract = new web3.eth.Contract(
+            TOKEN_FACTORY_V2_ABI,
+            TOKEN_FACTORY_V2_ADDRESS
+          );
+
           for (const addr of tokenAddresses) {
             const lowerAddr = addr.toLowerCase();
             const info = tokenInfoMap.get(lowerAddr);
             const symbolIconUrl = info ? getIconUrl(info.symbol) : undefined;
-            
+
             // If we have config icon, use that
             if (symbolIconUrl) {
               if (info) {

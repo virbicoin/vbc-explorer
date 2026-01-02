@@ -1107,6 +1107,7 @@ export default function ApiDocsPage() {
               etc.)
             </li>
             <li>• Input validation is enforced on all endpoints (addresses, hashes, pagination)</li>
+            <li>• External image URLs (token logos) are validated for HTTPS and XSS protection</li>
             <li>• Contract interaction is limited to read-only methods for security</li>
             <li>
               • Report security vulnerabilities via our{' '}
