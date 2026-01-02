@@ -288,10 +288,42 @@ export async function GET() {
           }
         }
 
+        // Build a map of configured token icons from config.json
+        const configuredTokenIcons = new Map<string, { icon?: string; color?: string }>();
+        
+        // Add wrapped native icon (same as native)
+        if (appConfig.dex?.wrappedNative?.address) {
+          configuredTokenIcons.set(appConfig.dex.wrappedNative.address.toLowerCase(), {
+            icon: appConfig.dex.wrappedNative.icon || appConfig.currency?.icon,
+            color: appConfig.dex.wrappedNative.color || appConfig.currency?.color,
+          });
+        }
+        
+        // Add reward token icon
+        if (appConfig.dex?.rewardToken?.address) {
+          configuredTokenIcons.set(appConfig.dex.rewardToken.address.toLowerCase(), {
+            icon: appConfig.dex.rewardToken.icon,
+            color: appConfig.dex.rewardToken.color,
+          });
+        }
+        
+        // Add additional configured tokens
+        if (appConfig.dex?.tokens) {
+          for (const [, tokenData] of Object.entries(appConfig.dex.tokens as Record<string, { address: string; icon?: string; color?: string }>)) {
+            if (tokenData.address) {
+              configuredTokenIcons.set(tokenData.address.toLowerCase(), {
+                icon: tokenData.icon,
+                color: tokenData.color,
+              });
+            }
+          }
+        }
+
         for (const token of dbTokens) {
           const contractInfo = contractsMap.get(token.address.toLowerCase());
-          // Priority: 1. contracts collection image_url, 2. TokenFactoryV2 logoUrl
-          const logoURI = contractInfo?.image_url || logoUrlCache.get(token.address.toLowerCase()) || undefined;
+          const configuredIcon = configuredTokenIcons.get(token.address.toLowerCase());
+          // Priority: 1. contracts collection image_url, 2. config.json icon, 3. TokenFactoryV2 logoUrl
+          const logoURI = contractInfo?.image_url || configuredIcon?.icon || logoUrlCache.get(token.address.toLowerCase()) || undefined;
           resultTokens.push({
             address: token.address as `0x${string}`,
             name: token.name || 'Unknown Token',

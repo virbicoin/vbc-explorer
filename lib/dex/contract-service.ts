@@ -498,12 +498,15 @@ export function getNativeToken(currencyConfig?: {
   name: string;
   symbol: string;
   decimals: number;
-}): TokenInfo {
+  icon?: string;
+  color?: string;
+}): TokenInfo & { logoURI?: string } {
   return {
     address: '0x0000000000000000000000000000000000000000' as `0x${string}`,
     name: currencyConfig?.name || 'Ether',
     symbol: currencyConfig?.symbol || 'ETH',
     decimals: currencyConfig?.decimals || 18,
+    logoURI: currencyConfig?.icon || undefined,
   };
 }
 

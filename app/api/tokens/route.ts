@@ -377,7 +377,31 @@ export async function GET(request: NextRequest) {
       const tokenLogos = (config as { tokenLogos?: Record<string, string> }).tokenLogos || {};
       const configLogoUrl = tokenLogos[tokenAddr] || null;
       const dbLogoUrl = typeof token.logoUrl === 'string' ? token.logoUrl : null;
-      let logoUrl = dbLogoUrl || configLogoUrl;
+
+      // Build map of DEX token icons from config.json
+      const dexTokenIcons = new Map<string, string>();
+      if (config.dex?.wrappedNative?.address && config.dex.wrappedNative.icon) {
+        dexTokenIcons.set(
+          config.dex.wrappedNative.address.toLowerCase(),
+          `https://explorer.digitalregion.jp${config.dex.wrappedNative.icon}`
+        );
+      }
+      if (config.dex?.rewardToken?.address && config.dex.rewardToken.icon) {
+        dexTokenIcons.set(
+          config.dex.rewardToken.address.toLowerCase(),
+          `https://explorer.digitalregion.jp${config.dex.rewardToken.icon}`
+        );
+      }
+      if (config.dex?.tokens) {
+        for (const [, tokenCfg] of Object.entries(config.dex.tokens)) {
+          const t = tokenCfg as { address?: string; icon?: string };
+          if (t.address && t.icon) {
+            dexTokenIcons.set(t.address.toLowerCase(), `https://explorer.digitalregion.jp${t.icon}`);
+          }
+        }
+      }
+      const dexIconUrl = dexTokenIcons.get(tokenAddr) || null;
+      let logoUrl = dbLogoUrl || configLogoUrl || dexIconUrl;
 
       // If no logo from config or DB, try to fetch from Launchpad V2 token contract
       if (!logoUrl && typeof token.address === 'string') {
