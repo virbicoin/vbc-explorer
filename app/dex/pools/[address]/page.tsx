@@ -363,6 +363,7 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
             <div className="flex items-center gap-4">
               <TokenIcon
                 symbol={pool.token0.symbol}
+                logoURI={pool.token0.logoURI}
                 size={40}
                 getIcon={getTokenIcon}
                 getColor={getTokenColor}
@@ -377,6 +378,7 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
             <div className="flex items-center gap-4">
               <TokenIcon
                 symbol={pool.token1.symbol}
+                logoURI={pool.token1.logoURI}
                 size={40}
                 getIcon={getTokenIcon}
                 getColor={getTokenColor}
@@ -398,6 +400,7 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
             <div className="flex items-center gap-3 mb-6">
               <TokenIcon
                 symbol={pool.token0.symbol}
+                logoURI={pool.token0.logoURI}
                 size={48}
                 getIcon={getTokenIcon}
                 getColor={getTokenColor}
@@ -444,6 +447,7 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
             <div className="flex items-center gap-3 mb-6">
               <TokenIcon
                 symbol={pool.token1.symbol}
+                logoURI={pool.token1.logoURI}
                 size={48}
                 getIcon={getTokenIcon}
                 getColor={getTokenColor}
