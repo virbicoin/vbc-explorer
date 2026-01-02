@@ -154,6 +154,14 @@ const getLPUnit = (rawAmount: bigint): string => {
   return ethValue >= 0.0001 ? 'LP' : 'nLP';
 };
 
+// Interface for all LP positions (including non-farming)
+interface AllPairInfo {
+  address: string;
+  name: string;
+  token0: { address: string; symbol: string; logoURI?: string };
+  token1: { address: string; symbol: string; logoURI?: string };
+}
+
 export function PoolContent({
   initialTokenAddress,
   initialTokenA,
@@ -163,9 +171,36 @@ export function PoolContent({
   const [initialTokenSet, setInitialTokenSet] = useState(false);
   const [initialPairSet, setInitialPairSet] = useState(false);
   const [customToken, setCustomToken] = useState<Token | null>(null);
+  const [allPairs, setAllPairs] = useState<AllPairInfo[]>([]);
 
   // Fetch tokens from API
   const { tokens: availableTokens, isLoading: isTokensLoading } = useDexTokens();
+
+  // Fetch all pairs from API for position display
+  useEffect(() => {
+    async function fetchAllPairs() {
+      try {
+        const res = await fetch('/api/dex/pairs');
+        const data = await res.json();
+        if (data.success && data.data?.pairs) {
+          setAllPairs(data.data.pairs.map((p: { 
+            address: string; 
+            name: string; 
+            baseToken: { address: string; symbol: string; logoURI?: string };
+            quoteToken: { address: string; symbol: string; logoURI?: string };
+          }) => ({
+            address: p.address,
+            name: p.name,
+            token0: { address: p.baseToken.address, symbol: p.baseToken.symbol, logoURI: p.baseToken.logoURI },
+            token1: { address: p.quoteToken.address, symbol: p.quoteToken.symbol, logoURI: p.quoteToken.logoURI },
+          })));
+        }
+      } catch (err) {
+        console.error('Failed to fetch pairs:', err);
+      }
+    }
+    fetchAllPairs();
+  }, []);
 
   // Fetch DEX config for farming pools
   const { config: dexConfig } = useDexConfig();
@@ -199,7 +234,26 @@ export function PoolContent({
     isLoading: tokenConfigLoading,
   } = useTokenConfig();
 
-  // Fetch LP balances for all farming pools (wallet balance)
+  // Fetch LP balances for all pairs (not just farming pools)
+  const allPairBalanceContracts = useMemo(() => {
+    if (!allPairs.length || !address) return [];
+    return allPairs.map((pair) => ({
+      address: pair.address as Address,
+      abi: PAIR_ABI,
+      functionName: 'balanceOf' as const,
+      args: [address] as const,
+    }));
+  }, [allPairs, address]);
+
+  const { data: allPairBalances } = useReadContracts({
+    contracts: allPairBalanceContracts,
+    query: {
+      enabled: allPairBalanceContracts.length > 0 && !!address,
+      refetchInterval: 5000,
+    },
+  });
+
+  // Fetch LP balances for farming pools (wallet balance)
   const lpBalanceContracts = useMemo(() => {
     if (!dexConfig?.farming?.pools || !address) return [];
     return dexConfig.farming.pools.map((pool) => ({
@@ -218,7 +272,7 @@ export function PoolContent({
     },
   });
 
-  // Fetch staked amounts from MasterChef for all pools
+  // Fetch staked amounts from MasterChef for farming pools
   const stakedContracts = useMemo(() => {
     if (!dexConfig?.farming?.pools || !address || !dexConfig?.contracts?.masterChef) return [];
     return dexConfig.farming.pools.map((pool) => ({
@@ -237,8 +291,41 @@ export function PoolContent({
     },
   });
 
-  // Filter pools where user has LP balance OR staked amount
+  // Build user positions from ALL pairs (including non-farming)
   const userPositions = useMemo(() => {
+    // Create a map of farming pool LP addresses to staked amounts
+    const stakedMap = new Map<string, bigint>();
+    if (dexConfig?.farming?.pools && stakedAmounts) {
+      dexConfig.farming.pools.forEach((pool, index) => {
+        const stakedResult = stakedAmounts[index]?.result as readonly [bigint, bigint] | undefined;
+        if (stakedResult?.[0]) {
+          stakedMap.set(pool.lpToken.toLowerCase(), stakedResult[0]);
+        }
+      });
+    }
+
+    // Build positions from all pairs
+    if (!allPairs.length) return [];
+    
+    return allPairs
+      .map((pair, index) => {
+        const walletBalance = (allPairBalances?.[index]?.result as bigint | undefined) || 0n;
+        const stakedBalance = stakedMap.get(pair.address.toLowerCase()) || 0n;
+        
+        return {
+          lpToken: pair.address,
+          token0: pair.token0,
+          token1: pair.token1,
+          walletBalance,
+          stakedBalance,
+          totalBalance: walletBalance + stakedBalance,
+        };
+      })
+      .filter((pool) => pool.totalBalance > 0n);
+  }, [allPairs, allPairBalances, dexConfig?.farming?.pools, stakedAmounts]);
+
+  // Legacy farming positions (for backward compatibility)
+  const farmingPositions = useMemo(() => {
     if (!dexConfig?.farming?.pools) return [];
     return dexConfig.farming.pools
       .map((pool, index) => {

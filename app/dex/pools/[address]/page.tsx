@@ -18,16 +18,19 @@ const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 function TokenIcon({
   symbol,
+  logoURI,
   size = 32,
   getIcon,
   getColor,
 }: {
   symbol: string;
+  logoURI?: string;
   size?: number;
   getIcon: (symbol: string) => string | null;
   getColor: (symbol: string) => string;
 }) {
-  const iconPath = getIcon(symbol);
+  // Priority: config icon > API logoURI > fallback
+  const iconPath = getIcon(symbol) || logoURI;
   const color = getColor(symbol);
 
   if (iconPath) {
@@ -42,6 +45,7 @@ function TokenIcon({
           width={size - 4}
           height={size - 4}
           className="object-contain"
+          unoptimized={iconPath.startsWith('http')}
         />
       </div>
     );
@@ -68,6 +72,7 @@ interface PoolDetails {
     decimals: number;
     reserve: string;
     reserveUsd: number;
+    logoURI?: string;
   };
   token1: {
     address: string;
@@ -76,6 +81,7 @@ interface PoolDetails {
     decimals: number;
     reserve: string;
     reserveUsd: number;
+    logoURI?: string;
   };
   price: number;
   priceInverse: number;
@@ -199,12 +205,14 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
               <div className="flex -space-x-3">
                 <TokenIcon
                   symbol={pool.token0.symbol}
+                  logoURI={pool.token0.logoURI}
                   size={48}
                   getIcon={getTokenIcon}
                   getColor={getTokenColor}
                 />
                 <TokenIcon
                   symbol={pool.token1.symbol}
+                  logoURI={pool.token1.logoURI}
                   size={48}
                   getIcon={getTokenIcon}
                   getColor={getTokenColor}

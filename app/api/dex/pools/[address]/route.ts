@@ -20,6 +20,13 @@ const ERC20_ABI = [
   'function decimals() external view returns (uint8)',
 ];
 
+// TokenFactoryV2 ABI for fetching Launchpad token info
+const TOKEN_FACTORY_V2_ABI = [
+  'function tokenInfo(address token) view returns (address creator, string name, string symbol, uint8 decimals, uint256 totalSupply, uint256 createdAt, string logoUrl, string description, string website)',
+];
+
+const TOKEN_FACTORY_V2_ADDRESS = '0xE2008c44Bc077eFc1c6B5A3274ACC805c7F03b73';
+
 export async function GET(request: Request, { params }: { params: Promise<{ address: string }> }) {
   try {
     const { address } = await params;
@@ -81,6 +88,42 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     const reserve1Num = Number(reserve1);
     const price = reserve1Num / reserve0Num;
     const priceInverse = reserve0Num / reserve1Num;
+
+    // Get tokenIcons from config for centralized icon lookup
+    const tokenIcons =
+      (appConfig as { tokenIcons?: Record<string, { icon?: string }> }).tokenIcons || {};
+    const getConfigIcon = (symbol: string): string | undefined => {
+      return tokenIcons[symbol]?.icon;
+    };
+
+    // Fetch logoURL for tokens - first from config, then from TokenFactoryV2
+    let logoUrl0: string | undefined = getConfigIcon(symbol0);
+    let logoUrl1: string | undefined = getConfigIcon(symbol1);
+
+    // Try TokenFactoryV2 for tokens without config icons
+    const factoryContract = new ethers.Contract(TOKEN_FACTORY_V2_ADDRESS, TOKEN_FACTORY_V2_ABI, provider);
+    
+    if (!logoUrl0) {
+      try {
+        const tokenInfo = await factoryContract.tokenInfo(token0Address);
+        if (tokenInfo && tokenInfo.logoUrl) {
+          logoUrl0 = tokenInfo.logoUrl;
+        }
+      } catch {
+        // Not a Launchpad token
+      }
+    }
+    
+    if (!logoUrl1) {
+      try {
+        const tokenInfo = await factoryContract.tokenInfo(token1Address);
+        if (tokenInfo && tokenInfo.logoUrl) {
+          logoUrl1 = tokenInfo.logoUrl;
+        }
+      } catch {
+        // Not a Launchpad token
+      }
+    }
 
     // Calculate USD values
     // For pools with stablecoins (USDT/USDC), use the stablecoin reserve to value the other token
@@ -145,6 +188,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
           decimals: decimals0,
           reserve: reserve0,
           reserveUsd: reserve0Usd,
+          logoURI: logoUrl0,
         },
         token1: {
           address: token1Address,
@@ -153,6 +197,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
           decimals: decimals1,
           reserve: reserve1,
           reserveUsd: reserve1Usd,
+          logoURI: logoUrl1,
         },
         price,
         priceInverse,
