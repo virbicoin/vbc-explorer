@@ -69,8 +69,8 @@ export async function GET(request: Request) {
     // Get VBC price (cached)
     const vbcPriceUsd = await getCachedVBCPrice();
 
-    // Get all LP pools from config
-    const lpAddresses = getLPAddresses();
+    // Get all LP pools from factory (dynamic discovery)
+    const lpAddresses = await getLPAddresses();
 
     const matchingPools = [];
 

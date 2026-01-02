@@ -19,7 +19,7 @@ export async function GET() {
     const chainName = config.network?.name || 'Virbicoin';
 
     // Calculate total TVL from all pools using DEX prices
-    const lpAddresses = getLPAddresses();
+    const lpAddresses = await getLPAddresses();
     let totalTvlUsd = 0;
 
     for (const lpAddress of lpAddresses) {

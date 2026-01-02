@@ -26,7 +26,7 @@ export async function GET() {
     const vbcPriceUsd = await getVbcPriceFromDex();
 
     // Calculate total TVL from all pools
-    const lpAddresses = getLPAddresses();
+    const lpAddresses = await getLPAddresses();
     let totalTvlUsd = 0;
     let totalVolume24h = 0;
     const poolCount = lpAddresses.length;

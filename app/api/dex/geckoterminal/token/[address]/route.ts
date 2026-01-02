@@ -143,7 +143,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
         }
       } else {
         // Fallback: try to find from pools directly
-        const lpAddresses = getLPAddresses();
+        const lpAddresses = await getLPAddresses();
 
         for (const lpAddress of lpAddresses) {
           try {
@@ -233,7 +233,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
 
     // Get pools that include this token (use cached pool info)
     const pools: Array<{ id: string; type: string }> = [];
-    const lpAddresses = getLPAddresses();
+    const lpAddresses = await getLPAddresses();
 
     for (const lpAddress of lpAddresses) {
       try {

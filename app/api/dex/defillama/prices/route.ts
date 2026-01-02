@@ -88,7 +88,7 @@ export async function GET() {
 
     // Calculate other token prices from DEX pairs
     try {
-      const lpAddresses = getLPAddresses();
+      const lpAddresses = await getLPAddresses();
       const processedTokens = new Set([
         ADDRESSES.NATIVE,
         ADDRESSES.WVBC,

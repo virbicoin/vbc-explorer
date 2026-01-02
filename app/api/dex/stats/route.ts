@@ -33,7 +33,7 @@ export async function GET() {
     ]);
 
     // Calculate total TVL and volume from all pools
-    const lpAddresses = getLPAddresses();
+    const lpAddresses = await getLPAddresses();
     let totalTvlUsd = 0;
     let totalVolume24h = 0;
     let totalTxCount24h = 0;

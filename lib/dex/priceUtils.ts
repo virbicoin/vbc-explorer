@@ -173,7 +173,7 @@ export async function getTokenPriceUsd(tokenAddress: string): Promise<number> {
  * Calculate token price from available pools
  */
 async function calculateTokenPriceFromPools(tokenAddress: string): Promise<number> {
-  const lpAddresses = getLPAddresses();
+  const lpAddresses = await getLPAddresses();
   const vbcPrice = await getVbcPriceFromDex();
 
   for (const lpAddress of lpAddresses) {

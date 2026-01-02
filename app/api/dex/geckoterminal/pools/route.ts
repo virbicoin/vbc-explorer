@@ -99,7 +99,7 @@ export async function GET() {
     const networkSlug = 'virbicoin';
     const wrappedNativeAddress = getWrappedNativeAddress();
     const usdtAddress = getUSDTAddress();
-    const lpAddresses = getLPAddresses();
+    const lpAddresses = await getLPAddresses();
 
     // Get VBC and VBCG prices from DEX (not external API)
     const [vbcPriceUsd, vbcgPriceUsd] = await Promise.all([

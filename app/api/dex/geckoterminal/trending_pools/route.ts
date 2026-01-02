@@ -63,8 +63,8 @@ export async function GET(request: Request) {
     // Get VBC price (cached)
     const vbcPriceUsd = await getCachedVBCPrice();
 
-    // Get all LP pools from config
-    const lpAddresses = getLPAddresses();
+    // Get all LP pools from factory (dynamic discovery)
+    const lpAddresses = await getLPAddresses();
 
     // Get volume data for last 24h and sort by volume
     const h24Ago = Math.floor(Date.now() / 1000) - 24 * 60 * 60;

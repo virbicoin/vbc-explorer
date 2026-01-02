@@ -71,8 +71,8 @@ export async function GET(request: Request) {
     const vbcPriceUsd = await getVbcPriceFromDex();
     const usdtAddress = getUSDTAddress();
 
-    // Get all LP pools from config
-    const lpAddresses = getLPAddresses();
+    // Get all LP pools from factory (dynamic discovery)
+    const lpAddresses = await getLPAddresses();
 
     // Get pools sorted by first swap (earliest = newest conceptually)
     const firstSwaps = await DexSwap.aggregate([

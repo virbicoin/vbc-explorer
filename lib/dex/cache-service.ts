@@ -244,24 +244,66 @@ export async function getCachedPoolStats(poolAddress: string): Promise<PoolStats
   return stats;
 }
 
+// Factory ABI for getting all pairs
+const FACTORY_ABI = [
+  'function allPairsLength() view returns (uint256)',
+  'function allPairs(uint256) view returns (address)',
+];
+
 /**
- * Get all LP addresses from config
+ * Get all LP addresses from DEX Factory (dynamic discovery)
+ * This includes all pools including those from Launchpad tokens
  */
-export function getLPAddresses(): string[] {
-  const cacheKey = 'dex:lp_addresses';
+export async function getLPAddresses(): Promise<string[]> {
+  const cacheKey = 'dex:lp_addresses:dynamic';
   const cached = apiCache.get<string[]>(cacheKey);
   if (cached) return cached;
 
   const config = loadConfig();
+  const addresses = new Set<string>();
+  
+  // Add configured LP tokens and farm pools as base
   const lpTokens = (config.dex?.lpTokens || {}) as Record<string, { address: string }>;
   const farmPools = (config.dex?.farmPools || []) as Array<{ lpToken: string }>;
-
-  const addresses = new Set<string>();
+  
   Object.values(lpTokens).forEach((lp) => addresses.add(lp.address.toLowerCase()));
   farmPools.forEach((pool) => addresses.add(pool.lpToken.toLowerCase()));
 
+  // Get factory address from router
+  const routerAddress = config.dex?.router;
+  if (routerAddress) {
+    try {
+      const provider = getProvider();
+      const routerContract = new ethers.Contract(
+        routerAddress,
+        ['function factory() view returns (address)'],
+        provider
+      );
+      
+      const factoryAddress = await routerContract.factory();
+      const factoryContract = new ethers.Contract(factoryAddress, FACTORY_ABI, provider);
+      
+      const pairsLength = await factoryContract.allPairsLength();
+      const numPairs = Number(pairsLength);
+      
+      // Fetch all pairs from factory
+      for (let i = 0; i < numPairs; i++) {
+        try {
+          const pairAddress = await factoryContract.allPairs(i);
+          addresses.add(pairAddress.toLowerCase());
+        } catch (e) {
+          console.error(`Error fetching pair ${i} from factory:`, e);
+        }
+      }
+      
+      console.log(`[DEX Cache] Found ${numPairs} pairs from factory, total unique: ${addresses.size}`);
+    } catch (e) {
+      console.error('[DEX Cache] Error fetching pairs from factory:', e);
+    }
+  }
+
   const result = Array.from(addresses);
-  apiCache.set(cacheKey, result, CACHE_TTL.VERY_LONG);
+  apiCache.set(cacheKey, result, CACHE_TTL.MEDIUM); // 1 minute cache for dynamic discovery
   return result;
 }
 
