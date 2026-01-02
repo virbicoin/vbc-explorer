@@ -197,8 +197,17 @@ export async function GET() {
       });
     }
 
-    // Get native token info from config
-    const nativeToken = getNativeToken(appConfig.currency);
+    // Get tokenIcons from config for icon lookup
+    const tokenIcons = (appConfig as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
+    const nativeSymbol = appConfig.currency?.symbol || 'ETH';
+    const nativeIconConfig = tokenIcons[nativeSymbol] || {};
+
+    // Get native token info from config with icon from tokenIcons
+    const nativeToken = getNativeToken({
+      ...appConfig.currency,
+      icon: nativeIconConfig.icon,
+      color: nativeIconConfig.color,
+    });
 
     // Get tokens that have pairs (also returns wrapped native address)
     const { tokens: tokensWithPairs, wrappedNativeAddress } = await getTokensWithPairs(appConfig);
@@ -288,33 +297,31 @@ export async function GET() {
           }
         }
 
-        // Build a map of configured token icons from config.json
+        // Build a map of configured token icons from tokenIcons in config.json
+        const tokenIcons = (appConfig as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
         const configuredTokenIcons = new Map<string, { icon?: string; color?: string }>();
         
-        // Add wrapped native icon (same as native)
-        if (appConfig.dex?.wrappedNative?.address) {
-          configuredTokenIcons.set(appConfig.dex.wrappedNative.address.toLowerCase(), {
-            icon: appConfig.dex.wrappedNative.icon || appConfig.currency?.icon,
-            color: appConfig.dex.wrappedNative.color || appConfig.currency?.color,
-          });
+        // Helper to get icon config by symbol
+        const getIconBySymbol = (symbol: string) => tokenIcons[symbol] || {};
+        
+        // Add wrapped native icon
+        if (appConfig.dex?.wrappedNative?.address && appConfig.dex.wrappedNative.symbol) {
+          const iconCfg = getIconBySymbol(appConfig.dex.wrappedNative.symbol);
+          configuredTokenIcons.set(appConfig.dex.wrappedNative.address.toLowerCase(), iconCfg);
         }
         
         // Add reward token icon
-        if (appConfig.dex?.rewardToken?.address) {
-          configuredTokenIcons.set(appConfig.dex.rewardToken.address.toLowerCase(), {
-            icon: appConfig.dex.rewardToken.icon,
-            color: appConfig.dex.rewardToken.color,
-          });
+        if (appConfig.dex?.rewardToken?.address && appConfig.dex.rewardToken.symbol) {
+          const iconCfg = getIconBySymbol(appConfig.dex.rewardToken.symbol);
+          configuredTokenIcons.set(appConfig.dex.rewardToken.address.toLowerCase(), iconCfg);
         }
         
         // Add additional configured tokens
         if (appConfig.dex?.tokens) {
-          for (const [, tokenData] of Object.entries(appConfig.dex.tokens as Record<string, { address: string; icon?: string; color?: string }>)) {
-            if (tokenData.address) {
-              configuredTokenIcons.set(tokenData.address.toLowerCase(), {
-                icon: tokenData.icon,
-                color: tokenData.color,
-              });
+          for (const [, tokenData] of Object.entries(appConfig.dex.tokens as Record<string, { address: string; symbol?: string }>)) {
+            if (tokenData.address && tokenData.symbol) {
+              const iconCfg = getIconBySymbol(tokenData.symbol);
+              configuredTokenIcons.set(tokenData.address.toLowerCase(), iconCfg);
             }
           }
         }
@@ -322,8 +329,10 @@ export async function GET() {
         for (const token of dbTokens) {
           const contractInfo = contractsMap.get(token.address.toLowerCase());
           const configuredIcon = configuredTokenIcons.get(token.address.toLowerCase());
-          // Priority: 1. contracts collection image_url, 2. config.json icon, 3. TokenFactoryV2 logoUrl
-          const logoURI = contractInfo?.image_url || configuredIcon?.icon || logoUrlCache.get(token.address.toLowerCase()) || undefined;
+          // Also check tokenIcons directly by symbol
+          const symbolIconCfg = getIconBySymbol(token.symbol);
+          // Priority: 1. contracts collection image_url, 2. config.json icon by address, 3. config.json icon by symbol, 4. TokenFactoryV2 logoUrl
+          const logoURI = contractInfo?.image_url || configuredIcon?.icon || symbolIconCfg.icon || logoUrlCache.get(token.address.toLowerCase()) || undefined;
           resultTokens.push({
             address: token.address as `0x${string}`,
             name: token.name || 'Unknown Token',

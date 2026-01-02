@@ -226,8 +226,15 @@ export async function GET(request: NextRequest) {
     dbTokens.push(tokenEntry as Record<string, unknown>);
   }
 
-  // Get actual chain statistics for native token
+  // Get chain statistics for native token
   const chainStats = await getChainStats();
+
+  // Get tokenIcons from config for centralized icon lookup
+  const tokenIcons = (config as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
+  const getIconUrl = (symbol: string): string | undefined => {
+    const iconCfg = tokenIcons[symbol];
+    return iconCfg?.icon ? `https://explorer.digitalregion.jp${iconCfg.icon}` : undefined;
+  };
 
   // Manually create and add the native token with real stats
   const nativeToken: IToken = {
@@ -237,9 +244,7 @@ export async function GET(request: NextRequest) {
     type: 'Native',
     holders: chainStats.activeAddresses || 0, // Real wallet count
     supply: chainStats.totalSupply || 'unlimited', // Real total supply
-    logoUrl: config.currency?.icon
-      ? `https://explorer.digitalregion.jp${config.currency.icon}`
-      : undefined,
+    logoUrl: getIconUrl(nativeTokenSymbol),
   };
 
   // Normalize token types and update with real statistics
@@ -374,34 +379,33 @@ export async function GET(request: NextRequest) {
 
       // Get logo URL from config or database or onchain
       const tokenAddr = typeof token.address === 'string' ? token.address.toLowerCase() : '';
-      const tokenLogos = (config as { tokenLogos?: Record<string, string> }).tokenLogos || {};
-      const configLogoUrl = tokenLogos[tokenAddr] || null;
+      const tokenSymbol = typeof token.symbol === 'string' ? token.symbol : '';
       const dbLogoUrl = typeof token.logoUrl === 'string' ? token.logoUrl : null;
 
-      // Build map of DEX token icons from config.json
+      // Get icon from centralized tokenIcons by symbol
+      const symbolIconUrl = getIconUrl(tokenSymbol);
+      
+      // Build map of DEX token addresses to icons (for address-based lookup)
       const dexTokenIcons = new Map<string, string>();
-      if (config.dex?.wrappedNative?.address && config.dex.wrappedNative.icon) {
-        dexTokenIcons.set(
-          config.dex.wrappedNative.address.toLowerCase(),
-          `https://explorer.digitalregion.jp${config.dex.wrappedNative.icon}`
-        );
+      if (config.dex?.wrappedNative?.address && config.dex.wrappedNative.symbol) {
+        const iconUrl = getIconUrl(config.dex.wrappedNative.symbol);
+        if (iconUrl) dexTokenIcons.set(config.dex.wrappedNative.address.toLowerCase(), iconUrl);
       }
-      if (config.dex?.rewardToken?.address && config.dex.rewardToken.icon) {
-        dexTokenIcons.set(
-          config.dex.rewardToken.address.toLowerCase(),
-          `https://explorer.digitalregion.jp${config.dex.rewardToken.icon}`
-        );
+      if (config.dex?.rewardToken?.address && config.dex.rewardToken.symbol) {
+        const iconUrl = getIconUrl(config.dex.rewardToken.symbol);
+        if (iconUrl) dexTokenIcons.set(config.dex.rewardToken.address.toLowerCase(), iconUrl);
       }
       if (config.dex?.tokens) {
         for (const [, tokenCfg] of Object.entries(config.dex.tokens)) {
-          const t = tokenCfg as { address?: string; icon?: string };
-          if (t.address && t.icon) {
-            dexTokenIcons.set(t.address.toLowerCase(), `https://explorer.digitalregion.jp${t.icon}`);
+          const t = tokenCfg as { address?: string; symbol?: string };
+          if (t.address && t.symbol) {
+            const iconUrl = getIconUrl(t.symbol);
+            if (iconUrl) dexTokenIcons.set(t.address.toLowerCase(), iconUrl);
           }
         }
       }
       const dexIconUrl = dexTokenIcons.get(tokenAddr) || null;
-      let logoUrl = dbLogoUrl || configLogoUrl || dexIconUrl;
+      let logoUrl = dbLogoUrl || symbolIconUrl || dexIconUrl;
 
       // If no logo from config or DB, try to fetch from Launchpad V2 token contract
       if (!logoUrl && typeof token.address === 'string') {
