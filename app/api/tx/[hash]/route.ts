@@ -9,10 +9,36 @@ import {
   getClientIp,
   getSecurityHeaders,
 } from '../../../../lib/security';
-// import { loadConfig } from '../../../../lib/config';
+import { loadConfig } from '../../../../lib/config';
+import { getWeb3 } from '../../../../lib/web3';
 
-// Load configuration (unused but kept for future use)
-// const config = loadConfig();
+// Load configuration
+const config = loadConfig();
+const web3 = getWeb3();
+
+// TokenFactoryV2 ABI for fetching Launchpad token info
+const TOKEN_FACTORY_V2_ABI = [
+  {
+    inputs: [{ name: 'token', type: 'address' }],
+    name: 'tokenInfo',
+    outputs: [
+      { name: 'creator', type: 'address' },
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'decimals', type: 'uint8' },
+      { name: 'totalSupply', type: 'uint256' },
+      { name: 'createdAt', type: 'uint256' },
+      { name: 'logoUrl', type: 'string' },
+      { name: 'description', type: 'string' },
+      { name: 'website', type: 'string' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
+
+// TokenFactory V2 address
+const TOKEN_FACTORY_V2_ADDRESS = '0xE2008c44Bc077eFc1c6B5A3274ACC805c7F03b73';
 
 // Transaction interface for type safety
 interface TransactionDocument {
@@ -162,6 +188,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const db = mongoose.connection.db;
     let tokenTransfers: Array<Record<string, unknown>> = [];
 
+    // Get tokenIcons from config for centralized icon lookup
+    const tokenIcons =
+      (config as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
+    const getIconUrl = (symbol: string): string | undefined => {
+      const iconCfg = tokenIcons[symbol];
+      return iconCfg?.icon || undefined;
+    };
+
     if (db) {
       const transfers = await db
         .collection('tokentransfers')
@@ -175,7 +209,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         );
         const tokenInfoMap = new Map<
           string,
-          { name: string; symbol: string; decimals: number; type: string }
+          { name: string; symbol: string; decimals: number; type: string; logoUrl?: string }
         >();
 
         if (tokenAddresses.length > 0) {
@@ -194,7 +228,43 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 symbol: (token.symbol as string) || '???',
                 decimals: (token.decimals as number) || 18,
                 type: (token.type as string) || 'VRC-20',
+                logoUrl: (token.logoUrl as string) || undefined,
               });
+            }
+          }
+
+          // For tokens not in DB or without logoUrl, try TokenFactoryV2
+          const factoryContract = new web3.eth.Contract(TOKEN_FACTORY_V2_ABI, TOKEN_FACTORY_V2_ADDRESS);
+          
+          for (const addr of tokenAddresses) {
+            const lowerAddr = addr.toLowerCase();
+            const info = tokenInfoMap.get(lowerAddr);
+            const symbolIconUrl = info ? getIconUrl(info.symbol) : undefined;
+            
+            // If we have config icon, use that
+            if (symbolIconUrl) {
+              if (info) {
+                info.logoUrl = symbolIconUrl;
+                tokenInfoMap.set(lowerAddr, info);
+              }
+            }
+            // Otherwise try TokenFactoryV2 for Launchpad tokens
+            else if (!info?.logoUrl) {
+              try {
+                const tokenInfo = await factoryContract.methods.tokenInfo(addr).call();
+                if (tokenInfo && tokenInfo.logoUrl) {
+                  const existingInfo = tokenInfoMap.get(lowerAddr) || {
+                    name: tokenInfo.name || 'Unknown Token',
+                    symbol: tokenInfo.symbol || '???',
+                    decimals: Number(tokenInfo.decimals) || 18,
+                    type: 'VRC-20',
+                  };
+                  existingInfo.logoUrl = tokenInfo.logoUrl;
+                  tokenInfoMap.set(lowerAddr, existingInfo);
+                }
+              } catch {
+                // Not a Launchpad token, ignore
+              }
             }
           }
         }
@@ -213,6 +283,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             symbol: info?.symbol || '???',
             decimals: info?.decimals || 18,
             type: info?.type || 'VRC-20',
+            logoUrl: info?.logoUrl || undefined,
           };
         });
       }

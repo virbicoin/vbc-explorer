@@ -308,6 +308,7 @@ export default function TokensPage() {
                                   width={28}
                                   height={28}
                                   className="object-contain"
+                                  unoptimized={iconUrl.startsWith('http')}
                                 />
                               ) : (
                                 <span className="font-bold text-white text-xs">

@@ -21,6 +21,7 @@ interface Pool {
   tvl: number;
   volume24h: number;
   fees24h: number;
+  tokenLogos?: Record<string, string>; // symbol -> logoURI map
 }
 
 interface DexStats {
@@ -30,6 +31,7 @@ interface DexStats {
   totalFees24h: number;
   totalPools: number;
   topPools: Pool[];
+  tokenLogos: Record<string, string>; // Global token logos map
   nativePrice: number;
   nativeSymbol: string;
   priceSource: string;
@@ -39,16 +41,20 @@ interface DexStats {
 // Token icon component
 function TokenIcon({
   symbol,
+  logoURI,
   size = 32,
   className = '',
   getIcon,
 }: {
   symbol: string;
+  logoURI?: string;
   size?: number;
   className?: string;
   getIcon: (symbol: string) => string | null;
 }) {
-  const iconPath = getIcon(symbol);
+  // First priority: logoURI from API (for Launchpad tokens like VBCAT)
+  // Second priority: icon from config (for native/fixed tokens)
+  const iconPath = logoURI || getIcon(symbol);
 
   if (iconPath) {
     return (
@@ -58,6 +64,7 @@ function TokenIcon({
         width={size}
         height={size}
         className={`rounded-full ${className}`}
+        unoptimized={iconPath.startsWith('http')}
       />
     );
   }
@@ -83,14 +90,29 @@ export default function AnalyticsPage() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        // Fetch pools and external price data in parallel
-        const [poolsRes, externalPriceRes] = await Promise.all([
+        // Fetch pools, pairs (for logoURI), and external price data in parallel
+        const [poolsRes, pairsRes, externalPriceRes] = await Promise.all([
           fetch('/api/dex/geckoterminal/pools'),
+          fetch('/api/dex/pairs'),
           fetch('/api/dex/external-price'),
         ]);
 
         const data = await poolsRes.json();
+        const pairsData = await pairsRes.json();
         const externalPrice = await externalPriceRes.json();
+
+        // Build a map of symbol -> logoURI from pairs API
+        const tokenLogos: Record<string, string> = {};
+        if (pairsData.success && pairsData.data?.pairs) {
+          for (const pair of pairsData.data.pairs) {
+            if (pair.baseToken?.symbol && pair.baseToken?.logoURI) {
+              tokenLogos[pair.baseToken.symbol] = pair.baseToken.logoURI;
+            }
+            if (pair.quoteToken?.symbol && pair.quoteToken?.logoURI) {
+              tokenLogos[pair.quoteToken.symbol] = pair.quoteToken.logoURI;
+            }
+          }
+        }
 
         let totalTVL = 0;
         let totalVolume24h = 0;
@@ -151,6 +173,7 @@ export default function AnalyticsPage() {
           totalFees24h,
           totalPools: pools.length,
           topPools: pools.slice(0, 10),
+          tokenLogos,
           nativePrice,
           nativeSymbol,
           priceSource,
@@ -338,8 +361,8 @@ export default function AnalyticsPage() {
                           className="flex items-center gap-3 group"
                         >
                           <div className="flex -space-x-2">
-                            <TokenIcon symbol={token0 || ''} size={32} getIcon={getTokenIcon} />
-                            <TokenIcon symbol={token1 || ''} size={32} getIcon={getTokenIcon} />
+                            <TokenIcon symbol={token0 || ''} logoURI={stats.tokenLogos[token0 || '']} size={32} getIcon={getTokenIcon} />
+                            <TokenIcon symbol={token1 || ''} logoURI={stats.tokenLogos[token1 || '']} size={32} getIcon={getTokenIcon} />
                           </div>
                           <span className="font-semibold text-white group-hover:text-green-400 transition-colors">
                             {pool.name}

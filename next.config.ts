@@ -100,6 +100,11 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
+        hostname: 'explorer.digitalregion.jp',
+        pathname: '/img/**',
+      },
+      {
+        protocol: 'https',
         hostname: 'sugar.digitalregion.jp',
         pathname: '/image/**',
       },

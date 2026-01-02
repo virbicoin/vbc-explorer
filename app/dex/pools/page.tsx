@@ -10,16 +10,20 @@ const NATIVE_TOKEN_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 function TokenIcon({
   symbol,
+  logoURI,
   size = 32,
   getIcon,
   getColor,
 }: {
   symbol: string;
+  logoURI?: string;
   size?: number;
   getIcon: (symbol: string) => string | null;
   getColor: (symbol: string) => string;
 }) {
-  const iconPath = getIcon(symbol);
+  // First priority: logoURI from API (for Launchpad tokens like VBCAT)
+  // Second priority: icon from config (for native/fixed tokens)
+  const iconPath = logoURI || getIcon(symbol);
   const color = getColor(symbol);
 
   if (iconPath) {
@@ -34,6 +38,7 @@ function TokenIcon({
           width={size - 4}
           height={size - 4}
           className="object-contain"
+          unoptimized={iconPath.startsWith('http')}
         />
       </div>
     );
@@ -54,8 +59,8 @@ interface Pool {
   id: string;
   address: string;
   name: string;
-  baseToken: { symbol: string; address: string };
-  quoteToken: { symbol: string; address: string };
+  baseToken: { symbol: string; address: string; logoURI?: string };
+  quoteToken: { symbol: string; address: string; logoURI?: string };
   reserve0: string;
   reserve1: string;
   price: number;
@@ -100,14 +105,29 @@ export default function PoolsPage() {
   useEffect(() => {
     async function fetchPools() {
       try {
-        // Fetch pools and external price data in parallel
-        const [poolsRes, externalPriceRes] = await Promise.all([
+        // Fetch pools, pairs (for logoURI), and external price data in parallel
+        const [poolsRes, pairsRes, externalPriceRes] = await Promise.all([
           fetch('/api/dex/geckoterminal/pools'),
+          fetch('/api/dex/pairs'),
           fetch('/api/dex/external-price'),
         ]);
 
         const data = await poolsRes.json();
+        const pairsData = await pairsRes.json();
         const externalPrice = await externalPriceRes.json();
+
+        // Build a map of symbol -> logoURI from pairs API
+        const logoURIMap: Record<string, string> = {};
+        if (pairsData.success && pairsData.data?.pairs) {
+          for (const pair of pairsData.data.pairs) {
+            if (pair.baseToken?.symbol && pair.baseToken?.logoURI) {
+              logoURIMap[pair.baseToken.symbol] = pair.baseToken.logoURI;
+            }
+            if (pair.quoteToken?.symbol && pair.quoteToken?.logoURI) {
+              logoURIMap[pair.quoteToken.symbol] = pair.quoteToken.logoURI;
+            }
+          }
+        }
 
         // Set external TVL and native price from Exbitron/DefiLlama
         if (externalPrice.success && externalPrice.data) {
@@ -138,10 +158,12 @@ export default function PoolsPage() {
               baseToken: {
                 symbol: base,
                 address: pool.relationships.base_token.data.id.split('_')[1],
+                logoURI: logoURIMap[base] || undefined,
               },
               quoteToken: {
                 symbol: quote,
                 address: pool.relationships.quote_token.data.id.split('_')[1],
+                logoURI: logoURIMap[quote] || undefined,
               },
               reserve0: '0',
               reserve1: '0',
@@ -313,12 +335,14 @@ export default function PoolsPage() {
                         <div className="flex -space-x-2">
                           <TokenIcon
                             symbol={pool.baseToken.symbol}
+                            logoURI={pool.baseToken.logoURI}
                             size={36}
                             getIcon={getTokenIcon}
                             getColor={getTokenColor}
                           />
                           <TokenIcon
                             symbol={pool.quoteToken.symbol}
+                            logoURI={pool.quoteToken.logoURI}
                             size={36}
                             getIcon={getTokenIcon}
                             getColor={getTokenColor}

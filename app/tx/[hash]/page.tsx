@@ -39,6 +39,7 @@ interface TokenTransfer {
   symbol: string;
   decimals: number;
   type: string;
+  logoUrl?: string;
 }
 
 interface Transaction {
@@ -678,7 +679,8 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
                         {/* Token info */}
                         <div className="flex items-center gap-2">
                           {(() => {
-                            const iconUrl = getTokenIcon(transfer.symbol);
+                            // Priority: API logoUrl > config icon
+                            const iconUrl = transfer.logoUrl || getTokenIcon(transfer.symbol);
                             return (
                               <div
                                 className={`w-8 h-8 rounded-full bg-gradient-to-br ${getTokenColor(transfer.symbol)} flex items-center justify-center shadow-md overflow-hidden`}
@@ -690,6 +692,7 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
                                     width={28}
                                     height={28}
                                     className="object-contain"
+                                    unoptimized={iconUrl.startsWith('http')}
                                   />
                                 ) : (
                                   <span className="font-bold text-white text-xs">
