@@ -287,12 +287,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { address, sourceCode, compilerVersion, contractName, optimization } = body;
+    const { address, sourceCode, standardJsonInput, compilerVersion, contractName, optimization } = body;
 
     // Enhanced validation with detailed error messages
+    // Either sourceCode OR standardJsonInput is required
     const missingFields = [];
     if (!address) missingFields.push('address');
-    if (!sourceCode) missingFields.push('sourceCode');
+    if (!sourceCode && !standardJsonInput) missingFields.push('sourceCode or standardJsonInput');
     if (!compilerVersion) missingFields.push('compilerVersion');
 
     if (missingFields.length > 0) {
@@ -303,6 +304,7 @@ export async function POST(request: NextRequest) {
           receivedData: {
             hasAddress: !!address,
             hasSourceCode: !!sourceCode,
+            hasStandardJsonInput: !!standardJsonInput,
             hasCompilerVersion: !!compilerVersion,
             hasContractName: !!contractName,
             hasOptimization: optimization !== undefined,
@@ -324,32 +326,74 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate source code is not empty and not too large (max 500KB)
+    // Validate source code or standardJsonInput is not empty and not too large (max 500KB)
     const MAX_SOURCE_SIZE = 500 * 1024; // 500KB
-    if (sourceCode.trim().length === 0) {
+    const inputToValidate = standardJsonInput || sourceCode;
+    if (inputToValidate.trim().length === 0) {
       return NextResponse.json(
-        { error: 'Source code cannot be empty' },
+        { error: 'Source code or Standard JSON Input cannot be empty' },
         { status: 400, headers: getSecurityHeaders() }
       );
     }
-    if (sourceCode.length > MAX_SOURCE_SIZE) {
+    if (inputToValidate.length > MAX_SOURCE_SIZE) {
       return NextResponse.json(
         { error: `Source code too large. Maximum size is ${MAX_SOURCE_SIZE / 1024}KB` },
         { status: 400, headers: getSecurityHeaders() }
       );
     }
 
+    // Check if using Standard JSON Input mode
+    const isStandardJsonInput = !!standardJsonInput;
+
     console.log('📝 Received verification request:', {
       address: sanitizedAddress,
       contractName,
       compilerVersion,
       optimization,
-      sourceCodeLength: sourceCode.length,
+      isStandardJsonInput,
+      sourceCodeLength: isStandardJsonInput ? standardJsonInput.length : sourceCode?.length || 0,
     });
 
     // Auto-detect contract name if not provided
     let detectedContractName = contractName;
-    if (!detectedContractName) {
+    let targetFileName = '';
+    let targetContractName = '';
+    
+    // Parse contract name (format: "FileName.sol:ContractName" or just "ContractName")
+    if (contractName && contractName.includes(':')) {
+      [targetFileName, targetContractName] = contractName.split(':');
+      detectedContractName = targetContractName;
+    } else if (contractName) {
+      targetContractName = contractName;
+      detectedContractName = contractName;
+    }
+    
+    // For Standard JSON Input, we need the contract name from the input
+    if (isStandardJsonInput && !detectedContractName) {
+      try {
+        const jsonInput = JSON.parse(standardJsonInput);
+        if (jsonInput.sources) {
+          const sourceFiles = Object.keys(jsonInput.sources);
+          if (sourceFiles.length > 0) {
+            // Use the first source file name as a hint
+            const firstFile = sourceFiles[0];
+            // Try to extract contract name from file content
+            const content = jsonInput.sources[firstFile].content || '';
+            const contractMatches = content.match(/contract\s+([A-Za-z0-9_]+)/g);
+            if (contractMatches && contractMatches.length > 0) {
+              const lastContractMatch = contractMatches[contractMatches.length - 1];
+              detectedContractName = lastContractMatch.replace(/contract\s+/, '');
+              targetFileName = firstFile;
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore parse errors, will be handled later
+      }
+    }
+    
+    // For single file mode, auto-detect from source code
+    if (!isStandardJsonInput && !detectedContractName) {
       const contractMatches = sourceCode.match(/contract\s+([A-Za-z0-9_]+)/g);
       if (contractMatches && contractMatches.length > 0) {
         // Extract the last contract name (usually the main contract in flattened code)
@@ -361,6 +405,13 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+    }
+    
+    if (!detectedContractName) {
+      return NextResponse.json(
+        { error: 'Contract name is required for Standard JSON Input verification.' },
+        { status: 400 }
+      );
     }
 
     // Determine the best compiler version to use
@@ -482,36 +533,80 @@ export async function POST(request: NextRequest) {
     console.log('📏 Original source code length:', sourceCode.length);
     console.log('📏 Cleaned source code length:', cleanedSourceCode.length);
 
-    // Compile source code
-    // Use EVM version 'paris' for better compatibility with VirBiCoin network
-    // Match Hardhat's default settings exactly for bytecode compatibility
-    const input = {
-      language: 'Solidity',
-      sources: {
-        [detectedContractName]: {
-          content: cleanedSourceCode,
-        },
-      },
-      settings: {
-        outputSelection: {
+    // Prepare compilation input
+    let input: Record<string, unknown>;
+    let sourceCodeForStorage = cleanedSourceCode;
+    
+    if (isStandardJsonInput) {
+      // Standard JSON Input mode - parse and use the provided JSON directly
+      console.log('📦 Using Standard JSON Input mode');
+      try {
+        input = JSON.parse(standardJsonInput);
+        
+        // Ensure outputSelection is set correctly
+        if (!input.settings) {
+          input.settings = {};
+        }
+        const settings = input.settings as Record<string, unknown>;
+        settings.outputSelection = {
           '*': {
             '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode', 'evm.methodIdentifiers'],
           },
+        };
+        
+        // Store the original Standard JSON Input for reference
+        sourceCodeForStorage = standardJsonInput;
+        
+        // Extract source code from the first file for license detection
+        if (input.sources && typeof input.sources === 'object') {
+          const sources = input.sources as Record<string, { content?: string }>;
+          const firstSourceKey = Object.keys(sources)[0];
+          if (firstSourceKey && sources[firstSourceKey].content) {
+            cleanedSourceCode = sources[firstSourceKey].content;
+          }
+        }
+      } catch (parseError) {
+        console.error('Failed to parse Standard JSON Input:', parseError);
+        return NextResponse.json(
+          {
+            error: 'Invalid Standard JSON Input format',
+            details: parseError instanceof Error ? parseError.message : 'Parse error',
+          },
+          { status: 400 }
+        );
+      }
+    } else {
+      // Single file mode - build the input JSON
+      // Use EVM version 'paris' for better compatibility with VirBiCoin network
+      // Match Hardhat's default settings exactly for bytecode compatibility
+      input = {
+        language: 'Solidity',
+        sources: {
+          [detectedContractName]: {
+            content: cleanedSourceCode,
+          },
         },
-        optimizer: {
-          enabled: optimization || false,
-          runs: body.optimizationRuns || 200,
+        settings: {
+          outputSelection: {
+            '*': {
+              '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode', 'evm.methodIdentifiers'],
+            },
+          },
+          optimizer: {
+            enabled: optimization || false,
+            runs: body.optimizationRuns || 200,
+          },
+          evmVersion: body.evmVersion || 'paris',
+          // Match Hardhat's default metadata settings
+          metadata: {
+            bytecodeHash: 'ipfs', // Hardhat default
+            useLiteralContent: false,
+          },
+          // Disable viaIR by default (Hardhat default)
+          viaIR: false,
         },
-        evmVersion: body.evmVersion || 'paris',
-        // Match Hardhat's default metadata settings
-        metadata: {
-          bytecodeHash: 'ipfs', // Hardhat default
-          useLiteralContent: false,
-        },
-        // Disable viaIR by default (Hardhat default)
-        viaIR: false,
-      },
-    };
+      };
+    }
 
     let compiledOutput;
     try {

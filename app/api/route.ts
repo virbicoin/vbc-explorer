@@ -1942,6 +1942,11 @@ export async function POST(request: NextRequest) {
     const contentType = request.headers.get('content-type') || '';
     let params: Record<string, string> = {};
 
+    // Get module and action from URL query params first
+    const { searchParams } = new URL(request.url);
+    const queryModule = searchParams.get('module')?.toLowerCase() || '';
+    const queryAction = searchParams.get('action')?.toLowerCase() || '';
+
     // Handle both JSON and form-data (Etherscan uses form-data)
     if (contentType.includes('application/json')) {
       params = await request.json();
@@ -1962,8 +1967,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const apiModule = (params.module || '').toLowerCase();
-    const action = (params.action || '').toLowerCase();
+    // Module and action can come from URL query params OR body params
+    // URL query params take precedence (for /api?module=contract&action=verifysourcecode style)
+    const apiModule = queryModule || (params.module || '').toLowerCase();
+    const action = queryAction || (params.action || '').toLowerCase();
 
     // Contract verification
     if (apiModule === 'contract' && action === 'verifysourcecode') {
