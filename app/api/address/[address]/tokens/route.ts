@@ -100,9 +100,16 @@ export async function GET(
         address: holding.tokenAddress,
         name: tokenInfo?.name || 'Unknown Token',
         symbol: tokenInfo?.symbol || '???',
-        decimals: tokenInfo?.decimals || 18,
+        // Use nullish coalescing to handle decimals=0 correctly
+        decimals: tokenInfo?.decimals ?? 18,
         balance: holding.balance,
-        type: tokenInfo?.type || 'VRC-20',
+        // Normalize token type display
+        type:
+          tokenInfo?.type === 'ERC20'
+            ? 'VRC-20'
+            : tokenInfo?.type === 'ERC721'
+              ? 'VRC-721'
+              : tokenInfo?.type || 'VRC-20',
         percentage: holding.percentage,
         rank: holding.rank,
       };

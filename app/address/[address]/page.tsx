@@ -1536,7 +1536,12 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                                           : 'bg-gray-500/20 text-gray-400'
                                     }`}
                                   >
-                                    {token.type}
+                                    {/* Normalize token type display */}
+                                    {token.type === 'ERC20'
+                                      ? 'VRC-20'
+                                      : token.type === 'ERC721'
+                                        ? 'VRC-721'
+                                        : token.type}
                                   </span>
                                 </td>
                                 <td className="py-3 px-4 text-right">
