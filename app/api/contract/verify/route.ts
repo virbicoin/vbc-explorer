@@ -417,19 +417,21 @@ export async function POST(request: NextRequest) {
     // Determine the best compiler version to use
     const finalCompilerVersion = findBestCompilerVersion(compilerVersion);
 
-    // Check for old syntax that may require older compiler versions
-    const hasOldSyntax =
-      sourceCode.includes(':=') ||
-      sourceCode.includes('var ') ||
-      sourceCode.includes('suicide(') ||
-      sourceCode.includes('throw') ||
-      sourceCode.includes('constant ') ||
-      sourceCode.includes('public constant');
-    if (hasOldSyntax) {
-      console.warn(
-        'Old Solidity syntax detected. Compilation may fail with modern compiler versions.'
-      );
-      // finalCompilerVersion = '0.8.19'; // 強制しない
+    // Check for old syntax that may require older compiler versions (only for single file mode)
+    if (!isStandardJsonInput && sourceCode) {
+      const hasOldSyntax =
+        sourceCode.includes(':=') ||
+        sourceCode.includes('var ') ||
+        sourceCode.includes('suicide(') ||
+        sourceCode.includes('throw') ||
+        sourceCode.includes('constant ') ||
+        sourceCode.includes('public constant');
+      if (hasOldSyntax) {
+        console.warn(
+          'Old Solidity syntax detected. Compilation may fail with modern compiler versions.'
+        );
+        // finalCompilerVersion = '0.8.19'; // 強制しない
+      }
     }
 
     console.log(`🔧 Using compiler version: ${finalCompilerVersion}`);
@@ -455,10 +457,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Clean up source code - remove any trailing garbage
-    let cleanedSourceCode = sourceCode.trim();
+    // For Standard JSON Input mode, cleanedSourceCode will be set later from the input
+    let cleanedSourceCode = '';
+    
+    if (!isStandardJsonInput && sourceCode) {
+      cleanedSourceCode = sourceCode.trim();
+    }
 
-    // Check if this is a flattened contract (contains multiple contracts)
-    const isFlattened = (cleanedSourceCode.match(/contract\s+[A-Za-z0-9_]+/g) || []).length > 1;
+    // Check if this is a flattened contract (contains multiple contracts) - only for single file mode
+    const isFlattened = !isStandardJsonInput && cleanedSourceCode && (cleanedSourceCode.match(/contract\s+[A-Za-z0-9_]+/g) || []).length > 1;
 
     if (isFlattened) {
       // For flattened contracts (like Hardhat flattened), use the original source as-is
@@ -530,7 +537,7 @@ export async function POST(request: NextRequest) {
     // Modernize old Solidity syntax (for 0.8.x compilation)
     cleanedSourceCode = modernizeSyntax(cleanedSourceCode);
 
-    console.log('📏 Original source code length:', sourceCode.length);
+    console.log('📏 Original source code length:', isStandardJsonInput ? standardJsonInput.length : (sourceCode?.length || 0));
     console.log('📏 Cleaned source code length:', cleanedSourceCode.length);
 
     // Prepare compilation input
