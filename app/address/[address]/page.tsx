@@ -109,6 +109,7 @@ interface TokenHolding {
   type: string;
   percentage?: number;
   rank?: number;
+  logoUrl?: string | null;
 }
 
 export default function AddressPage({ params }: { params: Promise<{ address: string }> }) {
@@ -1492,7 +1493,8 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                         </thead>
                         <tbody className="divide-y divide-gray-600">
                           {tokenHoldings.map((token) => {
-                            const iconUrl = getTokenIcon(token.symbol);
+                            // Prefer logoUrl from API (Launchpad tokens), fallback to config
+                            const iconUrl = token.logoUrl || getTokenIcon(token.symbol);
                             return (
                               <tr
                                 key={token.address}
@@ -1507,12 +1509,16 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                                       className={`w-8 h-8 rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md overflow-hidden`}
                                     >
                                       {iconUrl ? (
-                                        <Image
+                                        <img
                                           src={iconUrl}
                                           alt={token.symbol || ''}
                                           width={28}
                                           height={28}
-                                          className="object-contain"
+                                          className="object-contain w-7 h-7"
+                                          onError={(e) => {
+                                            // Hide image on error, show fallback
+                                            (e.target as HTMLImageElement).style.display = 'none';
+                                          }}
                                         />
                                       ) : (
                                         <span className="font-bold text-white text-xs">

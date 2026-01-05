@@ -32,6 +32,12 @@ const tokenSchema = new mongoose.Schema(
     totalSupply: String,
     holders: Number,
     type: String,
+    logoUrl: String,
+    metadata: {
+      logoUrl: String,
+      description: String,
+      website: String,
+    },
   },
   { collection: 'tokens' }
 );
@@ -96,6 +102,8 @@ export async function GET(
     // Build response with token details
     const tokenHoldings = nonZeroHoldings.map((holding) => {
       const tokenInfo = tokenMap.get(holding.tokenAddress.toLowerCase());
+      // Get logo URL from token metadata or direct field
+      const logoUrl = tokenInfo?.logoUrl || tokenInfo?.metadata?.logoUrl || null;
       return {
         address: holding.tokenAddress,
         name: tokenInfo?.name || 'Unknown Token',
@@ -112,6 +120,7 @@ export async function GET(
               : tokenInfo?.type || 'VRC-20',
         percentage: holding.percentage,
         rank: holding.rank,
+        logoUrl: logoUrl,
       };
     });
 
