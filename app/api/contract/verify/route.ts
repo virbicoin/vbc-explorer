@@ -177,21 +177,28 @@ function getAvailableCompilerVersions(): string[] {
 
 // Helper function to find best matching compiler version
 function findBestCompilerVersion(requestedVersion: string): string {
-  const availableVersions = getAvailableCompilerVersions();
-
-  // If specific version is requested and in 0.8.x range, use it
-  if (requestedVersion !== 'latest' && availableVersions.includes(requestedVersion)) {
-    return requestedVersion;
+  // Normalize the requested version first
+  const normalizedVersion = normalizeCompilerVersion(requestedVersion);
+  
+  // Check if the normalized version is in the supported list
+  if (SUPPORTED_COMPILER_VERSIONS.includes(normalizedVersion)) {
+    console.log(`✅ Using requested compiler version: ${normalizedVersion}`);
+    return normalizedVersion;
   }
 
-  // For non-0.8.x versions, warn and use default
-  if (!requestedVersion.startsWith('0.8.')) {
+  // For non-supported versions, warn and use the requested version anyway
+  // (loadSolcVersion will handle fallback if needed)
+  if (normalizedVersion.startsWith('0.8.') || normalizedVersion.startsWith('0.6.')) {
     console.warn(
-      `⚠️ Requested version ${requestedVersion} is not supported. Only 0.8.x versions are available.`
+      `⚠️ Requested version ${normalizedVersion} is not in the pre-defined list, but will try to load it.`
     );
+    return normalizedVersion;
   }
 
-  // Default to latest stable version
+  // For completely unsupported versions, use default
+  console.warn(
+    `⚠️ Requested version ${normalizedVersion} is not supported. Falling back to 0.8.30.`
+  );
   return '0.8.30';
 }
 
