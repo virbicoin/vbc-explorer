@@ -227,7 +227,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
               tokenInfoMap.set(addr, {
                 name: (token.name as string) || 'Unknown Token',
                 symbol: (token.symbol as string) || '???',
-                decimals: (token.decimals as number) || 18,
+                // Use nullish coalescing to handle decimals=0 correctly
+                decimals: (token.decimals as number) ?? 18,
                 type: (token.type as string) || 'VRC-20',
                 logoUrl: (token.logoUrl as string) || undefined,
               });
@@ -285,7 +286,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             tokenId: t.tokenId,
             name: info?.name || 'Unknown Token',
             symbol: info?.symbol || '???',
-            decimals: info?.decimals || 18,
+            // Use nullish coalescing to handle decimals=0 correctly
+            decimals: info?.decimals ?? 18,
             type: info?.type || 'VRC-20',
             logoUrl: info?.logoUrl || undefined,
           };
