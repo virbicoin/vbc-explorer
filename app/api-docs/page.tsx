@@ -643,9 +643,9 @@ export default function ApiDocsPage() {
             <div className="flex items-center gap-2">
               <span className="text-gray-500 text-sm">Base URL:</span>
               <code className="px-2 py-1 bg-gray-800 rounded text-purple-400 text-sm">
-                {baseUrl || window.location.origin}
+                {baseUrl || ''}
               </code>
-              <CopyButton text={baseUrl || window.location.origin} />
+              <CopyButton text={baseUrl || ''} />
             </div>
           </div>
         </div>
