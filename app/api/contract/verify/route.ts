@@ -43,6 +43,63 @@ const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
 const installedSolcVersion = (solc as unknown as { version: () => string }).version?.() || '0.8.30';
 console.log(`📦 Installed solc version: ${installedSolcVersion}`);
 
+// Cache for loaded solc compilers
+const solcCache: Map<string, unknown> = new Map();
+
+// Supported compiler versions
+const SUPPORTED_COMPILER_VERSIONS = [
+  '0.8.33', '0.8.32', '0.8.31', '0.8.30', '0.8.29', '0.8.28', '0.8.27',
+  '0.8.26', '0.8.25', '0.8.24', '0.8.23', '0.8.22', '0.8.21', '0.8.20', '0.8.19',
+  '0.8.18', '0.8.17', '0.8.16', '0.8.15',
+  '0.6.12', // Legacy support
+];
+
+// Helper function to normalize compiler version
+function normalizeCompilerVersion(version: string): string {
+  // Remove 'v' prefix if present
+  let normalized = version.startsWith('v') ? version.substring(1) : version;
+  // Remove commit hash if present (e.g., "0.8.20+commit.a1b79de6" -> "0.8.20")
+  normalized = normalized.split('+')[0];
+  return normalized;
+}
+
+// Load a specific version of solc compiler
+async function loadSolcVersion(version: string): Promise<unknown> {
+  const normalizedVersion = normalizeCompilerVersion(version);
+  
+  // Check cache first
+  if (solcCache.has(normalizedVersion)) {
+    console.log(`📦 Using cached solc ${normalizedVersion}`);
+    return solcCache.get(normalizedVersion);
+  }
+  
+  // Check if version is supported
+  if (!SUPPORTED_COMPILER_VERSIONS.includes(normalizedVersion)) {
+    console.warn(`⚠️ Unsupported compiler version ${normalizedVersion}, falling back to installed solc`);
+    return solc;
+  }
+  
+  return new Promise((resolve) => {
+    console.log(`📥 Loading solc ${normalizedVersion} from remote...`);
+    
+    // Use solc.loadRemoteVersion to load the specific version
+    (solc as unknown as { loadRemoteVersion: (version: string, callback: (err: Error | null, solcSnapshot: unknown) => void) => void })
+      .loadRemoteVersion(`v${normalizedVersion}`, (err: Error | null, solcSnapshot: unknown) => {
+        if (err) {
+          console.error(`❌ Failed to load solc ${normalizedVersion}:`, err.message);
+          // Fall back to installed solc
+          console.log(`⚠️ Falling back to installed solc`);
+          resolve(solc);
+        } else {
+          console.log(`✅ Successfully loaded solc ${normalizedVersion}`);
+          // Cache the loaded compiler
+          solcCache.set(normalizedVersion, solcSnapshot);
+          resolve(solcSnapshot);
+        }
+      });
+  });
+}
+
 // Check if version matches installed solc (major.minor only)
 function isVersionCompatible(requestedVersion: string): boolean {
   const requested = requestedVersion.split('.').slice(0, 2).join('.');
@@ -423,18 +480,18 @@ export async function POST(request: NextRequest) {
 
     let compiledOutput;
     try {
-      // Use local solc for compilation (0.8.x versions only)
+      // Load the requested compiler version dynamically
+      const normalizedVersion = normalizeCompilerVersion(finalCompilerVersion);
       console.log(
-        `🔧 Compiling with local solc (installed: ${installedSolcVersion}, requested: ${finalCompilerVersion})...`
+        `🔧 Loading compiler version: ${finalCompilerVersion} (normalized: ${normalizedVersion})...`
       );
 
-      if (!isVersionCompatible(finalCompilerVersion)) {
-        console.warn(
-          `⚠️ Version mismatch: requested ${finalCompilerVersion} but installed solc is ${installedSolcVersion}`
-        );
-      }
-
-      compiledOutput = JSON.parse(solc.compile(JSON.stringify(input)));
+      const solcCompiler = await loadSolcVersion(finalCompilerVersion);
+      
+      // Compile with the loaded compiler
+      const compileFunc = (solcCompiler as { compile: (input: string) => string }).compile;
+      compiledOutput = JSON.parse(compileFunc(JSON.stringify(input)));
+      console.log(`✅ Compiled with solc ${normalizedVersion}`);
     } catch (compileError) {
       console.error('❌ Compilation error:', compileError);
 
@@ -783,7 +840,7 @@ export async function POST(request: NextRequest) {
             isVerified6,
             isVerified7,
           },
-          note: `Compiled with solc ${installedSolcVersion} (EVM: paris, optimizer: ${optimization ? 'enabled' : 'disabled'}, runs: 200). Original may have been compiled with different settings.`,
+          note: `Compiled with solc ${normalizeCompilerVersion(finalCompilerVersion)} (EVM: paris, optimizer: ${optimization ? 'enabled' : 'disabled'}, runs: 200). Original may have been compiled with different settings.`,
         },
       });
     }

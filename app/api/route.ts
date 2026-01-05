@@ -1037,6 +1037,53 @@ function modernizeSyntax(sourceCode: string): string {
   return modernized;
 }
 
+// Cache for loaded solc compilers
+const solcCache: Map<string, unknown> = new Map();
+
+// Supported compiler versions
+const SUPPORTED_COMPILER_VERSIONS = [
+  '0.8.33', '0.8.32', '0.8.31', '0.8.30', '0.8.29', '0.8.28', '0.8.27',
+  '0.8.26', '0.8.25', '0.8.24', '0.8.23', '0.8.22', '0.8.21', '0.8.20', '0.8.19',
+  '0.6.12', // Legacy support
+];
+
+// Load a specific version of solc compiler
+async function loadSolcVersion(version: string): Promise<unknown> {
+  const normalizedVersion = normalizeCompilerVersion(version);
+  
+  // Check cache first
+  if (solcCache.has(normalizedVersion)) {
+    console.log(`📦 Using cached solc ${normalizedVersion}`);
+    return solcCache.get(normalizedVersion);
+  }
+  
+  // Check if version is supported
+  if (!SUPPORTED_COMPILER_VERSIONS.includes(normalizedVersion)) {
+    console.warn(`⚠️ Unsupported compiler version ${normalizedVersion}, falling back to installed solc`);
+    return solc;
+  }
+  
+  return new Promise((resolve) => {
+    console.log(`📥 Loading solc ${normalizedVersion} from remote...`);
+    
+    // Use solc.loadRemoteVersion to load the specific version
+    (solc as unknown as { loadRemoteVersion: (version: string, callback: (err: Error | null, solcSnapshot: unknown) => void) => void })
+      .loadRemoteVersion(`v${normalizedVersion}`, (err: Error | null, solcSnapshot: unknown) => {
+        if (err) {
+          console.error(`❌ Failed to load solc ${normalizedVersion}:`, err.message);
+          // Fall back to installed solc
+          console.log(`⚠️ Falling back to installed solc`);
+          resolve(solc);
+        } else {
+          console.log(`✅ Successfully loaded solc ${normalizedVersion}`);
+          // Cache the loaded compiler
+          solcCache.set(normalizedVersion, solcSnapshot);
+          resolve(solcSnapshot);
+        }
+      });
+  });
+}
+
 // Helper function to remove metadata from bytecode
 function removeMetadata(bytecode: string): string {
   let cleaned = bytecode.toLowerCase();
@@ -1237,10 +1284,18 @@ async function processVerification(guid: string) {
       };
     }
 
-    // Compile
+    // Load the requested compiler version
+    const normalizedVersion = normalizeCompilerVersion(compilerVersion);
+    console.log(`🔧 Requested compiler version: ${compilerVersion} (normalized: ${normalizedVersion})`);
+    
+    const solcCompiler = await loadSolcVersion(compilerVersion);
+    
+    // Compile with the loaded compiler
     let compiledOutput;
     try {
-      compiledOutput = JSON.parse(solc.compile(JSON.stringify(inputJson)));
+      const compileFunc = (solcCompiler as { compile: (input: string) => string }).compile;
+      compiledOutput = JSON.parse(compileFunc(JSON.stringify(inputJson)));
+      console.log(`✅ Compiled with solc ${normalizedVersion}`);
     } catch (compileError) {
       await VerificationJob.updateOne(
         { guid },
@@ -1394,20 +1449,58 @@ async function checkVerifyStatus(guid: string) {
     const job = await VerificationJob.findOne({ guid }).lean();
 
     if (!job) {
-      return errorResponse('GUID not found');
+      // Etherscan returns status 0 with result as string for not found
+      return NextResponse.json(
+        {
+          status: '0',
+          message: 'GUID not found',
+          result: 'Fail - GUID not found',
+        },
+        { headers: getSecurityHeaders() }
+      );
     }
 
-    // Etherscan-style response
+    // Etherscan-style response - result must ALWAYS be a string, never null
     if (job.status === 'pending') {
-      return successResponse('Pending in queue', 'OK');
+      return NextResponse.json(
+        {
+          status: '0',
+          message: 'Pending in queue',
+          result: 'Pending in queue',
+        },
+        { headers: getSecurityHeaders() }
+      );
     } else if (job.status === 'pass') {
-      return successResponse('Pass - Verified', 'OK');
+      return NextResponse.json(
+        {
+          status: '1',
+          message: 'OK',
+          result: 'Pass - Verified',
+        },
+        { headers: getSecurityHeaders() }
+      );
     } else {
-      return errorResponse(job.message || 'Fail - Unable to verify');
+      // Fail status - result must be a string describing the failure
+      const failMessage = job.message || 'Fail - Unable to verify';
+      return NextResponse.json(
+        {
+          status: '0',
+          message: failMessage,
+          result: `Fail - ${failMessage}`,
+        },
+        { headers: getSecurityHeaders() }
+      );
     }
   } catch (error) {
     console.error('[checkVerifyStatus] Error:', error);
-    return errorResponse('Error checking verification status');
+    return NextResponse.json(
+      {
+        status: '0',
+        message: 'Error checking verification status',
+        result: 'Fail - Error checking verification status',
+      },
+      { headers: getSecurityHeaders() }
+    );
   }
 }
 
