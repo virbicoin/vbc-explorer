@@ -197,7 +197,8 @@ export async function GET(
           tokenInfoMap.set(addr, {
             name: (t.name as string) || 'Unknown Token',
             symbol: (t.symbol as string) || '???',
-            decimals: (t.decimals as number) || 18,
+            // Use nullish coalescing to handle decimals=0 correctly
+            decimals: (t.decimals as number) ?? 18,
             type: (t.type as string) || 'VRC-20',
           });
         }
@@ -275,7 +276,8 @@ export async function GET(
           address: tt.tokenAddress,
           name: tokenInfo?.name || 'Unknown Token',
           symbol: tokenInfo?.symbol || '???',
-          decimals: tokenInfo?.decimals || 18,
+          // Use nullish coalescing to handle decimals=0 correctly
+          decimals: tokenInfo?.decimals ?? 18,
           type: tokenInfo?.type || 'VRC-20',
           value: tt.value,
           tokenId: tt.tokenId,
@@ -290,7 +292,8 @@ export async function GET(
             address: t.tokenAddress,
             name: info?.name || 'Unknown Token',
             symbol: info?.symbol || '???',
-            decimals: info?.decimals || 18,
+            // Use nullish coalescing to handle decimals=0 correctly
+            decimals: info?.decimals ?? 18,
             type: info?.type || 'VRC-20',
             value: t.value,
             tokenId: t.tokenId,
