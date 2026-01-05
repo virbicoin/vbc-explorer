@@ -169,23 +169,8 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
         setLoading(true);
         setError(null);
 
-        // First check if this is a token contract - if so, redirect to /token/ page
-        try {
-          const tokenRes = await fetch(`/api/tokens/${resolvedParams.address}`);
-          if (tokenRes.ok) {
-            const tokenData = await tokenRes.json();
-            // If it's a registered token (VRC-20, VRC-721, VRC-1155), redirect
-            if (
-              tokenData.token &&
-              ['VRC-20', 'VRC-721', 'VRC-1155', 'ERC20', 'ERC721'].includes(tokenData.token.type)
-            ) {
-              router.replace(`/token/${resolvedParams.address}`);
-              return;
-            }
-          }
-        } catch {
-          // Not a token, continue checking if contract
-        }
+        // Note: Middleware handles redirects for tokens and contracts
+        // This page should only be reached for wallet addresses
 
         const response = await fetch(`/api/address/${resolvedParams.address}`);
         if (!response.ok) {
@@ -193,9 +178,9 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
         }
         const data = await response.json();
 
-        // If it's a contract (but not a token), redirect to /contract/ page
+        // Fallback redirect in case middleware didn't catch it
         if (data.contract?.isContract) {
-          router.replace(`/contract/${resolvedParams.address}`);
+          window.location.href = `/contract/${resolvedParams.address}`;
           return;
         }
 

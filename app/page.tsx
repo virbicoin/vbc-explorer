@@ -11,6 +11,7 @@ import {
   GlobeAltIcon,
   CalendarIcon,
   UserGroupIcon,
+  FireIcon,
 } from '@heroicons/react/24/outline';
 import { formatVBC, initializeCurrency } from '../lib/bigint-utils';
 import Image from 'next/image';
@@ -18,6 +19,8 @@ import AddVBCButton from './components/AddVBCButton';
 
 interface Config {
   miners: Record<string, string>;
+  networkName?: string;
+  currencySymbol?: string;
 }
 
 interface StatsData {
@@ -35,6 +38,14 @@ interface StatsData {
   lastBlockTime?: string;
   activeAddresses?: number;
   totalSupply?: string;
+}
+
+interface GasStats {
+  slow: string;
+  standard: string;
+  fast: string;
+  instant: string;
+  baseFee?: string;
 }
 
 interface Block {
@@ -465,7 +476,8 @@ export default function Page() {
   const [isInitialLoad, setIsInitialLoad] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [now, setNow] = useState(() => Date.now());
-  const [config, setConfig] = useState<{ miners: Record<string, string> } | null>(null);
+  const [config, setConfig] = useState<Config | null>(null);
+  const [gasStats, setGasStats] = useState<GasStats | null>(null);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -482,18 +494,22 @@ export default function Page() {
         await initializeCurrency();
 
         // Fetch config from API
-        const response = await fetch('/api/config');
+        const response = await fetch('/api/config/client');
         if (response.ok) {
           const configData = await response.json();
-          setConfig({ miners: configData.miners || {} });
+          setConfig({
+            miners: configData.miners || {},
+            networkName: configData.network?.name || configData.currency?.name || 'Network',
+            currencySymbol: configData.currency?.symbol || 'ETH',
+          });
         } else {
           // API failed, use empty miners config
-          setConfig({ miners: {} });
+          setConfig({ miners: {}, networkName: 'Network', currencySymbol: 'ETH' });
         }
       } catch (err) {
         console.error('Error loading config:', err);
         // Fallback to empty miners config
-        setConfig({ miners: {} });
+        setConfig({ miners: {}, networkName: 'Network', currencySymbol: 'ETH' });
       }
     };
 
@@ -617,6 +633,26 @@ export default function Page() {
     return () => clearInterval(statsInterval);
   }, []);
 
+  // ガス統計データ用のポーリング（15秒間隔）
+  useEffect(() => {
+    const fetchGasStats = async () => {
+      try {
+        const response = await fetchWithTimeout('/api/stats/gas', 5000);
+        if (response.ok) {
+          const gasData = await response.json();
+          setGasStats(gasData);
+        }
+      } catch (error) {
+        console.error('Error fetching gas stats:', error);
+      }
+    };
+
+    fetchGasStats();
+    const gasInterval = setInterval(fetchGasStats, 15000); // 15秒間隔
+
+    return () => clearInterval(gasInterval);
+  }, []);
+
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -625,14 +661,15 @@ export default function Page() {
   return (
     <>
       <main className="container mx-auto px-4 py-8">
-        {/* Unified Card: Blockchain Search + Add VirBiCoin */}
+        {/* Unified Card: Blockchain Search + Add Network */}
         <div className="mb-8 bg-gray-800 border border-gray-700 rounded-lg shadow flex flex-col sm:flex-row items-center gap-6 sm:gap-8 p-4 sm:p-6">
           {/* Left: Title + Description + Search */}
           <div className="w-full sm:flex-1 min-w-[220px]">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mb-1">
               <div className="text-lg text-gray-100 font-bold">Blockchain Search</div>
               <div className="text-gray-400 text-sm">
-                Search for blocks, transactions, or wallet addresses on the VirBiCoin network
+                Search for blocks, transactions, or wallet addresses on the{' '}
+                {config?.networkName || 'blockchain'} network
               </div>
             </div>
             <form
@@ -657,7 +694,7 @@ export default function Page() {
               </button>
             </form>
           </div>
-          {/* Right: Add VirBiCoin Button */}
+          {/* Right: Add Network Button */}
           <AddVBCButton />
         </div>
         {/* Summary Cards */}
@@ -709,6 +746,54 @@ export default function Page() {
               />
             </>
           )}
+        </section>
+
+        {/* Gas Tracker */}
+        <section className="mb-8">
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <FireIcon className="w-6 h-6 text-orange-400" />
+                <h3 className="text-xl font-semibold text-gray-100">Gas Tracker</h3>
+              </div>
+              <Link
+                href="/stats"
+                className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
+              >
+                View all stats →
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="text-center p-4 bg-gray-700/50 rounded-lg">
+                <div className="text-gray-400 text-sm mb-2">🐢 Slow</div>
+                <div className="text-xl font-bold text-gray-300">
+                  {gasStats?.slow || stats.avgGasPrice || 'N/A'}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">&gt; 10 min</div>
+              </div>
+              <div className="text-center p-4 bg-gray-700/50 rounded-lg">
+                <div className="text-gray-400 text-sm mb-2">🚗 Standard</div>
+                <div className="text-xl font-bold text-blue-400">
+                  {gasStats?.standard || stats.avgGasPrice || 'N/A'}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">~ 3 min</div>
+              </div>
+              <div className="text-center p-4 bg-gray-700/50 rounded-lg">
+                <div className="text-gray-400 text-sm mb-2">🚀 Fast</div>
+                <div className="text-xl font-bold text-green-400">
+                  {gasStats?.fast || stats.avgGasPrice || 'N/A'}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">~ 30 sec</div>
+              </div>
+              <div className="text-center p-4 bg-gray-700/50 rounded-lg">
+                <div className="text-gray-400 text-sm mb-2">⚡ Instant</div>
+                <div className="text-xl font-bold text-orange-400">
+                  {gasStats?.instant || stats.avgGasPrice || 'N/A'}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">&lt; 15 sec</div>
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* Additional Stats Row */}

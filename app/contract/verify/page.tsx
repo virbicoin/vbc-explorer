@@ -1,7 +1,14 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { CheckCircleIcon, XCircleIcon, CodeBracketIcon, ClockIcon, ArrowPathIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import {
+  CheckCircleIcon,
+  XCircleIcon,
+  CodeBracketIcon,
+  ClockIcon,
+  ArrowPathIcon,
+  InformationCircleIcon,
+} from '@heroicons/react/24/outline';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -301,11 +308,11 @@ const EVM_VERSIONS = [
 
 function useInitFormData(setFormData: React.Dispatch<React.SetStateAction<FormData>>) {
   const searchParams = useSearchParams();
-  
+
   const address = searchParams.get('address');
   const contractName = searchParams.get('contractName');
   const isLaunchpadToken = searchParams.get('isLaunchpadToken') === 'true';
-  
+
   useEffect(() => {
     // Auto-fill source code for Launchpad tokens
     if (isLaunchpadToken) {
@@ -331,6 +338,28 @@ function useInitFormData(setFormData: React.Dispatch<React.SetStateAction<FormDa
 }
 
 function ContractVerifyPageInner() {
+  const [networkConfig, setNetworkConfig] = useState<{
+    chainId: number;
+    name: string;
+    rpcUrl: string;
+    explorer: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('/api/config/client');
+        if (response.ok) {
+          const data = await response.json();
+          setNetworkConfig(data.network);
+        }
+      } catch (error) {
+        console.error('Failed to fetch config:', error);
+      }
+    };
+    fetchConfig();
+  }, []);
+
   const [formData, setFormData] = useState<FormData>({
     address: '',
     contractName: '',
@@ -440,7 +469,9 @@ function ContractVerifyPageInner() {
             <div className="text-gray-300 mb-2">Bytecode comparison details:</div>
             <div className="text-xs text-gray-400 space-y-1 font-mono">
               <div>Onchain bytecode: {String(detailsObj.originalOnchainBytecodeLength)} bytes</div>
-              <div>Compiled bytecode: {String(detailsObj.originalCompiledBytecodeLength)} bytes</div>
+              <div>
+                Compiled bytecode: {String(detailsObj.originalCompiledBytecodeLength)} bytes
+              </div>
               <div className="mt-2">Comparison results:</div>
               <div className="ml-2">
                 <div>• Includes check: {comparisonResults?.isVerified1 ? '✅' : '❌'}</div>
@@ -454,7 +485,9 @@ function ContractVerifyPageInner() {
       }
       return (
         <div className="p-2 bg-gray-800 border border-gray-700 rounded">
-          <pre className="text-xs text-gray-300 overflow-x-auto">{JSON.stringify(details, null, 2)}</pre>
+          <pre className="text-xs text-gray-300 overflow-x-auto">
+            {JSON.stringify(details, null, 2)}
+          </pre>
         </div>
       );
     }
@@ -471,10 +504,13 @@ function ContractVerifyPageInner() {
         <div className="container mx-auto px-4 py-8">
           <div className="flex items-center gap-3 mb-4">
             <CodeBracketIcon className="w-8 h-8 text-purple-400" />
-            <h1 className="text-3xl font-bold text-gray-100">Verify & Publish Contract Source Code</h1>
+            <h1 className="text-3xl font-bold text-gray-100">
+              Verify & Publish Contract Source Code
+            </h1>
           </div>
           <p className="text-gray-400">
-            Source code verification provides transparency for users interacting with smart contracts.
+            Source code verification provides transparency for users interacting with smart
+            contracts.
           </p>
         </div>
       </div>
@@ -482,11 +518,11 @@ function ContractVerifyPageInner() {
       <main className="container mx-auto px-4 py-8">
         {/* Result Banner */}
         {result && (
-          <div className={`mb-6 p-4 rounded-lg border ${
-            result.verified
-              ? 'bg-green-900/20 border-green-600'
-              : 'bg-red-900/20 border-red-600'
-          }`}>
+          <div
+            className={`mb-6 p-4 rounded-lg border ${
+              result.verified ? 'bg-green-900/20 border-green-600' : 'bg-red-900/20 border-red-600'
+            }`}
+          >
             <div className="flex items-center gap-3">
               {result.verified ? (
                 <CheckCircleIcon className="w-6 h-6 text-green-400" />
@@ -494,12 +530,16 @@ function ContractVerifyPageInner() {
                 <XCircleIcon className="w-6 h-6 text-red-400" />
               )}
               <div className="flex-1">
-                <div className={`font-semibold text-lg ${result.verified ? 'text-green-400' : 'text-red-400'}`}>
+                <div
+                  className={`font-semibold text-lg ${result.verified ? 'text-green-400' : 'text-red-400'}`}
+                >
                   {result.verified ? 'Verification Successful' : 'Verification Failed'}
                 </div>
                 <p className="text-gray-300 text-sm mt-1">{result.message}</p>
                 {result.contract?.compilerVersion && (
-                  <p className="text-gray-400 text-xs mt-1">Compiler Version: {result.contract.compilerVersion}</p>
+                  <p className="text-gray-400 text-xs mt-1">
+                    Compiler Version: {result.contract.compilerVersion}
+                  </p>
                 )}
               </div>
               {result.verified && formData.address && (
@@ -511,9 +551,7 @@ function ContractVerifyPageInner() {
                 </Link>
               )}
             </div>
-            {errorDetailsNode && (
-              <div className="mt-4">{errorDetailsNode}</div>
-            )}
+            {errorDetailsNode && <div className="mt-4">{errorDetailsNode}</div>}
           </div>
         )}
 
@@ -558,7 +596,9 @@ function ContractVerifyPageInner() {
                       disabled={isLoading}
                     >
                       {COMPILER_VERSIONS.map((v) => (
-                        <option key={v.value} value={v.value}>{v.label}</option>
+                        <option key={v.value} value={v.value}>
+                          {v.label}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -600,7 +640,9 @@ function ContractVerifyPageInner() {
                     <input
                       type="number"
                       value={formData.optimizationRuns}
-                      onChange={(e) => handleInputChange('optimizationRuns', parseInt(e.target.value) || 200)}
+                      onChange={(e) =>
+                        handleInputChange('optimizationRuns', parseInt(e.target.value) || 200)
+                      }
                       className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
                       disabled={isLoading}
                     />
@@ -616,7 +658,9 @@ function ContractVerifyPageInner() {
                       disabled={isLoading}
                     >
                       {EVM_VERSIONS.map((v) => (
-                        <option key={v.value} value={v.value}>{v.label}</option>
+                        <option key={v.value} value={v.value}>
+                          {v.label}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -634,7 +678,9 @@ function ContractVerifyPageInner() {
                     disabled={isLoading}
                   >
                     {LICENSE_TYPES.map((l) => (
-                      <option key={l.value} value={l.value}>{l.label}</option>
+                      <option key={l.value} value={l.value}>
+                        {l.label}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -647,7 +693,8 @@ function ContractVerifyPageInner() {
                   <div className="text-xs text-gray-500 mb-2 flex items-start gap-2">
                     <InformationCircleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
                     <span>
-                      For flattened contracts (Hardhat flatten), the system will automatically extract the main contract.
+                      For flattened contracts (Hardhat flatten), the system will automatically
+                      extract the main contract.
                     </span>
                   </div>
                   <textarea
@@ -733,20 +780,21 @@ function ContractVerifyPageInner() {
               </p>
               <div className="bg-gray-900 rounded-lg p-4 text-xs text-green-400 font-mono overflow-x-auto">
                 <pre>{`etherscan: {
-  apiKey: { virbicoin: "any-key" },
+  apiKey: { ${networkConfig?.name?.toLowerCase().replace(/\s+/g, '') || 'network'}: "any-key" },
   customChains: [{
-    network: "virbicoin",
-    chainId: 329,
+    network: "${networkConfig?.name?.toLowerCase().replace(/\s+/g, '') || 'network'}",
+    chainId: ${networkConfig?.chainId || 1},
     urls: {
-      apiURL: "https://explorer.digitalregion.jp/api",
-      browserURL: "https://explorer.digitalregion.jp"
+      apiURL: "${networkConfig?.explorer || ''}/api",
+      browserURL: "${networkConfig?.explorer || ''}"
     }
   }]
 }`}</pre>
               </div>
               <p className="text-sm text-gray-400 mt-4">Then verify with:</p>
               <code className="block bg-gray-900 p-3 rounded-lg text-xs text-cyan-400 mt-2 break-all">
-                npx hardhat verify --network virbicoin 0xYourContract
+                npx hardhat verify --network{' '}
+                {networkConfig?.name?.toLowerCase().replace(/\s+/g, '') || 'network'} 0xYourContract
               </code>
             </div>
           </div>
@@ -758,14 +806,16 @@ function ContractVerifyPageInner() {
 
 export default function ContractVerifyPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <ArrowPathIcon className="w-8 h-8 text-purple-400 animate-spin mx-auto mb-4" />
-          <p className="text-gray-400">Loading...</p>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+          <div className="text-center">
+            <ArrowPathIcon className="w-8 h-8 text-purple-400 animate-spin mx-auto mb-4" />
+            <p className="text-gray-400">Loading...</p>
+          </div>
         </div>
-      </div>
-    }>
+      }
+    >
       <ContractVerifyPageInner />
     </Suspense>
   );

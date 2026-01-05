@@ -3,11 +3,7 @@ import { connectDB, Block, Transaction, Account, Contract } from '@/models/index
 import Web3 from 'web3';
 import fs from 'fs';
 import path from 'path';
-import {
-  checkRateLimit,
-  getClientIp,
-  getSecurityHeaders,
-} from '@/lib/security';
+import { checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 
 // Function to read config
 const readConfig = () => {
@@ -109,28 +105,28 @@ export async function GET(request: NextRequest) {
     const response = {
       // Network info
       network_utilization_percentage: 0,
-      
+
       // Block info
       total_blocks: blockNumber.toString(),
       average_block_time: avgBlockTime * 1000, // in milliseconds
-      
+
       // Transaction info
       total_transactions: totalTransactions.toString(),
       transactions_today: tx24h.toString(),
-      
+
       // Address info
       total_addresses: totalAddresses.toString(),
-      
+
       // Contract info
       total_verified_contracts: verifiedContracts.toString(),
-      
+
       // Supply info
       coin_price: null,
       coin_price_change_percentage: null,
       total_supply: (BigInt(Math.floor(totalSupply)) * BigInt(10 ** 18)).toString(),
       circulating_supply: (BigInt(Math.floor(totalSupply)) * BigInt(10 ** 18)).toString(),
       market_cap: null,
-      
+
       // Gas info
       gas_prices: {
         slow: gasPrice,
@@ -139,22 +135,22 @@ export async function GET(request: NextRequest) {
       },
       gas_used_today: '0',
       gas_price_updated_at: new Date().toISOString(),
-      
+
       // Static gas price
       static_gas_price: gasPrice,
-      
+
       // Secondary coin (not applicable)
       secondary_coin_price: null,
-      
+
       // TVL
       tvl: null,
-      
+
       // Rootstock (not applicable)
       rootstock_locked_btc: null,
-      
+
       // Last new contract
       last_output_root_size: null,
-      
+
       // Celo (not applicable)
       celo: null,
     };

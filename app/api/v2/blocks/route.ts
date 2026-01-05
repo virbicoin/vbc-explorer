@@ -25,11 +25,7 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     // Pagination
-    const pagination = validatePagination(
-      searchParams.get('page'),
-      searchParams.get('limit'),
-      50
-    );
+    const pagination = validatePagination(searchParams.get('page'), searchParams.get('limit'), 50);
     const skip = (pagination.page - 1) * pagination.limit;
 
     // Type filter

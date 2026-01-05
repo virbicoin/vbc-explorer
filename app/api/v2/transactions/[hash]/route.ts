@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Transaction, Block } from '@/models/index';
-import {
-  isValidHash,
-  checkRateLimit,
-  getClientIp,
-  getSecurityHeaders,
-} from '@/lib/security';
+import { isValidHash, checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 
 // Blockscout API v2 - Get transaction by hash
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ hash: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ hash: string }> }) {
   try {
     const { hash } = await params;
 
@@ -36,9 +28,9 @@ export async function GET(
     await connectDB();
 
     // Get transaction
-    const tx = await Transaction.findOne({
+    const tx = (await Transaction.findOne({
       hash: hash.toLowerCase(),
-    }).lean() as Record<string, unknown> | null;
+    }).lean()) as Record<string, unknown> | null;
 
     if (!tx) {
       return NextResponse.json(
@@ -91,17 +83,15 @@ export async function GET(
       fee: {
         type: 'actual',
         value: (
-          BigInt(tx.gasUsed as number || 21000) *
-          BigInt(tx.gasPrice as string || '1000000000')
+          BigInt((tx.gasUsed as number) || 21000) * BigInt((tx.gasPrice as string) || '1000000000')
         ).toString(),
       },
       gas_price: tx.gasPrice?.toString() || '0',
       gas_limit: tx.gas?.toString() || '21000',
       gas_used: tx.gasUsed?.toString() || '21000',
       status: tx.status === 0 ? 'error' : 'ok',
-      method: tx.input && (tx.input as string).length > 10
-        ? (tx.input as string).substring(0, 10)
-        : null,
+      method:
+        tx.input && (tx.input as string).length > 10 ? (tx.input as string).substring(0, 10) : null,
       tx_types: tx.creates ? ['contract_creation'] : ['coin_transfer'],
       exchange_rate: null,
       has_error_in_internal_txs: false,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   DocumentTextIcon,
@@ -15,6 +15,7 @@ import {
   ClipboardDocumentIcon,
   CheckIcon,
   ShieldCheckIcon,
+  ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/outline';
 
 interface ApiEndpoint {
@@ -24,6 +25,7 @@ interface ApiEndpoint {
   params?: string[];
   response?: string;
   example?: string;
+  sampleUrl?: string;
 }
 
 interface ApiCategory {
@@ -38,7 +40,8 @@ const apiCategories: ApiCategory[] = [
   {
     name: 'Contract Verification (Hardhat/Foundry)',
     icon: <ShieldCheckIcon className="w-6 h-6" />,
-    description: 'Etherscan-compatible API for contract verification. Works with Hardhat, Foundry, and other tools.',
+    description:
+      'Etherscan-compatible API for contract verification. Works with Hardhat, Foundry, and other tools.',
     badge: 'Recommended',
     endpoints: [
       {
@@ -64,6 +67,7 @@ const apiCategories: ApiCategory[] = [
         description: 'Check verification status',
         params: ['guid (required) - GUID from verifysourcecode'],
         response: '{"status":"1","message":"OK","result":"Pass - Verified"}',
+        sampleUrl: '/api?module=contract&action=checkverifystatus&guid=example',
       },
       {
         method: 'GET',
@@ -71,13 +75,18 @@ const apiCategories: ApiCategory[] = [
         description: 'Get contract ABI',
         params: ['address (required) - Contract address'],
         response: '{"status":"1","message":"OK","result":"[{...ABI...}]"}',
+        sampleUrl:
+          '/api?module=contract&action=getabi&address=0x0000000000000000000000000000000000000000',
       },
       {
         method: 'GET',
         path: '/api?module=contract&action=getsourcecode&address=...',
         description: 'Get verified source code',
         params: ['address (required) - Contract address'],
-        response: '{"status":"1","message":"OK","result":[{"SourceCode":"...","ABI":"...","ContractName":"...","CompilerVersion":"v0.8.20","OptimizationUsed":"1","Runs":"200",...}]}',
+        response:
+          '{"status":"1","message":"OK","result":[{"SourceCode":"...","ABI":"...","ContractName":"...","CompilerVersion":"v0.8.20","OptimizationUsed":"1","Runs":"200",...}]}',
+        sampleUrl:
+          '/api?module=contract&action=getsourcecode&address=0x0000000000000000000000000000000000000000',
       },
     ],
   },
@@ -91,7 +100,9 @@ const apiCategories: ApiCategory[] = [
         path: '/api/v2/smart-contracts/[address]',
         description: 'Get contract information',
         params: ['address (required) - Contract address'],
-        response: '{"hash":"0x...","is_contract":true,"is_verified":true,"name":"MyContract","compiler_version":"0.8.20","abi":[...],...}',
+        response:
+          '{"hash":"0x...","is_contract":true,"is_verified":true,"name":"MyContract","compiler_version":"0.8.20","abi":[...],...}',
+        sampleUrl: '/api/v2/smart-contracts/0x0000000000000000000000000000000000000000',
       },
       {
         method: 'POST',
@@ -129,14 +140,23 @@ const apiCategories: ApiCategory[] = [
         path: '/api/v2/addresses/[address]',
         description: 'Get address information',
         params: ['address (required)'],
-        response: '{"hash":"0x...","is_contract":false,"coin_balance":"1000000000000000000","transactions_count":10,...}',
+        response:
+          '{"hash":"0x...","is_contract":false,"coin_balance":"1000000000000000000","transactions_count":10,...}',
+        sampleUrl: '/api/v2/addresses/0x0000000000000000000000000000000000000000',
       },
       {
         method: 'GET',
         path: '/api/v2/addresses/[address]/transactions',
         description: 'Get address transactions',
-        params: ['address (required)', 'filter (optional) - "to", "from"', 'page (optional)', 'limit (optional)'],
+        params: [
+          'address (required)',
+          'filter (optional) - "to", "from"',
+          'page (optional)',
+          'limit (optional)',
+        ],
         response: '{"items":[...],"next_page_params":{...}}',
+        sampleUrl:
+          '/api/v2/addresses/0x0000000000000000000000000000000000000000/transactions?limit=5',
       },
     ],
   },
@@ -151,6 +171,7 @@ const apiCategories: ApiCategory[] = [
         description: 'Get blocks list',
         params: ['page (optional)', 'limit (optional)'],
         response: '{"items":[...],"next_page_params":{...}}',
+        sampleUrl: '/api/v2/blocks?limit=5',
       },
       {
         method: 'GET',
@@ -158,6 +179,7 @@ const apiCategories: ApiCategory[] = [
         description: 'Get block by number or hash',
         params: ['numberOrHash (required)'],
         response: '{"height":12345,"hash":"0x...","timestamp":"...","miner":{...},...}',
+        sampleUrl: '/api/v2/blocks/1',
       },
       {
         method: 'GET',
@@ -165,6 +187,7 @@ const apiCategories: ApiCategory[] = [
         description: 'Get transactions list',
         params: ['type (optional)', 'page (optional)', 'limit (optional)'],
         response: '{"items":[...],"next_page_params":{...}}',
+        sampleUrl: '/api/v2/transactions?limit=5',
       },
       {
         method: 'GET',
@@ -177,7 +200,9 @@ const apiCategories: ApiCategory[] = [
         method: 'GET',
         path: '/api/v2/stats',
         description: 'Get network statistics',
-        response: '{"total_blocks":"12345","total_transactions":"67890","average_block_time":13000,...}',
+        response:
+          '{"total_blocks":"12345","total_transactions":"67890","average_block_time":13000,...}',
+        sampleUrl: '/api/v2/stats',
       },
     ],
   },
@@ -191,13 +216,15 @@ const apiCategories: ApiCategory[] = [
         path: '/api/total_supply',
         description: 'Total supply (plain text)',
         response: '10193657',
-        example: 'curl https://explorer.digitalregion.jp/api/total_supply',
+        example: 'curl {BASE_URL}/api/total_supply',
+        sampleUrl: '/api/total_supply',
       },
       {
         method: 'GET',
         path: '/api/circulating_supply',
         description: 'Circulating supply (plain text)',
         response: '10193657',
+        sampleUrl: '/api/circulating_supply',
       },
     ],
   },
@@ -211,24 +238,43 @@ const apiCategories: ApiCategory[] = [
         path: '/api/stats',
         description: 'Network statistics',
         response: '{"latestBlock": 1274207, "avgBlockTime": "13.41", ...}',
+        sampleUrl: '/api/stats',
+      },
+      {
+        method: 'GET',
+        path: '/api/stats/gas',
+        description: 'Gas price tracker',
+        response: '{"slow":"1 Gwei","standard":"2 Gwei","fast":"3 Gwei","instant":"5 Gwei"}',
+        sampleUrl: '/api/stats/gas',
+      },
+      {
+        method: 'GET',
+        path: '/api/stats/daily',
+        description: 'Daily statistics',
+        params: ['period (optional) - "7d", "30d", "90d"'],
+        response: '{"stats":[{"date":"2024-01-01","transactions":100,"blocks":50,...}]}',
+        sampleUrl: '/api/stats/daily?period=7d',
       },
       {
         method: 'GET',
         path: '/api/blocks',
         description: 'Latest blocks',
         params: ['page (optional)', 'limit (optional)'],
+        sampleUrl: '/api/blocks?limit=5',
       },
       {
         method: 'GET',
         path: '/api/block/[number]',
         description: 'Block details',
         params: ['number (required)'],
+        sampleUrl: '/api/block/1',
       },
       {
         method: 'GET',
         path: '/api/transactions',
         description: 'Latest transactions',
         params: ['page (optional)', 'limit (optional)'],
+        sampleUrl: '/api/transactions?limit=5',
       },
       {
         method: 'GET',
@@ -241,12 +287,21 @@ const apiCategories: ApiCategory[] = [
         path: '/api/address/[address]',
         description: 'Address details',
         params: ['address (required)'],
+        sampleUrl: '/api/address/0x0000000000000000000000000000000000000000',
       },
       {
         method: 'GET',
         path: '/api/richlist',
         description: 'Top addresses by balance',
         params: ['page (optional)', 'limit (optional)'],
+        sampleUrl: '/api/richlist?limit=10',
+      },
+      {
+        method: 'GET',
+        path: '/api/contracts',
+        description: 'List all contracts',
+        params: ['page (optional)', 'limit (optional)', 'verified (optional)', 'type (optional)'],
+        sampleUrl: '/api/contracts?limit=10',
       },
     ],
   },
@@ -260,6 +315,7 @@ const apiCategories: ApiCategory[] = [
         path: '/api/tokens',
         description: 'List all tokens',
         params: ['type (optional: erc20, erc721, erc1155)'],
+        sampleUrl: '/api/tokens?limit=10',
       },
       {
         method: 'GET',
@@ -284,16 +340,19 @@ const apiCategories: ApiCategory[] = [
         method: 'GET',
         path: '/api/dex/config',
         description: 'DEX configuration',
+        sampleUrl: '/api/dex/config',
       },
       {
         method: 'GET',
         path: '/api/dex/pairs',
         description: 'All trading pairs',
+        sampleUrl: '/api/dex/pairs',
       },
       {
         method: 'GET',
         path: '/api/dex/tokens',
         description: 'DEX-tradable tokens',
+        sampleUrl: '/api/dex/tokens',
       },
       {
         method: 'GET',
@@ -306,6 +365,13 @@ const apiCategories: ApiCategory[] = [
         path: '/api/dex/external-price',
         description: 'External price data',
         response: '{"nativePriceUsd": 0.000217, "totalTvlUsd": 98.41, ...}',
+        sampleUrl: '/api/dex/external-price',
+      },
+      {
+        method: 'GET',
+        path: '/api/dex/stats',
+        description: 'DEX statistics',
+        sampleUrl: '/api/dex/stats',
       },
     ],
   },
@@ -318,27 +384,32 @@ const apiCategories: ApiCategory[] = [
         method: 'GET',
         path: '/api/dex/cmc/summary',
         description: 'CoinMarketCap DEX summary',
+        sampleUrl: '/api/dex/cmc/summary',
       },
       {
         method: 'GET',
         path: '/api/dex/cmc/ticker',
         description: 'CoinMarketCap ticker',
+        sampleUrl: '/api/dex/cmc/ticker',
       },
       {
         method: 'GET',
         path: '/api/dex/defillama',
         description: 'DefiLlama protocol info',
+        sampleUrl: '/api/dex/defillama',
       },
       {
         method: 'GET',
         path: '/api/dex/defillama/tvl',
         description: 'Total Value Locked',
         response: '98.41394513608628',
+        sampleUrl: '/api/dex/defillama/tvl',
       },
       {
         method: 'GET',
         path: '/api/dex/geckoterminal/pools',
         description: 'GeckoTerminal pools',
+        sampleUrl: '/api/dex/geckoterminal/pools',
       },
       {
         method: 'GET',
@@ -357,6 +428,7 @@ const apiCategories: ApiCategory[] = [
         method: 'GET',
         path: '/api/config/client',
         description: 'Client configuration',
+        sampleUrl: '/api/config/client',
       },
       {
         method: 'POST',
@@ -400,8 +472,6 @@ function CopyButton({ text }: { text: string }) {
 
 function EndpointCard({ endpoint }: { endpoint: ApiEndpoint }) {
   const [expanded, setExpanded] = useState(false);
-  const baseUrl = 'https://explorer.digitalregion.jp';
-  const fullUrl = `${baseUrl}${endpoint.path}`;
 
   return (
     <div className="bg-gray-800/50 rounded-lg p-3 hover:bg-gray-800/70 transition-colors">
@@ -419,6 +489,18 @@ function EndpointCard({ endpoint }: { endpoint: ApiEndpoint }) {
           <code className="text-purple-400 text-sm break-all">{endpoint.path}</code>
           <p className="text-gray-500 text-xs mt-0.5">{endpoint.description}</p>
         </div>
+        {endpoint.sampleUrl && (
+          <a
+            href={endpoint.sampleUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="p-1 hover:bg-gray-600 rounded transition-colors flex-shrink-0"
+            title="Try it"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ArrowTopRightOnSquareIcon className="w-4 h-4 text-blue-400" />
+          </a>
+        )}
         <svg
           className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 ${expanded ? 'rotate-180' : ''}`}
           fill="none"
@@ -431,6 +513,23 @@ function EndpointCard({ endpoint }: { endpoint: ApiEndpoint }) {
 
       {expanded && (
         <div className="mt-3 pl-10 space-y-2">
+          {endpoint.sampleUrl && (
+            <div>
+              <h4 className="text-xs text-gray-500 uppercase mb-1">Try it</h4>
+              <div className="bg-gray-900 rounded p-2 flex items-center justify-between gap-2">
+                <a
+                  href={endpoint.sampleUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-400 hover:text-blue-300 text-xs break-all"
+                >
+                  {endpoint.sampleUrl}
+                </a>
+                <CopyButton text={endpoint.sampleUrl} />
+              </div>
+            </div>
+          )}
+
           {endpoint.params && endpoint.params.length > 0 && (
             <div>
               <h4 className="text-xs text-gray-500 uppercase mb-1">Parameters</h4>
@@ -475,6 +574,27 @@ function EndpointCard({ endpoint }: { endpoint: ApiEndpoint }) {
 export default function ApiDocsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [explorerName, setExplorerName] = useState('Explorer');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [currencySymbol, setCurrencySymbol] = useState('ETH');
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('/api/config/client');
+        if (response.ok) {
+          const data = await response.json();
+          setExplorerName(data.explorer?.name || 'Explorer');
+          setBaseUrl(data.network?.explorer || window.location.origin);
+          setCurrencySymbol(data.currency?.symbol || 'ETH');
+        }
+      } catch (error) {
+        console.error('Failed to fetch config:', error);
+        setBaseUrl(window.location.origin);
+      }
+    };
+    fetchConfig();
+  }, []);
 
   const filteredCategories = apiCategories
     .map((category) => ({
@@ -502,7 +622,7 @@ export default function ApiDocsPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-white">API Documentation</h1>
-              <p className="text-gray-400 text-sm">VirBiCoin Explorer REST API</p>
+              <p className="text-gray-400 text-sm">{explorerName} REST API</p>
             </div>
           </div>
 
@@ -523,9 +643,9 @@ export default function ApiDocsPage() {
             <div className="flex items-center gap-2">
               <span className="text-gray-500 text-sm">Base URL:</span>
               <code className="px-2 py-1 bg-gray-800 rounded text-purple-400 text-sm">
-                https://explorer.digitalregion.jp
+                {baseUrl || window.location.origin}
               </code>
-              <CopyButton text="https://explorer.digitalregion.jp" />
+              <CopyButton text={baseUrl || window.location.origin} />
             </div>
           </div>
         </div>
@@ -535,13 +655,13 @@ export default function ApiDocsPage() {
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Sidebar */}
-          <div className="lg:w-56 flex-shrink-0">
+          <div className="lg:w-72 flex-shrink-0">
             <div className="sticky top-4">
               <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Categories</h3>
               <nav className="space-y-1">
                 <button
                   onClick={() => setSelectedCategory(null)}
-                  className={`w-full text-left px-2 py-1.5 rounded text-sm transition-colors ${
+                  className={`w-full text-left px-3 py-2 rounded text-sm transition-colors ${
                     selectedCategory === null
                       ? 'bg-purple-500/20 text-purple-400'
                       : 'text-gray-400 hover:bg-gray-800 hover:text-white'
@@ -553,16 +673,16 @@ export default function ApiDocsPage() {
                   <button
                     key={category.name}
                     onClick={() => setSelectedCategory(category.name)}
-                    className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors flex items-center gap-1.5 ${
+                    className={`w-full text-left px-3 py-2 rounded text-sm transition-colors flex items-center gap-2 ${
                       selectedCategory === category.name
                         ? 'bg-purple-500/20 text-purple-400'
                         : 'text-gray-400 hover:bg-gray-800 hover:text-white'
                     }`}
                   >
                     <span className="flex-shrink-0">{category.icon}</span>
-                    <span className="truncate">{category.name.split(' - ')[0]}</span>
+                    <span className="flex-1 text-left">{category.name.split(' - ')[0]}</span>
                     {category.badge && (
-                      <span className="ml-auto px-1.5 py-0.5 bg-green-500/20 text-green-400 text-[10px] rounded">
+                      <span className="flex-shrink-0 px-1.5 py-0.5 bg-green-500/20 text-green-400 text-[10px] rounded">
                         {category.badge}
                       </span>
                     )}
@@ -576,14 +696,15 @@ export default function ApiDocsPage() {
                   <Link href="/" className="block text-purple-400 hover:text-purple-300">
                     ← Explorer
                   </Link>
-                  <a
-                    href="https://github.com/virbicoin/vbc-explorer"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block text-gray-400 hover:text-white"
-                  >
-                    GitHub
-                  </a>
+                  <Link href="/stats" className="block text-gray-400 hover:text-white">
+                    Statistics
+                  </Link>
+                  <Link href="/contracts" className="block text-gray-400 hover:text-white">
+                    Contracts
+                  </Link>
+                  <Link href="/contract/verify" className="block text-gray-400 hover:text-white">
+                    Verify Contract
+                  </Link>
                 </div>
               </div>
             </div>
@@ -619,7 +740,9 @@ export default function ApiDocsPage() {
             {filteredCategories.length === 0 && (
               <div className="text-center py-12">
                 <MagnifyingGlassIcon className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                <p className="text-gray-400">No endpoints found matching &quot;{searchQuery}&quot;</p>
+                <p className="text-gray-400">
+                  No endpoints found matching &quot;{searchQuery}&quot;
+                </p>
               </div>
             )}
           </div>
@@ -634,7 +757,7 @@ export default function ApiDocsPage() {
             <ul className="text-gray-400 text-xs space-y-1">
               <li>• Rate limit: 100 requests/minute</li>
               <li>• CORS enabled for all endpoints</li>
-              <li>• Amounts in wei (÷10^18 for VBC)</li>
+              <li>• Amounts in wei (÷10^18 for {currencySymbol})</li>
             </ul>
           </div>
           <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
@@ -643,7 +766,12 @@ export default function ApiDocsPage() {
               <li>• Input validation on all endpoints</li>
               <li>• Security headers included</li>
               <li>
-                <a href="https://github.com/virbicoin/vbc-explorer/security" target="_blank" rel="noopener noreferrer" className="text-yellow-400 hover:underline">
+                <a
+                  href="https://github.com/virbicoin/vbc-explorer/security"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-yellow-400 hover:underline"
+                >
                   Report vulnerabilities
                 </a>
               </li>

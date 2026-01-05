@@ -1042,8 +1042,21 @@ const solcCache: Map<string, unknown> = new Map();
 
 // Supported compiler versions
 const SUPPORTED_COMPILER_VERSIONS = [
-  '0.8.33', '0.8.32', '0.8.31', '0.8.30', '0.8.29', '0.8.28', '0.8.27',
-  '0.8.26', '0.8.25', '0.8.24', '0.8.23', '0.8.22', '0.8.21', '0.8.20', '0.8.19',
+  '0.8.33',
+  '0.8.32',
+  '0.8.31',
+  '0.8.30',
+  '0.8.29',
+  '0.8.28',
+  '0.8.27',
+  '0.8.26',
+  '0.8.25',
+  '0.8.24',
+  '0.8.23',
+  '0.8.22',
+  '0.8.21',
+  '0.8.20',
+  '0.8.19',
   '0.6.12', // Legacy support
 ];
 
@@ -1075,40 +1088,48 @@ const SOLC_RELEASES: Record<string, string> = {
 // Load a specific version of solc compiler
 async function loadSolcVersion(version: string): Promise<unknown> {
   const normalizedVersion = normalizeCompilerVersion(version);
-  
+
   // Check cache first
   if (solcCache.has(normalizedVersion)) {
     console.log(`📦 Using cached solc ${normalizedVersion}`);
     return solcCache.get(normalizedVersion);
   }
-  
+
   // Get the full release name for this version
   const fullReleaseName = SOLC_RELEASES[normalizedVersion];
-  
+
   if (!fullReleaseName) {
-    console.warn(`⚠️ No release mapping for solc ${normalizedVersion}, falling back to installed solc`);
+    console.warn(
+      `⚠️ No release mapping for solc ${normalizedVersion}, falling back to installed solc`
+    );
     return solc;
   }
-  
+
   return new Promise((resolve) => {
     console.log(`📥 Loading solc ${normalizedVersion} (${fullReleaseName}) from remote...`);
-    
+
     // Use solc.loadRemoteVersion to load the specific version
     // The version string must be the full release name like "v0.8.30+commit.73712a01"
-    (solc as unknown as { loadRemoteVersion: (version: string, callback: (err: Error | null, solcSnapshot: unknown) => void) => void })
-      .loadRemoteVersion(fullReleaseName, (err: Error | null, solcSnapshot: unknown) => {
-        if (err) {
-          console.error(`❌ Failed to load solc ${normalizedVersion}:`, err.message);
-          // Fall back to installed solc
-          console.log(`⚠️ Falling back to installed solc`);
-          resolve(solc);
-        } else {
-          console.log(`✅ Successfully loaded solc ${normalizedVersion}`);
-          // Cache the loaded compiler
-          solcCache.set(normalizedVersion, solcSnapshot);
-          resolve(solcSnapshot);
-        }
-      });
+    (
+      solc as unknown as {
+        loadRemoteVersion: (
+          version: string,
+          callback: (err: Error | null, solcSnapshot: unknown) => void
+        ) => void;
+      }
+    ).loadRemoteVersion(fullReleaseName, (err: Error | null, solcSnapshot: unknown) => {
+      if (err) {
+        console.error(`❌ Failed to load solc ${normalizedVersion}:`, err.message);
+        // Fall back to installed solc
+        console.log(`⚠️ Falling back to installed solc`);
+        resolve(solc);
+      } else {
+        console.log(`✅ Successfully loaded solc ${normalizedVersion}`);
+        // Cache the loaded compiler
+        solcCache.set(normalizedVersion, solcSnapshot);
+        resolve(solcSnapshot);
+      }
+    });
   });
 }
 
@@ -1321,10 +1342,12 @@ async function processVerification(guid: string) {
 
     // Load the requested compiler version
     const normalizedVersion = normalizeCompilerVersion(compilerVersion);
-    console.log(`🔧 Requested compiler version: ${compilerVersion} (normalized: ${normalizedVersion})`);
-    
+    console.log(
+      `🔧 Requested compiler version: ${compilerVersion} (normalized: ${normalizedVersion})`
+    );
+
     const solcCompiler = await loadSolcVersion(compilerVersion);
-    
+
     // Compile with the loaded compiler
     let compiledOutput;
     try {
@@ -1557,7 +1580,8 @@ async function getAbi(address: string) {
     }
 
     // Etherscan returns ABI as a string (already JSON stringified)
-    const abiString = typeof contract.abi === 'string' ? contract.abi : JSON.stringify(contract.abi);
+    const abiString =
+      typeof contract.abi === 'string' ? contract.abi : JSON.stringify(contract.abi);
     return successResponse(abiString);
   } catch (error) {
     return errorResponse('Error fetching ABI');

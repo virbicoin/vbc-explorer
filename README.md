@@ -22,7 +22,12 @@ A modern, real-time blockchain explorer for any EVM-compatible network built wit
 - **🔍 Advanced Search** - Search blocks, transactions, addresses, tokens, and contracts with intelligent filtering
 - **💎 NFT Explorer** - Complete ERC-721 and ERC-1155 support with metadata, image galleries, and collection analytics
 - **📊 Real-time Analytics** - Network statistics, gas price tracking, and blockchain performance metrics
+- **⛽ Gas Tracker** - Real-time gas price tracking with slow/standard/fast/instant tiers
+- **📈 Daily Statistics** - Historical transaction and block statistics with charts
+- **🌐 Network Info** - Node version, client info, and network details
 - **🛡️ Contract Verification** - Smart contract source code verification with Solidity compiler integration
+- **📋 Contracts List** - Browse all verified and unverified contracts
+- **⏳ Pending Transactions** - View pending transactions in mempool
 - **💰 Token Management** - Comprehensive ERC-20, ERC-721, and ERC-1155 token tracking with holder analytics
 - **📈 Rich List** - Real-time account balance tracking and wealth distribution analysis
 - **💸 Price Tracking** - Live price updates with multiple API integrations (CoinGecko, CoinPaprika)
@@ -33,6 +38,7 @@ A modern, real-time blockchain explorer for any EVM-compatible network built wit
 - **💧 Liquidity Pools** - Provide liquidity and earn trading fees
 - **🌾 Yield Farming** - Stake LP tokens to earn rewards
 - **🎨 Token Launchpad V2** - No-code token creation with metadata, transfer, approve, burn, and pause features
+- **⚙️ Dynamic Configuration** - All settings configurable via config.json for multi-chain support
 
 ## 💱 DEX Features
 
@@ -1199,6 +1205,8 @@ curl "https://explorer.example.com/api?module=stats&action=dailytx&startdate=202
 | `getabi` | Get contract ABI | `address` |
 | `getsourcecode` | Get contract source code | `address` |
 | `getcontractcreation` | Get contract creation info | `contractaddresses` (max 5, comma separated) |
+| `verifysourcecode` | Submit contract for verification | See below |
+| `checkverifystatus` | Check verification status | `guid` |
 
 **Examples:**
 ```bash
@@ -1210,7 +1218,46 @@ curl "https://explorer.example.com/api?module=contract&action=getsourcecode&addr
 
 # Get contract creation info
 curl "https://explorer.example.com/api?module=contract&action=getcontractcreation&contractaddresses=0x...,0x..."
+
+# Submit contract for verification (form-urlencoded)
+curl -X POST "https://explorer.example.com/api" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "module=contract&action=verifysourcecode&contractaddress=0x...&sourceCode=...&contractname=MyContract&compilerversion=v0.8.30%2Bcommit.73712a01&optimizationUsed=1&runs=200"
+
+# Submit contract for verification (JSON body)
+curl -X POST "https://explorer.example.com/api?module=contract&action=verifysourcecode" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contractaddress": "0x...",
+    "sourceCode": "// SPDX-License-Identifier: MIT\npragma solidity 0.8.30;\n...",
+    "contractname": "MyContract",
+    "compilerversion": "v0.8.30+commit.73712a01",
+    "optimizationUsed": "1",
+    "runs": "200",
+    "evmversion": "paris"
+  }'
+
+# Check verification status
+curl "https://explorer.example.com/api?module=contract&action=checkverifystatus&guid=<guid>"
 ```
+
+**Verification Parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `contractaddress` | Yes | Contract address to verify |
+| `sourceCode` | Yes | Solidity source code |
+| `contractname` | Yes | Contract name |
+| `compilerversion` | Yes | Compiler version (e.g., `v0.8.30+commit.73712a01`) |
+| `optimizationUsed` | No | `1` for enabled, `0` for disabled (default: `0`) |
+| `runs` | No | Optimization runs (default: `200`) |
+| `evmversion` | No | EVM version (default: `paris`) |
+| `constructorArguements` | No | ABI-encoded constructor arguments |
+| `licenseType` | No | SPDX license identifier |
+
+**Supported Compiler Versions:**
+- 0.8.15 - 0.8.33
+- 0.6.12 (legacy support)
 
 #### Logs Module
 
@@ -1335,6 +1382,20 @@ Returns the circulating supply of VBC as a plain text number.
 ### Core Statistics APIs
 - `GET /api/stats` - Basic network statistics (blocks, transactions, difficulty)
 - `GET /api/stats-enhanced` - Extended statistics with network hashrate and mining data
+- `GET /api/stats/gas` - Gas price tracker (slow/standard/fast/instant tiers)
+- `GET /api/stats/daily` - Daily statistics (transactions, blocks, gas) with period parameter
+
+### Network APIs
+- `GET /api/network/node` - Node information (version, client, peers, sync status)
+
+### Contract List APIs
+- `GET /api/contracts` - List all contracts with pagination and filters (verified, type)
+
+### Pending Transaction APIs
+- `GET /api/transactions/pending` - Pending transactions in mempool
+
+### Address Type APIs
+- `GET /api/address/[address]/type` - Check if address is token, contract, or wallet
 
 ### Blockchain Data APIs
 - `GET /api/blocks` - Latest 15 blocks with pagination
@@ -1360,6 +1421,81 @@ Returns the circulating supply of VBC as a plain text number.
 - `GET /api/contract/[address]` - Contract details and ABI
 - `POST /api/contract/verify` - Submit contract source code for verification
 - `POST /api/contract/interact` - Execute contract function calls
+
+#### REST API Contract Verification (`POST /api/contract/verify`)
+
+This endpoint provides a direct REST API for contract verification, supporting both single-file and Standard JSON Input formats.
+
+**Request Body:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `address` | Yes | Contract address to verify |
+| `sourceCode` | Yes* | Solidity source code (single file mode) |
+| `standardJsonInput` | Yes* | Standard JSON Input (multi-file mode) |
+| `compilerVersion` | Yes | Compiler version (e.g., `0.8.30`) |
+| `contractName` | No | Contract name (auto-detected if not provided) |
+| `optimization` | No | Enable optimization (default: `false`) |
+| `optimizationRuns` | No | Optimization runs (default: `200`) |
+| `evmVersion` | No | EVM version (default: `paris`) |
+| `constructorArguments` | No | ABI-encoded constructor arguments |
+
+*Either `sourceCode` or `standardJsonInput` is required.
+
+**Single File Mode Example:**
+```bash
+curl -X POST "https://explorer.example.com/api/contract/verify" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "address": "0x...",
+    "sourceCode": "// SPDX-License-Identifier: MIT\npragma solidity 0.8.30;\n\ncontract MyContract {\n    string public message;\n    constructor(string memory _message) {\n        message = _message;\n    }\n}",
+    "compilerVersion": "0.8.30",
+    "contractName": "MyContract",
+    "optimization": true,
+    "optimizationRuns": 200,
+    "evmVersion": "paris"
+  }'
+```
+
+**Standard JSON Input Mode Example:**
+```bash
+curl -X POST "https://explorer.example.com/api/contract/verify" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "address": "0x...",
+    "standardJsonInput": "{\"language\":\"Solidity\",\"sources\":{\"MyContract.sol\":{\"content\":\"// SPDX-License-Identifier: MIT\\npragma solidity 0.8.30;\\n\\ncontract MyContract { ... }\"}},\"settings\":{\"optimizer\":{\"enabled\":true,\"runs\":200},\"evmVersion\":\"paris\"}}",
+    "contractName": "MyContract.sol:MyContract",
+    "compilerVersion": "0.8.30"
+  }'
+```
+
+**Success Response:**
+```json
+{
+  "verified": true,
+  "contract": {
+    "address": "0x...",
+    "contractName": "MyContract",
+    "compilerVersion": "0.8.30",
+    "optimization": true,
+    "sourceCode": "...",
+    "abi": "[...]"
+  },
+  "message": "Contract successfully verified"
+}
+```
+
+**Error Response:**
+```json
+{
+  "verified": false,
+  "message": "Bytecode mismatch - verification failed",
+  "details": {
+    "similarity": "95.00%",
+    "note": "Compiled with solc 0.8.30 (EVM: paris, optimizer: enabled, runs: 200)"
+  }
+}
+```
 
 ### Search APIs
 - `GET /api/search/blocks-by-miner?miner=[address]` - Blocks mined by specific address

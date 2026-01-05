@@ -25,11 +25,7 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     // Pagination
-    const pagination = validatePagination(
-      searchParams.get('page'),
-      searchParams.get('limit'),
-      50
-    );
+    const pagination = validatePagination(searchParams.get('page'), searchParams.get('limit'), 50);
     const skip = (pagination.page - 1) * pagination.limit;
 
     // Filter by type
@@ -100,17 +96,18 @@ export async function GET(request: NextRequest) {
         fee: {
           type: 'actual',
           value: (
-            BigInt(tx.gasUsed as number || 21000) *
-            BigInt(tx.gasPrice as string || '1000000000')
+            BigInt((tx.gasUsed as number) || 21000) *
+            BigInt((tx.gasPrice as string) || '1000000000')
           ).toString(),
         },
         gas_price: tx.gasPrice?.toString() || '0',
         gas_limit: tx.gas?.toString() || '21000',
         gas_used: tx.gasUsed?.toString() || '21000',
         status: tx.status === 0 ? 'error' : 'ok',
-        method: tx.input && (tx.input as string).length > 10
-          ? (tx.input as string).substring(0, 10)
-          : null,
+        method:
+          tx.input && (tx.input as string).length > 10
+            ? (tx.input as string).substring(0, 10)
+            : null,
         tx_types: tx.creates ? ['contract_creation'] : ['coin_transfer'],
         exchange_rate: null,
         has_error_in_internal_txs: false,

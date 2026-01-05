@@ -48,9 +48,25 @@ const solcCache: Map<string, unknown> = new Map();
 
 // Supported compiler versions
 const SUPPORTED_COMPILER_VERSIONS = [
-  '0.8.33', '0.8.32', '0.8.31', '0.8.30', '0.8.29', '0.8.28', '0.8.27',
-  '0.8.26', '0.8.25', '0.8.24', '0.8.23', '0.8.22', '0.8.21', '0.8.20', '0.8.19',
-  '0.8.18', '0.8.17', '0.8.16', '0.8.15',
+  '0.8.33',
+  '0.8.32',
+  '0.8.31',
+  '0.8.30',
+  '0.8.29',
+  '0.8.28',
+  '0.8.27',
+  '0.8.26',
+  '0.8.25',
+  '0.8.24',
+  '0.8.23',
+  '0.8.22',
+  '0.8.21',
+  '0.8.20',
+  '0.8.19',
+  '0.8.18',
+  '0.8.17',
+  '0.8.16',
+  '0.8.15',
   '0.6.12', // Legacy support
 ];
 
@@ -91,40 +107,48 @@ const SOLC_RELEASES: Record<string, string> = {
 // Load a specific version of solc compiler
 async function loadSolcVersion(version: string): Promise<unknown> {
   const normalizedVersion = normalizeCompilerVersion(version);
-  
+
   // Check cache first
   if (solcCache.has(normalizedVersion)) {
     console.log(`📦 Using cached solc ${normalizedVersion}`);
     return solcCache.get(normalizedVersion);
   }
-  
+
   // Get the full release name for this version
   const fullReleaseName = SOLC_RELEASES[normalizedVersion];
-  
+
   if (!fullReleaseName) {
-    console.warn(`⚠️ No release mapping for solc ${normalizedVersion}, falling back to installed solc`);
+    console.warn(
+      `⚠️ No release mapping for solc ${normalizedVersion}, falling back to installed solc`
+    );
     return solc;
   }
-  
+
   return new Promise((resolve) => {
     console.log(`📥 Loading solc ${normalizedVersion} (${fullReleaseName}) from remote...`);
-    
+
     // Use solc.loadRemoteVersion to load the specific version
     // The version string must be the full release name like "v0.8.30+commit.73712a01"
-    (solc as unknown as { loadRemoteVersion: (version: string, callback: (err: Error | null, solcSnapshot: unknown) => void) => void })
-      .loadRemoteVersion(fullReleaseName, (err: Error | null, solcSnapshot: unknown) => {
-        if (err) {
-          console.error(`❌ Failed to load solc ${normalizedVersion}:`, err.message);
-          // Fall back to installed solc
-          console.log(`⚠️ Falling back to installed solc`);
-          resolve(solc);
-        } else {
-          console.log(`✅ Successfully loaded solc ${normalizedVersion}`);
-          // Cache the loaded compiler
-          solcCache.set(normalizedVersion, solcSnapshot);
-          resolve(solcSnapshot);
-        }
-      });
+    (
+      solc as unknown as {
+        loadRemoteVersion: (
+          version: string,
+          callback: (err: Error | null, solcSnapshot: unknown) => void
+        ) => void;
+      }
+    ).loadRemoteVersion(fullReleaseName, (err: Error | null, solcSnapshot: unknown) => {
+      if (err) {
+        console.error(`❌ Failed to load solc ${normalizedVersion}:`, err.message);
+        // Fall back to installed solc
+        console.log(`⚠️ Falling back to installed solc`);
+        resolve(solc);
+      } else {
+        console.log(`✅ Successfully loaded solc ${normalizedVersion}`);
+        // Cache the loaded compiler
+        solcCache.set(normalizedVersion, solcSnapshot);
+        resolve(solcSnapshot);
+      }
+    });
   });
 }
 
@@ -207,7 +231,7 @@ function getAvailableCompilerVersions(): string[] {
 function findBestCompilerVersion(requestedVersion: string): string {
   // Normalize the requested version first
   const normalizedVersion = normalizeCompilerVersion(requestedVersion);
-  
+
   // Check if the normalized version is in the supported list
   if (SUPPORTED_COMPILER_VERSIONS.includes(normalizedVersion)) {
     console.log(`✅ Using requested compiler version: ${normalizedVersion}`);
@@ -287,7 +311,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { address, sourceCode, standardJsonInput, compilerVersion, contractName, optimization } = body;
+    const { address, sourceCode, standardJsonInput, compilerVersion, contractName, optimization } =
+      body;
 
     // Enhanced validation with detailed error messages
     // Either sourceCode OR standardJsonInput is required
@@ -358,7 +383,7 @@ export async function POST(request: NextRequest) {
     let detectedContractName = contractName;
     let targetFileName = '';
     let targetContractName = '';
-    
+
     // Parse contract name (format: "FileName.sol:ContractName" or just "ContractName")
     if (contractName && contractName.includes(':')) {
       [targetFileName, targetContractName] = contractName.split(':');
@@ -367,7 +392,7 @@ export async function POST(request: NextRequest) {
       targetContractName = contractName;
       detectedContractName = contractName;
     }
-    
+
     // For Standard JSON Input, we need the contract name from the input
     if (isStandardJsonInput && !detectedContractName) {
       try {
@@ -391,7 +416,7 @@ export async function POST(request: NextRequest) {
         // Ignore parse errors, will be handled later
       }
     }
-    
+
     // For single file mode, auto-detect from source code
     if (!isStandardJsonInput && !detectedContractName) {
       const contractMatches = sourceCode.match(/contract\s+([A-Za-z0-9_]+)/g);
@@ -406,7 +431,7 @@ export async function POST(request: NextRequest) {
         );
       }
     }
-    
+
     if (!detectedContractName) {
       return NextResponse.json(
         { error: 'Contract name is required for Standard JSON Input verification.' },
@@ -459,13 +484,16 @@ export async function POST(request: NextRequest) {
     // Clean up source code - remove any trailing garbage
     // For Standard JSON Input mode, cleanedSourceCode will be set later from the input
     let cleanedSourceCode = '';
-    
+
     if (!isStandardJsonInput && sourceCode) {
       cleanedSourceCode = sourceCode.trim();
     }
 
     // Check if this is a flattened contract (contains multiple contracts) - only for single file mode
-    const isFlattened = !isStandardJsonInput && cleanedSourceCode && (cleanedSourceCode.match(/contract\s+[A-Za-z0-9_]+/g) || []).length > 1;
+    const isFlattened =
+      !isStandardJsonInput &&
+      cleanedSourceCode &&
+      (cleanedSourceCode.match(/contract\s+[A-Za-z0-9_]+/g) || []).length > 1;
 
     if (isFlattened) {
       // For flattened contracts (like Hardhat flattened), use the original source as-is
@@ -537,19 +565,22 @@ export async function POST(request: NextRequest) {
     // Modernize old Solidity syntax (for 0.8.x compilation)
     cleanedSourceCode = modernizeSyntax(cleanedSourceCode);
 
-    console.log('📏 Original source code length:', isStandardJsonInput ? standardJsonInput.length : (sourceCode?.length || 0));
+    console.log(
+      '📏 Original source code length:',
+      isStandardJsonInput ? standardJsonInput.length : sourceCode?.length || 0
+    );
     console.log('📏 Cleaned source code length:', cleanedSourceCode.length);
 
     // Prepare compilation input
     let input: Record<string, unknown>;
     let sourceCodeForStorage = cleanedSourceCode;
-    
+
     if (isStandardJsonInput) {
       // Standard JSON Input mode - parse and use the provided JSON directly
       console.log('📦 Using Standard JSON Input mode');
       try {
         input = JSON.parse(standardJsonInput);
-        
+
         // Ensure outputSelection is set correctly
         if (!input.settings) {
           input.settings = {};
@@ -560,10 +591,10 @@ export async function POST(request: NextRequest) {
             '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode', 'evm.methodIdentifiers'],
           },
         };
-        
+
         // Store the original Standard JSON Input for reference
         sourceCodeForStorage = standardJsonInput;
-        
+
         // Extract source code from the first file for license detection
         if (input.sources && typeof input.sources === 'object') {
           const sources = input.sources as Record<string, { content?: string }>;
@@ -624,7 +655,7 @@ export async function POST(request: NextRequest) {
       );
 
       const solcCompiler = await loadSolcVersion(finalCompilerVersion);
-      
+
       // Compile with the loaded compiler
       const compileFunc = (solcCompiler as { compile: (input: string) => string }).compile;
       compiledOutput = JSON.parse(compileFunc(JSON.stringify(input)));

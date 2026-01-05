@@ -1,13 +1,100 @@
-import { Metadata } from 'next';
+'use client';
+
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
-export const metadata: Metadata = {
-  title: 'VirBiCoin DEX Documentation',
-  description:
-    'Official documentation for VirBiCoin DEX - Learn how to swap tokens, provide liquidity, and earn rewards.',
-};
+interface DexConfig {
+  enabled: boolean;
+  factory: string;
+  router: string;
+  masterChef: string;
+  wrappedNative: {
+    address: string;
+    name: string;
+    symbol: string;
+    decimals: number;
+  };
+  rewardToken: {
+    address: string;
+    symbol: string;
+    name: string;
+    decimals: number;
+  };
+  farmPools: Array<{
+    pid: number;
+    name: string;
+    lpToken: string;
+    token0Symbol: string;
+    token1Symbol: string;
+  }>;
+}
+
+interface NetworkConfig {
+  chainId: number;
+  name: string;
+  rpcUrl: string;
+  explorer: string;
+}
+
+interface CurrencyConfig {
+  name: string;
+  symbol: string;
+}
+
+interface SocialConfig {
+  x?: string;
+  twitter?: string;
+}
+
+interface DexInfoConfig {
+  name: string;
+  swapFee: string;
+  protocolFee: string;
+  lpReward: string;
+}
 
 export default function DocsPage() {
+  const [dexConfig, setDexConfig] = useState<DexConfig | null>(null);
+  const [networkConfig, setNetworkConfig] = useState<NetworkConfig | null>(null);
+  const [currencyConfig, setCurrencyConfig] = useState<CurrencyConfig | null>(null);
+  const [socialConfig, setSocialConfig] = useState<SocialConfig | null>(null);
+  const [dexInfoConfig, setDexInfoConfig] = useState<DexInfoConfig | null>(null);
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('/api/config/client');
+        if (response.ok) {
+          const data = await response.json();
+          setDexConfig(data.dex);
+          setNetworkConfig(data.network);
+          setCurrencyConfig(data.currency);
+          setSocialConfig(data.social);
+          // Fetch dexInfo from full config
+          const fullConfigResponse = await fetch('/api/dex/config');
+          if (fullConfigResponse.ok) {
+            const fullConfig = await fullConfigResponse.json();
+            setDexInfoConfig(fullConfig.dexInfo);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch config:', error);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  const networkName = networkConfig?.name || currencyConfig?.name || 'Network';
+  const currencySymbol = currencyConfig?.symbol || 'ETH';
+  const dexName = dexInfoConfig?.name || `${networkName} DEX`;
+  const swapFee = dexInfoConfig?.swapFee || '0.3%';
+  const lpReward = dexInfoConfig?.lpReward || '0.25%';
+  const protocolFee = dexInfoConfig?.protocolFee || '0.05%';
+  const rewardTokenSymbol = dexConfig?.rewardToken?.symbol || 'REWARD';
+  const rewardTokenName = dexConfig?.rewardToken?.name || 'Reward Token';
+  const wrappedSymbol = dexConfig?.wrappedNative?.symbol || `W${currencySymbol}`;
+  const twitterUrl = socialConfig?.x || socialConfig?.twitter || '';
+
   return (
     <div className="min-h-screen bg-gray-900">
       {/* Header */}
@@ -32,7 +119,7 @@ export default function DocsPage() {
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-white">Documentation</h1>
-                <p className="text-gray-400 mt-1">Your complete guide to VirBiCoin DEX</p>
+                <p className="text-gray-400 mt-1">Your complete guide to {dexName}</p>
               </div>
             </div>
             <nav className="hidden md:flex items-center gap-2 bg-gray-800/50 rounded-xl p-1">
@@ -110,24 +197,24 @@ export default function DocsPage() {
             </h2>
             <div className="prose prose-invert max-w-none">
               <p className="text-gray-300 leading-relaxed">
-                VirBiCoin DEX is a decentralized exchange built on the VirBiCoin network. It uses an
+                {dexName} is a decentralized exchange built on the {networkName} network. It uses an
                 Automated Market Maker (AMM) model based on the Uniswap V2 protocol, allowing users
                 to trade tokens, provide liquidity, and earn rewards through yield farming.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
                 <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
                   <div className="text-green-400 font-bold mb-2">Swap Fee</div>
-                  <div className="text-white text-2xl font-bold">0.3%</div>
+                  <div className="text-white text-2xl font-bold">{swapFee}</div>
                   <div className="text-gray-500 text-sm">Per transaction</div>
                 </div>
                 <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
                   <div className="text-green-400 font-bold mb-2">LP Reward</div>
-                  <div className="text-white text-2xl font-bold">0.25%</div>
+                  <div className="text-white text-2xl font-bold">{lpReward}</div>
                   <div className="text-gray-500 text-sm">Goes to LPs</div>
                 </div>
                 <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
                   <div className="text-green-400 font-bold mb-2">Protocol Fee</div>
-                  <div className="text-white text-2xl font-bold">0.05%</div>
+                  <div className="text-white text-2xl font-bold">{protocolFee}</div>
                   <div className="text-gray-500 text-sm">Platform sustainability</div>
                 </div>
               </div>
@@ -146,24 +233,25 @@ export default function DocsPage() {
               <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50">
                 <h3 className="font-bold text-white mb-2">Step 1: Connect Your Wallet</h3>
                 <p className="text-gray-300">
-                  Connect a Web3 wallet (MetaMask, WalletConnect, etc.) to the VirBiCoin network.
+                  Connect a Web3 wallet (MetaMask, WalletConnect, etc.) to the {networkName}{' '}
+                  network.
                 </p>
               </div>
               <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50">
-                <h3 className="font-bold text-white mb-2">Step 2: Add VirBiCoin Network</h3>
+                <h3 className="font-bold text-white mb-2">Step 2: Add {networkName} Network</h3>
                 <div className="bg-gray-900 rounded-lg p-4 font-mono text-sm text-gray-300 mt-2">
-                  <div>Network Name: VirBiCoin</div>
-                  <div>Chain ID: 329</div>
-                  <div>RPC URL: https://rpc.digitalregion.jp</div>
-                  <div>Symbol: VBC</div>
-                  <div>Explorer: https://explorer.digitalregion.jp</div>
+                  <div>Network Name: {networkName}</div>
+                  <div>Chain ID: {networkConfig?.chainId || 'N/A'}</div>
+                  <div>RPC URL: {networkConfig?.rpcUrl || 'N/A'}</div>
+                  <div>Symbol: {currencySymbol}</div>
+                  <div>Explorer: {networkConfig?.explorer || 'N/A'}</div>
                 </div>
               </div>
               <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700/50">
-                <h3 className="font-bold text-white mb-2">Step 3: Get VBC</h3>
+                <h3 className="font-bold text-white mb-2">Step 3: Get {currencySymbol}</h3>
                 <p className="text-gray-300">
-                  Acquire VBC tokens for gas fees and trading. VBC is the native currency of the
-                  VirBiCoin network.
+                  Acquire {currencySymbol} tokens for gas fees and trading. {currencySymbol} is the
+                  native currency of the {networkName} network.
                 </p>
               </div>
             </div>
@@ -229,7 +317,7 @@ export default function DocsPage() {
             </h2>
             <div className="prose prose-invert max-w-none">
               <p className="text-gray-300 leading-relaxed">
-                Liquidity providers earn 0.25% of all trades proportional to their share of the
+                Liquidity providers earn {lpReward} of all trades proportional to their share of the
                 pool.
               </p>
 
@@ -288,7 +376,7 @@ export default function DocsPage() {
             </h2>
             <div className="prose prose-invert max-w-none">
               <p className="text-gray-300 leading-relaxed">
-                Stake your LP tokens to earn VBCG (VirBiCoin Gold) rewards.
+                Stake your LP tokens to earn {rewardTokenSymbol} ({rewardTokenName}) rewards.
               </p>
 
               <h3 className="text-lg font-bold text-white mt-6 mb-3">How to Farm</h3>
@@ -301,19 +389,19 @@ export default function DocsPage() {
                 <li>Harvest rewards anytime by clicking &quot;Harvest&quot;</li>
               </ol>
 
-              <div className="bg-gray-800/50 rounded-xl p-4 mt-6 border border-gray-700/50">
-                <h4 className="font-bold text-white mb-2">Available Farms</h4>
-                <div className="space-y-2 text-gray-300">
-                  <div className="flex justify-between">
-                    <span>VBCG-VBC LP</span>
-                    <span className="text-green-400">Earning VBCG</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>USDT-VBC LP</span>
-                    <span className="text-green-400">Earning VBCG</span>
+              {dexConfig?.farmPools && dexConfig.farmPools.length > 0 && (
+                <div className="bg-gray-800/50 rounded-xl p-4 mt-6 border border-gray-700/50">
+                  <h4 className="font-bold text-white mb-2">Available Farms</h4>
+                  <div className="space-y-2 text-gray-300">
+                    {dexConfig.farmPools.map((pool, index) => (
+                      <div key={index} className="flex justify-between">
+                        <span>{pool.name}</span>
+                        <span className="text-green-400">Earning {rewardTokenSymbol}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </section>
 
@@ -326,42 +414,52 @@ export default function DocsPage() {
               Smart Contracts
             </h2>
             <div className="space-y-4">
-              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
-                <div className="text-gray-400 text-sm mb-1">Router (V2)</div>
-                <Link
-                  href="/address/0xdD1Ae4345252FFEA67fE844296fbd6C973B98c18"
-                  className="text-green-400 hover:underline font-mono text-sm break-all"
-                >
-                  0xdD1Ae4345252FFEA67fE844296fbd6C973B98c18
-                </Link>
-              </div>
-              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
-                <div className="text-gray-400 text-sm mb-1">Factory</div>
-                <Link
-                  href="/address/0x663B1b42B79077AaC918515D3f57FED6820Dad63"
-                  className="text-green-400 hover:underline font-mono text-sm break-all"
-                >
-                  0x663B1b42B79077AaC918515D3f57FED6820Dad63
-                </Link>
-              </div>
-              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
-                <div className="text-gray-400 text-sm mb-1">MasterChef (Farming)</div>
-                <Link
-                  href="/address/0x12A656c2DeE0EA2685398d52AcF78974fCD67B27"
-                  className="text-green-400 hover:underline font-mono text-sm break-all"
-                >
-                  0x12A656c2DeE0EA2685398d52AcF78974fCD67B27
-                </Link>
-              </div>
-              <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
-                <div className="text-gray-400 text-sm mb-1">Wrapped VBC (WVBC)</div>
-                <Link
-                  href="/address/0x52CB9F0d65D9d4De08CF103153C7A1A97567Bb9b"
-                  className="text-green-400 hover:underline font-mono text-sm break-all"
-                >
-                  0x52CB9F0d65D9d4De08CF103153C7A1A97567Bb9b
-                </Link>
-              </div>
+              {dexConfig?.router && (
+                <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
+                  <div className="text-gray-400 text-sm mb-1">Router (V2)</div>
+                  <Link
+                    href={`/contract/${dexConfig.router}`}
+                    className="text-green-400 hover:underline font-mono text-sm break-all"
+                  >
+                    {dexConfig.router}
+                  </Link>
+                </div>
+              )}
+              {dexConfig?.factory && (
+                <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
+                  <div className="text-gray-400 text-sm mb-1">Factory</div>
+                  <Link
+                    href={`/contract/${dexConfig.factory}`}
+                    className="text-green-400 hover:underline font-mono text-sm break-all"
+                  >
+                    {dexConfig.factory}
+                  </Link>
+                </div>
+              )}
+              {dexConfig?.masterChef && (
+                <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
+                  <div className="text-gray-400 text-sm mb-1">MasterChef (Farming)</div>
+                  <Link
+                    href={`/contract/${dexConfig.masterChef}`}
+                    className="text-green-400 hover:underline font-mono text-sm break-all"
+                  >
+                    {dexConfig.masterChef}
+                  </Link>
+                </div>
+              )}
+              {dexConfig?.wrappedNative?.address && (
+                <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
+                  <div className="text-gray-400 text-sm mb-1">
+                    Wrapped {currencySymbol} ({wrappedSymbol})
+                  </div>
+                  <Link
+                    href={`/token/${dexConfig.wrappedNative.address}`}
+                    className="text-green-400 hover:underline font-mono text-sm break-all"
+                  >
+                    {dexConfig.wrappedNative.address}
+                  </Link>
+                </div>
+              )}
             </div>
           </section>
 
@@ -375,100 +473,27 @@ export default function DocsPage() {
             </h2>
             <div className="space-y-4">
               <p className="text-gray-300">
-                VirBiCoin DEX provides public API endpoints compatible with GeckoTerminal and
+                {dexName} provides public API endpoints compatible with GeckoTerminal and
                 CoinMarketCap standards.
               </p>
 
               <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
                 <h4 className="font-bold text-white mb-3">GeckoTerminal Compatible (V2 API)</h4>
                 <p className="text-gray-400 text-sm mb-3">
-                  Full GeckoTerminal V2 API compatibility for DEX aggregator integration. All
-                  endpoints validate addresses and sanitize parameters.
+                  Full GeckoTerminal V2 API compatibility for DEX aggregator integration.
                 </p>
                 <div className="space-y-2 font-mono text-sm">
                   <div className="flex items-start gap-2">
                     <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
-                    <span className="text-gray-300">/api/dex/geckoterminal/networks</span>
-                    <span className="text-gray-500 text-xs ml-2">- Chain info</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
                     <span className="text-gray-300">/api/dex/geckoterminal/pools</span>
-                    <span className="text-gray-500 text-xs ml-2">- All pools</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
-                    <span className="text-gray-300">/api/dex/geckoterminal/pool/[address]</span>
-                    <span className="text-gray-500 text-xs ml-2">- Pool detail</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
-                    <span className="text-gray-300">/api/dex/geckoterminal/token/[address]</span>
-                    <span className="text-gray-500 text-xs ml-2">- Token info</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
                     <span className="text-gray-300">/api/dex/geckoterminal/ohlcv/[pool]</span>
-                    <span className="text-gray-500 text-xs ml-2">- Candlestick</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
-                    <span className="text-gray-300">/api/dex/geckoterminal/trades/[pool]</span>
-                    <span className="text-gray-500 text-xs ml-2">- Recent trades</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
-                    <span className="text-gray-300">/api/dex/geckoterminal/simple/price</span>
-                    <span className="text-gray-500 text-xs ml-2">- Batch prices</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
-                    <span className="text-gray-300">/api/dex/geckoterminal/info</span>
-                    <span className="text-gray-500 text-xs ml-2">- DEX metadata</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
-                    <span className="text-gray-300">/api/dex/geckoterminal/dexes</span>
-                    <span className="text-gray-500 text-xs ml-2">- DEX list</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
-                    <span className="text-gray-300">/api/dex/geckoterminal/trending_pools</span>
-                    <span className="text-gray-500 text-xs ml-2">- Trending</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
-                    <span className="text-gray-300">/api/dex/geckoterminal/new_pools</span>
-                    <span className="text-gray-500 text-xs ml-2">- New pools</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
-                    <span className="text-gray-300">/api/dex/geckoterminal/search/pools</span>
-                    <span className="text-gray-500 text-xs ml-2">- Search</span>
                   </div>
                 </div>
               </div>
@@ -488,12 +513,6 @@ export default function DocsPage() {
                     </span>
                     <span className="text-gray-300">/api/dex/cmc/ticker</span>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
-                    <span className="text-gray-300">/api/dex/cmc/assets</span>
-                  </div>
                 </div>
               </div>
 
@@ -505,35 +524,40 @@ export default function DocsPage() {
                       GET
                     </span>
                     <span className="text-gray-300">/api/dex/defillama</span>
-                    <span className="text-gray-500 text-xs ml-2">- Protocol info</span>
                   </div>
                   <div className="flex items-start gap-2">
                     <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded text-xs">
                       GET
                     </span>
                     <span className="text-gray-300">/api/dex/defillama/tvl</span>
-                    <span className="text-gray-500 text-xs ml-2">- Current TVL</span>
                   </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
-                    <span className="text-gray-300">/api/dex/defillama/pools</span>
-                    <span className="text-gray-500 text-xs ml-2">- Pool data (yields format)</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
-                    <span className="text-gray-300">/api/dex/defillama/prices</span>
-                    <span className="text-gray-500 text-xs ml-2">- Token prices</span>
-                  </div>
-                  <div className="flex items-start gap-2">
-                    <span className="bg-purple-500/20 text-purple-400 px-2 py-0.5 rounded text-xs">
-                      GET
-                    </span>
-                    <span className="text-gray-300">/api/dex/defillama/historical</span>
-                    <span className="text-gray-500 text-xs ml-2">- Historical TVL</span>
+                </div>
+              </div>
+
+              <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-xl p-4 mt-4">
+                <div className="flex items-start gap-2">
+                  <svg
+                    className="w-5 h-5 text-cyan-400 mt-0.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  <div>
+                    <div className="font-bold text-cyan-400">Full API Documentation</div>
+                    <p className="text-gray-300 text-sm">
+                      For complete API documentation, visit the{' '}
+                      <Link href="/api-docs" className="text-cyan-400 hover:underline">
+                        API Documentation page
+                      </Link>
+                      .
+                    </p>
                   </div>
                 </div>
               </div>
@@ -554,28 +578,28 @@ export default function DocsPage() {
                   What is the swap fee?
                 </summary>
                 <div className="px-4 pb-4 text-gray-300">
-                  The swap fee is 0.3% per trade. Of this, 0.25% goes to liquidity providers and
-                  0.05% goes to the protocol.
+                  The swap fee is {swapFee} per trade. Of this, {lpReward} goes to liquidity
+                  providers and {protocolFee} goes to the protocol.
                 </div>
               </details>
 
               <details className="bg-gray-800/50 rounded-xl border border-gray-700/50 group">
                 <summary className="p-4 cursor-pointer font-medium text-white hover:text-green-400 transition-colors">
-                  How do I get VBC for gas fees?
+                  How do I get {currencySymbol} for gas fees?
                 </summary>
                 <div className="px-4 pb-4 text-gray-300">
-                  You can acquire VBC from exchanges that list VirBiCoin or through mining. Check
-                  our official channels for available exchanges.
+                  You can acquire {currencySymbol} from exchanges that list {networkName} or through
+                  mining. Check our official channels for available exchanges.
                 </div>
               </details>
 
               <details className="bg-gray-800/50 rounded-xl border border-gray-700/50 group">
                 <summary className="p-4 cursor-pointer font-medium text-white hover:text-green-400 transition-colors">
-                  What is VBCG?
+                  What is {rewardTokenSymbol}?
                 </summary>
                 <div className="px-4 pb-4 text-gray-300">
-                  VBCG (VirBiCoin Gold) is the reward token distributed to liquidity providers who
-                  stake their LP tokens in the farming pools.
+                  {rewardTokenSymbol} ({rewardTokenName}) is the reward token distributed to
+                  liquidity providers who stake their LP tokens in the farming pools.
                 </div>
               </details>
 
@@ -588,75 +612,37 @@ export default function DocsPage() {
                   their own research and only invest what they can afford to lose.
                 </div>
               </details>
-
-              <details className="bg-gray-800/50 rounded-xl border border-gray-700/50 group">
-                <summary className="p-4 cursor-pointer font-medium text-white hover:text-green-400 transition-colors">
-                  Are the API endpoints rate limited?
-                </summary>
-                <div className="px-4 pb-4 text-gray-300">
-                  Yes, all API endpoints are rate limited to prevent abuse. The limits are typically
-                  100 requests per minute for most endpoints. If you need higher limits for your
-                  application, please contact us.
-                </div>
-              </details>
-
-              <details className="bg-gray-800/50 rounded-xl border border-gray-700/50 group">
-                <summary className="p-4 cursor-pointer font-medium text-white hover:text-green-400 transition-colors">
-                  How can I report a security vulnerability?
-                </summary>
-                <div className="px-4 pb-4 text-gray-300">
-                  Please report security vulnerabilities responsibly through our{' '}
-                  <a
-                    href="https://github.com/virbicoin/vbc-explorer/security"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-green-400 hover:underline"
-                  >
-                    GitHub Security page
-                  </a>
-                  . Do not create public issues for security matters. We aim to respond within 48
-                  hours.
-                </div>
-              </details>
-
-              <details className="bg-gray-800/50 rounded-xl border border-gray-700/50 group">
-                <summary className="p-4 cursor-pointer font-medium text-white hover:text-green-400 transition-colors">
-                  Are Launchpad token images safe?
-                </summary>
-                <div className="px-4 pb-4 text-gray-300">
-                  Yes. Launchpad tokens can use external image URLs for their logos, but all URLs
-                  are validated before display. Only HTTPS URLs are allowed, and malicious patterns
-                  (javascript:, data: URIs, XSS attempts) are blocked. SVG images are rendered with
-                  strict Content Security Policy restrictions.
-                </div>
-              </details>
             </div>
           </section>
         </div>
 
         {/* Footer Links */}
         <div className="mt-12 pt-8 border-t border-gray-700/50">
-          <div className="flex flex-wrap gap-4 justify-center">
+          <div className="flex flex-wrap items-center justify-center gap-4 text-sm">
             <Link href="/dex" className="text-green-400 hover:underline">
-              ← Back to DEX
+              Trade
+            </Link>
+            <span className="text-gray-600">•</span>
+            <Link href="/dex/pools" className="text-green-400 hover:underline">
+              Pools
             </Link>
             <span className="text-gray-600">•</span>
             <Link href="/dex/analytics" className="text-green-400 hover:underline">
               Analytics
             </Link>
-            <span className="text-gray-600">•</span>
-            <Link href="/dex/pools" className="text-green-400 hover:underline">
-              All Pools
-            </Link>
-            <span className="text-gray-600">•</span>
-            <a
-              href="https://x.com/VirBiCoin"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-green-400 hover:underline"
-            >
-              Twitter/X
-            </a>
+            {twitterUrl && (
+              <>
+                <span className="text-gray-600">•</span>
+                <a
+                  href={twitterUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-green-400 hover:underline"
+                >
+                  Twitter/X
+                </a>
+              </>
+            )}
           </div>
         </div>
       </div>

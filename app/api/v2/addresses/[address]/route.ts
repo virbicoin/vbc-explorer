@@ -3,12 +3,7 @@ import { connectDB, Account, Transaction, Contract } from '@/models/index';
 import Web3 from 'web3';
 import fs from 'fs';
 import path from 'path';
-import {
-  sanitizeAddress,
-  checkRateLimit,
-  getClientIp,
-  getSecurityHeaders,
-} from '@/lib/security';
+import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 
 // Function to read config
 const readConfig = () => {
@@ -92,10 +87,7 @@ export async function GET(
     let txCount = 0;
     try {
       txCount = await Transaction.countDocuments({
-        $or: [
-          { from: sanitizedAddress.toLowerCase() },
-          { to: sanitizedAddress.toLowerCase() },
-        ],
+        $or: [{ from: sanitizedAddress.toLowerCase() }, { to: sanitizedAddress.toLowerCase() }],
       });
     } catch (error) {
       console.error('Error counting transactions:', error);
@@ -115,28 +107,28 @@ export async function GET(
       is_contract: isContract,
       is_verified: contractInfo?.verified || false,
       name: contractInfo?.contractName || null,
-      
+
       // Balance info
       coin_balance: balance,
       exchange_rate: null,
-      
+
       // Transaction counts
       transactions_count: txCount,
       token_transfers_count: 0,
       gas_usage_count: null,
       validations_count: null,
-      
+
       // Contract info
       creation_tx_hash: null,
       implementation_name: null,
       implementation_address: null,
-      
+
       // Block info
       block_number_balance_updated_at: account?.blockNumber || null,
-      
+
       // ENS
       ens_domain_name: null,
-      
+
       // Metadata
       has_beacon_chain_withdrawals: false,
       has_custom_methods_read: false,
@@ -150,11 +142,11 @@ export async function GET(
       has_token_transfers: false,
       has_tokens: false,
       has_validated_blocks: false,
-      
+
       // Watchlist
       watchlist_address_id: null,
       watchlist_names: [],
-      
+
       // Private tags
       private_tags: [],
       public_tags: [],

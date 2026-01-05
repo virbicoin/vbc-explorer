@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Block, Transaction } from '@/models/index';
-import {
-  checkRateLimit,
-  getClientIp,
-  getSecurityHeaders,
-} from '@/lib/security';
+import { checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 
 // Blockscout API v2 - Get block by number or hash
 export async function GET(

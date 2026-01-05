@@ -3,12 +3,7 @@ import { connectDB, Contract } from '@/models/index';
 import Web3 from 'web3';
 import fs from 'fs';
 import path from 'path';
-import {
-  sanitizeAddress,
-  checkRateLimit,
-  getClientIp,
-  getSecurityHeaders,
-} from '@/lib/security';
+import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 
 // Function to read config
 const readConfig = () => {
@@ -94,48 +89,48 @@ export async function GET(
       hash: sanitizedAddress.toLowerCase(),
       is_contract: true,
       is_verified: contract?.verified || false,
-      
+
       // Verification info
       name: contract?.contractName || null,
       compiler_version: contract?.compilerVersion || null,
       optimization_enabled: contract?.optimization || false,
       optimization_runs: contract?.optimizationRuns || 200,
       evm_version: 'paris',
-      
+
       // Source code
       source_code: contract?.sourceCode || null,
       abi: contract?.abi ? JSON.parse(contract.abi as string) : null,
-      
+
       // Bytecode
       creation_bytecode: null,
       deployed_bytecode: bytecode,
-      
+
       // Additional info
       constructor_args: null,
       license_type: contract?.license || null,
       verified_at: contract?.verifiedAt || null,
-      
+
       // External verification
       is_verified_via_sourcify: false,
       is_verified_via_eth_bytecode_db: false,
       sourcify_repo_url: null,
-      
+
       // Proxy info
       is_self_destructed: false,
       is_changed_bytecode: false,
       minimal_proxy_address_hash: null,
       implementation_address: null,
       implementations: [],
-      
+
       // File path (for multi-file contracts)
       file_path: null,
-      
+
       // Additional metadata
       additional_sources: [],
       external_libraries: [],
       verified_twin_address_hash: null,
       creation_tx_hash: null,
-      
+
       // Language
       language: 'solidity',
     };

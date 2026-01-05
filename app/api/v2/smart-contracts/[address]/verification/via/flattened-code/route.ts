@@ -4,12 +4,7 @@ import Web3 from 'web3';
 import solc from 'solc';
 import fs from 'fs';
 import path from 'path';
-import {
-  sanitizeAddress,
-  checkRateLimit,
-  getClientIp,
-  getSecurityHeaders,
-} from '@/lib/security';
+import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 
 // Function to read config
 const readConfig = () => {
@@ -341,11 +336,10 @@ export async function POST(
         verifiedAt: new Date(),
       };
 
-      await Contract.findOneAndUpdate(
-        { address: sanitizedAddress.toLowerCase() },
-        contractData,
-        { upsert: true, new: true }
-      );
+      await Contract.findOneAndUpdate({ address: sanitizedAddress.toLowerCase() }, contractData, {
+        upsert: true,
+        new: true,
+      });
 
       // Blockscout API v2 response format
       return NextResponse.json(

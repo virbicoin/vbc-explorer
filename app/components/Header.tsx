@@ -8,6 +8,8 @@ import {
   TrophyIcon,
   RocketLaunchIcon,
   DocumentTextIcon,
+  ChartBarIcon,
+  GlobeAltIcon,
 } from '@heroicons/react/24/outline';
 import { loadConfig } from '@/lib/config';
 
@@ -54,12 +56,21 @@ export default function Header() {
             </Link>
           </li>
           <li>
-            <Link
-              href="/contract/verify"
-              className="nav-link text-gray-200 flex items-center gap-1"
-            >
+            <Link href="/contracts" className="nav-link text-gray-200 flex items-center gap-1">
               <CodeBracketIcon className="w-5 h-5" />
-              <span className="hidden sm:inline">Verify</span>
+              <span className="hidden sm:inline">Contracts</span>
+            </Link>
+          </li>
+          <li>
+            <Link href="/stats" className="nav-link text-gray-200 flex items-center gap-1">
+              <ChartBarIcon className="w-5 h-5" />
+              <span className="hidden sm:inline">Stats</span>
+            </Link>
+          </li>
+          <li>
+            <Link href="/network" className="nav-link text-gray-200 flex items-center gap-1">
+              <GlobeAltIcon className="w-5 h-5" />
+              <span className="hidden sm:inline">Network</span>
             </Link>
           </li>
           {dexEnabled && (
