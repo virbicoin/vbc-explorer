@@ -21,7 +21,15 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createPublicClient, http, formatEther, formatUnits, type Address } from 'viem';
 import mongoose from 'mongoose';
-import { connectDB, Block, Transaction, TokenTransfer, Account, Contract } from '@/models/index';
+import {
+  connectDB,
+  Block,
+  Transaction,
+  TokenTransfer,
+  Account,
+  Contract,
+  VerificationJob,
+} from '@/models/index';
 import { loadConfig } from '@/lib/config';
 import {
   isValidAddress,
@@ -31,6 +39,8 @@ import {
   getClientIp,
   getSecurityHeaders,
 } from '@/lib/security';
+import { randomUUID } from 'crypto';
+import solc from 'solc';
 
 // Type for config with supply
 interface ConfigWithSupply {
@@ -966,6 +976,442 @@ async function proxyEthEstimateGas(to: string, data?: string, value?: string, fr
 }
 
 // ============================================
+// Contract Verification Module (Etherscan/Hardhat Compatible)
+// ============================================
+
+// Get the installed solc version
+const installedSolcVersion = (solc as unknown as { version: () => string }).version?.() || '0.8.30';
+
+// Helper function to normalize compiler version
+function normalizeCompilerVersion(version: string): string {
+  // Remove 'v' prefix if present
+  let normalized = version.startsWith('v') ? version.substring(1) : version;
+  // Remove commit hash if present (e.g., "0.8.20+commit.a1b79de6" -> "0.8.20")
+  normalized = normalized.split('+')[0];
+  return normalized;
+}
+
+// Helper function to check if version is compatible with installed solc
+function isVersionCompatible(requestedVersion: string): boolean {
+  const requested = normalizeCompilerVersion(requestedVersion).split('.').slice(0, 2).join('.');
+  const installed = installedSolcVersion.split('+')[0].split('.').slice(0, 2).join('.');
+  return requested === installed;
+}
+
+// Helper function to modernize old Solidity syntax
+function modernizeSyntax(sourceCode: string): string {
+  let modernized = sourceCode;
+
+  // Strip NatSpec comments to avoid DocstringParsingError
+  modernized = modernized.replace(/\/\*\*[\s\S]*?\*\//g, '');
+
+  // Replace var with appropriate types where possible
+  modernized = modernized.replace(/var\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=/g, 'uint256 $1 =');
+
+  // Replace suicide with selfdestruct
+  modernized = modernized.replace(/suicide\(/g, 'selfdestruct(');
+
+  // Replace throw with revert
+  modernized = modernized.replace(/\bthrow\b/g, 'revert()');
+
+  // Convert strict pragma to flexible pragma for 0.8.x versions
+  modernized = modernized.replace(/pragma\s+solidity\s+(\d+\.\d+\.\d+)\s*;/g, (match, version) => {
+    const parts = version.split('.');
+    if (parts[0] === '0' && parts[1] === '8') {
+      return 'pragma solidity ^0.8.0;';
+    }
+    return match;
+  });
+
+  modernized = modernized.replace(
+    /pragma\s+solidity\s+=\s*(\d+\.\d+\.\d+)\s*;/g,
+    (match, version) => {
+      const parts = version.split('.');
+      if (parts[0] === '0' && parts[1] === '8') {
+        return 'pragma solidity ^0.8.0;';
+      }
+      return match;
+    }
+  );
+
+  return modernized;
+}
+
+// Helper function to remove metadata from bytecode
+function removeMetadata(bytecode: string): string {
+  let cleaned = bytecode.toLowerCase();
+  if (cleaned.startsWith('0x')) {
+    cleaned = cleaned.substring(2);
+  }
+
+  // Look for IPFS metadata marker
+  const ipfsMarkerIndex = cleaned.lastIndexOf('a264697066735822');
+  if (ipfsMarkerIndex > 0) {
+    return cleaned.substring(0, ipfsMarkerIndex);
+  }
+
+  // Look for Bzzr1 metadata marker
+  const bzzr1MarkerIndex = cleaned.lastIndexOf('a265627a7a7231');
+  if (bzzr1MarkerIndex > 0) {
+    return cleaned.substring(0, bzzr1MarkerIndex);
+  }
+
+  // Look for Bzzr0 metadata marker
+  const bzzr0MarkerIndex = cleaned.lastIndexOf('a265627a7a7230');
+  if (bzzr0MarkerIndex > 0) {
+    return cleaned.substring(0, bzzr0MarkerIndex);
+  }
+
+  // Old swarm metadata
+  const swarmMarkerIndex = cleaned.lastIndexOf('a165627a7a72');
+  if (swarmMarkerIndex > 0) {
+    return cleaned.substring(0, swarmMarkerIndex);
+  }
+
+  return cleaned;
+}
+
+// Verify source code (Etherscan/Hardhat compatible)
+async function verifySourceCode(params: {
+  contractaddress: string;
+  sourceCode: string;
+  codeformat: string;
+  contractname: string;
+  compilerversion: string;
+  optimizationUsed: string;
+  runs: string;
+  constructorArguements?: string;
+  evmversion?: string;
+  licenseType?: string;
+  libraryname1?: string;
+  libraryaddress1?: string;
+}) {
+  try {
+    await connectDB();
+
+    const {
+      contractaddress,
+      sourceCode,
+      codeformat,
+      contractname,
+      compilerversion,
+      optimizationUsed,
+      runs,
+      constructorArguements,
+      evmversion,
+      licenseType,
+    } = params;
+
+    // Validate address
+    if (!isValidAddress(contractaddress)) {
+      return errorResponse('Invalid contract address');
+    }
+
+    // Generate GUID for tracking
+    const guid = randomUUID();
+
+    // Create verification job
+    const job = new VerificationJob({
+      guid,
+      address: contractaddress.toLowerCase(),
+      status: 'pending',
+      message: 'Verification in progress',
+      sourceCode,
+      codeFormat: codeformat || 'solidity-single-file',
+      contractName: contractname,
+      compilerVersion: compilerversion,
+      optimizationUsed: optimizationUsed === '1',
+      runs: parseInt(runs) || 200,
+      constructorArguments: constructorArguements || '',
+      evmVersion: evmversion || 'paris',
+      licenseType: licenseType || '',
+    });
+
+    await job.save();
+
+    // Process verification asynchronously
+    processVerification(guid).catch((err) => {
+      console.error(`Verification job ${guid} failed:`, err);
+    });
+
+    // Return GUID immediately (Etherscan-style response)
+    return successResponse(guid, 'OK');
+  } catch (error) {
+    console.error('[verifySourceCode] Error:', error);
+    return errorResponse('Error submitting verification request');
+  }
+}
+
+// Process verification job
+async function processVerification(guid: string) {
+  try {
+    await connectDB();
+
+    const job = await VerificationJob.findOne({ guid });
+    if (!job) {
+      console.error(`Verification job ${guid} not found`);
+      return;
+    }
+
+    const {
+      address,
+      sourceCode,
+      codeFormat,
+      contractName,
+      compilerVersion,
+      optimizationUsed,
+      runs,
+      constructorArguments,
+      evmVersion,
+      licenseType,
+    } = job;
+
+    // Get on-chain bytecode
+    const onchainBytecode = await publicClient.getCode({ address: address as Address });
+
+    if (!onchainBytecode || onchainBytecode === '0x') {
+      await VerificationJob.updateOne(
+        { guid },
+        { status: 'fail', message: 'No contract found at this address' }
+      );
+      return;
+    }
+
+    let compiledSourceCode = sourceCode;
+    let inputJson: Record<string, unknown>;
+
+    // Handle different code formats
+    if (codeFormat === 'solidity-standard-json-input') {
+      // Standard JSON Input format (used by Hardhat)
+      try {
+        inputJson = JSON.parse(sourceCode);
+        // Ensure settings are present
+        if (!inputJson.settings) {
+          inputJson.settings = {};
+        }
+        const settings = inputJson.settings as Record<string, unknown>;
+        settings.outputSelection = {
+          '*': {
+            '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode'],
+          },
+        };
+        if (optimizationUsed) {
+          settings.optimizer = {
+            enabled: optimizationUsed,
+            runs: runs || 200,
+          };
+        }
+        if (evmVersion) {
+          settings.evmVersion = evmVersion;
+        }
+      } catch (parseError) {
+        await VerificationJob.updateOne(
+          { guid },
+          { status: 'fail', message: 'Invalid Standard JSON Input format' }
+        );
+        return;
+      }
+    } else {
+      // Single file format
+      compiledSourceCode = modernizeSyntax(sourceCode);
+
+      inputJson = {
+        language: 'Solidity',
+        sources: {
+          [contractName.includes(':') ? contractName.split(':')[0] : `${contractName}.sol`]: {
+            content: compiledSourceCode,
+          },
+        },
+        settings: {
+          outputSelection: {
+            '*': {
+              '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode'],
+            },
+          },
+          optimizer: {
+            enabled: optimizationUsed,
+            runs: runs || 200,
+          },
+          evmVersion: evmVersion || 'paris',
+        },
+      };
+    }
+
+    // Compile
+    let compiledOutput;
+    try {
+      compiledOutput = JSON.parse(solc.compile(JSON.stringify(inputJson)));
+    } catch (compileError) {
+      await VerificationJob.updateOne(
+        { guid },
+        {
+          status: 'fail',
+          message: `Compilation failed: ${compileError instanceof Error ? compileError.message : 'Unknown error'}`,
+        }
+      );
+      return;
+    }
+
+    // Check for compilation errors
+    if (compiledOutput.errors) {
+      const errors = compiledOutput.errors.filter(
+        (e: { severity: string }) => e.severity === 'error'
+      );
+      if (errors.length > 0) {
+        await VerificationJob.updateOne(
+          { guid },
+          {
+            status: 'fail',
+            message: `Compilation errors: ${errors.map((e: { message: string }) => e.message).join('; ')}`,
+          }
+        );
+        return;
+      }
+    }
+
+    // Find the compiled contract
+    let compiledContract = null;
+    let actualContractName = contractName;
+
+    // Parse contract name (format: "FileName.sol:ContractName" or just "ContractName")
+    let fileName = '';
+    let targetContractName = contractName;
+    if (contractName.includes(':')) {
+      [fileName, targetContractName] = contractName.split(':');
+    }
+
+    if (compiledOutput.contracts) {
+      for (const sourceName in compiledOutput.contracts) {
+        const contracts = compiledOutput.contracts[sourceName];
+        for (const name in contracts) {
+          if (name === targetContractName || (!targetContractName && !compiledContract)) {
+            compiledContract = contracts[name];
+            actualContractName = name;
+          }
+        }
+      }
+    }
+
+    if (!compiledContract) {
+      await VerificationJob.updateOne(
+        { guid },
+        { status: 'fail', message: `Contract '${contractName}' not found in compilation output` }
+      );
+      return;
+    }
+
+    // Compare bytecodes
+    const compiledBytecode =
+      compiledContract.evm?.deployedBytecode?.object || compiledContract.evm?.bytecode?.object;
+
+    if (!compiledBytecode) {
+      await VerificationJob.updateOne(
+        { guid },
+        { status: 'fail', message: 'No bytecode generated from compilation' }
+      );
+      return;
+    }
+
+    // Normalize and compare bytecodes
+    const cleanOnchainBytecode = removeMetadata(onchainBytecode).replace(/0+$/, '');
+    const cleanCompiledBytecode = removeMetadata(compiledBytecode).replace(/0+$/, '');
+
+    // Calculate similarity
+    const minLen = Math.min(cleanOnchainBytecode.length, cleanCompiledBytecode.length);
+    let matches = 0;
+    for (let i = 0; i < minLen; i++) {
+      if (cleanOnchainBytecode[i] === cleanCompiledBytecode[i]) matches++;
+    }
+    const similarity = minLen > 0 ? matches / minLen : 0;
+
+    // Check various verification methods
+    const isVerified =
+      cleanCompiledBytecode === cleanOnchainBytecode ||
+      cleanCompiledBytecode.includes(cleanOnchainBytecode) ||
+      cleanOnchainBytecode.includes(cleanCompiledBytecode) ||
+      similarity > 0.95;
+
+    if (isVerified) {
+      // Extract license from source code
+      let license = licenseType || 'None';
+      if (!licenseType) {
+        const spdxMatch = sourceCode.match(/SPDX-License-Identifier:\s*([^\s\n\r*]+)/i);
+        if (spdxMatch && spdxMatch[1]) {
+          license = spdxMatch[1].trim();
+        }
+      }
+
+      // Save verified contract
+      const contractData = {
+        address: address.toLowerCase(),
+        contractName: actualContractName,
+        compilerVersion: normalizeCompilerVersion(compilerVersion),
+        optimization: optimizationUsed,
+        optimizationRuns: runs,
+        license,
+        sourceCode: codeFormat === 'solidity-standard-json-input' ? sourceCode : compiledSourceCode,
+        abi: JSON.stringify(compiledContract.abi),
+        byteCode: onchainBytecode,
+        verified: true,
+        verifiedAt: new Date(),
+      };
+
+      await Contract.findOneAndUpdate({ address: address.toLowerCase() }, contractData, {
+        upsert: true,
+        new: true,
+      });
+
+      await VerificationJob.updateOne(
+        { guid },
+        { status: 'pass', message: 'Contract successfully verified' }
+      );
+    } else {
+      await VerificationJob.updateOne(
+        { guid },
+        {
+          status: 'fail',
+          message: `Bytecode mismatch (similarity: ${(similarity * 100).toFixed(2)}%)`,
+        }
+      );
+    }
+  } catch (error) {
+    console.error(`[processVerification] Error for ${guid}:`, error);
+    await VerificationJob.updateOne(
+      { guid },
+      {
+        status: 'fail',
+        message: `Verification error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      }
+    );
+  }
+}
+
+// Check verification status
+async function checkVerifyStatus(guid: string) {
+  try {
+    await connectDB();
+
+    const job = await VerificationJob.findOne({ guid }).lean();
+
+    if (!job) {
+      return errorResponse('GUID not found');
+    }
+
+    // Etherscan-style response
+    if (job.status === 'pending') {
+      return successResponse('Pending in queue', 'OK');
+    } else if (job.status === 'pass') {
+      return successResponse('Pass - Verified', 'OK');
+    } else {
+      return errorResponse(job.message || 'Fail - Unable to verify');
+    }
+  } catch (error) {
+    console.error('[checkVerifyStatus] Error:', error);
+    return errorResponse('Error checking verification status');
+  }
+}
+
+// ============================================
 // Contract Module
 // ============================================
 
@@ -978,10 +1424,13 @@ async function getAbi(address: string) {
     }).lean()) as Record<string, unknown> | null;
 
     if (!contract || !contract.abi) {
+      // Etherscan returns NOTOK status for unverified contracts
       return errorResponse('Contract source code not verified');
     }
 
-    return successResponse(JSON.stringify(contract.abi));
+    // Etherscan returns ABI as a string (already JSON stringified)
+    const abiString = typeof contract.abi === 'string' ? contract.abi : JSON.stringify(contract.abi);
+    return successResponse(abiString);
   } catch (error) {
     return errorResponse('Error fetching ABI');
   }
@@ -996,21 +1445,39 @@ async function getSourceCode(address: string) {
     }).lean()) as Record<string, unknown> | null;
 
     if (!contract) {
-      return errorResponse('Contract source code not verified');
+      // Etherscan returns empty array for unverified contracts
+      return successResponse([
+        {
+          SourceCode: '',
+          ABI: 'Contract source code not verified',
+          ContractName: '',
+          CompilerVersion: '',
+          OptimizationUsed: '',
+          Runs: '',
+          ConstructorArguments: '',
+          EVMVersion: '',
+          Library: '',
+          LicenseType: '',
+          Proxy: '0',
+          Implementation: '',
+          SwarmSource: '',
+        },
+      ]);
     }
 
+    // Etherscan-compatible response format
     const result = [
       {
         SourceCode: contract.sourceCode || '',
-        ABI: JSON.stringify(contract.abi || []),
+        ABI: typeof contract.abi === 'string' ? contract.abi : JSON.stringify(contract.abi || []),
         ContractName: contract.contractName || '',
-        CompilerVersion: contract.compilerVersion || '',
-        OptimizationUsed: contract.optimizationEnabled ? '1' : '0',
+        CompilerVersion: `v${contract.compilerVersion || ''}`,
+        OptimizationUsed: contract.optimization ? '1' : '0',
         Runs: String(contract.optimizationRuns || 200),
         ConstructorArguments: contract.constructorArguments || '',
-        EVMVersion: 'default',
+        EVMVersion: 'Default',
         Library: '',
-        LicenseType: '',
+        LicenseType: contract.license || '',
         Proxy: '0',
         Implementation: '',
         SwarmSource: '',
@@ -1253,6 +1720,12 @@ export async function GET(request: NextRequest) {
         }
         return getContractCreation(addresses);
       }
+      // Check verification status (Etherscan/Hardhat compatible)
+      if (action === 'checkverifystatus') {
+        const guid = searchParams.get('guid');
+        if (!guid) return errorResponse('Missing guid parameter');
+        return checkVerifyStatus(guid);
+      }
     }
 
     // Logs module
@@ -1325,13 +1798,82 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// POST Handler for contract verification (Etherscan/Hardhat compatible)
+export async function POST(request: NextRequest) {
+  // Rate limiting - stricter for verification
+  const clientIp = getClientIp(request);
+  const rateLimit = checkRateLimit(`verify-api:${clientIp}`, 10, 60); // 10 requests per minute
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { status: '0', message: 'Rate limit exceeded', result: null },
+      { status: 429, headers: getSecurityHeaders() }
+    );
+  }
+
+  try {
+    const contentType = request.headers.get('content-type') || '';
+    let params: Record<string, string> = {};
+
+    // Handle both JSON and form-data (Etherscan uses form-data)
+    if (contentType.includes('application/json')) {
+      params = await request.json();
+    } else if (
+      contentType.includes('application/x-www-form-urlencoded') ||
+      contentType.includes('multipart/form-data')
+    ) {
+      const formData = await request.formData();
+      formData.forEach((value, key) => {
+        params[key] = value.toString();
+      });
+    } else {
+      // Try to parse as JSON anyway
+      try {
+        params = await request.json();
+      } catch {
+        return errorResponse('Invalid content type. Expected application/json or form-data');
+      }
+    }
+
+    const apiModule = (params.module || '').toLowerCase();
+    const action = (params.action || '').toLowerCase();
+
+    // Contract verification
+    if (apiModule === 'contract' && action === 'verifysourcecode') {
+      return verifySourceCode({
+        contractaddress: params.contractaddress || params.address || '',
+        sourceCode: params.sourceCode || params.sourcecode || '',
+        codeformat: params.codeformat || 'solidity-single-file',
+        contractname: params.contractname || '',
+        compilerversion: params.compilerversion || '',
+        optimizationUsed: params.optimizationUsed || params.optimizationused || '0',
+        runs: params.runs || '200',
+        constructorArguements: params.constructorArguements || params.constructorarguments || '',
+        evmversion: params.evmversion || 'paris',
+        licenseType: params.licenseType || params.licensetype || '',
+        libraryname1: params.libraryname1 || '',
+        libraryaddress1: params.libraryaddress1 || '',
+      });
+    }
+
+    // Verify proxy contract (placeholder for future implementation)
+    if (apiModule === 'contract' && action === 'verifyproxycontract') {
+      return errorResponse('Proxy contract verification not yet implemented');
+    }
+
+    return errorResponse(`Unknown POST module/action: ${apiModule}/${action}`);
+  } catch (error) {
+    console.error('[Blockscout API POST] Error:', error);
+    return errorResponse('Internal server error');
+  }
+}
+
 // Handle OPTIONS for CORS
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 204,
     headers: {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
       'Access-Control-Max-Age': '86400',
     },

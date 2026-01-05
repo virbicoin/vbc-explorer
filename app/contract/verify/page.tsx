@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { CheckCircleIcon, XCircleIcon, CodeBracketIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, XCircleIcon, CodeBracketIcon, ClockIcon, ArrowPathIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 interface VerificationResult {
   verified: boolean;
@@ -27,12 +28,14 @@ interface FormData {
   contractName: string;
   compilerVersion: string;
   optimization: boolean;
+  optimizationRuns: number;
   sourceCode: string;
+  constructorArgs: string;
+  evmVersion: string;
+  licenseType: string;
 }
 
 // エラー箇所の型定義を追加
-
-// 追加: エラー詳細の型定義
 interface CompilationError {
   type?: string;
   message?: string;
@@ -52,7 +55,7 @@ interface ComparisonResults {
   isVerified4?: boolean;
 }
 
-// LaunchpadTokenV2 source code for auto-fill
+// LaunchpadTokenV2 source code for auto-fill (compressed format that works with verification)
 const LAUNCHPAD_TOKEN_V2_SOURCE = `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
@@ -259,23 +262,64 @@ contract LaunchpadTokenV2 is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
     function _update(address from, address to, uint256 value) internal virtual override(ERC20, ERC20Pausable) { super._update(from, to, value); }
 }`;
 
+const COMPILER_VERSIONS = [
+  { value: '0.8.30', label: '0.8.30 (Latest)' },
+  { value: '0.8.29', label: '0.8.29' },
+  { value: '0.8.28', label: '0.8.28' },
+  { value: '0.8.27', label: '0.8.27' },
+  { value: '0.8.26', label: '0.8.26' },
+  { value: '0.8.25', label: '0.8.25' },
+  { value: '0.8.24', label: '0.8.24' },
+  { value: '0.8.23', label: '0.8.23' },
+  { value: '0.8.22', label: '0.8.22' },
+  { value: '0.8.21', label: '0.8.21' },
+  { value: '0.8.20', label: '0.8.20' },
+  { value: '0.8.19', label: '0.8.19' },
+  { value: '0.8.18', label: '0.8.18' },
+  { value: '0.8.17', label: '0.8.17' },
+];
+
+const LICENSE_TYPES = [
+  { value: '', label: 'No License (None)' },
+  { value: 'MIT', label: 'MIT License' },
+  { value: 'GPL-3.0', label: 'GNU GPLv3' },
+  { value: 'LGPL-3.0', label: 'GNU LGPLv3' },
+  { value: 'BSD-2-Clause', label: 'BSD 2-Clause' },
+  { value: 'BSD-3-Clause', label: 'BSD 3-Clause' },
+  { value: 'MPL-2.0', label: 'Mozilla Public License 2.0' },
+  { value: 'Apache-2.0', label: 'Apache 2.0' },
+  { value: 'UNLICENSED', label: 'Unlicensed' },
+];
+
+const EVM_VERSIONS = [
+  { value: 'paris', label: 'paris (default)' },
+  { value: 'shanghai', label: 'shanghai' },
+  { value: 'london', label: 'london' },
+  { value: 'berlin', label: 'berlin' },
+  { value: 'istanbul', label: 'istanbul' },
+];
+
 function useInitFormData(setFormData: React.Dispatch<React.SetStateAction<FormData>>) {
   const searchParams = useSearchParams();
+  
+  const address = searchParams.get('address');
+  const contractName = searchParams.get('contractName');
+  const isLaunchpadToken = searchParams.get('isLaunchpadToken') === 'true';
+  
   useEffect(() => {
-    const address = searchParams.get('address');
-    const contractName = searchParams.get('contractName');
-    const isLaunchpadToken = searchParams.get('isLaunchpadToken') === 'true';
-
     // Auto-fill source code for Launchpad tokens
     if (isLaunchpadToken) {
-      setFormData((prev) => ({
-        ...prev,
+      setFormData({
         address: address || '',
         contractName: contractName || '',
         sourceCode: LAUNCHPAD_TOKEN_V2_SOURCE,
         compilerVersion: '0.8.30',
         optimization: true,
-      }));
+        optimizationRuns: 200,
+        evmVersion: 'paris',
+        licenseType: 'MIT',
+        constructorArgs: '',
+      });
     } else {
       setFormData((prev) => ({
         ...prev,
@@ -283,38 +327,25 @@ function useInitFormData(setFormData: React.Dispatch<React.SetStateAction<FormDa
         contractName: contractName || '',
       }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [address, contractName, isLaunchpadToken, setFormData]);
 }
 
 function ContractVerifyPageInner() {
   const [formData, setFormData] = useState<FormData>({
     address: '',
     contractName: '',
-    compilerVersion: '0.8.30', // Use latest stable version as default
+    compilerVersion: '0.8.30',
     optimization: false,
+    optimizationRuns: 200,
     sourceCode: '',
+    constructorArgs: '',
+    evmVersion: 'paris',
+    licenseType: '',
   });
 
   useInitFormData(setFormData);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<VerificationResult | null>(null);
-
-  // formData.address, contractNameが変わるたびにURLクエリパラメータを更新
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (formData.address) {
-      params.set('address', formData.address);
-    } else {
-      params.delete('address');
-    }
-    if (formData.contractName) {
-      params.set('contractName', formData.contractName);
-    } else {
-      params.delete('contractName');
-    }
-    window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
-  }, [formData.address, formData.contractName]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -322,14 +353,6 @@ function ContractVerifyPageInner() {
     setResult(null);
 
     try {
-      console.log('Submitting verification request:', {
-        address: formData.address,
-        contractName: formData.contractName,
-        compilerVersion: formData.compilerVersion,
-        optimization: formData.optimization,
-        sourceCodeLength: formData.sourceCode.length,
-      });
-
       const response = await fetch('/api/contract/verify', {
         method: 'POST',
         headers: {
@@ -341,7 +364,6 @@ function ContractVerifyPageInner() {
       const data = await response.json();
 
       if (!response.ok) {
-        console.error('API Error Response:', data);
         setResult({
           verified: false,
           message: data.error || `HTTP error! status: ${response.status}`,
@@ -353,7 +375,6 @@ function ContractVerifyPageInner() {
 
       setResult(data);
     } catch (error) {
-      console.error('Verification error:', error);
       setResult({
         verified: false,
         message: 'Verification failed due to network or server error',
@@ -365,22 +386,19 @@ function ContractVerifyPageInner() {
     }
   };
 
-  const handleInputChange = (field: keyof FormData, value: string | boolean) => {
+  const handleInputChange = (field: keyof FormData, value: string | boolean | number) => {
     // Auto-detect contract name from source code
     if (field === 'sourceCode' && typeof value === 'string') {
       const contractMatches = value.match(/contract\s+([A-Za-z0-9_]+)/g);
-      if (contractMatches && contractMatches.length > 0) {
+      if (contractMatches && contractMatches.length > 0 && !formData.contractName) {
         const lastContractMatch = contractMatches[contractMatches.length - 1];
         const detectedName = lastContractMatch.replace(/contract\s+/, '');
-        // contractNameが空のときだけ自動セット
-        if (!formData.contractName) {
-          setFormData((prev) => ({
-            ...prev,
-            [field]: value,
-            contractName: detectedName,
-          }));
-          return;
-        }
+        setFormData((prev) => ({
+          ...prev,
+          [field]: value,
+          contractName: detectedName,
+        }));
+        return;
       }
     }
     setFormData((prev) => ({
@@ -389,23 +407,15 @@ function ContractVerifyPageInner() {
     }));
   };
 
-  // renderErrorDetailsの返り値型を明示
   const renderErrorDetails = (details: unknown): React.ReactNode => {
     if (!details) return null;
 
-    // Handle different error detail formats
     if (Array.isArray(details)) {
       return details.map((error: CompilationError, index: number) => (
-        <div key={index} className="p-2 bg-red-900/20 border border-red-600 rounded">
+        <div key={index} className="p-2 bg-red-900/20 border border-red-600 rounded text-sm">
           <div className="font-medium text-red-400">
             {error.type || 'Error'}: {error.message}
           </div>
-          {error.sourceLocation && (
-            <div className="text-xs text-gray-400 mt-1">
-              File: {error.sourceLocation.file}, Line: {error.sourceLocation.start}-
-              {error.sourceLocation.end}
-            </div>
-          )}
           {error.formattedMessage && (
             <div className="text-xs text-gray-400 mt-1">{error.formattedMessage}</div>
           )}
@@ -413,60 +423,38 @@ function ContractVerifyPageInner() {
       ));
     }
 
-    // Handle string error details
     if (typeof details === 'string') {
       return (
         <div className="p-2 bg-red-900/20 border border-red-600 rounded">
-          <div className="text-red-400">{details}</div>
+          <div className="text-red-400 text-sm">{details}</div>
         </div>
       );
     }
 
-    // Handle object error details (including verification details)
     if (typeof details === 'object' && details !== null) {
       const detailsObj = details as Record<string, unknown>;
-
-      // Check if it's verification details
       if ('originalOnchainBytecodeLength' in detailsObj) {
         const comparisonResults = detailsObj.comparisonResults as ComparisonResults | undefined;
         return (
-          <div className="p-2 bg-red-900/20 border border-red-600 rounded">
-            <div className="text-red-400 mb-2">Bytecode comparison failed</div>
-            <div className="text-xs text-gray-300 space-y-1">
-              <div>Onchain bytecode length: {String(detailsObj.originalOnchainBytecodeLength)}</div>
-              <div>
-                Compiled bytecode length: {String(detailsObj.originalCompiledBytecodeLength)}
-              </div>
-              <div>
-                Clean onchain bytecode length: {String(detailsObj.cleanOnchainBytecodeLength)}
-              </div>
-              <div>
-                Clean compiled bytecode length: {String(detailsObj.cleanCompiledBytecodeLength)}
-              </div>
-              <div className="mt-2">
-                <div>Onchain bytecode start: {String(detailsObj.onchainBytecodeStart)}</div>
-                <div>Compiled bytecode start: {String(detailsObj.compiledBytecodeStart)}</div>
-              </div>
-              <div className="mt-2">
-                <div>Comparison results:</div>
-                <div className="ml-2">
-                  <div>• Includes check: {comparisonResults?.isVerified1 ? '✅' : '❌'}</div>
-                  <div>• Reverse includes: {comparisonResults?.isVerified2 ? '✅' : '❌'}</div>
-                  <div>• Exact match: {comparisonResults?.isVerified3 ? '✅' : '❌'}</div>
-                  <div>• Start match: {comparisonResults?.isVerified4 ? '✅' : '❌'}</div>
-                </div>
+          <div className="p-3 bg-gray-800 border border-gray-700 rounded text-sm">
+            <div className="text-gray-300 mb-2">Bytecode comparison details:</div>
+            <div className="text-xs text-gray-400 space-y-1 font-mono">
+              <div>Onchain bytecode: {String(detailsObj.originalOnchainBytecodeLength)} bytes</div>
+              <div>Compiled bytecode: {String(detailsObj.originalCompiledBytecodeLength)} bytes</div>
+              <div className="mt-2">Comparison results:</div>
+              <div className="ml-2">
+                <div>• Includes check: {comparisonResults?.isVerified1 ? '✅' : '❌'}</div>
+                <div>• Reverse includes: {comparisonResults?.isVerified2 ? '✅' : '❌'}</div>
+                <div>• Exact match: {comparisonResults?.isVerified3 ? '✅' : '❌'}</div>
+                <div>• Start match: {comparisonResults?.isVerified4 ? '✅' : '❌'}</div>
               </div>
             </div>
           </div>
         );
       }
-
-      // Handle other object types
       return (
-        <div className="p-2 bg-red-900/20 border border-red-600 rounded">
-          <pre className="text-xs text-gray-300 overflow-x-auto">
-            {JSON.stringify(details, null, 2)}
-          </pre>
+        <div className="p-2 bg-gray-800 border border-gray-700 rounded">
+          <pre className="text-xs text-gray-300 overflow-x-auto">{JSON.stringify(details, null, 2)}</pre>
         </div>
       );
     }
@@ -478,214 +466,288 @@ function ContractVerifyPageInner() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-purple-900/50 to-blue-900/50 border-b border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 py-12">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-purple-500/20 rounded-xl">
-              <CodeBracketIcon className="w-8 h-8 text-purple-400" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-white">Verify Contract Source Code</h1>
-              <p className="text-gray-400 mt-1">
-                Verify and publish your smart contract source code on the blockchain explorer
-              </p>
-            </div>
+      {/* Page Header */}
+      <div className="bg-gray-800 border-b border-gray-700">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center gap-3 mb-4">
+            <CodeBracketIcon className="w-8 h-8 text-purple-400" />
+            <h1 className="text-3xl font-bold text-gray-100">Verify & Publish Contract Source Code</h1>
           </div>
+          <p className="text-gray-400">
+            Source code verification provides transparency for users interacting with smart contracts.
+          </p>
         </div>
       </div>
-      {/* カード部分は中央寄せ */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <div className="bg-gray-800 rounded-lg border border-gray-700 shadow-xl">
-          <form onSubmit={handleSubmit} className="p-8 space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Contract Address
-                </label>
-                <input
-                  type="text"
-                  value={formData.address}
-                  onChange={(e) => handleInputChange('address', e.target.value)}
-                  placeholder="0x..."
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Contract Name
-                </label>
-                <input
-                  type="text"
-                  value={formData.contractName}
-                  onChange={(e) => handleInputChange('contractName', e.target.value)}
-                  placeholder="MyContract"
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Compiler Version
-                </label>
-                <select
-                  value={formData.compilerVersion}
-                  onChange={(e) => handleInputChange('compilerVersion', e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="0.8.30">0.8.30 (Latest)</option>
-                  <option value="0.8.29">0.8.29</option>
-                  <option value="0.8.28">0.8.28</option>
-                  <option value="0.8.27">0.8.27</option>
-                  <option value="0.8.26">0.8.26</option>
-                  <option value="0.8.25">0.8.25</option>
-                  <option value="0.8.24">0.8.24</option>
-                  <option value="0.8.23">0.8.23</option>
-                  <option value="0.8.22">0.8.22</option>
-                  <option value="0.8.21">0.8.21</option>
-                  <option value="0.8.20">0.8.20</option>
-                  <option value="0.8.19">0.8.19</option>
-                  <option value="0.8.18">0.8.18</option>
-                  <option value="0.8.17">0.8.17</option>
-                  <option value="0.8.16">0.8.16</option>
-                  <option value="0.8.15">0.8.15</option>
-                </select>
-              </div>
-              <div className="flex items-center mt-6 md:mt-0">
-                <input
-                  type="checkbox"
-                  id="optimization"
-                  checked={formData.optimization}
-                  onChange={(e) => handleInputChange('optimization', e.target.checked)}
-                  className="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500"
-                />
-                <label htmlFor="optimization" className="ml-2 text-sm text-gray-300">
-                  Enable Optimization
-                </label>
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Source Code</label>
-              <div className="text-xs text-gray-400 mb-2">
-                Paste your complete Solidity source code. The system will automatically clean up any
-                trailing content that doesn&apos;t belong to the contract.
-                <br />
-                <span className="text-blue-400">
-                  💡 Tip: For flattened contracts (Hardhat flattened), the system will automatically
-                  extract the main contract.
-                </span>
-              </div>
-              <textarea
-                value={formData.sourceCode}
-                onChange={(e) => handleInputChange('sourceCode', e.target.value)}
-                placeholder={
-                  '// SPDX-License-Identifier: MIT\npragma solidity ^0.8.19;\n\ncontract MyContract {\n  // Your contract code here\n}'
-                }
-                rows={15}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                required
-              />
-            </div>
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="px-8 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-lg font-bold shadow"
-              >
-                {isLoading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Verifying...
-                  </>
-                ) : (
-                  'Verify Contract'
-                )}
-              </button>
-            </div>
-          </form>
-          {result && (
-            <div className="px-8 pb-8">
-              <div
-                className={`mt-6 p-6 rounded-lg border shadow-lg ${
-                  result.verified
-                    ? 'bg-green-900/20 border-green-600 text-green-400'
-                    : 'bg-red-900/20 border-red-600 text-red-400'
-                }`}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  {result.verified ? (
-                    <CheckCircleIcon className="w-6 h-6 text-green-400" />
-                  ) : (
-                    <XCircleIcon className="w-6 h-6 text-red-400" />
-                  )}
-                  <span className="text-lg font-semibold">
-                    {result.verified ? 'Verification Successful' : 'Verification Failed'}
-                  </span>
+
+      <main className="container mx-auto px-4 py-8">
+        {/* Result Banner */}
+        {result && (
+          <div className={`mb-6 p-4 rounded-lg border ${
+            result.verified
+              ? 'bg-green-900/20 border-green-600'
+              : 'bg-red-900/20 border-red-600'
+          }`}>
+            <div className="flex items-center gap-3">
+              {result.verified ? (
+                <CheckCircleIcon className="w-6 h-6 text-green-400" />
+              ) : (
+                <XCircleIcon className="w-6 h-6 text-red-400" />
+              )}
+              <div className="flex-1">
+                <div className={`font-semibold text-lg ${result.verified ? 'text-green-400' : 'text-red-400'}`}>
+                  {result.verified ? 'Verification Successful' : 'Verification Failed'}
                 </div>
-                <p className="text-base">{result.message}</p>
+                <p className="text-gray-300 text-sm mt-1">{result.message}</p>
                 {result.contract?.compilerVersion && (
-                  <div className="mt-2 text-sm text-gray-300">
-                    <span className="font-bold">Compiler Version: </span>
-                    <span>{result.contract.compilerVersion}</span>
-                  </div>
+                  <p className="text-gray-400 text-xs mt-1">Compiler Version: {result.contract.compilerVersion}</p>
                 )}
-                {result.error && (
-                  <div className="mt-2 p-2 bg-gray-800 rounded text-xs">
-                    <strong>Error:</strong> {result.error}
-                    {result.message && <div className="mt-1 text-gray-300">{result.message}</div>}
-                    {errorDetailsNode && (
-                      <div className="mt-2 p-2 bg-gray-700 rounded">
-                        <strong>Compilation Errors:</strong>
-                        <div className="mt-2 space-y-2">{errorDetailsNode}</div>
-                      </div>
+              </div>
+              {result.verified && formData.address && (
+                <Link
+                  href={`/contract/${formData.address}`}
+                  className="px-4 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                >
+                  View Contract
+                </Link>
+              )}
+            </div>
+            {errorDetailsNode && (
+              <div className="mt-4">{errorDetailsNode}</div>
+            )}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Form */}
+          <div className="lg:col-span-2">
+            <div className="bg-gray-800 rounded-lg border border-gray-700">
+              <div className="p-6 border-b border-gray-700">
+                <h2 className="text-xl font-semibold text-white">Contract Source Code</h2>
+                <p className="text-sm text-gray-400 mt-1">
+                  Enter the Solidity source code for the contract
+                </p>
+              </div>
+
+              <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                {/* Contract Address */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Contract Address <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.address}
+                    onChange={(e) => handleInputChange('address', e.target.value)}
+                    placeholder="0x..."
+                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+
+                {/* Compiler & Contract Name */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Compiler Version <span className="text-red-400">*</span>
+                    </label>
+                    <select
+                      value={formData.compilerVersion}
+                      onChange={(e) => handleInputChange('compilerVersion', e.target.value)}
+                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      disabled={isLoading}
+                    >
+                      {COMPILER_VERSIONS.map((v) => (
+                        <option key={v.value} value={v.value}>{v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Contract Name <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.contractName}
+                      onChange={(e) => handleInputChange('contractName', e.target.value)}
+                      placeholder="MyContract"
+                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      required
+                      disabled={isLoading}
+                    />
+                  </div>
+                </div>
+
+                {/* Optimization Settings */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="flex items-center gap-3 bg-gray-700/50 px-4 py-3 rounded-lg">
+                    <input
+                      type="checkbox"
+                      id="optimization"
+                      checked={formData.optimization}
+                      onChange={(e) => handleInputChange('optimization', e.target.checked)}
+                      className="w-5 h-5 text-purple-600 bg-gray-700 border-gray-600 rounded focus:ring-purple-500"
+                      disabled={isLoading}
+                    />
+                    <label htmlFor="optimization" className="text-sm text-gray-300">
+                      Enable Optimization
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Optimization Runs
+                    </label>
+                    <input
+                      type="number"
+                      value={formData.optimizationRuns}
+                      onChange={(e) => handleInputChange('optimizationRuns', parseInt(e.target.value) || 200)}
+                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      disabled={isLoading}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      EVM Version
+                    </label>
+                    <select
+                      value={formData.evmVersion}
+                      onChange={(e) => handleInputChange('evmVersion', e.target.value)}
+                      className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      disabled={isLoading}
+                    >
+                      {EVM_VERSIONS.map((v) => (
+                        <option key={v.value} value={v.value}>{v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* License Type */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    License Type
+                  </label>
+                  <select
+                    value={formData.licenseType}
+                    onChange={(e) => handleInputChange('licenseType', e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    disabled={isLoading}
+                  >
+                    {LICENSE_TYPES.map((l) => (
+                      <option key={l.value} value={l.value}>{l.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Source Code */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Solidity Source Code <span className="text-red-400">*</span>
+                  </label>
+                  <div className="text-xs text-gray-500 mb-2 flex items-start gap-2">
+                    <InformationCircleIcon className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <span>
+                      For flattened contracts (Hardhat flatten), the system will automatically extract the main contract.
+                    </span>
+                  </div>
+                  <textarea
+                    value={formData.sourceCode}
+                    onChange={(e) => handleInputChange('sourceCode', e.target.value)}
+                    placeholder="// SPDX-License-Identifier: MIT&#10;pragma solidity ^0.8.20;&#10;&#10;contract MyContract {&#10;    // Your code here&#10;}"
+                    rows={14}
+                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"
+                    required
+                    disabled={isLoading}
+                  />
+                </div>
+
+                {/* Constructor Arguments */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Constructor Arguments (ABI-encoded)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.constructorArgs}
+                    onChange={(e) => handleInputChange('constructorArgs', e.target.value)}
+                    placeholder="0x... (optional)"
+                    className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"
+                    disabled={isLoading}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    If your contract has constructor arguments, enter them as ABI-encoded hex
+                  </p>
+                </div>
+
+                {/* Submit Button */}
+                <div className="flex justify-end pt-4">
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="px-8 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-semibold text-lg"
+                  >
+                    {isLoading ? (
+                      <>
+                        <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                        Verifying...
+                      </>
+                    ) : (
+                      'Verify & Publish'
                     )}
-                  </div>
-                )}
-              </div>
+                  </button>
+                </div>
+              </form>
             </div>
-          )}
-        </div>
-        <div className="mt-8 bg-gray-800 rounded-lg p-6">
-          <h2 className="text-xl font-semibold text-gray-100 mb-4">
-            How Contract Verification Works
-          </h2>
-          <div className="space-y-4 text-gray-300">
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold mt-0.5">
-                1
-              </div>
-              <div>
-                <h3 className="font-medium text-gray-200">Compile Source Code</h3>
-                <p className="text-sm text-gray-400">
-                  Your Solidity source code is compiled using the specified compiler version and
-                  optimization settings.
-                </p>
-              </div>
+          </div>
+
+          {/* Sidebar */}
+          <div className="lg:col-span-1 space-y-6">
+            {/* Tips Card */}
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Verification Tips</h3>
+              <ul className="text-sm text-gray-400 space-y-3">
+                <li className="flex gap-2">
+                  <span className="text-purple-400">•</span>
+                  Ensure the compiler version matches exactly what was used to deploy
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-purple-400">•</span>
+                  If optimization was enabled during deployment, enable it here with the same runs
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-purple-400">•</span>
+                  For flattened contracts, include all dependencies in a single file
+                </li>
+                <li className="flex gap-2">
+                  <span className="text-purple-400">•</span>
+                  Constructor arguments must be ABI-encoded (use ethers.js or web3.js to encode)
+                </li>
+              </ul>
             </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold mt-0.5">
-                2
+
+            {/* Hardhat Integration Card */}
+            <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Using Hardhat?</h3>
+              <p className="text-sm text-gray-400 mb-4">
+                Add this to your hardhat.config.ts for automatic verification:
+              </p>
+              <div className="bg-gray-900 rounded-lg p-4 text-xs text-green-400 font-mono overflow-x-auto">
+                <pre>{`etherscan: {
+  apiKey: { virbicoin: "any-key" },
+  customChains: [{
+    network: "virbicoin",
+    chainId: 329,
+    urls: {
+      apiURL: "https://explorer.digitalregion.jp/api",
+      browserURL: "https://explorer.digitalregion.jp"
+    }
+  }]
+}`}</pre>
               </div>
-              <div>
-                <h3 className="font-medium text-gray-200">Compare Bytecode</h3>
-                <p className="text-sm text-gray-400">
-                  The compiled bytecode is compared with the bytecode stored on the blockchain at
-                  the specified address.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold mt-0.5">
-                3
-              </div>
-              <div>
-                <h3 className="font-medium text-gray-200">Verify Match</h3>
-                <p className="text-sm text-gray-400">
-                  If the bytecodes match, the contract is marked as verified and the source code is
-                  published on the explorer.
-                </p>
-              </div>
+              <p className="text-sm text-gray-400 mt-4">Then verify with:</p>
+              <code className="block bg-gray-900 p-3 rounded-lg text-xs text-cyan-400 mt-2 break-all">
+                npx hardhat verify --network virbicoin 0xYourContract
+              </code>
             </div>
           </div>
         </div>
@@ -696,7 +758,14 @@ function ContractVerifyPageInner() {
 
 export default function ContractVerifyPage() {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <ArrowPathIcon className="w-8 h-8 text-purple-400 animate-spin mx-auto mb-4" />
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    }>
       <ContractVerifyPageInner />
     </Suspense>
   );

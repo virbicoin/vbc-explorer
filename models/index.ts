@@ -120,6 +120,26 @@ export interface IDexSwap extends Document {
   priceUSD: number; // Price of base token at time of swap
 }
 
+// Verification Job Interface (for Etherscan-compatible API)
+export interface IVerificationJob extends Document {
+  guid: string;
+  address: string;
+  status: 'pending' | 'pass' | 'fail';
+  message: string;
+  sourceCode: string;
+  codeFormat: string;
+  contractName: string;
+  compilerVersion: string;
+  optimizationUsed: boolean;
+  runs: number;
+  constructorArguments: string;
+  evmVersion: string;
+  licenseType: string;
+  libraries: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 // Schema definitions
 const BlockSchema = new Schema(
   {
@@ -262,6 +282,27 @@ const DexSwapSchema = new Schema(
     priceUSD: Number,
   },
   { collection: 'DexSwap' }
+);
+
+// Verification Job Schema (for Etherscan-compatible API)
+const VerificationJobSchema = new Schema(
+  {
+    guid: { type: String, index: { unique: true } },
+    address: { type: String, lowercase: true, index: true },
+    status: { type: String, enum: ['pending', 'pass', 'fail'], default: 'pending' },
+    message: { type: String, default: '' },
+    sourceCode: String,
+    codeFormat: { type: String, default: 'solidity-single-file' },
+    contractName: String,
+    compilerVersion: String,
+    optimizationUsed: { type: Boolean, default: false },
+    runs: { type: Number, default: 200 },
+    constructorArguments: { type: String, default: '' },
+    evmVersion: { type: String, default: 'paris' },
+    licenseType: { type: String, default: '' },
+    libraries: { type: String, default: '' },
+  },
+  { collection: 'VerificationJob', timestamps: true }
 );
 
 // DEX Swap indexes
@@ -416,6 +457,9 @@ export const BlockStat =
 export const Market = mongoose.models.Market || mongoose.model<IMarket>('Market', MarketSchema);
 export const DexSwap =
   mongoose.models.DexSwap || mongoose.model<IDexSwap>('DexSwap', DexSwapSchema);
+export const VerificationJob =
+  mongoose.models.VerificationJob ||
+  mongoose.model<IVerificationJob>('VerificationJob', VerificationJobSchema);
 
 // Default export for convenience
 const models = {
@@ -428,6 +472,7 @@ const models = {
   BlockStat,
   Market,
   DexSwap,
+  VerificationJob,
 };
 
 export default models;
