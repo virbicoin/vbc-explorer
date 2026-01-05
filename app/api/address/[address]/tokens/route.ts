@@ -1,12 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { connectDB } from '../../../../../models/index';
+import { getWeb3 } from '../../../../../lib/web3';
 import {
   sanitizeAddress,
   checkRateLimit,
   getClientIp,
   getSecurityHeaders,
 } from '../../../../../lib/security';
+
+// Get shared Web3 instance
+const web3 = getWeb3();
+
+// Launchpad V2 Token ABI for logoUrl
+const LAUNCHPAD_V2_ABI = [
+  {
+    inputs: [],
+    name: 'logoUrl',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
+
+// Function to fetch logoUrl from Launchpad V2 token contract
+async function fetchLaunchpadLogoUrl(tokenAddress: string): Promise<string | null> {
+  try {
+    const contract = new web3.eth.Contract(LAUNCHPAD_V2_ABI, tokenAddress);
+    const logoUrl = await contract.methods.logoUrl().call();
+    return logoUrl && logoUrl !== '' ? (logoUrl as string) : null;
+  } catch {
+    // Token doesn't have logoUrl method (not a Launchpad V2 token)
+    return null;
+  }
+}
 
 // Token holder schema
 const tokenHolderSchema = new mongoose.Schema(
@@ -99,30 +126,45 @@ export async function GET(
       tokenMap.set(token.address.toLowerCase(), token);
     }
 
-    // Build response with token details
-    const tokenHoldings = nonZeroHoldings.map((holding) => {
-      const tokenInfo = tokenMap.get(holding.tokenAddress.toLowerCase());
-      // Get logo URL from token metadata or direct field
-      const logoUrl = tokenInfo?.logoUrl || tokenInfo?.metadata?.logoUrl || null;
-      return {
-        address: holding.tokenAddress,
-        name: tokenInfo?.name || 'Unknown Token',
-        symbol: tokenInfo?.symbol || '???',
-        // Use nullish coalescing to handle decimals=0 correctly
-        decimals: tokenInfo?.decimals ?? 18,
-        balance: holding.balance,
-        // Normalize token type display
-        type:
-          tokenInfo?.type === 'ERC20'
-            ? 'VRC-20'
-            : tokenInfo?.type === 'ERC721'
-              ? 'VRC-721'
-              : tokenInfo?.type || 'VRC-20',
-        percentage: holding.percentage,
-        rank: holding.rank,
-        logoUrl: logoUrl,
-      };
-    });
+    // Build response with token details (fetch logoUrl from onchain if not in DB)
+    const tokenHoldings = await Promise.all(
+      nonZeroHoldings.map(async (holding) => {
+        const tokenInfo = tokenMap.get(holding.tokenAddress.toLowerCase());
+        // Get logo URL from token metadata or direct field
+        let logoUrl = tokenInfo?.logoUrl || tokenInfo?.metadata?.logoUrl || null;
+
+        // If no logoUrl in DB, try to fetch from onchain (Launchpad V2 token)
+        if (!logoUrl) {
+          try {
+            const onchainLogoUrl = await fetchLaunchpadLogoUrl(holding.tokenAddress);
+            if (onchainLogoUrl) {
+              logoUrl = onchainLogoUrl;
+            }
+          } catch {
+            // Ignore errors
+          }
+        }
+
+        return {
+          address: holding.tokenAddress,
+          name: tokenInfo?.name || 'Unknown Token',
+          symbol: tokenInfo?.symbol || '???',
+          // Use nullish coalescing to handle decimals=0 correctly
+          decimals: tokenInfo?.decimals ?? 18,
+          balance: holding.balance,
+          // Normalize token type display
+          type:
+            tokenInfo?.type === 'ERC20'
+              ? 'VRC-20'
+              : tokenInfo?.type === 'ERC721'
+                ? 'VRC-721'
+                : tokenInfo?.type || 'VRC-20',
+          percentage: holding.percentage,
+          rank: holding.rank,
+          logoUrl: logoUrl,
+        };
+      })
+    );
 
     // Sort by balance (converted to number for comparison)
     tokenHoldings.sort((a, b) => {
