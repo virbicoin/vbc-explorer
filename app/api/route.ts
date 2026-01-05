@@ -1272,7 +1272,7 @@ async function processVerification(guid: string) {
         settings: {
           outputSelection: {
             '*': {
-              '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode'],
+              '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode', 'evm.methodIdentifiers'],
             },
           },
           optimizer: {
@@ -1280,6 +1280,13 @@ async function processVerification(guid: string) {
             runs: runs || 200,
           },
           evmVersion: evmVersion || 'paris',
+          // Match Hardhat's default metadata settings
+          metadata: {
+            bytecodeHash: 'ipfs', // Hardhat default
+            useLiteralContent: false,
+          },
+          // Disable viaIR by default (Hardhat default)
+          viaIR: false,
         },
       };
     }

@@ -116,7 +116,8 @@ function stripNatSpecComments(sourceCode: string): string {
 }
 
 // Helper function to modernize old Solidity syntax
-function modernizeSyntax(sourceCode: string): string {
+// NOTE: We no longer modify pragma statements to preserve exact compiler version matching
+function modernizeSyntax(sourceCode: string, targetVersion?: string): string {
   let modernized = sourceCode;
 
   // NOTE: Do NOT replace := with = - := is the correct assignment operator in assembly blocks
@@ -133,29 +134,20 @@ function modernizeSyntax(sourceCode: string): string {
   // Replace throw with revert (deprecated in newer Solidity)
   modernized = modernized.replace(/\bthrow\b/g, 'revert()');
 
-  // Convert strict pragma to flexible pragma for 0.8.x versions
-  // e.g., "pragma solidity 0.8.30;" -> "pragma solidity ^0.8.0;"
-  // This allows the installed solc version to compile it
-  modernized = modernized.replace(/pragma\s+solidity\s+(\d+\.\d+\.\d+)\s*;/g, (match, version) => {
-    const parts = version.split('.');
-    if (parts[0] === '0' && parts[1] === '8') {
-      // For 0.8.x, use ^0.8.0 to be compatible with any 0.8.x compiler
-      return 'pragma solidity ^0.8.0;';
-    }
-    return match;
-  });
-
-  // Also handle "pragma solidity =0.8.30;" syntax
-  modernized = modernized.replace(
-    /pragma\s+solidity\s+=\s*(\d+\.\d+\.\d+)\s*;/g,
-    (match, version) => {
-      const parts = version.split('.');
-      if (parts[0] === '0' && parts[1] === '8') {
-        return 'pragma solidity ^0.8.0;';
-      }
-      return match;
-    }
-  );
+  // If a target version is specified, update the pragma to match
+  // This ensures the exact compiler version is used
+  if (targetVersion) {
+    // Replace strict pragma with the target version
+    modernized = modernized.replace(
+      /pragma\s+solidity\s+[=^~>=<]*\s*(\d+\.\d+\.\d+)\s*;/g,
+      `pragma solidity ^${targetVersion};`
+    );
+    // Also handle range pragmas like ">=0.8.0 <0.9.0"
+    modernized = modernized.replace(
+      /pragma\s+solidity\s+>=?\s*\d+\.\d+\.\d+\s*<?=?\s*\d*\.?\d*\.?\d*\s*;/g,
+      `pragma solidity ^${targetVersion};`
+    );
+  }
 
   return modernized;
 }
@@ -457,6 +449,7 @@ export async function POST(request: NextRequest) {
 
     // Compile source code
     // Use EVM version 'paris' for better compatibility with VirBiCoin network
+    // Match Hardhat's default settings exactly for bytecode compatibility
     const input = {
       language: 'Solidity',
       sources: {
@@ -467,14 +460,21 @@ export async function POST(request: NextRequest) {
       settings: {
         outputSelection: {
           '*': {
-            '*': ['*'],
+            '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode', 'evm.methodIdentifiers'],
           },
         },
         optimizer: {
           enabled: optimization || false,
-          runs: 200,
+          runs: body.optimizationRuns || 200,
         },
-        evmVersion: 'paris',
+        evmVersion: body.evmVersion || 'paris',
+        // Match Hardhat's default metadata settings
+        metadata: {
+          bytecodeHash: 'ipfs', // Hardhat default
+          useLiteralContent: false,
+        },
+        // Disable viaIR by default (Hardhat default)
+        viaIR: false,
       },
     };
 
