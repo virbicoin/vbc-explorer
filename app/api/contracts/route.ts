@@ -33,13 +33,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ contracts: [], total: 0, page, limit });
     }
 
-    // Build query
-    const query: Record<string, unknown> = {
-      $or: [{ isContract: true }, { type: { $exists: true } }],
-    };
+    // Build query - Contract collection contains all contracts
+    // No need for isContract filter as all documents in Contract collection are contracts
+    const query: Record<string, unknown> = {};
 
-    if (verified !== null) {
-      query.verified = verified === 'true';
+    if (verified === 'true') {
+      query.verified = true;
+    } else if (verified === 'false') {
+      query.verified = { $ne: true };
     }
 
     if (type && type !== 'all') {
@@ -60,13 +61,13 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    // Get total count
-    const total = await db.collection('contracts').countDocuments(query);
+    // Get total count - use 'Contract' collection (capital C)
+    const total = await db.collection('Contract').countDocuments(query);
 
     // Get contracts with pagination
     const skip = (page - 1) * limit;
     const contractDocs = await db
-      .collection('contracts')
+      .collection('Contract')
       .find(query)
       .sort({ blockNumber: -1, createdAt: -1 })
       .skip(skip)
