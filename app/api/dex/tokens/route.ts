@@ -108,6 +108,31 @@ const PAIR_ABI = [
   },
 ];
 
+// ERC20 ABI for getting token info
+const ERC20_ABI = [
+  {
+    inputs: [],
+    name: 'name',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'symbol',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'decimals',
+    outputs: [{ name: '', type: 'uint8' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+];
+
 // Token interface for DEX
 interface DexToken {
   address: `0x${string}`;
@@ -350,27 +375,54 @@ export async function GET() {
             contractInfo?.image_url ||
             configuredIcon?.icon ||
             undefined;
+          // Use decimals from DB, only default to 18 if undefined/null (not if 0)
+          const decimals = token.decimals !== undefined && token.decimals !== null ? token.decimals : 18;
           resultTokens.push({
             address: token.address as `0x${string}`,
             name: token.name || 'Unknown Token',
             symbol: token.symbol || '???',
-            decimals: token.decimals || 18,
+            decimals,
             logoURI,
             verified: token.verified || false,
             holders: token.holders || 0,
           });
         }
 
-        // For tokens in pairs but not in DB, add with basic info
-        for (const addr of pairTokenAddresses) {
-          const inDb = dbTokens.some((t) => t.address.toLowerCase() === addr.toLowerCase());
-          if (!inDb) {
-            resultTokens.push({
-              address: addr as `0x${string}`,
-              name: 'Unknown Token',
-              symbol: '???',
-              decimals: 18,
-            });
+        // For tokens in pairs but not in DB, fetch info from blockchain
+        const tokensNotInDb = pairTokenAddresses.filter(
+          (addr) => !dbTokens.some((t) => t.address.toLowerCase() === addr.toLowerCase())
+        );
+
+        if (tokensNotInDb.length > 0) {
+          // Fetch token info from blockchain in parallel
+          const tokenInfoPromises = tokensNotInDb.map(async (addr) => {
+            try {
+              const tokenContract = new web3.eth.Contract(ERC20_ABI, addr);
+              const [name, symbol, decimals] = await Promise.all([
+                tokenContract.methods.name().call().catch(() => 'Unknown Token'),
+                tokenContract.methods.symbol().call().catch(() => '???'),
+                tokenContract.methods.decimals().call().catch(() => 18),
+              ]);
+              return {
+                address: addr as `0x${string}`,
+                name: String(name),
+                symbol: String(symbol),
+                decimals: Number(decimals),
+              };
+            } catch (err) {
+              console.error(`Error fetching token info for ${addr}:`, err);
+              return {
+                address: addr as `0x${string}`,
+                name: 'Unknown Token',
+                symbol: '???',
+                decimals: 18,
+              };
+            }
+          });
+
+          const tokenInfoResults = await Promise.all(tokenInfoPromises);
+          for (const tokenInfo of tokenInfoResults) {
+            resultTokens.push(tokenInfo);
           }
         }
       }
