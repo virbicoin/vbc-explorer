@@ -220,7 +220,7 @@ function DexPageContent() {
               <div>
                 <h1 className="text-3xl font-bold text-white">VirBiCoin DEX</h1>
                 <p className="text-gray-400 mt-1">
-                  Swap tokens, provide liquidity, and earn rewards
+                  Swap tokens, provide liquidity and earn rewards
                 </p>
               </div>
             </div>
