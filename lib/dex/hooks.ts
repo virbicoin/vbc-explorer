@@ -46,12 +46,26 @@ export function formatTokenAmount(
   decimals: number = 18,
   displayDecimals: number = 6
 ): string {
+  // Handle zero decimals tokens (like VBCAT)
+  if (decimals === 0) {
+    const num = Number(amount);
+    if (num === 0) return '0';
+    return num.toLocaleString('en-US', {
+      maximumFractionDigits: 0,
+      minimumFractionDigits: 0,
+    });
+  }
+
   const formatted = formatUnits(amount, decimals);
   const num = parseFloat(formatted);
   if (num === 0) return '0';
-  if (num < 0.000001) return '< 0.000001';
+
+  // For tokens with very few decimals, adjust the minimum display threshold
+  const minDisplay = Math.pow(10, -Math.min(decimals, 6));
+  if (num < minDisplay && num > 0) return `< ${minDisplay}`;
+
   return num.toLocaleString('en-US', {
-    maximumFractionDigits: displayDecimals,
+    maximumFractionDigits: Math.min(displayDecimals, decimals),
     minimumFractionDigits: 0,
   });
 }
@@ -62,11 +76,18 @@ export function formatTokenAmountForInput(
   decimals: number = 18,
   displayDecimals: number = 18
 ): string {
+  // Handle zero decimals tokens (like VBCAT)
+  if (decimals === 0) {
+    return amount.toString();
+  }
+
   const formatted = formatUnits(amount, decimals);
   const num = parseFloat(formatted);
   if (num === 0) return '0';
   // Return number without thousands separators for input fields
-  return num.toFixed(displayDecimals).replace(/\.?0+$/, '');
+  // Limit display decimals to actual token decimals
+  const effectiveDecimals = Math.min(displayDecimals, decimals);
+  return num.toFixed(effectiveDecimals).replace(/\.?0+$/, '');
 }
 
 export function parseTokenAmount(amount: string, decimals: number = 18): bigint {

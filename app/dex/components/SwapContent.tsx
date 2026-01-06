@@ -21,6 +21,7 @@ import {
   isNativeToken,
   getTokenAddress,
   formatTokenAmount,
+  formatTokenAmountForInput,
   parseTokenAmount,
   calculateMinAmount,
   calculatePriceImpact,
@@ -340,9 +341,9 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
     // Ensure defaults never overwrite user-chosen direction
     setTokenOutInitialized(true);
 
-    // Set the output amount as the new input amount
+    // Set the output amount as the new input amount (use formatTokenAmountForInput for input fields)
     if (prevAmountOut > 0n) {
-      setAmountIn(formatTokenAmount(prevAmountOut, prevTokenOut.decimals, 18));
+      setAmountIn(formatTokenAmountForInput(prevAmountOut, prevTokenOut.decimals, prevTokenOut.decimals));
     } else {
       setAmountIn('');
     }
@@ -356,14 +357,24 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
     }
   }, [isSwapSuccess]);
 
-  // Calculate rate
+  // Calculate rate - properly accounting for different decimals
   const rate = useMemo(() => {
     if (amountInParsed > 0n && amountOut > 0n && tokenOut) {
-      const rateValue = Number(amountOut) / Number(amountInParsed);
-      return `1 ${tokenIn.symbol} = ${rateValue.toFixed(6)} ${tokenOut.symbol}`;
+      // Convert both amounts to their actual values considering decimals
+      const amountInValue = Number(amountInParsed) / Math.pow(10, tokenIn.decimals);
+      const amountOutValue = Number(amountOut) / Math.pow(10, tokenOut.decimals);
+      const rateValue = amountOutValue / amountInValue;
+
+      // Format rate based on token decimals
+      // For tokens with 0 decimals, show whole numbers
+      if (tokenOut.decimals === 0) {
+        return `1 ${tokenIn.symbol} = ${rateValue.toLocaleString('en-US', { maximumFractionDigits: 0 })} ${tokenOut.symbol}`;
+      }
+
+      return `1 ${tokenIn.symbol} = ${rateValue.toFixed(Math.min(6, tokenOut.decimals))} ${tokenOut.symbol}`;
     }
     return undefined;
-  }, [amountInParsed, amountOut, tokenIn.symbol, tokenOut]);
+  }, [amountInParsed, amountOut, tokenIn.symbol, tokenIn.decimals, tokenOut]);
 
   // Button state
   const buttonState = useMemo(() => {
