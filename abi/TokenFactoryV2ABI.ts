@@ -1,5 +1,5 @@
-// TokenFactoryV2 ABI - Enhanced Token Factory with Metadata Support
-// Contract Address: 0xE2008c44Bc077eFc1c6B5A3274ACC805c7F03b73
+// TokenFactoryV2 ABI - Enhanced Token Factory with Metadata Support and VBCG Fee
+// Contract Address: 0x5B6c68456d8E79194C63514390884E8B541298c4
 
 export const TokenFactoryV2ABI = [
   // Events
@@ -183,6 +183,99 @@ export const TokenFactoryV2ABI = [
     outputs: [{ name: 'token', type: 'address' }],
     stateMutability: 'payable',
     type: 'function',
+  },
+
+  // VBCG Fee functions (legacy - for backward compatibility)
+  {
+    inputs: [],
+    name: 'getVBCGFeeInfo',
+    outputs: [
+      { name: 'token', type: 'address' },
+      { name: 'fee', type: 'uint256' },
+      { name: 'burned', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'decimals_', type: 'uint8' },
+      { name: 'totalSupply_', type: 'uint256' },
+    ],
+    name: 'createTokenWithVBCG',
+    outputs: [{ name: 'token', type: 'address' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'decimals_', type: 'uint8' },
+      { name: 'totalSupply_', type: 'uint256' },
+      { name: 'logoUrl_', type: 'string' },
+      { name: 'description_', type: 'string' },
+      { name: 'website_', type: 'string' },
+    ],
+    name: 'createTokenWithVBCGAndMetadata',
+    outputs: [{ name: 'token', type: 'address' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+
+  // Alternative payment functions (generic names)
+  {
+    inputs: [],
+    name: 'getAlternativeFeeInfo',
+    outputs: [
+      { name: 'token', type: 'address' },
+      { name: 'fee', type: 'uint256' },
+      { name: 'burned', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'decimals_', type: 'uint8' },
+      { name: 'totalSupply_', type: 'uint256' },
+    ],
+    name: 'createTokenWithAlternative',
+    outputs: [{ name: 'token', type: 'address' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'decimals_', type: 'uint8' },
+      { name: 'totalSupply_', type: 'uint256' },
+      { name: 'logoUrl_', type: 'string' },
+      { name: 'description_', type: 'string' },
+      { name: 'website_', type: 'string' },
+    ],
+    name: 'createTokenWithAlternativeAndMetadata',
+    outputs: [{ name: 'token', type: 'address' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'token', type: 'address' },
+      { indexed: true, name: 'creator', type: 'address' },
+      { indexed: false, name: 'name', type: 'string' },
+      { indexed: false, name: 'symbol', type: 'string' },
+      { indexed: false, name: 'vbcgPaid', type: 'uint256' },
+      { indexed: false, name: 'vbcgBurned', type: 'uint256' },
+    ],
+    name: 'TokenCreatedWithVBCG',
+    type: 'event',
   },
 
   // Owner functions

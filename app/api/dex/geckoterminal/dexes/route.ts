@@ -32,7 +32,7 @@ export async function GET() {
       return errorResponse(404, 'DEX feature is not enabled');
     }
 
-    const networkSlug = 'virbicoin';
+    const networkSlug = config.network?.slug || 'virbicoin';
     const dexName = config.dex?.name || 'VirBiCoin DEX';
 
     return NextResponse.json(

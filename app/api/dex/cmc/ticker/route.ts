@@ -65,9 +65,11 @@ export async function GET() {
         // Calculate price: quote/base (how much quote for 1 base)
         const lastPrice = reserve1 / reserve0;
 
-        // Format display symbols (WVBC -> VBC)
-        const displaySymbol0 = symbol0 === 'WVBC' ? 'VBC' : symbol0;
-        const displaySymbol1 = symbol1 === 'WVBC' ? 'VBC' : symbol1;
+        // Format display symbols (wrapped native -> native symbol)
+        const wrappedSymbol = config.dex?.wrappedNative?.symbol || 'WVBC';
+        const nativeSymbol = config.currency?.symbol || 'VBC';
+        const displaySymbol0 = symbol0 === wrappedSymbol ? nativeSymbol : symbol0;
+        const displaySymbol1 = symbol1 === wrappedSymbol ? nativeSymbol : symbol1;
         const pairId = `${displaySymbol0}_${displaySymbol1}`;
 
         result[pairId] = {

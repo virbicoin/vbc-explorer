@@ -72,7 +72,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
 
     const wrappedNativeAddress = getWrappedNativeAddress();
     const usdtAddress = getUSDTAddress();
-    const networkSlug = 'virbicoin';
+    const networkSlug = config.network?.slug || 'virbicoin';
 
     // Connect to database
     await connectDB();

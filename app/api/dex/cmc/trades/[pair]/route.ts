@@ -52,11 +52,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ pair
     // Find the matching LP token
     const config = loadConfig();
     const lpTokens = (config.dex?.lpTokens || {}) as Record<string, LpToken>;
+    const wrappedSymbol = config.dex?.wrappedNative?.symbol || 'WVBC';
+    const nativeSymbol = config.currency?.symbol || 'VBC';
     let matchedPair: { address: string; token0: string; token1: string } | null = null;
 
     for (const [, lpToken] of Object.entries(lpTokens)) {
-      const t0 = lpToken.token0 === 'WVBC' ? 'VBC' : lpToken.token0;
-      const t1 = lpToken.token1 === 'WVBC' ? 'VBC' : lpToken.token1;
+      const t0 = lpToken.token0 === wrappedSymbol ? nativeSymbol : lpToken.token0;
+      const t1 = lpToken.token1 === wrappedSymbol ? nativeSymbol : lpToken.token1;
 
       if ((t0 === base && t1 === quote) || (t0 === quote && t1 === base)) {
         matchedPair = {
@@ -88,8 +90,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ pair
       token1Contract.decimals(),
     ]);
 
-    const displaySymbol0 = symbol0 === 'WVBC' ? 'VBC' : symbol0;
-    const displaySymbol1 = symbol1 === 'WVBC' ? 'VBC' : symbol1;
+    const displaySymbol0 = symbol0 === wrappedSymbol ? nativeSymbol : symbol0;
+    const displaySymbol1 = symbol1 === wrappedSymbol ? nativeSymbol : symbol1;
     const isToken0Base = displaySymbol0 === base;
 
     // Get recent trades from database

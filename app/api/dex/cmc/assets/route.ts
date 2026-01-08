@@ -49,11 +49,12 @@ export async function GET() {
     const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const assets: Record<string, Asset> = {};
 
-    // Add native token (VBC)
-    assets['VBC'] = {
+    // Add native token
+    const nativeSymbol = config.currency?.symbol || 'NATIVE';
+    assets[nativeSymbol] = {
       name: config.currency?.name || 'Native',
-      symbol: config.currency?.symbol || 'NATIVE',
-      id: config.currency?.symbol || 'NATIVE',
+      symbol: nativeSymbol,
+      id: nativeSymbol,
       maker_fee: '0.3',
       taker_fee: '0.3',
       can_withdraw: 'true',
@@ -63,19 +64,19 @@ export async function GET() {
     };
 
     // Add wrapped native token
-    const wvbc = config.dex?.wrappedNative;
-    if (wvbc) {
-      assets['WVBC'] = {
-        name: wvbc.name,
-        symbol: wvbc.symbol,
-        id: wvbc.symbol,
+    const wrappedNative = config.dex?.wrappedNative;
+    if (wrappedNative) {
+      assets[wrappedNative.symbol] = {
+        name: wrappedNative.name,
+        symbol: wrappedNative.symbol,
+        id: wrappedNative.symbol,
         maker_fee: '0.3',
         taker_fee: '0.3',
         can_withdraw: 'true',
         can_deposit: 'true',
         min_withdraw: '0.001',
         max_withdraw: '1000000000',
-        contractAddress: wvbc.address,
+        contractAddress: wrappedNative.address,
       };
     }
 

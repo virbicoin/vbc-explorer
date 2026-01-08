@@ -161,26 +161,30 @@ export async function GET() {
           '0x12A656c2DeE0EA2685398d52AcF78974fCD67B27';
         const blockTime = config.network?.blockTime || 13;
 
-        // Get reward token price (VBCG price, calculated from VBC/VBCG pool or same as VBC)
-        // For now, calculate from VBC/USDT pool ratio
-        let rewardTokenPriceUsd = nativePriceUsd; // Default to native price
+        // Get symbol mappings from config
+        const nativeSymbol = config.currency?.symbol || 'VBC';
+        const wrappedNativeSymbol = config.dex?.wrappedNative?.symbol || 'WVBC';
 
-        // Find VBC/USDT pair to get DEX VBC price
-        const vbcUsdtPair = pairsArray.find(
+        // Get reward token price (calculated from native/stablecoin pool)
+        // Default to native price
+        let rewardTokenPriceUsd = nativePriceUsd;
+
+        // Find native/stablecoin pair to get DEX native price
+        const nativeStablePair = pairsArray.find(
           (p: { baseToken?: { symbol?: string }; quoteToken?: { symbol?: string } }) =>
-            (p.baseToken?.symbol === 'VBC' || p.baseToken?.symbol === 'WVBC') &&
+            (p.baseToken?.symbol === nativeSymbol || p.baseToken?.symbol === wrappedNativeSymbol) &&
             STABLECOIN_SYMBOLS.has(p.quoteToken?.symbol?.toUpperCase() || '')
         );
 
-        if (vbcUsdtPair) {
-          const baseDecimals = vbcUsdtPair.baseToken?.decimals || 18;
-          const quoteDecimals = vbcUsdtPair.quoteToken?.decimals || 18;
+        if (nativeStablePair) {
+          const baseDecimals = nativeStablePair.baseToken?.decimals || 18;
+          const quoteDecimals = nativeStablePair.quoteToken?.decimals || 18;
           const reserve0 =
-            Number(BigInt(String(vbcUsdtPair.reserve0 || '0'))) / Math.pow(10, baseDecimals);
+            Number(BigInt(String(nativeStablePair.reserve0 || '0'))) / Math.pow(10, baseDecimals);
           const reserve1 =
-            Number(BigInt(String(vbcUsdtPair.reserve1 || '0'))) / Math.pow(10, quoteDecimals);
+            Number(BigInt(String(nativeStablePair.reserve1 || '0'))) / Math.pow(10, quoteDecimals);
           if (reserve0 > 0) {
-            rewardTokenPriceUsd = reserve1 / reserve0; // DEX VBC price
+            rewardTokenPriceUsd = reserve1 / reserve0; // DEX native price
           }
         }
 

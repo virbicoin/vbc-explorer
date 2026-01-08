@@ -69,16 +69,16 @@ export async function GET(request: Request) {
     const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';
     const usdtAddress = config.dex?.tokens?.usdt?.address?.toLowerCase() || '';
-    const networkSlug = 'virbicoin';
+    const networkSlug = config.network?.slug || 'virbicoin';
 
     // Connect to database
     await connectDB();
 
-    // Get VBC price
-    let vbcPriceUsd = 0;
+    // Get native token price
+    let nativePriceUsd = 0;
     const priceData = await getNativePrice();
     if (priceData) {
-      vbcPriceUsd = priceData.priceUSD;
+      nativePriceUsd = priceData.priceUSD;
     }
 
     // Build token prices map - GeckoTerminal format: { "address": "price" }
@@ -97,7 +97,7 @@ export async function GET(request: Request) {
 
         // Check for known tokens
         if (address === wrappedNativeAddress) {
-          priceUsd = vbcPriceUsd > 0 ? vbcPriceUsd.toString() : null;
+          priceUsd = nativePriceUsd > 0 ? nativePriceUsd.toString() : null;
         } else if (address === usdtAddress) {
           priceUsd = '1';
         } else {
@@ -133,15 +133,15 @@ export async function GET(request: Request) {
                 const reserve1 = Number(ethers.formatUnits(reserves[1], dec1));
 
                 if (reserve0 > 0 && reserve1 > 0) {
-                  if (pairedToken === wrappedNativeAddress && vbcPriceUsd > 0) {
-                    // Paired with VBC
+                  if (pairedToken === wrappedNativeAddress && nativePriceUsd > 0) {
+                    // Paired with native token
                     const tokenPrice = isToken0
-                      ? (reserve1 / reserve0) * vbcPriceUsd
-                      : (reserve0 / reserve1) * vbcPriceUsd;
+                      ? (reserve1 / reserve0) * nativePriceUsd
+                      : (reserve0 / reserve1) * nativePriceUsd;
                     priceUsd = tokenPrice.toString();
                     break;
                   } else if (pairedToken === usdtAddress) {
-                    // Paired with USDT
+                    // Paired with stablecoin
                     const tokenPrice = isToken0 ? reserve1 / reserve0 : reserve0 / reserve1;
                     priceUsd = tokenPrice.toString();
                     break;

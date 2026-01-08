@@ -56,7 +56,7 @@ export async function GET(request: Request) {
     }
 
     const wrappedNativeAddress = getWrappedNativeAddress();
-    const networkSlug = 'virbicoin';
+    const networkSlug = config.network?.slug || 'virbicoin';
 
     await connectDB();
 

@@ -8,13 +8,15 @@ import {
   useBalance,
   useWaitForTransactionReceipt,
 } from 'wagmi';
-import { parseUnits, formatUnits, parseEventLogs, type Address } from 'viem';
+import { parseUnits, formatUnits, parseEventLogs, type Address, erc20Abi } from 'viem';
 import { useWriteContract, useReadContract } from 'wagmi';
 import { TokenFactoryV2ABI } from '@/abi/TokenFactoryV2ABI';
 
 import { useLaunchpadConfig, getActiveFactoryAddress } from '@/hooks/useLaunchpadConfig';
 import { ConnectWalletButton } from './ConnectWalletButton';
 import { getCurrencySymbol, initializeCurrencyConfig } from '@/lib/client-config';
+
+type PaymentMethod = 'native' | 'alternative';
 
 export function CreateTokenForm() {
   const { address, isConnected } = useAccount();
@@ -34,6 +36,10 @@ export function CreateTokenForm() {
   const [website, setWebsite] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // Payment method state
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('native');
+  const [isApproving, setIsApproving] = useState(false);
+
   // UI state
   const [showSuccess, setShowSuccess] = useState(false);
   const [deployedAddress, setDeployedAddress] = useState<string | null>(null);
@@ -41,7 +47,13 @@ export function CreateTokenForm() {
   // Always use V2 factory ABI
   const factoryABI = TokenFactoryV2ABI;
 
-  // Get user balance
+  // Alternative payment token from config
+  const altPayment = config?.alternativePayment;
+  const altTokenAddress = altPayment?.token?.address as Address | undefined;
+  const altTokenSymbol = altPayment?.token?.symbol || 'TOKEN';
+  const altTokenDecimals = altPayment?.token?.decimals || 18;
+
+  // Get user native balance
   const { data: balance } = useBalance({
     address,
     query: {
@@ -49,7 +61,34 @@ export function CreateTokenForm() {
     },
   });
 
-  // Get creation fee from contract
+  // Get user alternative token balance
+  const { data: altTokenBalance } = useReadContract({
+    address: altTokenAddress,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+    query: {
+      enabled: isConnected && !!altTokenAddress && !!address && !!altPayment?.enabled,
+    },
+  });
+
+  // Get alternative token allowance
+  const { data: altTokenAllowance, refetch: refetchAllowance } = useReadContract({
+    address: altTokenAddress,
+    abi: erc20Abi,
+    functionName: 'allowance',
+    args: address && activeFactoryAddress ? [address, activeFactoryAddress as Address] : undefined,
+    query: {
+      enabled:
+        isConnected &&
+        !!altTokenAddress &&
+        !!address &&
+        !!activeFactoryAddress &&
+        !!altPayment?.enabled,
+    },
+  });
+
+  // Get creation fee from contract (native)
   const { data: creationFee } = useReadContract({
     address: activeFactoryAddress as Address,
     abi: factoryABI,
@@ -58,6 +97,22 @@ export function CreateTokenForm() {
       enabled: !!activeFactoryAddress,
     },
   });
+
+  // Get alternative fee info from contract
+  // Note: The actual function name depends on the contract deployment
+  // Use getVBCGFeeInfo for current contract, or getAlternativeFeeInfo for generic contracts
+  const altFeeFunction = altPayment?.contractFunctions?.getFeeInfo || 'getVBCGFeeInfo';
+  const { data: altFeeInfo } = useReadContract({
+    address: activeFactoryAddress as Address,
+    abi: factoryABI,
+    functionName: altFeeFunction as 'getVBCGFeeInfo' | 'getAlternativeFeeInfo',
+    query: {
+      enabled: !!activeFactoryAddress && !!altPayment?.enabled,
+    },
+  }) as { data: [Address, bigint, bigint] | undefined };
+
+  const altFee = altFeeInfo?.[1] ?? 0n;
+  const altTotalBurned = altFeeInfo?.[2] ?? 0n;
 
   // Write contract hook
   const {
@@ -68,6 +123,15 @@ export function CreateTokenForm() {
     reset: resetWrite,
   } = useWriteContract();
 
+  // Separate hook for approve
+  const {
+    data: approveTxHash,
+    isPending: isApprovePending,
+    writeContract: writeApprove,
+    error: approveError,
+    reset: resetApprove,
+  } = useWriteContract();
+
   // Wait for transaction
   const {
     isLoading: isConfirming,
@@ -76,6 +140,23 @@ export function CreateTokenForm() {
   } = useWaitForTransactionReceipt({
     hash: txHash,
   });
+
+  // Wait for approve transaction
+  const { isLoading: isApproveConfirming, isSuccess: isApproveConfirmed } =
+    useWaitForTransactionReceipt({
+      hash: approveTxHash,
+    });
+
+  // Handle approve confirmation - proceed to create token
+  useEffect(() => {
+    if (isApproveConfirmed && isApproving) {
+      setIsApproving(false);
+      refetchAllowance();
+      // Trigger token creation after approval
+      handleCreateTokenWithAltPayment();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isApproveConfirmed]);
 
   // Register token to database
   const registerToken = async (tokenAddress: string, creatorAddress: string) => {
@@ -231,6 +312,10 @@ export function CreateTokenForm() {
   const isMetadataValid = isValidUrl(logoUrl) && isValidUrl(website) && description.length <= 500;
 
   const hasEnoughBalance = balance && creationFee && balance.value >= creationFee;
+  const hasEnoughAltToken =
+    altTokenBalance !== undefined && altFee > 0n && altTokenBalance >= altFee;
+  const hasAltTokenAllowance =
+    altTokenAllowance !== undefined && altFee > 0n && altTokenAllowance >= altFee;
 
   // Check if on correct chain
   const isCorrectChain = config?.chainId ? chainId === config.chainId : true;
@@ -238,14 +323,80 @@ export function CreateTokenForm() {
   // Determine if using metadata
   const hasMetadata = logoUrl.trim() || description.trim() || website.trim();
 
-  // Handle create token
+  // Handle alternative token approval
+  const handleApproveAltToken = async () => {
+    if (!altTokenAddress || !activeFactoryAddress || !altFee) return;
+
+    setIsApproving(true);
+    try {
+      writeApprove({
+        address: altTokenAddress,
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [activeFactoryAddress as Address, altFee],
+      });
+    } catch (error) {
+      console.error('Failed to approve alternative token:', error);
+      setIsApproving(false);
+    }
+  };
+
+  // Handle create token with alternative payment
+  const handleCreateTokenWithAltPayment = async () => {
+    if (!activeFactoryAddress || !isValidForm || !isMetadataValid) return;
+
+    // Get contract function names from config
+    const createTokenFunc = altPayment?.contractFunctions?.createToken || 'createTokenWithVBCG';
+    const createTokenWithMetadataFunc =
+      altPayment?.contractFunctions?.createTokenWithMetadata || 'createTokenWithVBCGAndMetadata';
+
+    try {
+      const supplyWithDecimals = parseUnits(totalSupply, parseInt(decimals));
+      console.log(
+        '[CreateToken] Creating token with alternative payment, supply:',
+        supplyWithDecimals.toString()
+      );
+
+      if (hasMetadata) {
+        writeContract({
+          address: activeFactoryAddress as Address,
+          abi: TokenFactoryV2ABI,
+          functionName: createTokenWithMetadataFunc as
+            | 'createTokenWithVBCGAndMetadata'
+            | 'createTokenWithAlternativeAndMetadata',
+          args: [
+            tokenName,
+            tokenSymbol.toUpperCase(),
+            parseInt(decimals),
+            supplyWithDecimals,
+            logoUrl.trim(),
+            description.trim(),
+            website.trim(),
+          ],
+        });
+      } else {
+        writeContract({
+          address: activeFactoryAddress as Address,
+          abi: TokenFactoryV2ABI,
+          functionName: createTokenFunc as 'createTokenWithVBCG' | 'createTokenWithAlternative',
+          args: [tokenName, tokenSymbol.toUpperCase(), parseInt(decimals), supplyWithDecimals],
+        });
+      }
+    } catch (error) {
+      console.error('Failed to create token with alternative payment:', error);
+    }
+  };
+
+  // Handle create token (main handler)
   const handleCreateToken = async () => {
     console.log('[CreateToken] Attempting to create token:', {
       isConnected,
       activeFactoryAddress,
       isValidForm,
       isMetadataValid,
+      paymentMethod,
       creationFee: creationFee?.toString(),
+      altFee: altFee?.toString(),
     });
 
     if (!isConnected) {
@@ -265,6 +416,23 @@ export function CreateTokenForm() {
       return;
     }
 
+    // Handle alternative token payment
+    if (paymentMethod === 'alternative') {
+      if (!hasEnoughAltToken) {
+        console.error('[CreateToken] Insufficient alternative token balance');
+        return;
+      }
+      if (!hasAltTokenAllowance) {
+        // Need to approve first
+        handleApproveAltToken();
+        return;
+      }
+      // Has allowance, proceed with creation
+      handleCreateTokenWithAltPayment();
+      return;
+    }
+
+    // Handle native payment
     try {
       const supplyWithDecimals = parseUnits(totalSupply, parseInt(decimals));
       console.log('[CreateToken] Creating token with supply:', supplyWithDecimals.toString());
@@ -311,9 +479,12 @@ export function CreateTokenForm() {
     setDescription('');
     setWebsite('');
     setShowAdvanced(false);
+    setPaymentMethod('native');
+    setIsApproving(false);
     setShowSuccess(false);
     setDeployedAddress(null);
     resetWrite();
+    resetApprove();
   };
 
   // Add token to MetaMask
@@ -696,25 +867,118 @@ export function CreateTokenForm() {
             </div>
           )}
 
-          {/* Creation Fee Info */}
-          {creationFee !== undefined && creationFee > 0n && (
-            <div className="bg-gray-700/30 rounded-xl p-4">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-400">Creation Fee</span>
-                <span className="text-white font-semibold">
-                  {formattedFee} {getCurrencySymbol()}
-                </span>
+          {/* Payment Method Selection */}
+          {(creationFee !== undefined && creationFee > 0n) ||
+          (altPayment?.enabled && altFee > 0n) ? (
+            <div className="space-y-3">
+              <label className="block text-sm font-medium text-gray-300">Payment Method</label>
+
+              {/* Native Payment Option */}
+              <div
+                onClick={() => setPaymentMethod('native')}
+                className={`p-4 border rounded-xl cursor-pointer transition-all ${
+                  paymentMethod === 'native'
+                    ? 'border-purple-500 bg-purple-500/10'
+                    : 'border-gray-600 hover:border-gray-500'
+                }`}
+              >
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        paymentMethod === 'native' ? 'border-purple-500' : 'border-gray-500'
+                      }`}
+                    >
+                      {paymentMethod === 'native' && (
+                        <div className="w-2 h-2 rounded-full bg-purple-500" />
+                      )}
+                    </div>
+                    <span className="font-medium text-white">Pay with {getCurrencySymbol()}</span>
+                  </div>
+                  <span className="text-lg font-bold text-white">
+                    {formattedFee} {getCurrencySymbol()}
+                  </span>
+                </div>
+                {balance && (
+                  <div className="text-xs text-gray-500 mt-2 ml-7">
+                    Balance: {formatUnits(balance.value, 18)} {getCurrencySymbol()}
+                  </div>
+                )}
               </div>
+
+              {/* Alternative Token Payment Option */}
+              {altPayment?.enabled && altFee > 0n && (
+                <div
+                  onClick={() => setPaymentMethod('alternative')}
+                  className={`p-4 border rounded-xl cursor-pointer transition-all ${
+                    paymentMethod === 'alternative'
+                      ? 'border-yellow-500 bg-yellow-500/10'
+                      : 'border-gray-600 hover:border-gray-500'
+                  }`}
+                >
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                          paymentMethod === 'alternative' ? 'border-yellow-500' : 'border-gray-500'
+                        }`}
+                      >
+                        {paymentMethod === 'alternative' && (
+                          <div className="w-2 h-2 rounded-full bg-yellow-500" />
+                        )}
+                      </div>
+                      <div>
+                        <span className="font-medium text-white">Pay with {altTokenSymbol}</span>
+                        {altPayment.discountLabel && (
+                          <span className="ml-2 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">
+                            {altPayment.discountLabel}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-lg font-bold text-white">
+                      {formatUnits(altFee, altTokenDecimals)} {altTokenSymbol}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-2 ml-7 space-y-1">
+                    {altPayment.burnNote && (
+                      <div>
+                        🔥 {altTokenSymbol} {altPayment.burnNote}
+                      </div>
+                    )}
+                    {altTokenBalance !== undefined && (
+                      <div>
+                        Balance:{' '}
+                        {Number(formatUnits(altTokenBalance, altTokenDecimals)).toLocaleString()}{' '}
+                        {altTokenSymbol}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Alternative Token Burn Stats */}
+              {altPayment?.enabled && altTotalBurned > 0n && (
+                <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-xl p-3 text-center">
+                  <div className="text-xs text-gray-400">🔥 Total {altTokenSymbol} Burned</div>
+                  <div className="text-lg font-bold text-white">
+                    {Number(formatUnits(altTotalBurned, altTokenDecimals)).toLocaleString()}{' '}
+                    {altTokenSymbol}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          ) : null}
 
           {/* Error Display */}
-          {writeError && (
+          {(writeError || approveError) && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
               <p className="text-red-400 text-sm">
-                {writeError.message.includes('User rejected')
+                {(writeError?.message || approveError?.message || '').includes('User rejected')
                   ? 'Transaction was rejected'
-                  : writeError.message.includes('insufficient funds')
+                  : (writeError?.message || approveError?.message || '').includes(
+                        'insufficient funds'
+                      )
                     ? 'Insufficient balance for creation fee'
                     : 'Failed to create token. Please try again.'}
               </p>
@@ -752,24 +1016,68 @@ export function CreateTokenForm() {
             >
               Switch to {config?.networkName || 'VirBiCoin'}
             </button>
-          ) : !hasEnoughBalance && creationFee && creationFee > 0n ? (
+          ) : paymentMethod === 'native' && !hasEnoughBalance && creationFee && creationFee > 0n ? (
             <button
               disabled
               className="w-full py-4 bg-gray-600 text-gray-400 font-bold rounded-xl cursor-not-allowed"
             >
               Insufficient Balance (Need {formattedFee} {getCurrencySymbol()})
             </button>
+          ) : paymentMethod === 'alternative' && !hasEnoughAltToken ? (
+            <button
+              disabled
+              className="w-full py-4 bg-gray-600 text-gray-400 font-bold rounded-xl cursor-not-allowed"
+            >
+              Insufficient {altTokenSymbol} (Need {formatUnits(altFee, altTokenDecimals)}{' '}
+              {altTokenSymbol})
+            </button>
           ) : (
             <button
               onClick={handleCreateToken}
-              disabled={!isValidForm || !isMetadataValid || isPending || isConfirming}
+              disabled={
+                !isValidForm ||
+                !isMetadataValid ||
+                isPending ||
+                isConfirming ||
+                isApproving ||
+                isApprovePending ||
+                isApproveConfirming
+              }
               className={`w-full py-4 font-bold rounded-xl transition-all ${
-                isValidForm && isMetadataValid && !isPending && !isConfirming
-                  ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:opacity-90 shadow-lg'
+                isValidForm &&
+                isMetadataValid &&
+                !isPending &&
+                !isConfirming &&
+                !isApproving &&
+                !isApprovePending &&
+                !isApproveConfirming
+                  ? paymentMethod === 'alternative'
+                    ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-black hover:opacity-90 shadow-lg'
+                    : 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:opacity-90 shadow-lg'
                   : 'bg-gray-600 text-gray-400 cursor-not-allowed'
               }`}
             >
-              {isPending ? (
+              {isApprovePending || isApproveConfirming ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                      fill="none"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  Approving {altTokenSymbol}...
+                </span>
+              ) : isPending ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                     <circle
@@ -809,6 +1117,8 @@ export function CreateTokenForm() {
                   </svg>
                   Deploying Token...
                 </span>
+              ) : paymentMethod === 'alternative' && !hasAltTokenAllowance ? (
+                `Approve & Create Token${hasMetadata ? ' with Metadata' : ''}`
               ) : (
                 `Create Token${hasMetadata ? ' with Metadata' : ''}`
               )}

@@ -2,10 +2,32 @@
 
 import { useState, useEffect } from 'react';
 
+export interface AlternativePaymentToken {
+  address: string;
+  symbol: string;
+  decimals: number;
+}
+
+export interface AlternativePaymentContractFunctions {
+  getFeeInfo: string;
+  createToken: string;
+  createTokenWithMetadata: string;
+}
+
+export interface AlternativePayment {
+  enabled: boolean;
+  token: AlternativePaymentToken;
+  fee: string;
+  discountLabel: string;
+  burnNote: string;
+  contractFunctions: AlternativePaymentContractFunctions;
+}
+
 export interface LaunchpadConfig {
   enabled: boolean;
   factoryAddress: string;
   creationFee: string;
+  alternativePayment: AlternativePayment | null;
   chainId: number;
   rpcUrl: string;
   networkName: string;
@@ -17,6 +39,22 @@ interface ConfigResponse {
     enabled?: boolean;
     factoryAddress?: string;
     creationFee?: string;
+    alternativePayment?: {
+      enabled?: boolean;
+      token?: {
+        address?: string;
+        symbol?: string;
+        decimals?: number;
+      };
+      fee?: string;
+      discountLabel?: string;
+      burnNote?: string;
+      contractFunctions?: {
+        getFeeInfo?: string;
+        createToken?: string;
+        createTokenWithMetadata?: string;
+      };
+    };
   };
   network?: {
     chainId?: number;
@@ -29,15 +67,16 @@ interface ConfigResponse {
   };
 }
 
-// Default config values
+// Default config values (generic fallbacks)
 const defaultConfig: LaunchpadConfig = {
   enabled: false,
   factoryAddress: '0x0000000000000000000000000000000000000000',
   creationFee: '10000000000000000000',
-  chainId: 329,
-  rpcUrl: 'https://rpc.digitalregion.jp',
-  networkName: 'VirBiCoin',
-  currencySymbol: 'VBC',
+  alternativePayment: null,
+  chainId: 1,
+  rpcUrl: 'http://localhost:8545',
+  networkName: 'Network',
+  currencySymbol: 'NATIVE',
 };
 
 // Cache the config
@@ -52,10 +91,38 @@ async function fetchConfig(): Promise<LaunchpadConfig> {
     }
     const data: ConfigResponse = await response.json();
 
+    // Parse alternative payment config
+    let alternativePayment: AlternativePayment | null = null;
+    if (
+      data.launchpad?.alternativePayment?.enabled &&
+      data.launchpad?.alternativePayment?.token?.address
+    ) {
+      const altConfig = data.launchpad.alternativePayment;
+      alternativePayment = {
+        enabled: true,
+        token: {
+          address: altConfig.token!.address!,
+          symbol: altConfig.token?.symbol || 'TOKEN',
+          decimals: altConfig.token?.decimals || 18,
+        },
+        fee: altConfig.fee || '0',
+        discountLabel: altConfig.discountLabel || '',
+        burnNote: altConfig.burnNote || '',
+        contractFunctions: {
+          getFeeInfo: altConfig.contractFunctions?.getFeeInfo || 'getAlternativeFeeInfo',
+          createToken: altConfig.contractFunctions?.createToken || 'createTokenWithAlternative',
+          createTokenWithMetadata:
+            altConfig.contractFunctions?.createTokenWithMetadata ||
+            'createTokenWithAlternativeAndMetadata',
+        },
+      };
+    }
+
     return {
       enabled: data.launchpad?.enabled ?? defaultConfig.enabled,
       factoryAddress: data.launchpad?.factoryAddress ?? defaultConfig.factoryAddress,
       creationFee: data.launchpad?.creationFee ?? defaultConfig.creationFee,
+      alternativePayment,
       chainId: data.network?.chainId ?? defaultConfig.chainId,
       rpcUrl: data.network?.rpcUrl ?? defaultConfig.rpcUrl,
       networkName: data.network?.name ?? data.currency?.name ?? defaultConfig.networkName,

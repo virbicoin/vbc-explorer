@@ -31,9 +31,9 @@ interface CurrencyUnits {
 
 // Default configuration (can be overridden by config)
 let currencyConfig = {
-  name: 'VirBiCoin',
-  symbol: 'VBC',
-  unit: 'niku',
+  name: 'Native',
+  symbol: 'NATIVE',
+  unit: 'wei',
   decimals: 18,
 };
 
@@ -41,8 +41,8 @@ let currencyConfig = {
 export function updateCurrencyConfig(config: CurrencyConfig) {
   if (config.currency) {
     currencyConfig = {
-      name: config.currency.name || 'Ether',
-      symbol: config.currency.symbol || 'ETH',
+      name: config.currency.name || 'Native',
+      symbol: config.currency.symbol || 'NATIVE',
       unit: config.currency.unit || 'wei',
       decimals: config.currency.decimals || 18,
     };
