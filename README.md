@@ -394,66 +394,108 @@ sequenceDiagram
 /
 |-- app
 |    |-- api
-|    |   |-- address/
-|    |   |-- blocks/
-|    |   |-- compile/
-|    |   |-- contract/
-|    |   |-- health/
-|    |   |-- richlist/
-|    |   |-- search/
-|    |   |-- stats/
-|    |   |-- stats-enhanced/
-|    |   |-- tokens/
-|    |   |-- transactions/
-|    |   |-- tx/
-|    |   |-- web3relay/
-|    |-- components/
-|    |-- address/
-|    |-- block/
-|    |-- blocks/
-|    |-- contract/
-|    |-- ethereum/
-|    |-- richlist/
-|    |-- search/
-|    |-- token/
-|    |-- tokens/
-|    |-- transactions/
-|    |-- tx/
-|    |-- page.tsx
-|    |-- layout.tsx
-|    |-- globals.css
-|-- components
-|-- lib
-|    |-- db.ts
-|    |-- stats.ts
-|    |-- filters.ts
-|    |-- etherUnits.ts
-|    |-- models.ts
-|    |-- bigint-utils.ts
-|-- models
-|    |-- index.ts
-|-- tools
-|    |-- sync.ts
-|    |-- stats.ts
-|    |-- price.ts
-|    |-- tokens.ts
-|    |-- richlist.ts
-|-- types
-|-- logs
-|-- public
-|-- .github
+|    |   |-- address/         # Address info, transactions, tokens, mining
+|    |   |-- block/           # Block details
+|    |   |-- blocks/          # Block listing
+|    |   |-- blockheight/     # Current block height
+|    |   |-- circulating_supply/  # Circulating supply
+|    |   |-- compile/         # Solidity compilation
+|    |   |-- config/          # Client config API
+|    |   |-- contract/        # Contract verification & interaction
+|    |   |-- contracts/       # Contract listing
+|    |   |-- dex/             # DEX APIs (core, CMC, DefiLlama, GeckoTerminal)
+|    |   |-- launchpad/       # Token Launchpad APIs
+|    |   |-- network/         # Network/node info
+|    |   |-- realtime/        # Real-time data
+|    |   |-- richlist/        # Rich list API
+|    |   |-- search/          # Search APIs
+|    |   |-- stats/           # Network statistics, gas, daily stats
+|    |   |-- tokens/          # Token APIs
+|    |   |-- total_supply/    # Total supply
+|    |   |-- transactions/    # Transaction listing & pending
+|    |   |-- tx/              # Transaction details
+|    |   |-- v2/              # Blockscout v2 compatible APIs
+|    |   |-- web3relay/       # Web3 RPC relay
+|    |   |-- ws/              # WebSocket relay
+|    |   |-- route.ts         # Etherscan-compatible API
+|    |-- api-docs/            # API documentation page
+|    |-- components/          # Page-specific components
+|    |-- address/             # Address pages
+|    |-- block/               # Block pages
+|    |-- blocks/              # Blocks list page
+|    |-- contract/            # Contract verification pages
+|    |-- contracts/           # Contracts list page
+|    |-- dex/                 # DEX pages (Swap, Pool, Farm, Analytics, Docs)
+|    |-- ethereum/            # EIP-3091 redirect handler
+|    |-- launchpad/           # Token Launchpad pages
+|    |-- network/             # Network info page
+|    |-- richlist/            # Rich list pages
+|    |-- search/              # Search results page
+|    |-- stats/               # Statistics page
+|    |-- token/               # Token detail pages
+|    |-- tokens/              # Tokens list page
+|    |-- transactions/        # Transactions list page
+|    |-- tx/                  # Transaction detail pages
+|    |-- txs/                 # Pending transactions page
+|    |-- page.tsx             # Homepage
+|    |-- layout.tsx           # Root layout
+|    |-- globals.css          # Global styles
+|-- abi/                      # Smart contract ABIs
+|-- components/               # Shared React components
+|-- config/                   # Configuration files (farming.ts)
+|-- hooks/                    # Custom React hooks
+|-- lib/
+|    |-- cache/               # In-memory caching
+|    |-- db/                  # Database abstraction layer
+|    |-- dex/                 # DEX utilities & cache service
+|    |-- security/            # Input validation & rate limiting
+|    |-- services/            # Business logic services
+|    |-- types/               # TypeScript type definitions
+|    |-- utils/               # Utility functions
+|    |-- web3/                # Web3 singleton provider
+|    |-- bigint-utils.ts      # BigInt utilities
+|    |-- client-config.ts     # Client-side config
+|    |-- config.ts            # Server-side config
+|    |-- db.ts                # Database connection
+|    |-- etherUnits.ts        # Unit conversion
+|    |-- filters.ts           # Data filters
+|    |-- launchpad-token-source.ts  # Launchpad token data
+|    |-- models.ts            # Model interfaces
+|    |-- price-service.ts     # Price data service
+|    |-- stats.ts             # Statistics utilities
+|    |-- supply.ts            # Supply calculation
+|    |-- transaction-utils.ts # Transaction utilities
+|-- models/
+|    |-- index.ts             # Mongoose models
+|-- tools/
+|    |-- sync.ts              # Blockchain synchronization
+|    |-- stats.ts             # Statistics calculation
+|    |-- price.ts             # Price & DEX swap sync
+|    |-- tokens.ts            # Token data sync (NFT/ERC20)
+|    |-- richlist.ts          # Rich list generation
+|    |-- register-contracts.ts  # Contract registration
+|    |-- optimize-indexes.ts  # Database index optimization
+|    |-- add-token.ts         # Manual token addition
+|-- types/
+|    |-- global.d.ts          # Global type declarations
+|-- logs/                     # Log files
+|-- public/
+|    |-- img/                 # Static images
+|-- .github/                  # GitHub workflows
 |-- package.json
-|-- ecosystem.config.json
-|-- config.json
-|-- config.example.json
-
-|-- .gitignore
+|-- ecosystem.config.json     # PM2 configuration
+|-- config.json               # Main configuration (not in git)
+|-- config.example.json       # Configuration template
+|-- proxy.ts                  # Request proxy with security headers
 |-- next.config.ts
 |-- tsconfig.json
-|-- eslint.config.ts
+|-- tsconfig.tools.json       # TypeScript config for CLI tools
+|-- eslint.config.mjs
 |-- Dockerfile
 |-- docker-compose.yml
 |-- README.md
+|-- CLAUDE.md                 # AI assistant guide
+|-- SECURITY.md               # Security policy
 |-- LICENSE
 ```
 

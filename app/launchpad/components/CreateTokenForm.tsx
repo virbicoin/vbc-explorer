@@ -44,6 +44,9 @@ export function CreateTokenForm() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [deployedAddress, setDeployedAddress] = useState<string | null>(null);
 
+  // Native currency symbol (loaded from config)
+  const [nativeCurrencySymbol, setNativeCurrencySymbol] = useState<string>('');
+
   // Always use V2 factory ABI
   const factoryABI = TokenFactoryV2ABI;
 
@@ -184,7 +187,9 @@ export function CreateTokenForm() {
 
   // Initialize currency config on mount
   useEffect(() => {
-    initializeCurrencyConfig();
+    initializeCurrencyConfig().then(() => {
+      setNativeCurrencySymbol(getCurrencySymbol());
+    });
   }, []);
 
   // Handle transaction confirmation
@@ -907,15 +912,15 @@ export function CreateTokenForm() {
                         <div className="w-2 h-2 rounded-full bg-purple-500" />
                       )}
                     </div>
-                    <span className="font-medium text-white">Pay with {getCurrencySymbol()}</span>
+                    <span className="font-medium text-white">Pay with {nativeCurrencySymbol}</span>
                   </div>
                   <span className="text-lg font-bold text-white">
-                    {formattedFee} {getCurrencySymbol()}
+                    {formattedFee} {nativeCurrencySymbol}
                   </span>
                 </div>
                 {balance && (
                   <div className="text-xs text-gray-500 mt-2 ml-7">
-                    Balance: {formatUnits(balance.value, 18)} {getCurrencySymbol()}
+                    Balance: {formatUnits(balance.value, 18)} {nativeCurrencySymbol}
                   </div>
                 )}
               </div>
@@ -1024,7 +1029,7 @@ export function CreateTokenForm() {
               disabled
               className="w-full py-4 bg-gray-600 text-gray-400 font-bold rounded-xl cursor-not-allowed"
             >
-              Insufficient Balance (Need {formattedFee} {getCurrencySymbol()})
+              Insufficient Balance (Need {formattedFee} {nativeCurrencySymbol})
             </button>
           ) : paymentMethod === 'alternative' && !hasEnoughAltToken ? (
             <button

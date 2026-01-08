@@ -25,8 +25,6 @@
     "unit": "wei",
     "decimals": 18,
     "gasUnit": "Gwei",
-    "icon": "/img/eth.svg",
-    "color": "from-blue-500 to-purple-600",
     "priceApi": {
       "coingecko": {
         "enabled": true,
@@ -36,7 +34,8 @@
         "enabled": true,
         "id": "eth-ethereum"
       }
-    }
+    },
+    "_comment": "For custom networks: name/symbol/unit/gasUnit can be customized (e.g., VirBiCoin/VBC/niku/Gniku)"
   },
   "performance": {
     "memoryLimitMB": 512,
@@ -134,7 +133,7 @@
   "explorer": {
     "name": "Blockchain Explorer",
     "description": "Real-time blockchain explorer for EVM-compatible networks",
-    "version": "1.0.0",
+    "version": "0.7.6",
     "url": "https://explorer.example.com",
     "apiUrl": "https://explorer.example.com/api",
     "copyright": "Your Company Name",
@@ -147,7 +146,8 @@
     "rpcUrl": "http://localhost:8545",
     "wsUrl": "ws://localhost:8546",
     "explorer": "https://explorer.example.com",
-    "blockTime": 12
+    "blockTime": 12,
+    "_comment": "slug is used for URL-friendly identifiers (e.g., virbicoin for VirBiCoin network)"
   },
   "dex": {
     "enabled": false,
@@ -158,34 +158,26 @@
       "address": "0x0000000000000000000000000000000000000000",
       "name": "Wrapped Native Token",
       "symbol": "WETH",
-      "decimals": 18,
-      "icon": "/img/eth.svg",
-      "color": "from-blue-400 to-purple-500"
+      "decimals": 18
     },
     "rewardToken": {
       "address": "0x0000000000000000000000000000000000000000",
       "symbol": "REWARD",
       "name": "Reward Token",
-      "decimals": 18,
-      "icon": "/img/reward.png",
-      "color": "from-yellow-400 to-amber-500"
+      "decimals": 18
     },
     "tokens": {
       "usdt": {
         "address": "0x0000000000000000000000000000000000000000",
         "name": "Tether USD",
         "symbol": "USDT",
-        "decimals": 6,
-        "icon": "/img/USDT.svg",
-        "color": "from-green-400 to-emerald-500"
+        "decimals": 6
       },
       "usdc": {
         "address": "0x0000000000000000000000000000000000000000",
         "name": "USD Coin",
         "symbol": "USDC",
-        "decimals": 6,
-        "icon": "/img/USDC.svg",
-        "color": "from-blue-400 to-blue-500"
+        "decimals": 6
       }
     },
     "lpTokens": {
@@ -205,7 +197,8 @@
         "token0Symbol": "USDT",
         "token1Symbol": "ETH"
       }
-    ]
+    ],
+    "_comment": "Set enabled: true and configure contract addresses to enable DEX features"
   },
   "launchpad": {
     "enabled": true,
@@ -214,7 +207,7 @@
       {
         "address": "0x0000000000000000000000000000000000000000",
         "version": "v1",
-        "note": "Previous factory contract (optional)"
+        "note": "Previous factory contract (optional, for showing tokens from old contracts)"
       }
     ],
     "creationFee": "10000000000000000000",
@@ -233,14 +226,16 @@
         "createToken": "createTokenWithAlternative",
         "createTokenWithMetadata": "createTokenWithAlternativeAndMetadata"
       },
-      "_comment": "Alternative payment token for token creation (e.g., project governance token)"
-    }
+      "_comment": "Alternative payment token for token creation (e.g., project governance token). contractFunctions maps generic names to actual contract function names."
+    },
+    "_comment": "Token Launchpad for no-code token creation. Set factoryAddress to enable."
   },
   "tokenIcons": {
     "ETH": { "icon": "/img/eth.svg", "color": "from-blue-500 to-purple-600" },
     "WETH": { "icon": "/img/eth.svg", "color": "from-blue-400 to-purple-500" },
     "USDT": { "icon": "/img/USDT.svg", "color": "from-green-400 to-emerald-500" },
-    "USDC": { "icon": "/img/USDC.svg", "color": "from-blue-400 to-blue-500" }
+    "USDC": { "icon": "/img/USDC.svg", "color": "from-blue-400 to-blue-500" },
+    "_comment": "Token icons and gradient colors for UI display. Keys are token symbols."
   },
   "blacklist": {
     "tokens": [
@@ -255,7 +250,7 @@
       {
         "address": "0x0000000000000000000000000000000000000000",
         "symbol": "TEST",
-        "reason": "Test token, fully burned"
+        "reason": "Test token, fully burned or deprecated"
       }
     ],
     "lpPairs": [
@@ -264,14 +259,16 @@
         "name": "Example/SPAM LP",
         "reason": "Contains blacklisted token"
       }
-    ]
+    ],
+    "_comment": "Blacklisted tokens/pairs will be hidden from DEX, Launchpad, and token lists"
   },
   "social": {
     "x": "https://x.com/your_project",
     "twitter": "https://x.com/your_project",
     "discord": "https://discord.gg/your_invite",
     "telegram": "https://t.me/your_channel",
-    "github": "https://github.com/your-repo"
+    "github": "https://github.com/your-repo",
+    "_comment": "Social media links displayed in footer and pages"
   },
   "dexInfo": {
     "name": "Your DEX Name",
@@ -285,7 +282,7 @@
     "swapFee": "0.3%",
     "protocolFee": "0.05%",
     "lpReward": "0.25%",
-    "_comment": "For GeckoTerminal/CoinGecko DEX listing"
+    "_comment": "DEX metadata for GeckoTerminal/CoinGecko listing applications"
   },
   "supply": {
     "blockReward": 2,
@@ -300,6 +297,7 @@
         "label": "Treasury Contract"
       }
     ],
-    "cacheDuration": 60
+    "cacheDuration": 60,
+    "_comment": "Supply calculation for /api/total_supply and /api/circulating_supply endpoints (CoinGecko/CMC compatible)"
   }
 }
