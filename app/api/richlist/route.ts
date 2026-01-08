@@ -3,12 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Account, Contract } from '@/lib/models';
 import { connectToDatabase } from '@/lib/db';
 import { loadConfig } from '@/lib/config';
-
-// Cache for totalSupply
-const totalSupplyCache = {
-  value: -1,
-  timestamp: 0,
-};
+import { calculateTotalSupply } from '@/lib/supply';
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,31 +14,10 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = (page - 1) * limit;
 
-    // Get totalSupply from cache or calculate
-    if (new Date().getTime() - totalSupplyCache.timestamp > 30 * 60 * 1000) {
-      totalSupplyCache.value = -1;
-      totalSupplyCache.timestamp = 0;
-    }
-
-    let totalSupply = totalSupplyCache.value;
-    if (totalSupply < 0) {
-      const docs = await Account.aggregate([
-        { $match: { balance: { $gt: '0' } } },
-        // Group by address to remove duplicates and keep the latest balance
-        {
-          $group: {
-            _id: '$address',
-            balance: { $first: '$balance' },
-            blockNumber: { $max: '$blockNumber' },
-          },
-        },
-        { $addFields: { balanceNum: { $toDouble: '$balance' } } },
-        { $group: { _id: null, totalSupply: { $sum: '$balanceNum' } } },
-      ]);
-      totalSupply = docs[0]?.totalSupply || 0;
-      totalSupplyCache.timestamp = new Date().getTime();
-      totalSupplyCache.value = totalSupply;
-    }
+    // Get totalSupply from lib/supply.ts (returns native currency unit, e.g., VBC)
+    // Multiply by 1e18 to convert to wei for percentage calculation
+    const totalSupplyNative = await calculateTotalSupply();
+    const totalSupplyWei = totalSupplyNative * 1e18;
 
     // Get total count of unique accounts with balance > 0 (removing duplicates)
     const totalAccountsResult = await Account.aggregate([
@@ -113,7 +87,8 @@ export async function GET(request: NextRequest) {
         account.balanceNum ||
         (typeof account.balance === 'string' ? parseFloat(account.balance) : account.balance);
       const balanceInNative = balanceNum / 1e18;
-      const percentage = totalSupply > 0 ? (balanceNum / totalSupply) * 100 : 0;
+      // Use totalSupplyWei for correct percentage calculation
+      const percentage = totalSupplyWei > 0 ? (balanceNum / totalSupplyWei) * 100 : 0;
 
       return {
         rank,
@@ -142,7 +117,7 @@ export async function GET(request: NextRequest) {
         hasPrev: page > 1,
       },
       statistics: {
-        totalSupply,
+        totalSupply: totalSupplyNative, // Return native unit for display
         totalAccounts,
         contractAccounts,
         walletAccounts,
@@ -182,12 +157,6 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    // Check cached totalSupply
-    if (new Date().getTime() - totalSupplyCache.timestamp > 30 * 60 * 1000) {
-      totalSupplyCache.value = -1;
-      totalSupplyCache.timestamp = 0;
-    }
-
     // Count accounts only once
     let count = body.recordsTotal || 0;
     count = parseInt(count);
@@ -195,21 +164,10 @@ export async function POST(request: NextRequest) {
       count = 0;
     }
 
-    // Get totalSupply only once
-    const queryTotalSupply = totalSupplyCache.value || body.totalSupply || null;
-
-    let totalSupply;
-    if (queryTotalSupply < 0) {
-      const docs = await Account.aggregate([
-        { $group: { _id: null, totalSupply: { $sum: '$balance' } } },
-      ]);
-      totalSupply = docs[0]?.totalSupply || 0;
-      // Update cache
-      totalSupplyCache.timestamp = new Date().getTime();
-      totalSupplyCache.value = totalSupply;
-    } else {
-      totalSupply = queryTotalSupply > 0 ? queryTotalSupply : null;
-    }
+    // Get totalSupply from lib/supply.ts (returns native currency unit)
+    // Multiply by 1e18 to convert to wei for percentage calculation
+    const totalSupplyNative = await calculateTotalSupply();
+    const totalSupplyWei = totalSupplyNative * 1e18;
 
     if (!count) {
       // Get the number of all accounts
@@ -243,8 +201,9 @@ export async function POST(request: NextRequest) {
       recordsTotal: count,
     };
 
-    if (totalSupply && totalSupply > 0) {
-      data.totalSupply = totalSupply;
+    if (totalSupplyNative && totalSupplyNative > 0) {
+      data.totalSupply = totalSupplyNative;
+      data.totalSupplyWei = totalSupplyWei;
     }
 
     // Use aggregation to remove duplicates and apply sorting

@@ -4,6 +4,7 @@ import { connectDB } from '../../../../models/index';
 import { getWeb3 } from '../../../../lib/web3';
 import { apiCache, CACHE_TTL } from '../../../../lib/cache';
 import { loadConfig } from '../../../../lib/config';
+import { calculateTotalSupply } from '../../../../lib/supply';
 import {
   sanitizeAddress,
   validatePagination,
@@ -332,18 +333,15 @@ export async function GET(
     // ignore
   }
 
-  // 全アカウントのリアルタイムバランス合計を取得
-  const allAccounts = await Account.find({});
-  const totalBalance = allAccounts.reduce((sum, acc) => {
-    let b = acc.balance || '0';
-    if (typeof b !== 'string') b = b.toString();
-    return sum + parseFloat(b);
-  }, 0);
+  // Get totalSupply from lib/supply.ts (returns native currency unit, e.g., VBC)
+  // Multiply by 1e18 to convert to wei for percentage calculation
+  const totalSupplyNative = await calculateTotalSupply();
+  const totalSupplyWei = totalSupplyNative * 1e18;
 
   // percentageを動的に計算
   let percent = 0;
-  if (totalBalance > 0) {
-    percent = (parseFloat(realBalance) / totalBalance) * 100;
+  if (totalSupplyWei > 0) {
+    percent = (parseFloat(realBalance) / totalSupplyWei) * 100;
   }
 
   // percentage/rankはDBの値をそのまま使う（nullの場合は0を返す）
