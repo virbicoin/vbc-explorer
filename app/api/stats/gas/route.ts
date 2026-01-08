@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getWeb3 } from '../../../../lib/web3';
+import dbConnect from '../../../../lib/db';
+import mongoose from 'mongoose';
+import { getGasUnitServer } from '../../../../lib/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,40 +38,74 @@ export async function GET() {
       throw new Error('Failed to get latest block');
     }
 
-    // Get gas prices from recent transactions
     const blockNumber = Number(latestBlock.number);
-    const gasPrices: bigint[] = [];
+    let gasPrices: bigint[] = [];
 
-    // Fetch gas prices from last 20 blocks
-    const blocksToFetch = Math.min(20, blockNumber);
-    const blockPromises: Promise<void>[] = [];
+    // First try to get gas prices from database (more reliable for low-traffic chains)
+    try {
+      await dbConnect();
+      const db = mongoose.connection.db;
+      if (db) {
+        // Get gas prices from recent transactions in database
+        const recentTxs = await db
+          .collection('Transaction')
+          .find({ gasPrice: { $exists: true, $ne: null } })
+          .sort({ blockNumber: -1 })
+          .limit(500)
+          .project({ gasPrice: 1 })
+          .toArray();
 
-    for (let i = 0; i < blocksToFetch; i++) {
-      blockPromises.push(
-        (async () => {
-          try {
-            const block = await web3.eth.getBlock(blockNumber - i, true);
-            if (block && block.transactions) {
-              for (const tx of block.transactions) {
-                if (typeof tx === 'object' && tx.gasPrice) {
-                  gasPrices.push(BigInt(tx.gasPrice.toString()));
-                }
-              }
+        for (const tx of recentTxs) {
+          if (tx.gasPrice) {
+            const price = BigInt(tx.gasPrice.toString());
+            if (price > 0n) {
+              gasPrices.push(price);
             }
-          } catch {
-            // Ignore errors for individual blocks
           }
-        })()
-      );
+        }
+      }
+    } catch (dbError) {
+      console.error('Error fetching gas prices from DB:', dbError);
     }
 
-    await Promise.all(blockPromises);
+    // If no data from DB, try fetching from recent blocks via RPC
+    if (gasPrices.length === 0) {
+      const blocksToFetch = Math.min(50, blockNumber);
+      const blockPromises: Promise<void>[] = [];
+
+      for (let i = 0; i < blocksToFetch; i++) {
+        blockPromises.push(
+          (async () => {
+            try {
+              const block = await web3.eth.getBlock(blockNumber - i, true);
+              if (block && block.transactions) {
+                for (const tx of block.transactions) {
+                  if (typeof tx === 'object' && tx.gasPrice) {
+                    const price = BigInt(tx.gasPrice.toString());
+                    if (price > 0n) {
+                      gasPrices.push(price);
+                    }
+                  }
+                }
+              }
+            } catch {
+              // Ignore errors for individual blocks
+            }
+          })()
+        );
+      }
+
+      await Promise.all(blockPromises);
+    }
+
+    // Get gas unit from config
+    const gasUnit = getGasUnitServer();
 
     // Calculate percentiles
-    let slow = '0 Gwei';
-    let standard = '0 Gwei';
-    let fast = '0 Gwei';
-    let instant = '0 Gwei';
+    let slow = `0 ${gasUnit}`;
+    let standard = `0 ${gasUnit}`;
+    let fast = `0 ${gasUnit}`;
+    let instant = `0 ${gasUnit}`;
 
     if (gasPrices.length > 0) {
       // Sort gas prices
@@ -79,26 +116,34 @@ export async function GET() {
         return arr[index];
       };
 
-      const formatGwei = (wei: bigint): string => {
+      const formatGasPrice = (wei: bigint): string => {
         const gwei = Number(wei) / 1e9;
-        if (gwei < 0.01) return '<0.01 Gwei';
-        if (gwei < 1) return `${gwei.toFixed(2)} Gwei`;
-        if (gwei < 100) return `${gwei.toFixed(1)} Gwei`;
-        return `${Math.round(gwei)} Gwei`;
+        if (gwei < 0.01) return `<0.01 ${gasUnit}`;
+        if (gwei < 1) return `${gwei.toFixed(2)} ${gasUnit}`;
+        if (gwei < 100) return `${gwei.toFixed(1)} ${gasUnit}`;
+        return `${Math.round(gwei)} ${gasUnit}`;
       };
 
-      slow = formatGwei(getPercentile(gasPrices, 10));
-      standard = formatGwei(getPercentile(gasPrices, 50));
-      fast = formatGwei(getPercentile(gasPrices, 75));
-      instant = formatGwei(getPercentile(gasPrices, 95));
+      slow = formatGasPrice(getPercentile(gasPrices, 10));
+      standard = formatGasPrice(getPercentile(gasPrices, 50));
+      fast = formatGasPrice(getPercentile(gasPrices, 75));
+      instant = formatGasPrice(getPercentile(gasPrices, 95));
+    } else {
+      // If still no data, use default minimum gas price
+      slow = `1 ${gasUnit}`;
+      standard = `1 ${gasUnit}`;
+      fast = `1 ${gasUnit}`;
+      instant = `1 ${gasUnit}`;
     }
 
     // Get base fee if available (EIP-1559)
     let baseFee: string | undefined;
     if (latestBlock.baseFeePerGas) {
-      const baseFeeGwei = Number(latestBlock.baseFeePerGas) / 1e9;
+      const baseFeeValue = Number(latestBlock.baseFeePerGas) / 1e9;
       baseFee =
-        baseFeeGwei < 1 ? `${baseFeeGwei.toFixed(2)} Gwei` : `${Math.round(baseFeeGwei)} Gwei`;
+        baseFeeValue < 1
+          ? `${baseFeeValue.toFixed(2)} ${gasUnit}`
+          : `${Math.round(baseFeeValue)} ${gasUnit}`;
     }
 
     const gasStats: GasStats = {
