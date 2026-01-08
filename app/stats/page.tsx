@@ -55,8 +55,9 @@ export default function StatsPage() {
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [gasStats, setGasStats] = useState<GasStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dailyStatsLoading, setDailyStatsLoading] = useState(false);
   const [currencySymbol, setCurrencySymbol] = useState<string>('');
-  const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d'>('7d');
+  const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d'>('30d');
 
   useEffect(() => {
     const init = async () => {
@@ -92,13 +93,16 @@ export default function StatsPage() {
 
         // Fetch daily stats
         try {
-          const dailyRes = await fetch(`/api/stats/daily?period=${selectedPeriod}`);
+          setDailyStatsLoading(true);
+          const dailyRes = await fetch(`/api/stats/daily?period=${selectedPeriod}&t=${Date.now()}`);
           if (dailyRes.ok) {
             const dailyData = await dailyRes.json();
             setDailyStats(dailyData.stats || []);
           }
         } catch {
           // Daily stats API might not exist yet
+        } finally {
+          setDailyStatsLoading(false);
         }
       } catch (error) {
         console.error('Error fetching stats:', error);
@@ -326,8 +330,17 @@ export default function StatsPage() {
           </div>
 
           <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
-            {dailyStats.length > 0 ? (
+            {dailyStatsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <ArrowPathIcon className="w-8 h-8 text-blue-400 animate-spin" />
+                <span className="ml-2 text-gray-400">Loading statistics...</span>
+              </div>
+            ) : dailyStats.length > 0 ? (
               <div className="space-y-4">
+                {/* Data count info */}
+                <div className="text-xs text-gray-500 text-right">
+                  Showing {dailyStats.length} days of data
+                </div>
                 {/* Simple bar chart representation */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Transactions Chart */}

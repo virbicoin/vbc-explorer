@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
@@ -119,16 +119,14 @@ function LaunchpadPageContent() {
   const router = useRouter();
   const tabParam = searchParams.get('tab');
 
-  // Initialize tab from URL parameter
-  const initialTab =
+  // Derive active tab directly from URL parameter (single source of truth)
+  const activeTab: Tab =
     tabParam === 'create' || tabParam === 'tokens' || tabParam === 'my-tokens'
       ? tabParam
       : 'create';
-  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
   // Update URL when tab changes
   const handleTabChange = (tab: Tab) => {
-    setActiveTab(tab);
     router.push(`/launchpad?tab=${tab}`, { scroll: false });
   };
 

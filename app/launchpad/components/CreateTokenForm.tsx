@@ -343,6 +343,7 @@ export function CreateTokenForm() {
 
   // Handle create token with alternative payment
   const handleCreateTokenWithAltPayment = async () => {
+    console.log('[CreateToken] Using ALTERNATIVE payment method (VBCG)');
     if (!activeFactoryAddress || !isValidForm || !isMetadataValid) return;
 
     // Get contract function names from config
@@ -354,7 +355,9 @@ export function CreateTokenForm() {
       const supplyWithDecimals = parseUnits(totalSupply, parseInt(decimals));
       console.log(
         '[CreateToken] Creating token with alternative payment, supply:',
-        supplyWithDecimals.toString()
+        supplyWithDecimals.toString(),
+        'function:',
+        hasMetadata ? createTokenWithMetadataFunc : createTokenFunc
       );
 
       if (hasMetadata) {
@@ -433,12 +436,22 @@ export function CreateTokenForm() {
     }
 
     // Handle native payment
+    console.log('[CreateToken] Using NATIVE payment method (VBC)');
     try {
       const supplyWithDecimals = parseUnits(totalSupply, parseInt(decimals));
-      console.log('[CreateToken] Creating token with supply:', supplyWithDecimals.toString());
+      console.log(
+        '[CreateToken] Creating token with native payment, supply:',
+        supplyWithDecimals.toString(),
+        'fee:',
+        creationFee?.toString()
+      );
 
       if (hasMetadata) {
         // Use createTokenWithMetadata with metadata
+        console.log(
+          '[CreateToken] Calling createTokenWithMetadata with value:',
+          creationFee?.toString()
+        );
         writeContract({
           address: activeFactoryAddress as Address,
           abi: TokenFactoryV2ABI,
@@ -456,6 +469,7 @@ export function CreateTokenForm() {
         });
       } else {
         // Use standard createToken
+        console.log('[CreateToken] Calling createToken with value:', creationFee?.toString());
         writeContract({
           address: activeFactoryAddress as Address,
           abi: factoryABI,
@@ -956,17 +970,6 @@ export function CreateTokenForm() {
                   </div>
                 </div>
               )}
-
-              {/* Alternative Token Burn Stats */}
-              {altPayment?.enabled && altTotalBurned > 0n && (
-                <div className="bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-xl p-3 text-center">
-                  <div className="text-xs text-gray-400">🔥 Total {altTokenSymbol} Burned</div>
-                  <div className="text-lg font-bold text-white">
-                    {Number(formatUnits(altTotalBurned, altTokenDecimals)).toLocaleString()}{' '}
-                    {altTokenSymbol}
-                  </div>
-                </div>
-              )}
             </div>
           ) : null}
 
@@ -1033,6 +1036,7 @@ export function CreateTokenForm() {
             </button>
           ) : (
             <button
+              key={`create-btn-${paymentMethod}`}
               onClick={handleCreateToken}
               disabled={
                 !isValidForm ||
