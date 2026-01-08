@@ -162,12 +162,37 @@ export interface SocialConfig {
 }
 
 // Launchpad configuration
+export interface LaunchpadAlternativePayment {
+  enabled: boolean;
+  token?: {
+    address: string;
+    symbol: string;
+    decimals: number;
+  };
+  fee?: string;
+  discountLabel?: string;
+  burnNote?: string;
+  contractFunctions?: {
+    getFeeInfo?: string;
+    createToken?: string;
+    createTokenWithMetadata?: string;
+  };
+}
+
+export interface LaunchpadLegacyFactory {
+  address: `0x${string}`;
+  version?: string;
+  note?: string;
+}
+
 export interface LaunchpadConfig {
   enabled: boolean;
   factoryAddress: `0x${string}`;
   factoryAddressV2?: `0x${string}`;
+  legacyFactories?: LaunchpadLegacyFactory[];
   useV2?: boolean;
   creationFee: string;
+  alternativePayment?: LaunchpadAlternativePayment;
 }
 
 // Supply configuration

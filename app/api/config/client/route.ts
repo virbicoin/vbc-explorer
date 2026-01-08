@@ -99,7 +99,22 @@ export async function GET() {
         ? {
             enabled: config.launchpad.enabled || false,
             factoryAddress: config.launchpad.factoryAddress || '',
+            legacyFactories: config.launchpad.legacyFactories || [],
             creationFee: config.launchpad.creationFee || '0',
+            alternativePayment: config.launchpad.alternativePayment
+              ? {
+                  enabled: config.launchpad.alternativePayment.enabled || false,
+                  token: config.launchpad.alternativePayment.token || null,
+                  fee: config.launchpad.alternativePayment.fee || '0',
+                  discountLabel: config.launchpad.alternativePayment.discountLabel || '',
+                  burnNote: config.launchpad.alternativePayment.burnNote || '',
+                  contractFunctions: config.launchpad.alternativePayment.contractFunctions || {
+                    getFeeInfo: 'getAlternativeFeeInfo',
+                    createToken: 'createTokenWithAlternative',
+                    createTokenWithMetadata: 'createTokenWithAlternativeAndMetadata',
+                  },
+                }
+              : null,
           }
         : null,
       // Blacklist configuration (tokens and LP pairs to hide)
@@ -110,6 +125,10 @@ export async function GET() {
         lpPairs: (
           (config as { blacklist?: { lpPairs?: { address: string }[] } }).blacklist?.lpPairs || []
         ).map((p) => p.address.toLowerCase()),
+        launchpadTokens: (
+          (config as { blacklist?: { launchpadTokens?: { address: string }[] } }).blacklist
+            ?.launchpadTokens || []
+        ).map((t) => t.address.toLowerCase()),
       },
       // Social links
       social: config.social || null,

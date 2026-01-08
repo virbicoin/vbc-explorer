@@ -23,9 +23,16 @@ export interface AlternativePayment {
   contractFunctions: AlternativePaymentContractFunctions;
 }
 
+export interface LegacyFactory {
+  address: string;
+  version?: string;
+  note?: string;
+}
+
 export interface LaunchpadConfig {
   enabled: boolean;
   factoryAddress: string;
+  legacyFactories: LegacyFactory[];
   creationFee: string;
   alternativePayment: AlternativePayment | null;
   chainId: number;
@@ -38,6 +45,7 @@ interface ConfigResponse {
   launchpad?: {
     enabled?: boolean;
     factoryAddress?: string;
+    legacyFactories?: { address?: string; version?: string; note?: string }[];
     creationFee?: string;
     alternativePayment?: {
       enabled?: boolean;
@@ -71,6 +79,7 @@ interface ConfigResponse {
 const defaultConfig: LaunchpadConfig = {
   enabled: false,
   factoryAddress: '0x0000000000000000000000000000000000000000',
+  legacyFactories: [],
   creationFee: '10000000000000000000',
   alternativePayment: null,
   chainId: 1,
@@ -118,9 +127,19 @@ async function fetchConfig(): Promise<LaunchpadConfig> {
       };
     }
 
+    // Parse legacy factories
+    const legacyFactories: LegacyFactory[] = (data.launchpad?.legacyFactories || [])
+      .filter((f) => f.address && f.address !== '0x0000000000000000000000000000000000000000')
+      .map((f) => ({
+        address: f.address!,
+        version: f.version,
+        note: f.note,
+      }));
+
     return {
       enabled: data.launchpad?.enabled ?? defaultConfig.enabled,
       factoryAddress: data.launchpad?.factoryAddress ?? defaultConfig.factoryAddress,
+      legacyFactories,
       creationFee: data.launchpad?.creationFee ?? defaultConfig.creationFee,
       alternativePayment,
       chainId: data.network?.chainId ?? defaultConfig.chainId,

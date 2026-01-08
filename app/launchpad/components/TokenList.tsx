@@ -3,9 +3,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { formatUnits, type Address } from 'viem';
 import { useReadContract, useReadContracts } from 'wagmi';
+import { ethers } from 'ethers';
 import { TokenFactoryV2ABI } from '@/abi/TokenFactoryV2ABI';
-import { ERC20ABI } from '@/abi/TokenFactoryABI';
-import { useLaunchpadConfig } from '@/hooks/useLaunchpadConfig';
+import { TokenFactoryABI, ERC20ABI } from '@/abi/TokenFactoryABI';
+import { useLaunchpadConfig, type LegacyFactory } from '@/hooks/useLaunchpadConfig';
 import Link from 'next/link';
 
 // Dead address - tokens sent here are considered burned
@@ -28,9 +29,118 @@ interface TokenInfo {
 
 export function TokenList() {
   const { config, isLoading: isConfigLoading, activeFactoryAddress } = useLaunchpadConfig();
+  const [blacklistedTokens, setBlacklistedTokens] = useState<string[]>([]);
+  const [legacyFactories, setLegacyFactories] = useState<LegacyFactory[]>([]);
+  const [legacyTokens, setLegacyTokens] = useState<TokenInfo[]>([]);
+  const [isLegacyLoading, setIsLegacyLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const tokensPerPage = 10;
+
+  // Fetch blacklist and legacy factories from config
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('/api/config/client');
+        if (response.ok) {
+          const data = await response.json();
+          setBlacklistedTokens(data.blacklist?.launchpadTokens || []);
+          // Filter out zero addresses
+          const factories = (data.launchpad?.legacyFactories || []).filter(
+            (f: LegacyFactory) =>
+              f.address && f.address !== '0x0000000000000000000000000000000000000000'
+          );
+          setLegacyFactories(factories);
+        }
+      } catch (error) {
+        console.error('Failed to fetch config:', error);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  // Fetch tokens from legacy factories
+  useEffect(() => {
+    const fetchLegacyTokens = async () => {
+      if (legacyFactories.length === 0) return;
+
+      setIsLegacyLoading(true);
+      const allLegacyTokens: TokenInfo[] = [];
+
+      try {
+        // Get RPC URL from config
+        const configResponse = await fetch('/api/config/client');
+        if (!configResponse.ok) return;
+        const configData = await configResponse.json();
+        const rpcUrl = configData.network?.rpcUrl || 'http://localhost:8545';
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+        for (const factory of legacyFactories) {
+          try {
+            const factoryContract = new ethers.Contract(factory.address, TokenFactoryABI, provider);
+
+            // Get all tokens from legacy factory
+            const tokens = await factoryContract.getAllTokens();
+
+            for (const tokenAddr of tokens) {
+              // Skip blacklisted
+              if (blacklistedTokens.includes(tokenAddr.toLowerCase())) continue;
+
+              try {
+                // Get token info from factory
+                const tokenInfo = await factoryContract.tokenInfo(tokenAddr);
+                const [creator, name, symbol, decimals, , createdAt] = tokenInfo;
+
+                // Get actual total supply from token contract
+                const tokenContract = new ethers.Contract(
+                  tokenAddr,
+                  [
+                    'function totalSupply() view returns (uint256)',
+                    'function balanceOf(address) view returns (uint256)',
+                  ],
+                  provider
+                );
+                const actualTotalSupply = BigInt(await tokenContract.totalSupply());
+                if (actualTotalSupply <= 0n) continue;
+
+                // Get dead balance
+                const deadBalance = BigInt(await tokenContract.balanceOf(DEAD_ADDRESS));
+                const circulatingSupply = actualTotalSupply - deadBalance;
+                if (circulatingSupply <= 0n) continue;
+
+                allLegacyTokens.push({
+                  address: tokenAddr,
+                  name,
+                  symbol,
+                  decimals: Number(decimals),
+                  totalSupply: actualTotalSupply,
+                  creator,
+                  createdAt: Number(createdAt),
+                  circulatingSupply: circulatingSupply,
+                  // V1 doesn't have metadata
+                  logoUrl: undefined,
+                  description: undefined,
+                  website: undefined,
+                });
+              } catch (err) {
+                console.error(`Failed to fetch token ${tokenAddr}:`, err);
+              }
+            }
+          } catch (err) {
+            console.error(`Failed to fetch from legacy factory ${factory.address}:`, err);
+          }
+        }
+
+        setLegacyTokens(allLegacyTokens);
+      } catch (error) {
+        console.error('Failed to fetch legacy tokens:', error);
+      } finally {
+        setIsLegacyLoading(false);
+      }
+    };
+
+    fetchLegacyTokens();
+  }, [legacyFactories, blacklistedTokens]);
 
   // Always use V2 factory ABI
   const factoryABI = TokenFactoryV2ABI;
@@ -111,6 +221,11 @@ export function TokenList() {
     const processedTokens: TokenInfo[] = [];
 
     for (let i = 0; i < allTokens.length; i++) {
+      const tokenAddress = (allTokens[i] as string).toLowerCase();
+
+      // Skip blacklisted tokens
+      if (blacklistedTokens.includes(tokenAddress)) continue;
+
       const result = tokenInfoResults[i];
       const totalSupplyResult = totalSupplyResults?.[i];
       const deadBalanceResult = deadBalanceResults?.[i];
@@ -161,10 +276,25 @@ export function TokenList() {
       }
     }
 
+    // Merge with legacy tokens (avoiding duplicates)
+    const v2Addresses = new Set(processedTokens.map((t) => t.address.toLowerCase()));
+    for (const legacyToken of legacyTokens) {
+      if (!v2Addresses.has(legacyToken.address.toLowerCase())) {
+        processedTokens.push(legacyToken);
+      }
+    }
+
     // Sort by creation time (newest first)
     processedTokens.sort((a, b) => b.createdAt - a.createdAt);
     return processedTokens;
-  }, [allTokens, tokenInfoResults, totalSupplyResults, deadBalanceResults]);
+  }, [
+    allTokens,
+    tokenInfoResults,
+    totalSupplyResults,
+    deadBalanceResults,
+    blacklistedTokens,
+    legacyTokens,
+  ]);
 
   // Filter tokens by search query
   const filteredTokens = tokens.filter(
@@ -187,7 +317,8 @@ export function TokenList() {
     isTokensLoading ||
     isInfoLoading ||
     isTotalSupplyLoading ||
-    isDeadBalanceLoading;
+    isDeadBalanceLoading ||
+    isLegacyLoading;
 
   // Check if factory is deployed
   const isFactoryDeployed =

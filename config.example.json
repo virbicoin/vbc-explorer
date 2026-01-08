@@ -143,6 +143,7 @@
   "network": {
     "chainId": 1,
     "name": "Ethereum Mainnet",
+    "slug": "ethereum",
     "rpcUrl": "http://localhost:8545",
     "wsUrl": "ws://localhost:8546",
     "explorer": "https://explorer.example.com",
@@ -209,11 +210,37 @@
   "launchpad": {
     "enabled": true,
     "factoryAddress": "0x0000000000000000000000000000000000000000",
-    "creationFee": "10000000000000000000"
+    "legacyFactories": [
+      {
+        "address": "0x0000000000000000000000000000000000000000",
+        "version": "v1",
+        "note": "Previous factory contract (optional)"
+      }
+    ],
+    "creationFee": "10000000000000000000",
+    "alternativePayment": {
+      "enabled": false,
+      "token": {
+        "address": "0x0000000000000000000000000000000000000000",
+        "symbol": "ALT",
+        "decimals": 18
+      },
+      "fee": "1000000000000000000000",
+      "discountLabel": "20% OFF",
+      "burnNote": "will be permanently burned",
+      "contractFunctions": {
+        "getFeeInfo": "getAlternativeFeeInfo",
+        "createToken": "createTokenWithAlternative",
+        "createTokenWithMetadata": "createTokenWithAlternativeAndMetadata"
+      },
+      "_comment": "Alternative payment token for token creation (e.g., project governance token)"
+    }
   },
-  "tokenLogos": {
-    "0x0000000000000000000000000000000000000001": "https://example.com/img/token1.svg",
-    "0x0000000000000000000000000000000000000002": "https://example.com/img/token2.png"
+  "tokenIcons": {
+    "ETH": { "icon": "/img/eth.svg", "color": "from-blue-500 to-purple-600" },
+    "WETH": { "icon": "/img/eth.svg", "color": "from-blue-400 to-purple-500" },
+    "USDT": { "icon": "/img/USDT.svg", "color": "from-green-400 to-emerald-500" },
+    "USDC": { "icon": "/img/USDC.svg", "color": "from-blue-400 to-blue-500" }
   },
   "blacklist": {
     "tokens": [
@@ -222,6 +249,13 @@
         "name": "Example Blacklisted Token",
         "symbol": "SPAM",
         "reason": "Example reason for blacklisting"
+      }
+    ],
+    "launchpadTokens": [
+      {
+        "address": "0x0000000000000000000000000000000000000000",
+        "symbol": "TEST",
+        "reason": "Test token, fully burned"
       }
     ],
     "lpPairs": [
