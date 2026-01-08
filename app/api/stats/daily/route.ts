@@ -55,18 +55,18 @@ export async function GET(request: NextRequest) {
 
       try {
         // Get transaction count for the day
-        const txCount = await db.collection('transactions').countDocuments({
+        const txCount = await db.collection('Transaction').countDocuments({
           timestamp: { $gte: startTimestamp, $lt: endTimestamp },
         });
 
         // Get block count for the day
-        const blockCount = await db.collection('blocks').countDocuments({
+        const blockCount = await db.collection('Block').countDocuments({
           timestamp: { $gte: startTimestamp, $lt: endTimestamp },
         });
 
         // Get average gas price for the day
         const gasPriceAgg = await db
-          .collection('transactions')
+          .collection('Transaction')
           .aggregate([
             {
               $match: {
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
 
         // Get unique active addresses for the day
         const activeAddressesAgg = await db
-          .collection('transactions')
+          .collection('Transaction')
           .aggregate([
             {
               $match: {

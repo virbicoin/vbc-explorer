@@ -320,11 +320,50 @@ async function processSwapEvents(
         const a0Out = Number(ethers.formatUnits(amount0Out, decimals0));
         const a1Out = Number(ethers.formatUnits(amount1Out, decimals1));
 
+        // Calculate amountUSD based on token types
         let amountUSD = 0;
-        if (token0 === usdt) amountUSD = Math.max(a0In, a0Out);
-        else if (token1 === usdt) amountUSD = Math.max(a1In, a1Out);
-        else if (token0 === wrappedNative) amountUSD = Math.max(a0In, a0Out) * vbcPrice;
-        else if (token1 === wrappedNative) amountUSD = Math.max(a1In, a1Out) * vbcPrice;
+        if (token0 === usdt) {
+          // Token0 is stablecoin - use its amount directly
+          amountUSD = Math.max(a0In, a0Out);
+        } else if (token1 === usdt) {
+          // Token1 is stablecoin - use its amount directly
+          amountUSD = Math.max(a1In, a1Out);
+        } else if (token0 === wrappedNative) {
+          // Token0 is native - use native price
+          amountUSD = Math.max(a0In, a0Out) * vbcPrice;
+        } else if (token1 === wrappedNative) {
+          // Token1 is native - use native price
+          amountUSD = Math.max(a1In, a1Out) * vbcPrice;
+        } else {
+          // Neither token is stablecoin or native
+          // Try to estimate value using pool reserves and native price
+          try {
+            const reserves = await pairContract.getReserves();
+            const r0 = Number(ethers.formatUnits(reserves[0], decimals0));
+            const r1 = Number(ethers.formatUnits(reserves[1], decimals1));
+
+            // Estimate token value in USD by assuming 50/50 pool value
+            // If we have any activity, use the larger amount * estimated price
+            const maxAmount0 = Math.max(a0In, a0Out);
+            const maxAmount1 = Math.max(a1In, a1Out);
+
+            // Use the ratio and VBC price as a rough estimate
+            // Assumption: total pool value ≈ TVL, so each side ≈ TVL/2
+            // This is a fallback estimation when we can't directly price
+            if (r0 > 0 && r1 > 0 && vbcPrice > 0) {
+              // Try to find the pool's TVL via another pair
+              // For now, use a simple heuristic: assume larger movement has more info
+              const ratio = r0 > 0 ? maxAmount0 / r0 : 0;
+              // Rough estimate: consider this as percentage of pool moved
+              // If we knew the pool's USD value, we could multiply
+              // Fallback: just use the native token value estimation
+              amountUSD = Math.max(maxAmount0, maxAmount1) * vbcPrice * 0.5;
+            }
+          } catch {
+            // If reserves fetch fails, use 0
+            amountUSD = 0;
+          }
+        }
 
         bulkOps.push({
           updateOne: {

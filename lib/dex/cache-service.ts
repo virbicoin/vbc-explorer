@@ -186,11 +186,25 @@ export async function getCachedPoolStats(poolAddress: string): Promise<PoolStats
     const now = Math.floor(Date.now() / 1000);
     const h24Ago = now - TIME_INTERVALS.h24;
 
+    // Get pool info for USD calculation fallback
+    const poolInfo = await getCachedPoolInfo(poolAddress);
+    const config = loadConfig();
+    const usdtAddress = config.dex?.tokens?.usdt?.address?.toLowerCase() || '';
+    const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';
+
+    // Get current VBC price for fallback calculation
+    let vbcPrice = 0;
+    try {
+      vbcPrice = await getCachedVBCPrice();
+    } catch {
+      // Ignore price fetch error
+    }
+
     const swaps = await DexSwap.find({
       pair: poolAddress.toLowerCase(),
       timestamp: { $gte: h24Ago },
     })
-      .select('timestamp amountUSD amount0In sender')
+      .select('timestamp amountUSD amount0In amount0Out amount1In amount1Out token0 token1 sender')
       .lean();
 
     const buyersSet: Record<string, Set<string>> = {
@@ -215,10 +229,40 @@ export async function getCachedPoolStats(poolAddress: string): Promise<PoolStats
       const isBuy = BigInt(swap.amount0In || '0') > 0n;
       const trader = (swap.sender || '').toLowerCase();
 
+      // Calculate amountUSD if not present or 0
+      let amountUSD = swap.amountUSD || 0;
+
+      if (amountUSD === 0 && poolInfo && vbcPrice > 0) {
+        const token0 = (swap.token0 || poolInfo.token0.address).toLowerCase();
+        const token1 = (swap.token1 || poolInfo.token1.address).toLowerCase();
+
+        const decimals0 = poolInfo.token0.decimals;
+        const decimals1 = poolInfo.token1.decimals;
+
+        const a0In = Number(BigInt(swap.amount0In || '0')) / Math.pow(10, decimals0);
+        const a1In = Number(BigInt(swap.amount1In || '0')) / Math.pow(10, decimals1);
+        const a0Out = Number(BigInt(swap.amount0Out || '0')) / Math.pow(10, decimals0);
+        const a1Out = Number(BigInt(swap.amount1Out || '0')) / Math.pow(10, decimals1);
+
+        // Calculate USD value based on token types
+        if (token0 === usdtAddress) {
+          amountUSD = Math.max(a0In, a0Out);
+        } else if (token1 === usdtAddress) {
+          amountUSD = Math.max(a1In, a1Out);
+        } else if (token0 === wrappedNativeAddress) {
+          amountUSD = Math.max(a0In, a0Out) * vbcPrice;
+        } else if (token1 === wrappedNativeAddress) {
+          amountUSD = Math.max(a1In, a1Out) * vbcPrice;
+        } else {
+          // Fallback: estimate using the larger amount and VBC price ratio
+          amountUSD = Math.max(a0In, a0Out, a1In, a1Out) * vbcPrice * 0.5;
+        }
+      }
+
       for (const [interval, seconds] of Object.entries(TIME_INTERVALS)) {
         const key = interval as keyof typeof TIME_INTERVALS;
         if (age <= seconds) {
-          stats.volume[key] += swap.amountUSD || 0;
+          stats.volume[key] += amountUSD;
           stats.txCount[key]++;
           if (isBuy) {
             stats.buys[key]++;
