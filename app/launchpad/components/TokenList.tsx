@@ -97,6 +97,9 @@ export function TokenList() {
                   [
                     'function totalSupply() view returns (uint256)',
                     'function balanceOf(address) view returns (uint256)',
+                    'function logoUrl() view returns (string)',
+                    'function description() view returns (string)',
+                    'function website() view returns (string)',
                   ],
                   provider
                 );
@@ -108,6 +111,18 @@ export function TokenList() {
                 const circulatingSupply = actualTotalSupply - deadBalance;
                 if (circulatingSupply <= 0n) continue;
 
+                // Try to get metadata from token contract (may not exist for old tokens)
+                let logoUrl: string | undefined;
+                let description: string | undefined;
+                let website: string | undefined;
+                try {
+                  logoUrl = await tokenContract.logoUrl();
+                  description = await tokenContract.description();
+                  website = await tokenContract.website();
+                } catch {
+                  // Metadata functions don't exist on this token
+                }
+
                 allLegacyTokens.push({
                   address: tokenAddr,
                   name,
@@ -117,10 +132,9 @@ export function TokenList() {
                   creator,
                   createdAt: Number(createdAt),
                   circulatingSupply: circulatingSupply,
-                  // V1 doesn't have metadata
-                  logoUrl: undefined,
-                  description: undefined,
-                  website: undefined,
+                  logoUrl: logoUrl || undefined,
+                  description: description || undefined,
+                  website: website || undefined,
                 });
               } catch (err) {
                 console.error(`Failed to fetch token ${tokenAddr}:`, err);

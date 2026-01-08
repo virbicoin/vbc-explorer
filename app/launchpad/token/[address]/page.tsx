@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { formatUnits, parseUnits, type Address, isAddress } from 'viem';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { ethers } from 'ethers';
 import { TokenFactoryV2ABI, LaunchpadTokenV2ABI } from '@/abi/TokenFactoryV2ABI';
-import { ERC20ABI } from '@/abi/TokenFactoryABI';
-import { useLaunchpadConfig } from '@/hooks/useLaunchpadConfig';
+import { TokenFactoryABI, ERC20ABI } from '@/abi/TokenFactoryABI';
+import { useLaunchpadConfig, type LegacyFactory } from '@/hooks/useLaunchpadConfig';
 import { Web3Provider } from '@/lib/dex/providers';
 import Link from 'next/link';
 import ListOnDexModal from './components/ListOnDexModal';
@@ -73,6 +74,18 @@ function TokenDetailContent() {
   const [editForm, setEditForm] = useState({ logoUrl: '', description: '', website: '' });
   const [isVerified, setIsVerified] = useState(false);
 
+  // Legacy token info state (for tokens from old factories)
+  const [legacyTokenInfo, setLegacyTokenInfo] = useState<{
+    creator: string;
+    name: string;
+    symbol: string;
+    decimals: number;
+    totalSupply: bigint;
+    createdAt: number;
+  } | null>(null);
+  const [legacyFactories, setLegacyFactories] = useState<LegacyFactory[]>([]);
+  const [isLegacyLoading, setIsLegacyLoading] = useState(false);
+
   // Token action states
   const [actionModal, setActionModal] = useState<ActionModalType>(null);
   const [actionAmount, setActionAmount] = useState('');
@@ -80,6 +93,26 @@ function TokenDetailContent() {
   const [actionSpender, setActionSpender] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
   const [showDexModal, setShowDexModal] = useState(false);
+
+  // Fetch legacy factories from config
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('/api/config/client');
+        if (response.ok) {
+          const data = await response.json();
+          const factories = (data.launchpad?.legacyFactories || []).filter(
+            (f: LegacyFactory) =>
+              f.address && f.address !== '0x0000000000000000000000000000000000000000'
+          );
+          setLegacyFactories(factories);
+        }
+      } catch (error) {
+        console.error('Failed to fetch config:', error);
+      }
+    };
+    fetchConfig();
+  }, []);
 
   // Check if contract is verified
   useEffect(() => {
@@ -105,6 +138,71 @@ function TokenDetailContent() {
     args: [tokenAddress as Address],
     query: { enabled: !!activeFactoryAddress && !!tokenAddress },
   });
+
+  // Fallback: Try legacy factories if V2 factory doesn't have the token
+  useEffect(() => {
+    const fetchFromLegacy = async () => {
+      // Only try legacy if V2 factory doesn't have the token (empty/zero values)
+      const hasV2Data =
+        tokenDetails &&
+        (
+          tokenDetails as readonly [
+            string,
+            string,
+            string,
+            number,
+            bigint,
+            bigint,
+            string,
+            string,
+            string,
+          ]
+        )[1] !== '';
+
+      if (hasV2Data || isDetailsLoading || legacyFactories.length === 0 || !tokenAddress) {
+        return;
+      }
+
+      setIsLegacyLoading(true);
+      try {
+        const configResponse = await fetch('/api/config/client');
+        if (!configResponse.ok) return;
+        const configData = await configResponse.json();
+        const rpcUrl = configData.network?.rpcUrl || 'http://localhost:8545';
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+        for (const factory of legacyFactories) {
+          try {
+            const factoryContract = new ethers.Contract(factory.address, TokenFactoryABI, provider);
+            const tokenInfo = await factoryContract.tokenInfo(tokenAddress);
+            const [creator, name, symbol, decimals, totalSupply, createdAt] = tokenInfo;
+
+            // Check if we got valid data
+            if (name && name !== '') {
+              setLegacyTokenInfo({
+                creator,
+                name,
+                symbol,
+                decimals: Number(decimals),
+                totalSupply: BigInt(totalSupply),
+                createdAt: Number(createdAt),
+              });
+              break; // Found it, stop searching
+            }
+          } catch (err) {
+            // Token not in this factory, try next
+            console.debug(`Token not found in legacy factory ${factory.address}`);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch from legacy factory:', error);
+      } finally {
+        setIsLegacyLoading(false);
+      }
+    };
+
+    fetchFromLegacy();
+  }, [tokenDetails, isDetailsLoading, legacyFactories, tokenAddress]);
 
   // Fetch mutable metadata directly from token contract (logoUrl, description, website)
   const { data: tokenLogoUrl, refetch: refetchLogoUrl } = useReadContract({
@@ -230,19 +328,23 @@ function TokenDetailContent() {
     if (activeTab === 'transfers') fetchTransfers();
   }, [activeTab, fetchTransfers]);
 
-  const token: TokenDetails | null = tokenDetails
-    ? (() => {
-        const details = tokenDetails as readonly [
-          string,
-          string,
-          string,
-          number,
-          bigint,
-          bigint,
-          string,
-          string,
-          string,
-        ];
+  // Build token details from V2 or legacy data
+  const token: TokenDetails | null = (() => {
+    // Check if V2 data is available and valid (name is not empty)
+    if (tokenDetails) {
+      const details = tokenDetails as readonly [
+        string,
+        string,
+        string,
+        number,
+        bigint,
+        bigint,
+        string,
+        string,
+        string,
+      ];
+      // If V2 has valid data (name is not empty)
+      if (details[1] && details[1] !== '') {
         return {
           creator: details[0],
           name: details[1],
@@ -257,8 +359,29 @@ function TokenDetailContent() {
           isPaused: (isPaused as boolean) ?? false,
           owner: (owner as string) ?? '',
         };
-      })()
-    : null;
+      }
+    }
+
+    // Fallback to legacy token info
+    if (legacyTokenInfo) {
+      return {
+        creator: legacyTokenInfo.creator,
+        name: legacyTokenInfo.name,
+        symbol: legacyTokenInfo.symbol,
+        decimals: legacyTokenInfo.decimals,
+        totalSupply: legacyTokenInfo.totalSupply,
+        createdAt: legacyTokenInfo.createdAt,
+        // Legacy tokens don't have metadata in factory
+        logoUrl: (tokenLogoUrl as string) ?? '',
+        description: (tokenDescription as string) ?? '',
+        website: (tokenWebsite as string) ?? '',
+        isPaused: (isPaused as boolean) ?? false,
+        owner: (owner as string) ?? '',
+      };
+    }
+
+    return null;
+  })();
 
   const isOwner = token && address && token.owner.toLowerCase() === address.toLowerCase();
 
@@ -426,7 +549,10 @@ function TokenDetailContent() {
     }
   };
 
-  if (isConfigLoading || isDetailsLoading) {
+  // Show loading while fetching from V2 or legacy factories
+  const isLoading = isConfigLoading || isDetailsLoading || (isLegacyLoading && !legacyTokenInfo);
+
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 py-8 px-4">
         <div className="max-w-4xl mx-auto">
