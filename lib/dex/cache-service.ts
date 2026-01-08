@@ -11,6 +11,7 @@ import { apiCache, CACHE_TTL } from '@/lib/cache';
 import { connectDB, DexSwap } from '@/models/index';
 import { getNativePrice } from '@/lib/price-service';
 import type { PriceData } from '@/lib/price-service';
+import { getTokenPriceUsd } from '@/lib/dex/priceUtils';
 
 const PAIR_ABI = [
   'function getReserves() view returns (uint256 reserve0, uint256 reserve1)',
@@ -257,8 +258,22 @@ export async function getCachedPoolStats(poolAddress: string): Promise<PoolStats
         } else if (token1 === wrappedNativeAddress) {
           amountUSD = Math.max(a1In, a1Out) * nativePrice;
         } else {
-          // Fallback: estimate using the larger amount and native price ratio
-          amountUSD = Math.max(a0In, a0Out, a1In, a1Out) * nativePrice * 0.5;
+          // For non-stablecoin/non-native pools, get actual token prices
+          try {
+            const [price0, price1] = await Promise.all([
+              getTokenPriceUsd(token0),
+              getTokenPriceUsd(token1),
+            ]);
+
+            const usd0 = Math.max(a0In, a0Out) * price0;
+            const usd1 = Math.max(a1In, a1Out) * price1;
+
+            // Use the maximum of the two sides as volume
+            amountUSD = Math.max(usd0, usd1);
+          } catch {
+            // Fallback: estimate using native price ratio
+            amountUSD = Math.max(a0In, a0Out, a1In, a1Out) * nativePrice * 0.5;
+          }
         }
       }
 

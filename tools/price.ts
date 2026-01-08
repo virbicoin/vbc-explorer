@@ -67,8 +67,10 @@ interface PairInfo {
 
 const priceCache: { data: PriceData | null; timestamp: number } = { data: null, timestamp: 0 };
 const pairInfoCache = new Map<string, PairInfo>();
+const tokenPriceCache = new Map<string, { price: number; timestamp: number }>();
 const PRICE_CACHE_TTL = 60000; // 1 minute
 const PAIR_INFO_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const TOKEN_PRICE_CACHE_TTL = 60000; // 1 minute
 
 // ============================================
 // Utility Functions
@@ -273,6 +275,78 @@ async function getPairInfo(pairAddress: string): Promise<PairInfo | null> {
   }
 }
 
+/**
+ * Get token price in USD from pool data
+ * Caches prices to avoid repeated RPC calls
+ */
+async function getTokenPriceFromPool(tokenAddress: string, nativePrice: number): Promise<number> {
+  const normalized = tokenAddress.toLowerCase();
+  const usdt = (config.dex?.tokens?.usdt?.address || '').toLowerCase();
+  const wrappedNative = (config.dex?.wrappedNative?.address || '').toLowerCase();
+
+  // Stablecoin
+  if (normalized === usdt) return 1.0;
+
+  // Wrapped native
+  if (normalized === wrappedNative) return nativePrice;
+
+  // Check cache
+  const cached = tokenPriceCache.get(normalized);
+  if (cached && Date.now() - cached.timestamp < TOKEN_PRICE_CACHE_TTL) {
+    return cached.price;
+  }
+
+  // Look through pools to find price
+  const lpAddresses = getLPAddresses();
+  const provider = getProvider();
+
+  for (const lpAddress of lpAddresses) {
+    try {
+      const pairInfo = await getPairInfo(lpAddress);
+      if (!pairInfo) continue;
+
+      const { token0, token1, decimals0, decimals1 } = pairInfo;
+      const isToken0 = token0 === normalized;
+      const isToken1 = token1 === normalized;
+
+      if (!isToken0 && !isToken1) continue;
+
+      const pairedToken = isToken0 ? token1 : token0;
+
+      // Get reserves
+      const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
+      const reserves = await pairContract.getReserves();
+      const r0 = Number(ethers.formatUnits(reserves[0], decimals0));
+      const r1 = Number(ethers.formatUnits(reserves[1], decimals1));
+
+      if (r0 <= 0 || r1 <= 0) continue;
+
+      // Calculate price based on paired token
+      let price = 0;
+
+      if (pairedToken === usdt) {
+        // Paired with stablecoin
+        price = isToken0 ? r1 / r0 : r0 / r1;
+      } else if (pairedToken === wrappedNative && nativePrice > 0) {
+        // Paired with wrapped native
+        const priceInNative = isToken0 ? r1 / r0 : r0 / r1;
+        price = priceInNative * nativePrice;
+      }
+
+      if (price > 0) {
+        tokenPriceCache.set(normalized, { price, timestamp: Date.now() });
+        return price;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  // Cache 0 price to avoid repeated lookups
+  tokenPriceCache.set(normalized, { price: 0, timestamp: Date.now() });
+  return 0;
+}
+
 async function getLastSyncedBlock(pairAddress: string): Promise<number> {
   const last = await DexSwap.findOne({ pair: pairAddress })
     .sort({ blockNumber: -1 })
@@ -285,7 +359,7 @@ async function processSwapEvents(
   pairAddress: string,
   fromBlock: number,
   toBlock: number,
-  vbcPrice: number
+  nativePrice: number
 ): Promise<number> {
   const pairInfo = await getPairInfo(pairAddress);
   if (!pairInfo) return 0;
@@ -330,37 +404,26 @@ async function processSwapEvents(
           amountUSD = Math.max(a1In, a1Out);
         } else if (token0 === wrappedNative) {
           // Token0 is native - use native price
-          amountUSD = Math.max(a0In, a0Out) * vbcPrice;
+          amountUSD = Math.max(a0In, a0Out) * nativePrice;
         } else if (token1 === wrappedNative) {
           // Token1 is native - use native price
-          amountUSD = Math.max(a1In, a1Out) * vbcPrice;
+          amountUSD = Math.max(a1In, a1Out) * nativePrice;
         } else {
           // Neither token is stablecoin or native
-          // Try to estimate value using pool reserves and native price
+          // Get actual token prices from pools
           try {
-            const reserves = await pairContract.getReserves();
-            const r0 = Number(ethers.formatUnits(reserves[0], decimals0));
-            const r1 = Number(ethers.formatUnits(reserves[1], decimals1));
+            const [price0, price1] = await Promise.all([
+              getTokenPriceFromPool(token0, nativePrice),
+              getTokenPriceFromPool(token1, nativePrice),
+            ]);
 
-            // Estimate token value in USD by assuming 50/50 pool value
-            // If we have any activity, use the larger amount * estimated price
-            const maxAmount0 = Math.max(a0In, a0Out);
-            const maxAmount1 = Math.max(a1In, a1Out);
+            const usd0 = Math.max(a0In, a0Out) * price0;
+            const usd1 = Math.max(a1In, a1Out) * price1;
 
-            // Use the ratio and VBC price as a rough estimate
-            // Assumption: total pool value ≈ TVL, so each side ≈ TVL/2
-            // This is a fallback estimation when we can't directly price
-            if (r0 > 0 && r1 > 0 && vbcPrice > 0) {
-              // Try to find the pool's TVL via another pair
-              // For now, use a simple heuristic: assume larger movement has more info
-              const ratio = r0 > 0 ? maxAmount0 / r0 : 0;
-              // Rough estimate: consider this as percentage of pool moved
-              // If we knew the pool's USD value, we could multiply
-              // Fallback: just use the native token value estimation
-              amountUSD = Math.max(maxAmount0, maxAmount1) * vbcPrice * 0.5;
-            }
+            // Use the maximum of the two sides as volume
+            amountUSD = Math.max(usd0, usd1);
           } catch {
-            // If reserves fetch fails, use 0
+            // If price lookup fails, use 0
             amountUSD = 0;
           }
         }
@@ -383,7 +446,7 @@ async function processSwapEvents(
                 token0,
                 token1,
                 amountUSD,
-                priceUSD: vbcPrice,
+                priceUSD: nativePrice,
               },
             },
             upsert: true,
@@ -406,7 +469,7 @@ async function processSwapEvents(
   }
 }
 
-const syncDexSwaps = async (vbcPrice: number): Promise<void> => {
+const syncDexSwaps = async (nativePrice: number): Promise<void> => {
   if (!checkMemory()) return;
 
   const lpAddresses = getLPAddresses();
@@ -425,7 +488,7 @@ const syncDexSwaps = async (vbcPrice: number): Promise<void> => {
 
       for (let from = startBlock; from <= currentBlock; from += DEX_BATCH_SIZE) {
         const to = Math.min(from + DEX_BATCH_SIZE - 1, currentBlock);
-        totalEvents += await processSwapEvents(pairAddress, from, to, vbcPrice);
+        totalEvents += await processSwapEvents(pairAddress, from, to, nativePrice);
 
         // Memory check between batches
         if (!checkMemory()) {
