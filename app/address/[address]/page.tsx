@@ -1509,16 +1509,13 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                                       className={`w-8 h-8 rounded-full bg-gradient-to-br ${getTokenColor(token.symbol)} flex items-center justify-center shadow-md overflow-hidden`}
                                     >
                                       {iconUrl ? (
-                                        <img
+                                        <Image
                                           src={iconUrl}
                                           alt={token.symbol || ''}
                                           width={28}
                                           height={28}
                                           className="object-contain w-7 h-7"
-                                          onError={(e) => {
-                                            // Hide image on error, show fallback
-                                            (e.target as HTMLImageElement).style.display = 'none';
-                                          }}
+                                          unoptimized={iconUrl.startsWith('http')}
                                         />
                                       ) : (
                                         <span className="font-bold text-white text-xs">

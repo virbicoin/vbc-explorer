@@ -343,7 +343,9 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
 
     // Set the output amount as the new input amount (use formatTokenAmountForInput for input fields)
     if (prevAmountOut > 0n) {
-      setAmountIn(formatTokenAmountForInput(prevAmountOut, prevTokenOut.decimals, prevTokenOut.decimals));
+      setAmountIn(
+        formatTokenAmountForInput(prevAmountOut, prevTokenOut.decimals, prevTokenOut.decimals)
+      );
     } else {
       setAmountIn('');
     }

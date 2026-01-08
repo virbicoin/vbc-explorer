@@ -15,6 +15,11 @@ import { getVbcPriceFromDex, getVbcgPriceFromDex, ADDRESSES } from '@/lib/dex/pr
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// Stablecoin address (USDT, USDC, etc.)
+const stablecoinAddress = ADDRESSES.USDT;
+// Secondary token address (governance token, etc.)
+const secondaryTokenAddress = ADDRESSES.VBCG;
+
 // GeckoTerminal API headers
 const API_HEADERS = {
   'Content-Type': 'application/json',
@@ -101,8 +106,8 @@ export async function GET() {
     const usdtAddress = getUSDTAddress();
     const lpAddresses = await getLPAddresses();
 
-    // Get VBC and VBCG prices from DEX (not external API)
-    const [vbcPriceUsd, vbcgPriceUsd] = await Promise.all([
+    // Get native and secondary token prices from DEX (not external API)
+    const [nativePriceUsd, secondaryPriceUsd] = await Promise.all([
       getVbcPriceFromDex(),
       getVbcgPriceFromDex(),
     ]);
@@ -185,53 +190,69 @@ export async function GET() {
             let baseTokenPriceUsd: string | null = null;
             let quoteTokenPriceUsd: string | null = null;
 
-            const isBaseVBC =
-              baseAddress.toLowerCase() === wrappedNativeAddress || baseSymbol === 'VBC';
-            const isQuoteUSDT = quoteAddress.toLowerCase() === usdtAddress;
-            const isBaseUSDT = baseAddress.toLowerCase() === usdtAddress;
-            const isQuoteVBCG = quoteAddress.toLowerCase() === ADDRESSES.VBCG;
-            const isBaseVBCG = baseAddress.toLowerCase() === ADDRESSES.VBCG;
+            // Check token types for pricing logic
+            const isBaseNative =
+              baseAddress.toLowerCase() === wrappedNativeAddress ||
+              baseAddress.toLowerCase() === ADDRESSES.NATIVE;
+            const isQuoteStable = quoteAddress.toLowerCase() === stablecoinAddress;
+            const isBaseStable = baseAddress.toLowerCase() === stablecoinAddress;
+            const isQuoteSecondary = quoteAddress.toLowerCase() === secondaryTokenAddress;
+            const isBaseSecondary = baseAddress.toLowerCase() === secondaryTokenAddress;
 
-            if (isBaseVBC && isQuoteUSDT) {
-              // VBC/USDT pair - use USDT reserve to value VBC (50/50 pool)
-              baseReserveUsd = quoteReserve; // VBC value = USDT value
-              quoteReserveUsd = quoteReserve; // USDT = 1 USD
-              const dexVbcPrice = quoteReserve / baseReserve; // DEX price of VBC in USD
-              baseTokenPriceUsd = dexVbcPrice.toString();
+            if (isBaseNative && isQuoteStable) {
+              // Native/Stablecoin pair - use stablecoin reserve to value native (50/50 pool)
+              baseReserveUsd = quoteReserve; // Native value = Stablecoin value
+              quoteReserveUsd = quoteReserve; // Stablecoin = 1 USD
+              const dexNativePrice = quoteReserve / baseReserve; // DEX price of native in USD
+              baseTokenPriceUsd = dexNativePrice.toString();
               quoteTokenPriceUsd = '1';
-            } else if (isBaseVBC && isQuoteVBCG) {
-              // VBC/VBCG pair - use DEX VBC price to calculate both values
-              baseReserveUsd = baseReserve * vbcPriceUsd;
-              quoteReserveUsd = quoteReserve * vbcgPriceUsd;
-              baseTokenPriceUsd = vbcPriceUsd.toString();
-              quoteTokenPriceUsd = vbcgPriceUsd.toString();
-            } else if (isBaseUSDT) {
-              // USDT/X pair - use USDT reserve to value X (50/50 pool)
-              baseReserveUsd = baseReserve; // USDT = 1 USD
-              quoteReserveUsd = baseReserve; // X value = USDT value
+            } else if (isBaseNative && isQuoteSecondary) {
+              // Native/Secondary pair - use DEX prices for both tokens
+              baseReserveUsd = baseReserve * nativePriceUsd;
+              quoteReserveUsd = quoteReserve * secondaryPriceUsd;
+              baseTokenPriceUsd = nativePriceUsd.toString();
+              quoteTokenPriceUsd = secondaryPriceUsd.toString();
+            } else if (isBaseStable) {
+              // Stablecoin/X pair - use stablecoin reserve to value X (50/50 pool)
+              baseReserveUsd = baseReserve; // Stablecoin = 1 USD
+              quoteReserveUsd = baseReserve; // X value = Stablecoin value
               const quoteTokenPrice = baseReserve / quoteReserve; // DEX price
               baseTokenPriceUsd = '1';
               quoteTokenPriceUsd = quoteTokenPrice.toString();
-            } else if (isBaseVBCG) {
-              // VBCG/X pair - use DEX VBCG price
-              baseReserveUsd = baseReserve * vbcgPriceUsd;
-              const quoteTokenPrice = (baseReserve / quoteReserve) * vbcgPriceUsd;
+            } else if (isQuoteStable) {
+              // X/Stablecoin pair (non-native base) - use stablecoin reserve to value X (50/50 pool)
+              baseReserveUsd = quoteReserve; // X value = Stablecoin value (50/50 pool)
+              quoteReserveUsd = quoteReserve; // Stablecoin = 1 USD
+              const baseTokenPrice = quoteReserve / baseReserve; // DEX price of X in USD
+              baseTokenPriceUsd = baseTokenPrice.toString();
+              quoteTokenPriceUsd = '1';
+            } else if (isBaseSecondary) {
+              // Secondary/X pair - use DEX secondary token price
+              baseReserveUsd = baseReserve * secondaryPriceUsd;
+              const quoteTokenPrice = (baseReserve / quoteReserve) * secondaryPriceUsd;
               quoteReserveUsd = quoteReserve * quoteTokenPrice;
-              baseTokenPriceUsd = vbcgPriceUsd.toString();
+              baseTokenPriceUsd = secondaryPriceUsd.toString();
               quoteTokenPriceUsd = quoteTokenPrice.toString();
-            } else if (isBaseVBC) {
-              // VBC/X pair (no stablecoin, not VBCG) - use DEX VBC price
-              baseReserveUsd = baseReserve * vbcPriceUsd;
-              const quoteTokenPrice = (baseReserve / quoteReserve) * vbcPriceUsd;
+            } else if (isQuoteSecondary) {
+              // X/Secondary pair - use DEX secondary token price to value X
+              quoteReserveUsd = quoteReserve * secondaryPriceUsd;
+              const baseTokenPrice = (quoteReserve / baseReserve) * secondaryPriceUsd;
+              baseReserveUsd = baseReserve * baseTokenPrice;
+              baseTokenPriceUsd = baseTokenPrice.toString();
+              quoteTokenPriceUsd = secondaryPriceUsd.toString();
+            } else if (isBaseNative) {
+              // Native/X pair (no stablecoin, not secondary) - use DEX native token price
+              baseReserveUsd = baseReserve * nativePriceUsd;
+              const quoteTokenPrice = (baseReserve / quoteReserve) * nativePriceUsd;
               quoteReserveUsd = quoteReserve * quoteTokenPrice;
-              baseTokenPriceUsd = vbcPriceUsd.toString();
+              baseTokenPriceUsd = nativePriceUsd.toString();
               quoteTokenPriceUsd = quoteTokenPrice.toString();
             } else {
-              // Fallback - use DEX VBC price
-              baseReserveUsd = baseReserve * vbcPriceUsd;
-              quoteReserveUsd = quoteReserve * vbcPriceUsd;
-              baseTokenPriceUsd = vbcPriceUsd.toString();
-              quoteTokenPriceUsd = vbcPriceUsd.toString();
+              // Fallback - use DEX native token price
+              baseReserveUsd = baseReserve * nativePriceUsd;
+              quoteReserveUsd = quoteReserve * nativePriceUsd;
+              baseTokenPriceUsd = nativePriceUsd.toString();
+              quoteTokenPriceUsd = nativePriceUsd.toString();
             }
 
             const totalLiquidityUsd = baseReserveUsd + quoteReserveUsd;

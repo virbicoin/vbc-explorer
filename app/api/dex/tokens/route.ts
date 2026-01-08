@@ -376,7 +376,8 @@ export async function GET() {
             configuredIcon?.icon ||
             undefined;
           // Use decimals from DB, only default to 18 if undefined/null (not if 0)
-          const decimals = token.decimals !== undefined && token.decimals !== null ? token.decimals : 18;
+          const decimals =
+            token.decimals !== undefined && token.decimals !== null ? token.decimals : 18;
           resultTokens.push({
             address: token.address as `0x${string}`,
             name: token.name || 'Unknown Token',
@@ -399,9 +400,18 @@ export async function GET() {
             try {
               const tokenContract = new web3.eth.Contract(ERC20_ABI, addr);
               const [name, symbol, decimals] = await Promise.all([
-                tokenContract.methods.name().call().catch(() => 'Unknown Token'),
-                tokenContract.methods.symbol().call().catch(() => '???'),
-                tokenContract.methods.decimals().call().catch(() => 18),
+                tokenContract.methods
+                  .name()
+                  .call()
+                  .catch(() => 'Unknown Token'),
+                tokenContract.methods
+                  .symbol()
+                  .call()
+                  .catch(() => '???'),
+                tokenContract.methods
+                  .decimals()
+                  .call()
+                  .catch(() => 18),
               ]);
               return {
                 address: addr as `0x${string}`,
