@@ -1,7 +1,7 @@
 /**
  * DEX Price Utilities
  *
- * Centralized price calculation functions for VBC, VBCG, and other tokens.
+ * Centralized price calculation functions for native, secondary, and other tokens.
  * Uses DEX pool prices instead of external APIs for accuracy.
  */
 
@@ -15,17 +15,33 @@ import {
   getLPAddresses,
 } from './cache-service';
 
-// Known contract addresses
+// Known contract addresses (chain-specific)
 export const ADDRESSES = {
+  // Wrapped native token
+  WRAPPED_NATIVE: '0x52CB9F0d65D9d4De08CF103153C7A1A97567Bb9b'.toLowerCase(),
+  // Stablecoin
+  STABLECOIN: '0xdf136683B118E95c04A61FEC091c65736d9de059'.toLowerCase(),
+  // Secondary token (governance/utility token)
+  SECONDARY: '0xac7F60af25C5c4E23d1008C46511e265A8c9B6cF'.toLowerCase(),
+  // Native/Stablecoin pair address
+  NATIVE_STABLECOIN_PAIR: '0xA67D40496Bd61F9c30efdb040cFCFe6701653d55'.toLowerCase(),
+  // Native/Secondary pair address
+  NATIVE_SECONDARY_PAIR: '0x3095069E8725402B43E6Ff127750E1246563e48a'.toLowerCase(),
+  // MasterChef address
+  MASTERCHEF: '0x12A656c2DeE0EA2685398d52AcF78974fCD67B27'.toLowerCase(),
+  // Factory address
+  FACTORY: '0x663B1b42B79077AaC918515D3f57FED6820Dad63'.toLowerCase(),
+  // Router address
+  ROUTER: '0xdD1Ae4345252FFEA67fE844296fbd6C973B98c18'.toLowerCase(),
+  // Native token (zero address)
+  NATIVE: '0x0000000000000000000000000000000000000000',
+
+  // Legacy aliases (for backward compatibility)
   WVBC: '0x52CB9F0d65D9d4De08CF103153C7A1A97567Bb9b'.toLowerCase(),
   USDT: '0xdf136683B118E95c04A61FEC091c65736d9de059'.toLowerCase(),
   VBCG: '0xac7F60af25C5c4E23d1008C46511e265A8c9B6cF'.toLowerCase(),
   USDT_VBC_PAIR: '0xA67D40496Bd61F9c30efdb040cFCFe6701653d55'.toLowerCase(),
   VBC_VBCG_PAIR: '0x3095069E8725402B43E6Ff127750E1246563e48a'.toLowerCase(),
-  MASTERCHEF: '0x12A656c2DeE0EA2685398d52AcF78974fCD67B27'.toLowerCase(),
-  FACTORY: '0x663B1b42B79077AaC918515D3f57FED6820Dad63'.toLowerCase(),
-  ROUTER: '0xdD1Ae4345252FFEA67fE844296fbd6C973B98c18'.toLowerCase(),
-  NATIVE: '0x0000000000000000000000000000000000000000',
 };
 
 // Known stablecoin symbols
@@ -35,94 +51,101 @@ export const STABLECOIN_SYMBOLS = new Set(['USDT', 'USDC', 'DAI', 'BUSD']);
 const DEX_PRICES_CACHE_KEY = 'dex:prices';
 
 export interface DexPrices {
+  native: number;
+  secondary: number;
+  timestamp: number;
+  // Legacy aliases
   vbc: number;
   vbcg: number;
-  timestamp: number;
 }
 
 /**
- * Get VBC price from USDT/VBC pair (DEX internal price)
- * This is the authoritative price for VBC within the DEX.
+ * Get native token price from stablecoin/native pair (DEX internal price)
+ * This is the authoritative price for the native token within the DEX.
  */
-export async function getVbcPriceFromDex(): Promise<number> {
-  const cacheKey = 'dex:vbc_price_dex';
+export async function getNativePriceFromDex(): Promise<number> {
+  const cacheKey = 'dex:native_price_dex';
   const cached = apiCache.get<number>(cacheKey);
   if (cached !== undefined && cached > 0) return cached;
 
   try {
-    const poolInfo = await getCachedPoolInfo(ADDRESSES.USDT_VBC_PAIR);
+    const poolInfo = await getCachedPoolInfo(ADDRESSES.NATIVE_STABLECOIN_PAIR);
     if (!poolInfo) {
-      console.warn('USDT/VBC pair not found');
+      console.warn('Native/Stablecoin pair not found');
       return 0;
     }
 
     const { token0, token1, reserve0, reserve1 } = poolInfo;
 
-    // Determine which token is USDT and which is WVBC
-    const isToken0USDT = token0.address.toLowerCase() === ADDRESSES.USDT;
-    const usdtReserve = isToken0USDT
+    // Determine which token is stablecoin and which is wrapped native
+    const isToken0Stablecoin = token0.address.toLowerCase() === ADDRESSES.STABLECOIN;
+    const stablecoinReserve = isToken0Stablecoin
       ? Number(ethers.formatUnits(reserve0, token0.decimals))
       : Number(ethers.formatUnits(reserve1, token1.decimals));
-    const wvbcReserve = isToken0USDT
+    const nativeReserve = isToken0Stablecoin
       ? Number(ethers.formatUnits(reserve1, token1.decimals))
       : Number(ethers.formatUnits(reserve0, token0.decimals));
 
-    if (wvbcReserve === 0) return 0;
+    if (nativeReserve === 0) return 0;
 
-    const vbcPrice = usdtReserve / wvbcReserve;
-    apiCache.set(cacheKey, vbcPrice, CACHE_TTL.SHORT); // 10s cache
-    return vbcPrice;
+    const nativePrice = stablecoinReserve / nativeReserve;
+    apiCache.set(cacheKey, nativePrice, CACHE_TTL.SHORT); // 10s cache
+    return nativePrice;
   } catch (error) {
-    console.error('Error getting VBC price from DEX:', error);
+    console.error('Error getting native token price from DEX:', error);
     return 0;
   }
 }
 
 /**
- * Get VBCG price from VBC/VBCG pair
+ * Get secondary token price from native/secondary pair
  */
-export async function getVbcgPriceFromDex(): Promise<number> {
-  const cacheKey = 'dex:vbcg_price_dex';
+export async function getSecondaryPriceFromDex(): Promise<number> {
+  const cacheKey = 'dex:secondary_price_dex';
   const cached = apiCache.get<number>(cacheKey);
   if (cached !== undefined && cached > 0) return cached;
 
   try {
-    const vbcPrice = await getVbcPriceFromDex();
-    if (vbcPrice === 0) return 0;
+    const nativePrice = await getNativePriceFromDex();
+    if (nativePrice === 0) return 0;
 
-    const poolInfo = await getCachedPoolInfo(ADDRESSES.VBC_VBCG_PAIR);
+    const poolInfo = await getCachedPoolInfo(ADDRESSES.NATIVE_SECONDARY_PAIR);
     if (!poolInfo) {
-      console.warn('VBC/VBCG pair not found');
+      console.warn('Native/Secondary pair not found');
       return 0;
     }
 
     const { token0, token1, reserve0, reserve1 } = poolInfo;
 
-    // Determine which token is WVBC and which is VBCG
-    const isToken0WVBC = token0.address.toLowerCase() === ADDRESSES.WVBC;
-    const wvbcReserve = isToken0WVBC
+    // Determine which token is wrapped native and which is secondary
+    const isToken0Native = token0.address.toLowerCase() === ADDRESSES.WRAPPED_NATIVE;
+    const nativeReserve = isToken0Native
       ? Number(ethers.formatUnits(reserve0, token0.decimals))
       : Number(ethers.formatUnits(reserve1, token1.decimals));
-    const vbcgReserve = isToken0WVBC
+    const secondaryReserve = isToken0Native
       ? Number(ethers.formatUnits(reserve1, token1.decimals))
       : Number(ethers.formatUnits(reserve0, token0.decimals));
 
-    if (vbcgReserve === 0) return 0;
+    if (secondaryReserve === 0) return 0;
 
-    // VBCG price = (WVBC reserve / VBCG reserve) * VBC price
-    const vbcgPriceInVbc = wvbcReserve / vbcgReserve;
-    const vbcgPrice = vbcgPriceInVbc * vbcPrice;
+    // Secondary price = (native reserve / secondary reserve) * native price
+    const secondaryPriceInNative = nativeReserve / secondaryReserve;
+    const secondaryPrice = secondaryPriceInNative * nativePrice;
 
-    apiCache.set(cacheKey, vbcgPrice, CACHE_TTL.SHORT);
-    return vbcgPrice;
+    apiCache.set(cacheKey, secondaryPrice, CACHE_TTL.SHORT);
+    return secondaryPrice;
   } catch (error) {
-    console.error('Error getting VBCG price from DEX:', error);
+    console.error('Error getting secondary token price from DEX:', error);
     return 0;
   }
 }
 
+// Legacy function aliases (for backward compatibility)
+export const getVbcPriceFromDex = getNativePriceFromDex;
+export const getVbcgPriceFromDex = getSecondaryPriceFromDex;
+
 /**
- * Get all DEX prices (VBC and VBCG)
+ * Get all DEX prices (native and secondary tokens)
  */
 export async function getDexPrices(): Promise<DexPrices> {
   const cached = apiCache.get<DexPrices>(DEX_PRICES_CACHE_KEY);
@@ -130,11 +153,17 @@ export async function getDexPrices(): Promise<DexPrices> {
     return cached;
   }
 
-  const [vbc, vbcg] = await Promise.all([getVbcPriceFromDex(), getVbcgPriceFromDex()]);
+  const [native, secondary] = await Promise.all([
+    getNativePriceFromDex(),
+    getSecondaryPriceFromDex(),
+  ]);
 
   const prices: DexPrices = {
-    vbc,
-    vbcg,
+    native,
+    secondary,
+    // Legacy aliases
+    vbc: native,
+    vbcg: secondary,
     timestamp: Date.now(),
   };
 
@@ -150,19 +179,19 @@ export async function getDexPrices(): Promise<DexPrices> {
 export async function getTokenPriceUsd(tokenAddress: string): Promise<number> {
   const normalized = tokenAddress.toLowerCase();
 
-  // USDT (stablecoin)
-  if (normalized === ADDRESSES.USDT) {
+  // Stablecoin
+  if (normalized === ADDRESSES.STABLECOIN) {
     return 1.0;
   }
 
-  // WVBC / Native VBC
-  if (normalized === ADDRESSES.WVBC || normalized === ADDRESSES.NATIVE) {
-    return await getVbcPriceFromDex();
+  // Wrapped native / Native token
+  if (normalized === ADDRESSES.WRAPPED_NATIVE || normalized === ADDRESSES.NATIVE) {
+    return await getNativePriceFromDex();
   }
 
-  // VBCG
-  if (normalized === ADDRESSES.VBCG) {
-    return await getVbcgPriceFromDex();
+  // Secondary token
+  if (normalized === ADDRESSES.SECONDARY) {
+    return await getSecondaryPriceFromDex();
   }
 
   // Other tokens - find from pool
@@ -174,7 +203,7 @@ export async function getTokenPriceUsd(tokenAddress: string): Promise<number> {
  */
 async function calculateTokenPriceFromPools(tokenAddress: string): Promise<number> {
   const lpAddresses = await getLPAddresses();
-  const vbcPrice = await getVbcPriceFromDex();
+  const nativePrice = await getNativePriceFromDex();
 
   for (const lpAddress of lpAddresses) {
     try {
@@ -191,15 +220,15 @@ async function calculateTokenPriceFromPools(tokenAddress: string): Promise<numbe
       const reserveNum0 = Number(ethers.formatUnits(reserve0, token0.decimals));
       const reserveNum1 = Number(ethers.formatUnits(reserve1, token1.decimals));
 
-      // Paired with USDT
-      if (pairedToken === ADDRESSES.USDT) {
+      // Paired with stablecoin
+      if (pairedToken === ADDRESSES.STABLECOIN) {
         return isToken0 ? reserveNum1 / reserveNum0 : reserveNum0 / reserveNum1;
       }
 
-      // Paired with WVBC
-      if (pairedToken === ADDRESSES.WVBC && vbcPrice > 0) {
-        const priceInVbc = isToken0 ? reserveNum1 / reserveNum0 : reserveNum0 / reserveNum1;
-        return priceInVbc * vbcPrice;
+      // Paired with wrapped native
+      if (pairedToken === ADDRESSES.WRAPPED_NATIVE && nativePrice > 0) {
+        const priceInNative = isToken0 ? reserveNum1 / reserveNum0 : reserveNum0 / reserveNum1;
+        return priceInNative * nativePrice;
       }
     } catch {
       continue;
@@ -232,10 +261,10 @@ export async function calculatePoolTvlUsd(
   const token1Info = await getCachedTokenInfo(normalized1);
 
   const isToken0Stable =
-    normalized0 === ADDRESSES.USDT ||
+    normalized0 === ADDRESSES.STABLECOIN ||
     STABLECOIN_SYMBOLS.has(token0Info?.symbol?.toUpperCase() || '');
   const isToken1Stable =
-    normalized1 === ADDRESSES.USDT ||
+    normalized1 === ADDRESSES.STABLECOIN ||
     STABLECOIN_SYMBOLS.has(token1Info?.symbol?.toUpperCase() || '');
 
   if (isToken0Stable) {
@@ -249,16 +278,16 @@ export async function calculatePoolTvlUsd(
   }
 
   // No stablecoin - calculate from DEX prices
-  const vbcPrice = await getVbcPriceFromDex();
-  const isToken0VBC = normalized0 === ADDRESSES.WVBC;
-  const isToken1VBC = normalized1 === ADDRESSES.WVBC;
+  const nativePrice = await getNativePriceFromDex();
+  const isToken0Native = normalized0 === ADDRESSES.WRAPPED_NATIVE;
+  const isToken1Native = normalized1 === ADDRESSES.WRAPPED_NATIVE;
 
-  if (isToken0VBC && vbcPrice > 0) {
-    return reserveNum0 * vbcPrice * 2;
+  if (isToken0Native && nativePrice > 0) {
+    return reserveNum0 * nativePrice * 2;
   }
 
-  if (isToken1VBC && vbcPrice > 0) {
-    return reserveNum1 * vbcPrice * 2;
+  if (isToken1Native && nativePrice > 0) {
+    return reserveNum1 * nativePrice * 2;
   }
 
   // Fallback: try to get individual token prices
@@ -274,7 +303,7 @@ export async function calculatePoolTvlUsd(
  * Check if address is wrapped native token
  */
 export function isWrappedNative(address: string): boolean {
-  return address.toLowerCase() === ADDRESSES.WVBC;
+  return address.toLowerCase() === ADDRESSES.WRAPPED_NATIVE;
 }
 
 /**
@@ -285,11 +314,14 @@ export function isNativeToken(address: string): boolean {
 }
 
 /**
- * Check if address is USDT
+ * Check if address is stablecoin
  */
-export function isUSDT(address: string): boolean {
-  return address.toLowerCase() === ADDRESSES.USDT;
+export function isStablecoinAddress(address: string): boolean {
+  return address.toLowerCase() === ADDRESSES.STABLECOIN;
 }
+
+// Legacy alias
+export const isUSDT = isStablecoinAddress;
 
 /**
  * Check if symbol represents a stablecoin

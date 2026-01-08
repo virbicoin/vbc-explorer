@@ -10,15 +10,15 @@ import {
   getWrappedNativeAddress,
   getUSDTAddress,
 } from '@/lib/dex/cache-service';
-import { getVbcPriceFromDex, getVbcgPriceFromDex, ADDRESSES } from '@/lib/dex/priceUtils';
+import { getNativePriceFromDex, getSecondaryPriceFromDex, ADDRESSES } from '@/lib/dex/priceUtils';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 // Stablecoin address (USDT, USDC, etc.)
-const stablecoinAddress = ADDRESSES.USDT;
+const stablecoinAddress = ADDRESSES.STABLECOIN;
 // Secondary token address (governance token, etc.)
-const secondaryTokenAddress = ADDRESSES.VBCG;
+const secondaryTokenAddress = ADDRESSES.SECONDARY;
 
 // GeckoTerminal API headers
 const API_HEADERS = {
@@ -108,8 +108,8 @@ export async function GET() {
 
     // Get native and secondary token prices from DEX (not external API)
     const [nativePriceUsd, secondaryPriceUsd] = await Promise.all([
-      getVbcPriceFromDex(),
-      getVbcgPriceFromDex(),
+      getNativePriceFromDex(),
+      getSecondaryPriceFromDex(),
     ]);
 
     const pools: PoolData[] = [];
