@@ -333,8 +333,8 @@ export default function StatsPage() {
                   {/* Transactions Chart */}
                   <div>
                     <h3 className="text-sm font-medium text-gray-400 mb-3">Daily Transactions</h3>
-                    <div className="space-y-2">
-                      {dailyStats.slice(-7).map((day, idx) => {
+                    <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
+                      {dailyStats.map((day, idx) => {
                         const maxTx = Math.max(...dailyStats.map((d) => d.transactions));
                         const width = maxTx > 0 ? (day.transactions / maxTx) * 100 : 0;
                         return (
@@ -363,8 +363,8 @@ export default function StatsPage() {
                   {/* Blocks Chart */}
                   <div>
                     <h3 className="text-sm font-medium text-gray-400 mb-3">Daily Blocks</h3>
-                    <div className="space-y-2">
-                      {dailyStats.slice(-7).map((day, idx) => {
+                    <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
+                      {dailyStats.map((day, idx) => {
                         const maxBlocks = Math.max(...dailyStats.map((d) => d.blocks));
                         const width = maxBlocks > 0 ? (day.blocks / maxBlocks) * 100 : 0;
                         return (

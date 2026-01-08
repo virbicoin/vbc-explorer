@@ -131,6 +131,13 @@ const ERC20_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
+  {
+    inputs: [],
+    name: 'logoUrl',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ];
 
 // Token interface for DEX
@@ -293,40 +300,30 @@ export async function GET() {
         // Create a map for quick lookup
         const contractsMap = new Map(dbContracts.map((c) => [c.address.toLowerCase(), c]));
 
-        // Try to get logoUrl from TokenFactoryV2 for launchpad tokens
+        // Try to get logoUrl directly from token contracts (works for launchpad tokens)
         const RPC_URL =
           appConfig.network?.rpcUrl || appConfig.web3Provider?.url || 'http://localhost:8545';
         const web3 = new Web3(RPC_URL);
-        const factoryV2Address = appConfig.launchpad?.factoryAddress;
         const logoUrlCache = new Map<string, string>();
 
-        // If TokenFactoryV2 is configured, try to get logoUrl for factory tokens
-        if (factoryV2Address && factoryV2Address !== '0x0000000000000000000000000000000000000000') {
-          const factoryV2 = new web3.eth.Contract(TOKEN_FACTORY_V2_ABI, factoryV2Address);
-
-          // Check all tokens in parallel for better performance
-          const logoPromises = pairTokenAddresses.map(async (tokenAddr) => {
-            try {
-              const isFactoryToken = await factoryV2.methods.isFactoryToken(tokenAddr).call();
-              if (isFactoryToken) {
-                const tokenInfo = (await factoryV2.methods.tokenInfo(tokenAddr).call()) as {
-                  logoUrl: string;
-                };
-                if (tokenInfo.logoUrl) {
-                  return { address: tokenAddr.toLowerCase(), logoUrl: tokenInfo.logoUrl };
-                }
-              }
-            } catch (err) {
-              // Token might not be from V2 factory, ignore
+        // Get logoUrl from token contracts in parallel
+        const logoPromises = pairTokenAddresses.map(async (tokenAddr) => {
+          try {
+            const tokenContract = new web3.eth.Contract(ERC20_ABI, tokenAddr);
+            const logoUrl = (await tokenContract.methods.logoUrl().call()) as string;
+            if (logoUrl && logoUrl !== '') {
+              return { address: tokenAddr.toLowerCase(), logoUrl };
             }
-            return null;
-          });
+          } catch {
+            // Token doesn't have logoUrl function, ignore
+          }
+          return null;
+        });
 
-          const logoResults = await Promise.all(logoPromises);
-          for (const result of logoResults) {
-            if (result) {
-              logoUrlCache.set(result.address, result.logoUrl);
-            }
+        const logoResults = await Promise.all(logoPromises);
+        for (const result of logoResults) {
+          if (result) {
+            logoUrlCache.set(result.address, result.logoUrl);
           }
         }
 

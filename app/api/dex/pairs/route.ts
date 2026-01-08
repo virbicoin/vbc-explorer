@@ -97,31 +97,10 @@ const ERC20_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
-];
-
-// TokenFactoryV2 ABI for checking launchpad tokens and getting logoUrl
-const TOKEN_FACTORY_V2_ABI = [
   {
-    inputs: [{ name: 'token', type: 'address' }],
-    name: 'isFactoryToken',
-    outputs: [{ name: '', type: 'bool' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ name: 'token', type: 'address' }],
-    name: 'tokenInfo',
-    outputs: [
-      { name: 'creator', type: 'address' },
-      { name: 'name', type: 'string' },
-      { name: 'symbol', type: 'string' },
-      { name: 'decimals', type: 'uint8' },
-      { name: 'totalSupply', type: 'uint256' },
-      { name: 'createdAt', type: 'uint256' },
-      { name: 'logoUrl', type: 'string' },
-      { name: 'description', type: 'string' },
-      { name: 'website', type: 'string' },
-    ],
+    inputs: [],
+    name: 'logoUrl',
+    outputs: [{ name: '', type: 'string' }],
     stateMutability: 'view',
     type: 'function',
   },
@@ -382,49 +361,40 @@ export async function GET() {
       }
     }
 
-    // Second pass: Fetch logoUrl from TokenFactoryV2 for Launchpad tokens (not in config)
-    const factoryV2Address = appConfig.launchpad?.factoryAddress;
-    if (factoryV2Address && factoryV2Address !== '0x0000000000000000000000000000000000000000') {
-      const factoryV2 = new web3.eth.Contract(TOKEN_FACTORY_V2_ABI, factoryV2Address);
+    // Second pass: Fetch logoUrl directly from token contracts (works for all launchpad tokens)
+    // Collect token addresses that don't have icons yet
+    const tokensNeedingIcons: { address: string; isBase: boolean; pairIndex: number }[] = [];
+    pairs.forEach((pair, index) => {
+      if (!pair.baseToken.logoURI) {
+        tokensNeedingIcons.push({
+          address: pair.baseToken.address,
+          isBase: true,
+          pairIndex: index,
+        });
+      }
+      if (!pair.quoteToken.logoURI) {
+        tokensNeedingIcons.push({
+          address: pair.quoteToken.address,
+          isBase: false,
+          pairIndex: index,
+        });
+      }
+    });
 
-      // Collect token addresses that don't have icons yet
-      const tokensNeedingIcons: { address: string; isBase: boolean; pairIndex: number }[] = [];
-      pairs.forEach((pair, index) => {
-        if (!pair.baseToken.logoURI) {
-          tokensNeedingIcons.push({
-            address: pair.baseToken.address,
-            isBase: true,
-            pairIndex: index,
-          });
-        }
-        if (!pair.quoteToken.logoURI) {
-          tokensNeedingIcons.push({
-            address: pair.quoteToken.address,
-            isBase: false,
-            pairIndex: index,
-          });
-        }
-      });
-
-      // Check each token against TokenFactoryV2
-      for (const tokenInfo of tokensNeedingIcons) {
-        try {
-          const isFactoryToken = await factoryV2.methods.isFactoryToken(tokenInfo.address).call();
-          if (isFactoryToken) {
-            const info = (await factoryV2.methods.tokenInfo(tokenInfo.address).call()) as {
-              logoUrl: string;
-            };
-            if (info.logoUrl) {
-              if (tokenInfo.isBase) {
-                pairs[tokenInfo.pairIndex].baseToken.logoURI = info.logoUrl;
-              } else {
-                pairs[tokenInfo.pairIndex].quoteToken.logoURI = info.logoUrl;
-              }
-            }
+    // Check each token's contract for logoUrl
+    for (const tokenInfo of tokensNeedingIcons) {
+      try {
+        const tokenContract = new web3.eth.Contract(ERC20_ABI, tokenInfo.address);
+        const logoUrl = (await tokenContract.methods.logoUrl().call()) as string;
+        if (logoUrl && logoUrl !== '') {
+          if (tokenInfo.isBase) {
+            pairs[tokenInfo.pairIndex].baseToken.logoURI = logoUrl;
+          } else {
+            pairs[tokenInfo.pairIndex].quoteToken.logoURI = logoUrl;
           }
-        } catch (err) {
-          // Token is not from factory or error occurred, ignore
         }
+      } catch {
+        // Token doesn't have logoUrl function, ignore
       }
     }
 

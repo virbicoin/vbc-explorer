@@ -18,14 +18,8 @@ const ERC20_ABI = [
   'function symbol() external view returns (string)',
   'function name() external view returns (string)',
   'function decimals() external view returns (uint8)',
+  'function logoUrl() external view returns (string)',
 ];
-
-// TokenFactoryV2 ABI for fetching Launchpad token info
-const TOKEN_FACTORY_V2_ABI = [
-  'function tokenInfo(address token) view returns (address creator, string name, string symbol, uint8 decimals, uint256 totalSupply, uint256 createdAt, string logoUrl, string description, string website)',
-];
-
-const TOKEN_FACTORY_V2_ADDRESS = '0xE2008c44Bc077eFc1c6B5A3274ACC805c7F03b73';
 
 export async function GET(request: Request, { params }: { params: Promise<{ address: string }> }) {
   try {
@@ -96,36 +90,32 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
       return tokenIcons[symbol]?.icon;
     };
 
-    // Fetch logoURL for tokens - first from config, then from TokenFactoryV2
+    // Fetch logoURL for tokens - first from config, then directly from token contract
     let logoUrl0: string | undefined = getConfigIcon(symbol0);
     let logoUrl1: string | undefined = getConfigIcon(symbol1);
 
-    // Try TokenFactoryV2 for tokens without config icons
-    const factoryContract = new ethers.Contract(
-      TOKEN_FACTORY_V2_ADDRESS,
-      TOKEN_FACTORY_V2_ABI,
-      provider
-    );
-
+    // Try to get logoUrl directly from token contracts (works for all launchpad tokens)
     if (!logoUrl0) {
       try {
-        const tokenInfo = await factoryContract.tokenInfo(token0Address);
-        if (tokenInfo && tokenInfo.logoUrl) {
-          logoUrl0 = tokenInfo.logoUrl;
+        const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
+        const logo = await token0Contract.logoUrl();
+        if (logo && logo !== '') {
+          logoUrl0 = logo;
         }
       } catch {
-        // Not a Launchpad token
+        // Token doesn't have logoUrl function
       }
     }
 
     if (!logoUrl1) {
       try {
-        const tokenInfo = await factoryContract.tokenInfo(token1Address);
-        if (tokenInfo && tokenInfo.logoUrl) {
-          logoUrl1 = tokenInfo.logoUrl;
+        const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
+        const logo = await token1Contract.logoUrl();
+        if (logo && logo !== '') {
+          logoUrl1 = logo;
         }
       } catch {
-        // Not a Launchpad token
+        // Token doesn't have logoUrl function
       }
     }
 
