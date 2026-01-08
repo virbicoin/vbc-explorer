@@ -139,7 +139,7 @@ export default function TokensPage() {
 
         // Sort tokens (Native first, then by address descending)
         const sortedTokens = (data.tokens || []).sort((a: Token, b: Token) => {
-          // Nativeトークン（VBC）は最初に表示
+          // Nativeトークンは最初に表示
           if (a.type === 'Native') return -1;
           if (b.type === 'Native') return 1;
 

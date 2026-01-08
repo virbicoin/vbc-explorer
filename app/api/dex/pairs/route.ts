@@ -182,7 +182,7 @@ async function getTokenInfo(
     let displayName = name;
 
     if (wrappedNativeAddress && lowerAddress === wrappedNativeAddress.toLowerCase()) {
-      // Use native token symbol for display (e.g., show "VBC" instead of "WVBC")
+      // Use native token symbol for display (e.g., show "ETH" instead of "WETH")
       if (nativeToken) {
         displaySymbol = nativeToken.symbol;
         displayName = nativeToken.name;

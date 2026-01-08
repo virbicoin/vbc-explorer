@@ -30,13 +30,13 @@ import {
 import { useDexTokens } from '@/hooks/useDexTokens';
 import { useTokenConfig } from '@/hooks/useTokenConfig';
 
-// Check if token is wrapped native (WVBC, WETH, etc.)
+// Check if token is wrapped native (e.g., WETH, WBNB, etc.)
 function isWrappedNativeToken(token: Token): boolean {
   const contracts = getDexContracts();
   return token.address.toLowerCase() === contracts.wrappedNative.toLowerCase();
 }
 
-// Build optimal swap path - for Token↔Token swaps, go through WVBC
+// Build optimal swap path - for Token↔Token swaps, go through wrapped native
 function buildSwapPath(tokenIn: Token, tokenOut: Token): Address[] {
   const contracts = getDexContracts();
   const wrappedNative = contracts.wrappedNative;
@@ -54,7 +54,7 @@ function buildSwapPath(tokenIn: Token, tokenOut: Token): Address[] {
     return [fromAddress, toAddress];
   }
 
-  // For Token → Token (e.g., USDT → VBCG), route through WVBC
+  // For Token → Token swaps, route through wrapped native
   return [fromAddress, wrappedNative, toAddress];
 }
 
@@ -218,7 +218,7 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
     return buildSwapPath(tokenIn, tokenOut);
   }, [tokenIn, tokenOut]);
 
-  // Check if this is a multi-hop swap (Token → WVBC → Token)
+  // Check if this is a multi-hop swap (Token → Wrapped Native → Token)
   const isMultiHopSwap = useMemo(() => {
     return swapPath.length > 2;
   }, [swapPath]);
@@ -275,8 +275,8 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
 
   // Swap hook
   const {
-    swapVBCForTokens,
-    swapTokensForVBC,
+    swapNativeForTokens,
+    swapTokensForNative,
     swapTokensForTokens,
     isPending: isSwapping,
     isConfirming: isSwapConfirming,
@@ -291,11 +291,11 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
 
     try {
       if (isNativeToken(tokenIn)) {
-        // VBC -> Token
-        await swapVBCForTokens(amountInParsed, minAmountOut, swapPath, address);
+        // Native -> Token
+        await swapNativeForTokens(amountInParsed, minAmountOut, swapPath, address);
       } else if (isNativeToken(tokenOut)) {
-        // Token -> VBC
-        await swapTokensForVBC(amountInParsed, minAmountOut, swapPath, address);
+        // Token -> Native
+        await swapTokensForNative(amountInParsed, minAmountOut, swapPath, address);
       } else {
         // Token -> Token
         await swapTokensForTokens(amountInParsed, minAmountOut, swapPath, address);
@@ -310,8 +310,8 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
     swapPath,
     tokenIn,
     tokenOut,
-    swapVBCForTokens,
-    swapTokensForVBC,
+    swapNativeForTokens,
+    swapTokensForNative,
     swapTokensForTokens,
   ]);
 
@@ -490,7 +490,11 @@ export function SwapContent({ initialFrom, initialTo, onTokensChange }: SwapCont
               tokenSymbol={tokenOut.symbol}
               tokenDecimals={tokenOut.decimals}
               fee="0.3%"
-              route={isMultiHopSwap ? [tokenIn.symbol, 'WVBC', tokenOut.symbol] : undefined}
+              route={
+                isMultiHopSwap
+                  ? [tokenIn.symbol, getWrappedNativeToken().symbol, tokenOut.symbol]
+                  : undefined
+              }
             />
           </div>
         )}

@@ -53,7 +53,7 @@ export async function GET() {
         chain_id: config.network?.chainId || 329,
         native_currency: {
           name: config.currency?.name || 'VirBiCoin',
-          symbol: config.currency?.symbol || 'VBC',
+          symbol: config.currency?.symbol || 'ETH',
           decimals: config.currency?.decimals || 18,
         },
         rpc_url: config.network?.rpcUrl || 'https://rpc.digitalregion.jp',

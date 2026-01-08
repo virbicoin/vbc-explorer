@@ -76,10 +76,10 @@ export function getProvider(): ethers.JsonRpcProvider {
 }
 
 /**
- * Get VBC price with caching
+ * Get native currency price with caching
  */
-export async function getCachedVBCPrice(): Promise<number> {
-  const cacheKey = 'dex:vbc_price';
+export async function getCachedNativePrice(): Promise<number> {
+  const cacheKey = 'dex:native_price';
   const cached = apiCache.get<number>(cacheKey);
   if (cached !== undefined) return cached;
 
@@ -88,6 +88,9 @@ export async function getCachedVBCPrice(): Promise<number> {
   apiCache.set(cacheKey, price, CACHE_TTL.SHORT); // 10s cache
   return price;
 }
+
+// Legacy alias for backwards compatibility
+export const getCachedVBCPrice = getCachedNativePrice;
 
 /**
  * Get token info with caching
@@ -192,10 +195,10 @@ export async function getCachedPoolStats(poolAddress: string): Promise<PoolStats
     const usdtAddress = config.dex?.tokens?.usdt?.address?.toLowerCase() || '';
     const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';
 
-    // Get current VBC price for fallback calculation
-    let vbcPrice = 0;
+    // Get current native price for fallback calculation
+    let nativePrice = 0;
     try {
-      vbcPrice = await getCachedVBCPrice();
+      nativePrice = await getCachedNativePrice();
     } catch {
       // Ignore price fetch error
     }
@@ -232,7 +235,7 @@ export async function getCachedPoolStats(poolAddress: string): Promise<PoolStats
       // Calculate amountUSD if not present or 0
       let amountUSD = swap.amountUSD || 0;
 
-      if (amountUSD === 0 && poolInfo && vbcPrice > 0) {
+      if (amountUSD === 0 && poolInfo && nativePrice > 0) {
         const token0 = (swap.token0 || poolInfo.token0.address).toLowerCase();
         const token1 = (swap.token1 || poolInfo.token1.address).toLowerCase();
 
@@ -250,12 +253,12 @@ export async function getCachedPoolStats(poolAddress: string): Promise<PoolStats
         } else if (token1 === usdtAddress) {
           amountUSD = Math.max(a1In, a1Out);
         } else if (token0 === wrappedNativeAddress) {
-          amountUSD = Math.max(a0In, a0Out) * vbcPrice;
+          amountUSD = Math.max(a0In, a0Out) * nativePrice;
         } else if (token1 === wrappedNativeAddress) {
-          amountUSD = Math.max(a1In, a1Out) * vbcPrice;
+          amountUSD = Math.max(a1In, a1Out) * nativePrice;
         } else {
-          // Fallback: estimate using the larger amount and VBC price ratio
-          amountUSD = Math.max(a0In, a0Out, a1In, a1Out) * vbcPrice * 0.5;
+          // Fallback: estimate using the larger amount and native price ratio
+          amountUSD = Math.max(a0In, a0Out, a1In, a1Out) * nativePrice * 0.5;
         }
       }
 

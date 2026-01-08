@@ -42,7 +42,7 @@ export async function GET() {
 
     // Get native token symbol from config
     const config = loadConfig();
-    const nativeSymbol = config.currency?.symbol || 'VBC';
+    const nativeSymbol = config.currency?.symbol || 'ETH';
 
     // Return cached data if still valid
     if (cachedData && Date.now() - cachedData.lastUpdated < CACHE_TTL) {

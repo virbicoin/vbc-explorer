@@ -145,6 +145,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
 
     const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';
+    const wrappedNativeSymbol = config.dex?.wrappedNative?.symbol || 'WETH';
+    const nativeSymbol = config.currency?.symbol || 'ETH';
+    const nativeName = config.currency?.name || 'Ether';
 
     // Get pool info
     const pairContract = new ethers.Contract(poolAddress, PAIR_ABI, provider);
@@ -170,14 +173,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
       token1Contract.symbol(),
     ]);
 
-    // Determine base/quote tokens (VBC is always base)
-    const isToken0VBC = token0Address.toLowerCase() === wrappedNativeAddress;
-    const baseAddress = isToken0VBC ? token0Address : token1Address;
-    const quoteAddress = isToken0VBC ? token1Address : token0Address;
-    const baseDecimals = isToken0VBC ? Number(decimals0) : Number(decimals1);
-    const quoteDecimals = isToken0VBC ? Number(decimals1) : Number(decimals0);
-    const baseSymbol = isToken0VBC ? symbol0 : symbol1;
-    const quoteSymbol = isToken0VBC ? symbol1 : symbol0;
+    // Determine base/quote tokens (native is always base)
+    const isToken0Native = token0Address.toLowerCase() === wrappedNativeAddress;
+    const baseAddress = isToken0Native ? token0Address : token1Address;
+    const quoteAddress = isToken0Native ? token1Address : token0Address;
+    const baseDecimals = isToken0Native ? Number(decimals0) : Number(decimals1);
+    const quoteDecimals = isToken0Native ? Number(decimals1) : Number(decimals0);
+    const baseSymbol = isToken0Native ? symbol0 : symbol1;
+    const quoteSymbol = isToken0Native ? symbol1 : symbol0;
 
     // Calculate interval in seconds
     const baseInterval = TIMEFRAME_SECONDS[timeframe] || 3600;
@@ -197,12 +200,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
       .sort({ timestamp: 1 })
       .lean();
 
-    // Get VBC price for USD conversion
-    let vbcPriceUsd = 0;
+    // Get native price for USD conversion
+    let nativePriceUsd = 0;
     if (currency === 'usd') {
       const priceData = await getNativePrice();
       if (priceData) {
-        vbcPriceUsd = priceData.priceUSD;
+        nativePriceUsd = priceData.priceUSD;
       }
     }
 
@@ -225,23 +228,23 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
       );
 
       if (price !== null && price > 0) {
-        // Invert if token0 is VBC (to get quote/base)
-        if (isToken0VBC) {
+        // Invert if token0 is native (to get quote/base)
+        if (isToken0Native) {
           price = 1 / price;
         }
 
         // Calculate volume in base token terms
         let volume = 0;
-        if (isToken0VBC) {
+        if (isToken0Native) {
           volume = Number(amount0In + amount0Out) / 10 ** Number(decimals0);
         } else {
           volume = Number(amount1In + amount1Out) / 10 ** Number(decimals1);
         }
 
         // Convert to USD if requested
-        if (currency === 'usd' && vbcPriceUsd > 0) {
-          price = price * vbcPriceUsd;
-          volume = volume * vbcPriceUsd;
+        if (currency === 'usd' && nativePriceUsd > 0) {
+          price = price * nativePriceUsd;
+          volume = volume * nativePriceUsd;
         }
 
         swaps.push({ timestamp: swap.timestamp, price, volume });
@@ -258,10 +261,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
       const reserve0 = Number(ethers.formatUnits(reserves[0], decimals0));
       const reserve1 = Number(ethers.formatUnits(reserves[1], decimals1));
 
-      let currentPrice = isToken0VBC ? reserve1 / reserve0 : reserve0 / reserve1;
+      let currentPrice = isToken0Native ? reserve1 / reserve0 : reserve0 / reserve1;
 
-      if (currency === 'usd' && vbcPriceUsd > 0) {
-        currentPrice = currentPrice * vbcPriceUsd;
+      if (currency === 'usd' && nativePriceUsd > 0) {
+        currentPrice = currentPrice * nativePriceUsd;
       }
 
       const startTime = now - limit * intervalSeconds;
@@ -288,8 +291,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
         meta: {
           base: {
             address: baseAddress.toLowerCase(),
-            name: baseSymbol === 'WVBC' ? 'VirBiCoin' : baseContract?.tokenName || baseSymbol,
-            symbol: baseSymbol === 'WVBC' ? 'VBC' : baseSymbol,
+            name:
+              baseSymbol === wrappedNativeSymbol
+                ? nativeName
+                : baseContract?.tokenName || baseSymbol,
+            symbol: baseSymbol === wrappedNativeSymbol ? nativeSymbol : baseSymbol,
             coingecko_coin_id: null,
           },
           quote: {

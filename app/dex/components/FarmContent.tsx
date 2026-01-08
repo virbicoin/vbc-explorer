@@ -28,7 +28,7 @@ function FarmTokenIcon({
   const iconPath = getIcon(symbol);
   const color = getColor(symbol);
 
-  // Priority: 1. Built-in icon (VBC, WVBC, VBCG, USDT), 2. logoURI from database (with security validation)
+  // Priority: 1. Built-in icon from config, 2. logoURI from database (with security validation)
   if (iconPath) {
     return (
       <div
@@ -158,7 +158,7 @@ function FarmPoolCard({
     return ethValue >= 0.0001 ? 'LP' : 'nLP';
   };
 
-  // Always use 18 decimals for reward token (VBCG)
+  // Always use 18 decimals for reward token
   const formatRewardAmount = (amount: bigint): string => {
     if (amount === 0n) return '0';
     const num = Number(amount) / 1e18;

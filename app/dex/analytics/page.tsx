@@ -53,7 +53,7 @@ function TokenIcon({
   className?: string;
   getIcon: (symbol: string) => string | null;
 }) {
-  // First priority: logoURI from API (for Launchpad tokens like VBCAT) - validate for security
+  // First priority: logoURI from API (for Launchpad tokens) - validate for security
   // Second priority: icon from config (for native/fixed tokens)
   const validatedLogoURI = logoURI && isValidImageUrl(logoURI) ? logoURI : null;
   const iconPath = validatedLogoURI || getIcon(symbol);

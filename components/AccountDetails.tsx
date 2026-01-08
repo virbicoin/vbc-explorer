@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { UserIcon, ClockIcon, ArrowUpIcon, CubeIcon } from '@heroicons/react/24/outline';
+import { formatNativeCurrency, initializeCurrency } from '../lib/bigint-utils';
 
 interface Config {
   miners: Record<string, string>;
@@ -72,6 +73,9 @@ export default function AccountDetails({ address }: AccountDetailsProps) {
   };
 
   useEffect(() => {
+    // Initialize currency settings
+    initializeCurrency();
+
     // 設定を取得
     const fetchConfig = async () => {
       try {
@@ -122,16 +126,8 @@ export default function AccountDetails({ address }: AccountDetailsProps) {
   };
 
   const formatValue = (value: string) => {
-    try {
-      const numValue = parseFloat(value);
-      if (numValue === 0) return '0 VBC';
-      if (numValue < 0.000001) return '<0.000001 VBC';
-      if (numValue < 1) return `${numValue.toFixed(6)} VBC`;
-      if (numValue < 1000) return `${numValue.toFixed(4)} VBC`;
-      return `${numValue.toLocaleString(undefined, { maximumFractionDigits: 4 })} VBC`;
-    } catch {
-      return `${value} VBC`;
-    }
+    // Use the bigint-utils function which uses config-based currency symbol
+    return formatNativeCurrency(value);
   };
 
   const formatAddress = (address: string) => {
@@ -356,9 +352,7 @@ export default function AccountDetails({ address }: AccountDetailsProps) {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm text-green-400 font-bold">
-                    {tx.value ? formatValue(tx.value) : '0 VBC'}
-                  </p>
+                  <p className="text-sm text-green-400 font-bold">{formatValue(tx.value || '0')}</p>
                 </div>
               </div>
             ))}

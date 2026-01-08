@@ -14,6 +14,7 @@ import { TokenFactoryV2ABI } from '@/abi/TokenFactoryV2ABI';
 
 import { useLaunchpadConfig, getActiveFactoryAddress } from '@/hooks/useLaunchpadConfig';
 import { ConnectWalletButton } from './ConnectWalletButton';
+import { getCurrencySymbol, initializeCurrencyConfig } from '@/lib/client-config';
 
 export function CreateTokenForm() {
   const { address, isConnected } = useAccount();
@@ -99,6 +100,11 @@ export function CreateTokenForm() {
       console.error('[RegisterToken] Error registering token:', error);
     }
   };
+
+  // Initialize currency config on mount
+  useEffect(() => {
+    initializeCurrencyConfig();
+  }, []);
 
   // Handle transaction confirmation
   useEffect(() => {
@@ -695,7 +701,9 @@ export function CreateTokenForm() {
             <div className="bg-gray-700/30 rounded-xl p-4">
               <div className="flex justify-between items-center">
                 <span className="text-gray-400">Creation Fee</span>
-                <span className="text-white font-semibold">{formattedFee} VBC</span>
+                <span className="text-white font-semibold">
+                  {formattedFee} {getCurrencySymbol()}
+                </span>
               </div>
             </div>
           )}
@@ -749,7 +757,7 @@ export function CreateTokenForm() {
               disabled
               className="w-full py-4 bg-gray-600 text-gray-400 font-bold rounded-xl cursor-not-allowed"
             >
-              Insufficient Balance (Need {formattedFee} VBC)
+              Insufficient Balance (Need {formattedFee} {getCurrencySymbol()})
             </button>
           ) : (
             <button

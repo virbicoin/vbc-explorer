@@ -82,7 +82,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
 
     const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';
-    const networkSlug = 'virbicoin';
+    const wrappedNativeSymbol = config.dex?.wrappedNative?.symbol || 'WETH';
+    const networkSlug = config.network?.slug || 'ethereum';
 
     // Connect to database
     await connectDB();
@@ -110,18 +111,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
       token1Contract.decimals(),
     ]);
 
-    // Determine base/quote tokens (VBC is always base)
-    const isToken0VBC = token0Address.toLowerCase() === wrappedNativeAddress || symbol0 === 'WVBC';
-    const baseAddress = isToken0VBC ? token0Address : token1Address;
-    const quoteAddress = isToken0VBC ? token1Address : token0Address;
-    const baseDecimals = isToken0VBC ? Number(decimals0) : Number(decimals1);
-    const quoteDecimals = isToken0VBC ? Number(decimals1) : Number(decimals0);
+    // Determine base/quote tokens (native is always base)
+    const isToken0Native =
+      token0Address.toLowerCase() === wrappedNativeAddress || symbol0 === wrappedNativeSymbol;
+    const baseAddress = isToken0Native ? token0Address : token1Address;
+    const quoteAddress = isToken0Native ? token1Address : token0Address;
+    const baseDecimals = isToken0Native ? Number(decimals0) : Number(decimals1);
+    const quoteDecimals = isToken0Native ? Number(decimals1) : Number(decimals0);
 
-    // Get VBC price for USD calculations
-    let vbcPriceUsd = 0;
+    // Get native price for USD calculations
+    let nativePriceUsd = 0;
     const priceData = await getNativePrice();
     if (priceData) {
-      vbcPriceUsd = priceData.priceUSD;
+      nativePriceUsd = priceData.priceUSD;
     }
 
     // Build query
@@ -157,17 +159,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
       let fromAmount: string;
       let toAmount: string;
 
-      if (isToken0VBC) {
-        // token0 is base (VBC)
+      if (isToken0Native) {
+        // token0 is base (native)
         if (amount0Out > 0n) {
-          // Buying VBC (trading quote for base)
+          // Buying native (trading quote for base)
           kind = 'buy';
           fromTokenAddress = quoteAddress.toLowerCase();
           toTokenAddress = baseAddress.toLowerCase();
           fromAmount = ethers.formatUnits(amount1In, quoteDecimals);
           toAmount = ethers.formatUnits(amount0Out, baseDecimals);
         } else {
-          // Selling VBC (trading base for quote)
+          // Selling native (trading base for quote)
           kind = 'sell';
           fromTokenAddress = baseAddress.toLowerCase();
           toTokenAddress = quoteAddress.toLowerCase();
@@ -175,16 +177,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
           toAmount = ethers.formatUnits(amount1Out, quoteDecimals);
         }
       } else {
-        // token1 is base (VBC)
+        // token1 is base (native)
         if (amount1Out > 0n) {
-          // Buying VBC
+          // Buying native
           kind = 'buy';
           fromTokenAddress = quoteAddress.toLowerCase();
           toTokenAddress = baseAddress.toLowerCase();
           fromAmount = ethers.formatUnits(amount0In, quoteDecimals);
           toAmount = ethers.formatUnits(amount1Out, baseDecimals);
         } else {
-          // Selling VBC
+          // Selling native
           kind = 'sell';
           fromTokenAddress = baseAddress.toLowerCase();
           toTokenAddress = quoteAddress.toLowerCase();
@@ -206,14 +208,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
         priceFromInCurrency = (toAmountNum / fromAmountNum).toString();
         priceToInCurrency = (fromAmountNum / toAmountNum).toString();
 
-        if (vbcPriceUsd > 0) {
-          // If from is base (VBC), price in USD = VBC price
+        if (nativePriceUsd > 0) {
+          // If from is base (native), price in USD = native price
           if (fromTokenAddress === baseAddress.toLowerCase()) {
-            priceFromInUsd = vbcPriceUsd.toString();
-            priceToInUsd = ((fromAmountNum / toAmountNum) * vbcPriceUsd).toString();
+            priceFromInUsd = nativePriceUsd.toString();
+            priceToInUsd = ((fromAmountNum / toAmountNum) * nativePriceUsd).toString();
           } else {
-            priceToInUsd = vbcPriceUsd.toString();
-            priceFromInUsd = ((toAmountNum / fromAmountNum) * vbcPriceUsd).toString();
+            priceToInUsd = nativePriceUsd.toString();
+            priceFromInUsd = ((toAmountNum / fromAmountNum) * nativePriceUsd).toString();
           }
         }
       }

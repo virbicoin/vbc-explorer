@@ -80,6 +80,7 @@ export interface GeneralConfig {
 export interface NetworkConfig {
   chainId: number;
   name: string;
+  slug?: string;
   rpcUrl: string;
   wsUrl?: string;
   explorer?: string;

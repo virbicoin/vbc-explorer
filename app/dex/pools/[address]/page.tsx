@@ -90,7 +90,7 @@ interface PoolDetails {
   volume24h: number;
   fees24h: number;
   apr: number | null;
-  vbcPriceUsd?: number;
+  nativePriceUsd?: number;
 }
 
 export default function PoolDetailPage({ params }: { params: Promise<{ address: string }> }) {
@@ -99,7 +99,7 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nativePrice, setNativePrice] = useState<number | null>(null);
-  const [nativeSymbol, setNativeSymbol] = useState<string>('VBC');
+  const [nativeSymbol, setNativeSymbol] = useState<string>('ETH');
 
   // Get token icon/color functions from config
   const { getTokenIcon, getTokenColor } = useTokenConfig();
@@ -138,7 +138,7 @@ export default function PoolDetailPage({ params }: { params: Promise<{ address: 
 
         if (priceData.success && priceData.data) {
           setNativePrice(priceData.data.nativePriceUsd);
-          setNativeSymbol(priceData.data.nativeSymbol || 'VBC');
+          setNativeSymbol(priceData.data.nativeSymbol || 'ETH');
         }
       } catch (err) {
         console.error('Failed to fetch pool details:', err);

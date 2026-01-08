@@ -22,7 +22,7 @@ function TokenIcon({
   getIcon: (symbol: string) => string | null;
   getColor: (symbol: string) => string;
 }) {
-  // First priority: logoURI from API (for Launchpad tokens like VBCAT) - validate for security
+  // First priority: logoURI from API (for Launchpad tokens) - validate for security
   // Second priority: icon from config (for native/fixed tokens)
   const validatedLogoURI = logoURI && isValidImageUrl(logoURI) ? logoURI : null;
   const iconPath = validatedLogoURI || getIcon(symbol);
@@ -282,7 +282,7 @@ export default function PoolsPage() {
             </div>
           </div>
           <div className="bg-gray-800/50 rounded-2xl p-6 border border-gray-700/50">
-            <div className="text-gray-400 text-sm mb-1">{nativeSymbol || 'VBC'} Price</div>
+            <div className="text-gray-400 text-sm mb-1">{nativeSymbol || 'ETH'} Price</div>
             <div className="text-2xl font-bold text-white">
               $
               {nativePrice !== null

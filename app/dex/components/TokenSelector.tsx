@@ -99,7 +99,7 @@ export function TokenSelector({
     [onSelect]
   );
 
-  // Check if native token (VBC) - uses zero address
+  // Check if native token - uses zero address
   const isNativeTokenAddress = (address: string): boolean => {
     return address === '0x0000000000000000000000000000000000000000';
   };
@@ -108,7 +108,7 @@ export function TokenSelector({
     // Exclude the exact same token (by address)
     if (t.address === otherToken?.address) return false;
 
-    // If other token is native (VBC), exclude wrapped native (WVBC) - they represent the same value
+    // If other token is native, exclude wrapped native - they represent the same value
     // Native token has zero address, wrapped native has a real address but symbol starts with 'W'
     if (otherToken && isNativeTokenAddress(otherToken.address)) {
       // Get wrapped native symbol (assuming it's 'W' + native symbol)
@@ -116,7 +116,7 @@ export function TokenSelector({
       if (t.symbol === wrappedSymbol) return false;
     }
 
-    // If other token is wrapped native (WVBC), exclude native (VBC)
+    // If other token is wrapped native, exclude native
     if (otherToken && otherToken.symbol.startsWith('W') && isNativeTokenAddress(t.address)) {
       const nativeSymbol = otherToken.symbol.substring(1);
       if (t.symbol === nativeSymbol) return false;

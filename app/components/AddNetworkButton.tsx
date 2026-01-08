@@ -16,7 +16,7 @@ interface CurrencyConfig {
   decimals: number;
 }
 
-export default function AddVBCButton() {
+export default function AddNetworkButton() {
   const [networkConfig, setNetworkConfig] = useState<NetworkConfig | null>(null);
   const [currencyConfig, setCurrencyConfig] = useState<CurrencyConfig | null>(null);
 

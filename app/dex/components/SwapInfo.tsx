@@ -10,7 +10,7 @@ interface SwapInfoProps {
   tokenSymbol?: string;
   tokenDecimals?: number;
   fee?: string;
-  route?: string[]; // e.g., ['VBC', 'WVBC', 'USDT']
+  route?: string[]; // e.g., ['TokenA', 'WrappedNative', 'TokenB']
 }
 
 export function SwapInfo({

@@ -44,14 +44,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     const usdtAddress = (appConfig.dex?.tokens?.usdt?.address || '').toLowerCase();
     const wrappedNativeAddress = (appConfig.dex?.wrappedNative?.address || '').toLowerCase();
 
-    // Get VBC price from external API
-    let vbcPriceUsd = 0;
+    // Get native price from external API
+    let nativePriceUsd = 0;
     try {
       // Use internal call to avoid network loop
-      const { getCachedVBCPrice } = await import('@/lib/dex/cache-service');
-      vbcPriceUsd = await getCachedVBCPrice();
+      const { getCachedNativePrice } = await import('@/lib/dex/cache-service');
+      nativePriceUsd = await getCachedNativePrice();
     } catch {
-      console.warn('Could not fetch VBC price');
+      console.warn('Could not fetch native price');
     }
 
     // Fetch pool details from blockchain
@@ -146,19 +146,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
       reserve0Usd = reserve1Num; // Token0 value = Token1 value (50/50 pool)
       reserve1Usd = reserve1Num; // USDT = 1 USD
     } else if (token0Address.toLowerCase() === wrappedNativeAddress) {
-      // Token0 is WVBC - use external price
-      reserve0Usd = reserve0Num * vbcPriceUsd;
-      const token1Price = (reserve0Num / reserve1Num) * vbcPriceUsd;
+      // Token0 is wrapped native - use external price
+      reserve0Usd = reserve0Num * nativePriceUsd;
+      const token1Price = (reserve0Num / reserve1Num) * nativePriceUsd;
       reserve1Usd = reserve1Num * token1Price;
     } else if (token1Address.toLowerCase() === wrappedNativeAddress) {
-      // Token1 is WVBC - use external price
-      const token0Price = (reserve1Num / reserve0Num) * vbcPriceUsd;
+      // Token1 is wrapped native - use external price
+      const token0Price = (reserve1Num / reserve0Num) * nativePriceUsd;
       reserve0Usd = reserve0Num * token0Price;
-      reserve1Usd = reserve1Num * vbcPriceUsd;
+      reserve1Usd = reserve1Num * nativePriceUsd;
     }
 
-    const displaySymbol0 = symbol0 === 'WVBC' ? 'VBC' : symbol0;
-    const displaySymbol1 = symbol1 === 'WVBC' ? 'VBC' : symbol1;
+    const wrappedNativeSymbol = appConfig.dex?.wrappedNative?.symbol || 'WETH';
+    const nativeSymbol = appConfig.currency?.symbol || 'ETH';
+    const displaySymbol0 = symbol0 === wrappedNativeSymbol ? nativeSymbol : symbol0;
+    const displaySymbol1 = symbol1 === wrappedNativeSymbol ? nativeSymbol : symbol1;
 
     // Get 24h volume from cache service
     let volume24h = 0;
@@ -210,7 +212,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
         volume24h,
         fees24h,
         apr,
-        vbcPriceUsd,
+        nativePriceUsd,
+        // Legacy alias
+        vbcPriceUsd: nativePriceUsd,
       },
     });
   } catch (error) {

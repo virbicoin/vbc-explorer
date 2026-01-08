@@ -11,6 +11,7 @@ import {
 } from 'wagmi';
 import { getDexContracts, FACTORY_ABI, ERC20_ABI, ROUTER_ABI } from '@/lib/dex/config';
 import Link from 'next/link';
+import { getCurrencySymbol, initializeCurrencyConfig } from '@/lib/client-config';
 
 interface ListOnDexModalProps {
   isOpen: boolean;
@@ -33,12 +34,12 @@ export default function ListOnDexModal({
   const contracts = getDexContracts();
 
   const [tokenAmount, setTokenAmount] = useState('');
-  const [vbcAmount, setVbcAmount] = useState('');
+  const [nativeAmount, setNativeAmount] = useState('');
   const [step, setStep] = useState<'input' | 'approve' | 'liquidity' | 'success'>('input');
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  // Get VBC balance
-  const { data: vbcBalance } = useBalance({
+  // Get native balance
+  const { data: nativeBalance } = useBalance({
     address: address,
     query: { enabled: !!address },
   });
@@ -93,7 +94,7 @@ export default function ListOnDexModal({
 
   // Calculate parsed amounts
   const parsedTokenAmount = tokenAmount ? parseUnits(tokenAmount, tokenDecimals) : 0n;
-  const parsedVbcAmount = vbcAmount ? parseUnits(vbcAmount, 18) : 0n;
+  const parsedNativeAmount = nativeAmount ? parseUnits(nativeAmount, 18) : 0n;
 
   // Check if we need approval
   const needsApproval =
@@ -103,9 +104,14 @@ export default function ListOnDexModal({
 
   // Calculate initial price
   const initialPrice =
-    parsedTokenAmount > 0n && parsedVbcAmount > 0n
-      ? (Number(parsedVbcAmount) / Number(parsedTokenAmount)) * Math.pow(10, tokenDecimals - 18)
+    parsedTokenAmount > 0n && parsedNativeAmount > 0n
+      ? (Number(parsedNativeAmount) / Number(parsedTokenAmount)) * Math.pow(10, tokenDecimals - 18)
       : 0;
+
+  // Initialize currency config
+  useEffect(() => {
+    initializeCurrencyConfig();
+  }, []);
 
   // Handle approval success
   useEffect(() => {
@@ -141,20 +147,26 @@ export default function ListOnDexModal({
   };
 
   const handleAddLiquidity = async () => {
-    if (!address || !parsedTokenAmount || !parsedVbcAmount) return;
+    if (!address || !parsedTokenAmount || !parsedNativeAmount) return;
 
     // Calculate min amounts with 1% slippage
     const amountTokenMin = (parsedTokenAmount * 99n) / 100n;
-    const amountVbcMin = (parsedVbcAmount * 99n) / 100n;
+    const amountNativeMin = (parsedNativeAmount * 99n) / 100n;
 
     try {
-      // Try VirBiCoin router first
+      // Use router's addLiquidityNative function (contract function name may vary)
       liquidityWrite({
         address: contracts.router,
         abi: ROUTER_ABI,
-        functionName: 'addLiquidityVBC',
-        args: [tokenAddress as Address, parsedTokenAmount, amountTokenMin, amountVbcMin, address],
-        value: parsedVbcAmount,
+        functionName: 'addLiquidityVBC', // Note: contract function name - do not change
+        args: [
+          tokenAddress as Address,
+          parsedTokenAmount,
+          amountTokenMin,
+          amountNativeMin,
+          address,
+        ],
+        value: parsedNativeAmount,
       });
       setStep('liquidity');
     } catch (err) {
@@ -173,7 +185,7 @@ export default function ListOnDexModal({
   const handleClose = () => {
     setStep('input');
     setTokenAmount('');
-    setVbcAmount('');
+    setNativeAmount('');
     setTxHash(null);
     resetApprove();
     resetLiquidity();
@@ -186,14 +198,14 @@ export default function ListOnDexModal({
     }
   };
 
-  const setMaxVbc = () => {
-    if (vbcBalance?.value) {
+  const setMaxNative = () => {
+    if (nativeBalance?.value) {
       // Leave some for gas
-      const maxVbc =
-        vbcBalance.value > parseUnits('0.1', 18)
-          ? vbcBalance.value - parseUnits('0.1', 18)
-          : vbcBalance.value;
-      setVbcAmount(formatUnits(maxVbc, 18));
+      const maxNative =
+        nativeBalance.value > parseUnits('0.1', 18)
+          ? nativeBalance.value - parseUnits('0.1', 18)
+          : nativeBalance.value;
+      setNativeAmount(formatUnits(maxNative, 18));
     }
   };
 
@@ -306,20 +318,22 @@ export default function ListOnDexModal({
                 </div>
               </div>
 
-              {/* VBC Amount Input */}
+              {/* Native Amount Input */}
               <div className="mb-6">
-                <label className="block text-sm text-gray-400 mb-2">VBC Amount</label>
+                <label className="block text-sm text-gray-400 mb-2">
+                  {getCurrencySymbol()} Amount
+                </label>
                 <div className="relative">
                   <input
                     type="number"
-                    value={vbcAmount}
-                    onChange={(e) => setVbcAmount(e.target.value)}
+                    value={nativeAmount}
+                    onChange={(e) => setNativeAmount(e.target.value)}
                     placeholder="0.0"
                     className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 pr-20 text-white text-lg focus:outline-none focus:border-purple-500"
                     disabled={isProcessing}
                   />
                   <button
-                    onClick={setMaxVbc}
+                    onClick={setMaxNative}
                     className="absolute right-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-purple-500/20 hover:bg-purple-500/30 rounded text-purple-400 text-xs font-medium"
                     disabled={isProcessing}
                   >
@@ -327,8 +341,9 @@ export default function ListOnDexModal({
                   </button>
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Balance: {vbcBalance ? Number(formatUnits(vbcBalance.value, 18)).toFixed(4) : '0'}{' '}
-                  VBC
+                  Balance:{' '}
+                  {nativeBalance ? Number(formatUnits(nativeBalance.value, 18)).toFixed(4) : '0'}{' '}
+                  {getCurrencySymbol()}
                 </div>
               </div>
 
@@ -337,10 +352,10 @@ export default function ListOnDexModal({
                 <div className="mb-6 p-4 bg-gray-800/50 rounded-xl">
                   <div className="text-sm text-gray-400 mb-2">Initial Price</div>
                   <div className="text-lg text-white font-medium">
-                    1 {tokenSymbol} = {initialPrice.toFixed(6)} VBC
+                    1 {tokenSymbol} = {initialPrice.toFixed(6)} {getCurrencySymbol()}
                   </div>
                   <div className="text-sm text-gray-500">
-                    1 VBC = {(1 / initialPrice).toFixed(4)} {tokenSymbol}
+                    1 {getCurrencySymbol()} = {(1 / initialPrice).toFixed(4)} {tokenSymbol}
                   </div>
                 </div>
               )}
@@ -375,9 +390,9 @@ export default function ListOnDexModal({
               {/* Action Button */}
               <button
                 onClick={handleSubmit}
-                disabled={!parsedTokenAmount || !parsedVbcAmount || isProcessing || !isConnected}
+                disabled={!parsedTokenAmount || !parsedNativeAmount || isProcessing || !isConnected}
                 className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
-                  parsedTokenAmount && parsedVbcAmount && !isProcessing
+                  parsedTokenAmount && parsedNativeAmount && !isProcessing
                     ? 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white'
                     : 'bg-gray-700 text-gray-400 cursor-not-allowed'
                 }`}

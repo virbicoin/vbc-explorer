@@ -32,8 +32,10 @@ export async function GET() {
       return errorResponse(404, 'DEX feature is not enabled');
     }
 
-    const networkSlug = 'virbicoin';
-    const chainId = config.network?.chainId || 329;
+    const networkSlug = config.network?.slug || 'ethereum';
+    const chainId = config.network?.chainId || 1;
+    const networkName = config.network?.name || 'Ethereum';
+    const currencySymbol = config.currency?.symbol || 'ETH';
 
     return NextResponse.json(
       {
@@ -42,8 +44,8 @@ export async function GET() {
             id: networkSlug,
             type: 'network',
             attributes: {
-              name: 'VirBiCoin',
-              short_name: 'VBC',
+              name: networkName,
+              short_name: currencySymbol,
               coingecko_asset_platform_id: null,
               identifier: networkSlug,
               chain_id: chainId,

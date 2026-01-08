@@ -6,7 +6,7 @@ import { ethers } from 'ethers';
 import { loadConfig } from '@/lib/config';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import {
-  getCachedVBCPrice,
+  getCachedNativePrice,
   getCachedPoolInfo,
   getWrappedNativeAddress,
   getLPAddresses,
@@ -66,8 +66,8 @@ export async function GET(request: Request) {
     const wrappedNativeAddress = getWrappedNativeAddress();
     const networkSlug = 'virbicoin';
 
-    // Get VBC price (cached)
-    const vbcPriceUsd = await getCachedVBCPrice();
+    // Get native currency price (cached)
+    const nativePriceUsd = await getCachedNativePrice();
 
     // Get all LP pools from factory (dynamic discovery)
     const lpAddresses = await getLPAddresses();
@@ -99,31 +99,33 @@ export async function GET(request: Request) {
         if (!searchableText.includes(query)) {
           continue;
         }
+        const wrappedNativeSymbol = config.dex?.wrappedNative?.symbol || 'WETH';
+        const nativeSymbol = config.currency?.symbol || 'ETH';
 
-        const isToken0VBC = token0.address.toLowerCase() === wrappedNativeAddress;
-        const baseSymbol = isToken0VBC
-          ? token0.symbol === 'WVBC'
-            ? 'VBC'
+        const isToken0Native = token0.address.toLowerCase() === wrappedNativeAddress;
+        const baseSymbol = isToken0Native
+          ? token0.symbol === wrappedNativeSymbol
+            ? nativeSymbol
             : token0.symbol
-          : token1.symbol === 'WVBC'
-            ? 'VBC'
+          : token1.symbol === wrappedNativeSymbol
+            ? nativeSymbol
             : token1.symbol;
-        const quoteSymbol = isToken0VBC
-          ? token1.symbol === 'WVBC'
-            ? 'VBC'
+        const quoteSymbol = isToken0Native
+          ? token1.symbol === wrappedNativeSymbol
+            ? nativeSymbol
             : token1.symbol
           : token0.symbol;
-        const baseAddress = isToken0VBC ? token0.address : token1.address;
-        const quoteAddress = isToken0VBC ? token1.address : token0.address;
+        const baseAddress = isToken0Native ? token0.address : token1.address;
+        const quoteAddress = isToken0Native ? token1.address : token0.address;
 
         const reserve0Num = Number(ethers.formatUnits(reserve0, token0.decimals));
         const reserve1Num = Number(ethers.formatUnits(reserve1, token1.decimals));
 
         let reserveUsd = '0';
-        if (isToken0VBC && vbcPriceUsd > 0) {
-          reserveUsd = (reserve0Num * vbcPriceUsd * 2).toFixed(2);
-        } else if (!isToken0VBC && vbcPriceUsd > 0) {
-          reserveUsd = (reserve1Num * vbcPriceUsd * 2).toFixed(2);
+        if (isToken0Native && nativePriceUsd > 0) {
+          reserveUsd = (reserve0Num * nativePriceUsd * 2).toFixed(2);
+        } else if (!isToken0Native && nativePriceUsd > 0) {
+          reserveUsd = (reserve1Num * nativePriceUsd * 2).toFixed(2);
         }
 
         matchingPools.push({
@@ -132,7 +134,7 @@ export async function GET(request: Request) {
           attributes: {
             name: `${baseSymbol}/${quoteSymbol}`,
             address: lpAddress,
-            base_token_price_usd: vbcPriceUsd > 0 ? vbcPriceUsd.toString() : null,
+            base_token_price_usd: nativePriceUsd > 0 ? nativePriceUsd.toString() : null,
             quote_token_price_usd: null,
             reserve_in_usd: reserveUsd,
             pool_created_at: null,

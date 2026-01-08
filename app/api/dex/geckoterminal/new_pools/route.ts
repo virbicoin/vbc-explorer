@@ -13,7 +13,7 @@ import {
   getLPAddresses,
 } from '@/lib/dex/cache-service';
 import {
-  getVbcPriceFromDex,
+  getNativePriceFromDex,
   getTokenPriceUsd,
   calculatePoolTvlUsd,
   ADDRESSES,
@@ -63,12 +63,14 @@ export async function GET(request: Request) {
     }
 
     const wrappedNativeAddress = getWrappedNativeAddress();
-    const networkSlug = 'virbicoin';
+    const wrappedNativeSymbol = config.dex?.wrappedNative?.symbol || 'WETH';
+    const nativeSymbol = config.currency?.symbol || 'ETH';
+    const networkSlug = config.network?.slug || 'ethereum';
 
     await connectDB();
 
-    // Get VBC price from DEX (not external API)
-    const vbcPriceUsd = await getVbcPriceFromDex();
+    // Get native price from DEX (not external API)
+    const nativePriceUsd = await getNativePriceFromDex();
     const usdtAddress = getUSDTAddress();
 
     // Get all LP pools from factory (dynamic discovery)
@@ -95,21 +97,21 @@ export async function GET(request: Request) {
 
         const { token0, token1, reserve0, reserve1 } = poolInfo;
 
-        const isToken0VBC = token0.address.toLowerCase() === wrappedNativeAddress;
-        const baseSymbol = isToken0VBC
-          ? token0.symbol === 'WVBC'
-            ? 'VBC'
+        const isToken0Native = token0.address.toLowerCase() === wrappedNativeAddress;
+        const baseSymbol = isToken0Native
+          ? token0.symbol === wrappedNativeSymbol
+            ? nativeSymbol
             : token0.symbol
-          : token1.symbol === 'WVBC'
-            ? 'VBC'
+          : token1.symbol === wrappedNativeSymbol
+            ? nativeSymbol
             : token1.symbol;
-        const quoteSymbol = isToken0VBC
-          ? token1.symbol === 'WVBC'
-            ? 'VBC'
+        const quoteSymbol = isToken0Native
+          ? token1.symbol === wrappedNativeSymbol
+            ? nativeSymbol
             : token1.symbol
           : token0.symbol;
-        const baseAddress = isToken0VBC ? token0.address : token1.address;
-        const quoteAddress = isToken0VBC ? token1.address : token0.address;
+        const baseAddress = isToken0Native ? token0.address : token1.address;
+        const quoteAddress = isToken0Native ? token1.address : token0.address;
 
         const reserve0Num = Number(ethers.formatUnits(reserve0, token0.decimals));
         const reserve1Num = Number(ethers.formatUnits(reserve1, token1.decimals));
@@ -128,30 +130,30 @@ export async function GET(request: Request) {
         if (isToken0Stable) {
           // Token0 is stablecoin (e.g., USDT)
           reserveUsd = (reserve0Num * 2).toFixed(2);
-          // Calculate VBC price from this pool
+          // Calculate native price from this pool
           if (reserve1Num > 0) {
-            const impliedVbcPrice = reserve0Num / reserve1Num;
-            baseTokenPriceUsd = isToken0VBC ? impliedVbcPrice.toString() : '1';
-            quoteTokenPriceUsd = isToken0VBC ? '1' : impliedVbcPrice.toString();
+            const impliedNativePrice = reserve0Num / reserve1Num;
+            baseTokenPriceUsd = isToken0Native ? impliedNativePrice.toString() : '1';
+            quoteTokenPriceUsd = isToken0Native ? '1' : impliedNativePrice.toString();
           }
         } else if (isToken1Stable) {
           // Token1 is stablecoin
           reserveUsd = (reserve1Num * 2).toFixed(2);
           if (reserve0Num > 0) {
             const impliedPrice = reserve1Num / reserve0Num;
-            baseTokenPriceUsd = isToken0VBC ? impliedPrice.toString() : impliedPrice.toString();
+            baseTokenPriceUsd = isToken0Native ? impliedPrice.toString() : impliedPrice.toString();
             quoteTokenPriceUsd = '1';
           }
-        } else if (vbcPriceUsd > 0) {
-          // No stablecoin - use VBC price
-          if (isToken0VBC) {
-            reserveUsd = (reserve0Num * vbcPriceUsd * 2).toFixed(2);
-            baseTokenPriceUsd = vbcPriceUsd.toString();
-            quoteTokenPriceUsd = ((reserve0Num / reserve1Num) * vbcPriceUsd).toString();
+        } else if (nativePriceUsd > 0) {
+          // No stablecoin - use native price
+          if (isToken0Native) {
+            reserveUsd = (reserve0Num * nativePriceUsd * 2).toFixed(2);
+            baseTokenPriceUsd = nativePriceUsd.toString();
+            quoteTokenPriceUsd = ((reserve0Num / reserve1Num) * nativePriceUsd).toString();
           } else {
-            reserveUsd = (reserve1Num * vbcPriceUsd * 2).toFixed(2);
-            baseTokenPriceUsd = ((reserve1Num / reserve0Num) * vbcPriceUsd).toString();
-            quoteTokenPriceUsd = vbcPriceUsd.toString();
+            reserveUsd = (reserve1Num * nativePriceUsd * 2).toFixed(2);
+            baseTokenPriceUsd = ((reserve1Num / reserve0Num) * nativePriceUsd).toString();
+            quoteTokenPriceUsd = nativePriceUsd.toString();
           }
         }
 

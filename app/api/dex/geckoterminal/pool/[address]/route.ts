@@ -7,7 +7,7 @@ import { loadConfig } from '@/lib/config';
 import { connectDB, Contract } from '@/models/index';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import {
-  getCachedVBCPrice,
+  getCachedNativePrice,
   getCachedPoolInfo,
   getCachedPoolStats,
   getCachedTokenInfo,
@@ -67,7 +67,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
 
     const wrappedNativeAddress = getWrappedNativeAddress();
     const usdtAddress = getUSDTAddress();
-    const networkSlug = 'virbicoin';
+    const networkSlug = config.network?.slug || 'ethereum';
 
     // Connect to database
     await connectDB();
@@ -87,15 +87,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
       return errorResponse(404, 'Pool has no liquidity');
     }
 
-    // Display symbol (WVBC -> VBC)
-    const displaySymbol0 = token0.symbol === 'WVBC' ? 'VBC' : token0.symbol;
-    const displaySymbol1 = token1.symbol === 'WVBC' ? 'VBC' : token1.symbol;
+    // Display symbol (wrapped native -> native)
+    const wrappedNativeSymbol = config.dex?.wrappedNative?.symbol || 'WETH';
+    const nativeSymbol = config.currency?.symbol || 'ETH';
+    const displaySymbol0 = token0.symbol === wrappedNativeSymbol ? nativeSymbol : token0.symbol;
+    const displaySymbol1 = token1.symbol === wrappedNativeSymbol ? nativeSymbol : token1.symbol;
 
-    // Determine base/quote tokens (VBC is always base)
-    const isToken0VBC =
-      token0.address.toLowerCase() === wrappedNativeAddress || token0.symbol === 'WVBC';
-    const isToken1VBC =
-      token1.address.toLowerCase() === wrappedNativeAddress || token1.symbol === 'WVBC';
+    // Determine base/quote tokens (native is always base)
+    const isToken0Native =
+      token0.address.toLowerCase() === wrappedNativeAddress ||
+      token0.symbol === wrappedNativeSymbol;
+    const isToken1Native =
+      token1.address.toLowerCase() === wrappedNativeAddress ||
+      token1.symbol === wrappedNativeSymbol;
 
     let baseSymbol: string, quoteSymbol: string;
     let baseName: string, quoteName: string;
@@ -103,7 +107,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     let baseDecimals: number, quoteDecimals: number;
     let baseReserve: number, quoteReserve: number;
 
-    if (isToken0VBC && !isToken1VBC) {
+    if (isToken0Native && !isToken1Native) {
       baseSymbol = displaySymbol0;
       quoteSymbol = displaySymbol1;
       baseName = token0.name;
@@ -114,7 +118,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
       quoteDecimals = token1.decimals;
       baseReserve = reserveNum0;
       quoteReserve = reserveNum1;
-    } else if (isToken1VBC && !isToken0VBC) {
+    } else if (isToken1Native && !isToken0Native) {
       baseSymbol = displaySymbol1;
       quoteSymbol = displaySymbol0;
       baseName = token1.name;
@@ -142,8 +146,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     const price = quoteReserve / baseReserve;
     const priceInverse = baseReserve / quoteReserve;
 
-    // Get VBC price in USD (cached) - used as fallback for non-USDT pairs
-    const vbcPriceUsd = await getCachedVBCPrice();
+    // Get native price in USD (cached) - used as fallback for non-USDT pairs
+    const nativePriceUsd = await getCachedNativePrice();
 
     // Calculate USD values
     // For pools with stablecoins (USDT/USDC), use the stablecoin reserve to value the other token
@@ -153,16 +157,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     let baseReserveUsd = 0;
     let quoteReserveUsd = 0;
 
-    const isBaseVBC = baseAddress.toLowerCase() === wrappedNativeAddress || baseSymbol === 'VBC';
+    const isBaseNative =
+      baseAddress.toLowerCase() === wrappedNativeAddress || baseSymbol === nativeSymbol;
     const isQuoteUSDT = quoteAddress.toLowerCase() === usdtAddress;
     const isBaseUSDT = baseAddress.toLowerCase() === usdtAddress;
 
-    if (isBaseVBC && isQuoteUSDT) {
-      // VBC/USDT pair - use USDT reserve to value VBC (50/50 pool)
-      const dexVbcPrice = quoteReserve / baseReserve; // DEX price of VBC in USD
-      baseTokenPriceUsd = dexVbcPrice.toString();
+    if (isBaseNative && isQuoteUSDT) {
+      // Native/USDT pair - use USDT reserve to value native (50/50 pool)
+      const dexNativePrice = quoteReserve / baseReserve; // DEX price of native in USD
+      baseTokenPriceUsd = dexNativePrice.toString();
       quoteTokenPriceUsd = '1';
-      baseReserveUsd = quoteReserve; // VBC value = USDT value (50/50 pool)
+      baseReserveUsd = quoteReserve; // Native value = USDT value (50/50 pool)
       quoteReserveUsd = quoteReserve; // USDT = 1 USD
     } else if (isBaseUSDT) {
       // USDT/X pair - use USDT reserve to value X (50/50 pool)
@@ -171,19 +176,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
       quoteTokenPriceUsd = quoteTokenPrice.toString();
       baseReserveUsd = baseReserve; // USDT = 1 USD
       quoteReserveUsd = baseReserve; // X value = USDT value (50/50 pool)
-    } else if (isBaseVBC) {
-      // VBC/X pair (no stablecoin) - use external price
-      baseTokenPriceUsd = vbcPriceUsd.toString();
-      const quoteTokenPrice = (baseReserve / quoteReserve) * vbcPriceUsd;
+    } else if (isBaseNative) {
+      // Native/X pair (no stablecoin) - use external price
+      baseTokenPriceUsd = nativePriceUsd.toString();
+      const quoteTokenPrice = (baseReserve / quoteReserve) * nativePriceUsd;
       quoteTokenPriceUsd = quoteTokenPrice.toString();
-      baseReserveUsd = baseReserve * vbcPriceUsd;
+      baseReserveUsd = baseReserve * nativePriceUsd;
       quoteReserveUsd = quoteReserve * quoteTokenPrice;
     } else {
       // Fallback - use external price
-      baseReserveUsd = baseReserve * vbcPriceUsd;
-      quoteReserveUsd = quoteReserve * vbcPriceUsd;
-      baseTokenPriceUsd = vbcPriceUsd.toString();
-      quoteTokenPriceUsd = vbcPriceUsd.toString();
+      baseReserveUsd = baseReserve * nativePriceUsd;
+      quoteReserveUsd = quoteReserve * nativePriceUsd;
+      baseTokenPriceUsd = nativePriceUsd.toString();
+      quoteTokenPriceUsd = nativePriceUsd.toString();
     }
 
     const totalLiquidityUsd = baseReserveUsd + quoteReserveUsd;
@@ -221,13 +226,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     ]);
 
     // Build included tokens array
+    const wrappedNativeName = config.dex?.wrappedNative?.name || 'Wrapped ETH';
+    const nativeName = config.currency?.name || 'Ether';
     const includedTokens = [
       {
         id: `${networkSlug}_${baseAddress.toLowerCase()}`,
         type: 'token',
         attributes: {
           address: baseAddress.toLowerCase(),
-          name: baseName === 'Wrapped VBC' ? 'VirBiCoin' : baseName,
+          name: baseName === wrappedNativeName ? nativeName : baseName,
           symbol: baseSymbol,
           decimals: baseDecimals,
           image_url: baseContractInfo?.image_url || null,

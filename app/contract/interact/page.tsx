@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { PlayIcon, CodeBracketIcon } from '@heroicons/react/24/outline';
-import { initializeCurrencyConfig, getNetworkName } from '../../../lib/client-config';
+import {
+  initializeCurrencyConfig,
+  getNetworkName,
+  getCurrencySymbol,
+} from '../../../lib/client-config';
 
 interface Method {
   name: string;
@@ -308,7 +312,9 @@ export default function ContractInteractPage() {
                             />
                           </div>
                           <div>
-                            <label className="block text-sm text-gray-400 mb-1">Value (VBC)</label>
+                            <label className="block text-sm text-gray-400 mb-1">
+                              Value ({getCurrencySymbol()})
+                            </label>
                             <input
                               type="text"
                               value={value}

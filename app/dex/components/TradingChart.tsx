@@ -585,7 +585,7 @@ export function TradingChart({
               {nativePriceUsd &&
                 nativePriceUsd > 0 &&
                 nativeSymbol &&
-                // Show USD price only when quote token is native token (VBC/WVBC)
+                // Show USD price only when quote token is native token
                 (selectedPair.quoteToken.symbol === nativeSymbol ||
                   selectedPair.quoteToken.symbol === `W${nativeSymbol}`) && (
                   <span className="text-sm text-green-400 ml-2">

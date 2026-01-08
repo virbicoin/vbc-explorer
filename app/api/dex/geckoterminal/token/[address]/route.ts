@@ -15,7 +15,7 @@ import {
   getProvider,
 } from '@/lib/dex/cache-service';
 import {
-  getVbcPriceFromDex,
+  getNativePriceFromDex,
   getTokenPriceUsd,
   ADDRESSES,
   isStablecoin,
@@ -96,8 +96,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     }
 
     const isWrappedNative = normalizedAddress === wrappedNativeAddress;
-    const displaySymbol = symbol === 'WVBC' ? 'VBC' : symbol;
-    const displayName = name === 'Wrapped VBC' ? 'VirBiCoin' : name;
+    const nativeSymbol = config.currency?.symbol || 'ETH';
+    const wrappedSymbol = config.dex?.wrappedNative?.symbol || `W${nativeSymbol}`;
+    const nativeName = config.currency?.name || 'Ether';
+    const displaySymbol = symbol === wrappedSymbol ? nativeSymbol : symbol;
+    const displayName = name === config.dex?.wrappedNative?.name ? nativeName : name;
 
     // Get token info from Contract collection
     const contractInfo = await Contract.findOne({ address: normalizedAddress }).lean();
@@ -108,15 +111,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     let totalReserveInUsd = '0';
     let volume24h = '0';
 
-    // Get VBC price from DEX (not external API)
-    const vbcPriceUsd = await getVbcPriceFromDex();
+    // Get native price from DEX (not external API)
+    const nativePriceUsd = await getNativePriceFromDex();
 
-    if (isWrappedNative || symbol === 'VBC') {
-      // Native token (VBC) - use DEX price
-      priceUsd = vbcPriceUsd.toString();
-      if (vbcPriceUsd > 0 && totalSupply > 0n) {
+    if (isWrappedNative || symbol === nativeSymbol) {
+      // Native token - use DEX price
+      priceUsd = nativePriceUsd.toString();
+      if (nativePriceUsd > 0 && totalSupply > 0n) {
         const totalSupplyNum = Number(ethers.formatUnits(totalSupply, decimals));
-        fdvUsd = (totalSupplyNum * vbcPriceUsd).toFixed(2);
+        fdvUsd = (totalSupplyNum * nativePriceUsd).toFixed(2);
       }
     } else if (normalizedAddress === usdtAddress || symbol === 'USDT') {
       // USDT - stablecoin is always 1.0
@@ -170,11 +173,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
                 priceUsd = tokenPrice.toString();
                 const tokenReserve = isToken0 ? reserveNum0 : reserveNum1;
                 totalReserveInUsd = (tokenReserve * tokenPrice * 2).toFixed(2);
-              } else if (pairedToken === wrappedNativeAddress && vbcPriceUsd > 0) {
-                // Paired with VBC
+              } else if (pairedToken === wrappedNativeAddress && nativePriceUsd > 0) {
+                // Paired with native token
                 const tokenPrice = isToken0
-                  ? (reserveNum1 / reserveNum0) * vbcPriceUsd
-                  : (reserveNum0 / reserveNum1) * vbcPriceUsd;
+                  ? (reserveNum1 / reserveNum0) * nativePriceUsd
+                  : (reserveNum0 / reserveNum1) * nativePriceUsd;
                 priceUsd = tokenPrice.toString();
                 const tokenReserve = isToken0 ? reserveNum0 : reserveNum1;
                 totalReserveInUsd = (tokenReserve * tokenPrice * 2).toFixed(2);
@@ -225,8 +228,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
 
     // Determine coingecko_coin_id
     let coingeckoCoinId: string | null = null;
-    if (isWrappedNative || symbol === 'VBC') {
-      coingeckoCoinId = null; // VirBiCoin not on CoinGecko
+    if (isWrappedNative || symbol === nativeSymbol) {
+      coingeckoCoinId = null; // Chain native token may not be on CoinGecko
     } else if (normalizedAddress === usdtAddress || symbol === 'USDT') {
       coingeckoCoinId = 'tether';
     }

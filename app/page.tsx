@@ -15,7 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { formatVBC, initializeCurrency } from '../lib/bigint-utils';
 import Image from 'next/image';
-import AddVBCButton from './components/AddVBCButton';
+import AddNetworkButton from './components/AddNetworkButton';
 
 interface Config {
   miners: Record<string, string>;
@@ -695,7 +695,7 @@ export default function Page() {
             </form>
           </div>
           {/* Right: Add Network Button */}
-          <AddVBCButton />
+          <AddNetworkButton />
         </div>
         {/* Summary Cards */}
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

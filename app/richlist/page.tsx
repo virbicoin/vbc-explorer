@@ -100,7 +100,7 @@ export default function RichlistPage() {
           <p className="text-gray-400">
             Top {currencySymbol} holders by balance. Total supply:{' '}
             {
-              // Convert Wei to VBC for display
+              // Convert Wei to native currency for display
               (richlistData.statistics.totalSupply / 1e18).toLocaleString()
             }{' '}
             {currencySymbol}

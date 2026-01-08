@@ -2,6 +2,7 @@
 // Optimized version with centralized caching to reduce RPC calls
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
+import { loadConfig } from '@/lib/config';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import {
   getCachedPoolInfo,
@@ -101,10 +102,13 @@ export async function GET() {
       return NextResponse.json({ data: cached.data }, { headers: API_HEADERS });
     }
 
-    const networkSlug = 'virbicoin';
+    const config = loadConfig();
+    const networkSlug = config.network?.slug || 'ethereum';
     const wrappedNativeAddress = getWrappedNativeAddress();
     const usdtAddress = getUSDTAddress();
     const lpAddresses = await getLPAddresses();
+    const wrappedNativeSymbol = config.dex?.wrappedNative?.symbol || 'WETH';
+    const nativeSymbol = config.currency?.symbol || 'ETH';
 
     // Get native and secondary token prices from DEX (not external API)
     const [nativePriceUsd, secondaryPriceUsd] = await Promise.all([
@@ -133,21 +137,23 @@ export async function GET() {
 
             if (reserveNum0 === 0 || reserveNum1 === 0) return null;
 
-            // Display symbol (WVBC -> VBC)
-            const displaySymbol0 = token0.symbol === 'WVBC' ? 'VBC' : token0.symbol;
-            const displaySymbol1 = token1.symbol === 'WVBC' ? 'VBC' : token1.symbol;
+            // Display symbol (wrapped native -> native)
+            const displaySymbol0 =
+              token0.symbol === wrappedNativeSymbol ? nativeSymbol : token0.symbol;
+            const displaySymbol1 =
+              token1.symbol === wrappedNativeSymbol ? nativeSymbol : token1.symbol;
 
-            // Determine if VBC (WVBC) should be the base token
-            const isToken0VBC =
+            // Determine if native (wrapped native) should be the base token
+            const isToken0Native =
               token0.address.toLowerCase() === wrappedNativeAddress ||
-              token0.symbol === 'WVBC' ||
-              token0.symbol === 'VBC';
-            const isToken1VBC =
+              token0.symbol === wrappedNativeSymbol ||
+              token0.symbol === nativeSymbol;
+            const isToken1Native =
               token1.address.toLowerCase() === wrappedNativeAddress ||
-              token1.symbol === 'WVBC' ||
-              token1.symbol === 'VBC';
+              token1.symbol === wrappedNativeSymbol ||
+              token1.symbol === nativeSymbol;
 
-            // Set up base/quote based on VBC position
+            // Set up base/quote based on native position
             let baseSymbol: string;
             let quoteSymbol: string;
             let baseAddress: string;
@@ -155,14 +161,14 @@ export async function GET() {
             let baseReserve: number;
             let quoteReserve: number;
 
-            if (isToken0VBC && !isToken1VBC) {
+            if (isToken0Native && !isToken1Native) {
               baseSymbol = displaySymbol0;
               quoteSymbol = displaySymbol1;
               baseAddress = token0.address;
               quoteAddress = token1.address;
               baseReserve = reserveNum0;
               quoteReserve = reserveNum1;
-            } else if (isToken1VBC && !isToken0VBC) {
+            } else if (isToken1Native && !isToken0Native) {
               baseSymbol = displaySymbol1;
               quoteSymbol = displaySymbol0;
               baseAddress = token1.address;

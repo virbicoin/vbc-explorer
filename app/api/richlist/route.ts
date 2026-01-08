@@ -1,7 +1,8 @@
-// Richlist API for VirBiCoin Explorer
+// Richlist API
 import { NextRequest, NextResponse } from 'next/server';
 import { Account, Contract } from '@/lib/models';
 import { connectToDatabase } from '@/lib/db';
+import { loadConfig } from '@/lib/config';
 
 // Cache for totalSupply
 const totalSupplyCache = {
@@ -103,22 +104,25 @@ export async function GET(request: NextRequest) {
     }
 
     // Format data for frontend with correct ranking
+    const config = loadConfig();
+    const currencySymbol = config.currency?.symbol || 'ETH';
+
     const richlist = accounts.map((account, index) => {
       const rank = offset + index + 1; // Correct ranking based on offset
       const balanceNum =
         account.balanceNum ||
         (typeof account.balance === 'string' ? parseFloat(account.balance) : account.balance);
-      const balanceInVBC = balanceNum / 1e18;
+      const balanceInNative = balanceNum / 1e18;
       const percentage = totalSupply > 0 ? (balanceNum / totalSupply) * 100 : 0;
 
       return {
         rank,
         address: account.address,
         balance: balanceNum,
-        balanceFormatted: `${balanceInVBC.toLocaleString(undefined, {
+        balanceFormatted: `${balanceInNative.toLocaleString(undefined, {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
-        })} VBC`,
+        })} ${currencySymbol}`,
         type: contractAddressList.includes(account.address) ? 'Contract' : 'Wallet',
         percentage: percentage.toFixed(4),
         lastUpdated: account.blockNumber,

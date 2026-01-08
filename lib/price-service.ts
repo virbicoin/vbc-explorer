@@ -102,7 +102,7 @@ export async function getNativePrice(): Promise<PriceData | null> {
   }
 
   const config = loadConfig();
-  const symbol = config.currency?.symbol || 'VBC';
+  const symbol = config.currency?.symbol || 'ETH';
 
   // Try database first (data from price.ts)
   const dbPrice = await getPriceFromDatabase();
@@ -126,7 +126,7 @@ export async function getNativePrice(): Promise<PriceData | null> {
  */
 export async function getPrice(symbol?: string): Promise<PriceData | null> {
   const config = loadConfig();
-  const targetSymbol = symbol || config.currency?.symbol || 'VBC';
+  const targetSymbol = symbol || config.currency?.symbol || 'ETH';
 
   // For native token, use standard flow
   if (targetSymbol === config.currency?.symbol) {

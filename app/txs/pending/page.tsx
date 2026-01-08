@@ -9,6 +9,12 @@ import {
   CurrencyDollarIcon,
   FireIcon,
 } from '@heroicons/react/24/outline';
+import {
+  formatNativeCurrency,
+  formatGasUnit,
+  baseToGasUnit,
+  initializeCurrency,
+} from '../../../lib/bigint-utils';
 
 interface PendingTransaction {
   hash: string;
@@ -30,6 +36,9 @@ export default function PendingTransactionsPage() {
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   useEffect(() => {
+    // Initialize currency settings
+    initializeCurrency();
+
     const fetchPendingTxs = async () => {
       try {
         setError(null);
@@ -66,21 +75,14 @@ export default function PendingTransactionsPage() {
   };
 
   const formatValue = (value: string) => {
-    try {
-      const weiValue = BigInt(value);
-      const ethValue = Number(weiValue) / 1e18;
-      if (ethValue === 0) return '0 VBC';
-      if (ethValue < 0.0001) return '<0.0001 VBC';
-      return `${ethValue.toFixed(4)} VBC`;
-    } catch {
-      return `${value} VBC`;
-    }
+    // Use the bigint-utils function which uses config-based currency symbol
+    return formatNativeCurrency(value);
   };
 
   const formatGasPrice = (gasPrice: string) => {
     try {
-      const gweiValue = Number(BigInt(gasPrice)) / 1e9;
-      return `${gweiValue.toFixed(2)} Gwei`;
+      const gweiValue = baseToGasUnit(gasPrice);
+      return formatGasUnit(gweiValue);
     } catch {
       return gasPrice;
     }

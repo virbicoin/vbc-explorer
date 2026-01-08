@@ -23,7 +23,7 @@ interface HistoricalTvl {
 export async function GET() {
   try {
     const config = loadConfig();
-    const nativeSymbol = config.currency?.symbol || 'VBC';
+    const nativeSymbol = config.currency?.symbol || 'ETH';
     const chainName = config.network?.name || 'Virbicoin';
 
     // Get external price data

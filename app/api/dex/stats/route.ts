@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { loadConfig } from '@/lib/config';
 import { getLPAddresses, getCachedPoolInfo, getCachedPoolStats } from '@/lib/dex/cache-service';
 import {
-  getVbcPriceFromDex,
-  getVbcgPriceFromDex,
+  getNativePriceFromDex,
+  getSecondaryPriceFromDex,
   calculatePoolTvlUsd,
   ADDRESSES,
 } from '@/lib/dex/priceUtils';
@@ -27,9 +27,9 @@ export async function GET() {
     const chainId = config.network?.chainId || 329;
 
     // Get prices from DEX
-    const [vbcPriceUsd, vbcgPriceUsd] = await Promise.all([
-      getVbcPriceFromDex(),
-      getVbcgPriceFromDex(),
+    const [nativePriceUsd, secondaryPriceUsd] = await Promise.all([
+      getNativePriceFromDex(),
+      getSecondaryPriceFromDex(),
     ]);
 
     // Calculate total TVL and volume from all pools
@@ -75,9 +75,11 @@ export async function GET() {
         totalBuys24h += buys24h;
         totalSells24h += sells24h;
 
-        // Format pool name
-        const symbol0 = token0.symbol === 'WVBC' ? 'VBC' : token0.symbol;
-        const symbol1 = token1.symbol === 'WVBC' ? 'VBC' : token1.symbol;
+        // Format pool name - use config symbols
+        const nativeSymbol = config.currency?.symbol || 'ETH';
+        const wrappedSymbol = config.dex?.wrappedNative?.symbol || `W${nativeSymbol}`;
+        const symbol0 = token0.symbol === wrappedSymbol ? nativeSymbol : token0.symbol;
+        const symbol1 = token1.symbol === wrappedSymbol ? nativeSymbol : token1.symbol;
 
         poolsData.push({
           address: lpAddress,
@@ -112,9 +114,14 @@ export async function GET() {
       chainId: chainId,
       timestamp: Math.floor(Date.now() / 1000),
       prices: {
-        vbc: vbcPriceUsd,
-        wvbc: vbcPriceUsd,
-        vbcg: vbcgPriceUsd,
+        native: nativePriceUsd,
+        wrappedNative: nativePriceUsd,
+        secondary: secondaryPriceUsd,
+        stablecoin: 1.0,
+        // Legacy aliases for backward compatibility
+        vbc: nativePriceUsd,
+        wvbc: nativePriceUsd,
+        vbcg: secondaryPriceUsd,
         usdt: 1.0,
       },
       tvl: {

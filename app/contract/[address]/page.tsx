@@ -16,6 +16,7 @@ import {
   ShieldExclamationIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import { initializeCurrencyConfig, getCurrencySymbol } from '../../../lib/client-config';
 
 interface ContractData {
   address: string;
@@ -121,6 +122,9 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
 
   // Check URL parameter for tab on mount
   useEffect(() => {
+    // Initialize currency config
+    initializeCurrencyConfig();
+
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
       const tabParam = urlParams.get('tab');
@@ -368,10 +372,10 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
     }
   };
 
-  // Format native currency value (Wei to VBC)
+  // Format native currency value (Wei to native currency)
   const formatNativeValue = (value: string) => {
     try {
-      // Already in VBC format (has decimal point or is small number)
+      // Already in native currency format (has decimal point or is small number)
       if (value.includes('.') || (parseFloat(value) > 0 && parseFloat(value) < 1000000)) {
         const numVal = parseFloat(value);
         if (numVal === 0) return '0';
@@ -379,7 +383,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
         return numVal.toLocaleString(undefined, { maximumFractionDigits: 6 });
       }
 
-      // Wei format - convert to VBC
+      // Wei format - convert to native currency
       const numValue = BigInt(value);
       if (numValue === 0n) return '0';
 
@@ -617,8 +621,10 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
               <div className="space-y-4">
                 {/* Balance */}
                 <div className="flex justify-between items-center py-3 border-b border-gray-700">
-                  <span className="text-gray-400">VBC Balance</span>
-                  <span className="text-white font-medium">{contract?.balance || '0'} VBC</span>
+                  <span className="text-gray-400">{getCurrencySymbol()} Balance</span>
+                  <span className="text-white font-medium">
+                    {contract?.balance || '0'} {getCurrencySymbol()}
+                  </span>
                 </div>
 
                 {/* Token Holdings */}
@@ -1080,7 +1086,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                                 <div className="flex flex-col">
                                   {parseFloat(tx.value) > 0 && (
                                     <span className="text-yellow-400">
-                                      {formatNativeValue(tx.value)} VBC
+                                      {formatNativeValue(tx.value)} {getCurrencySymbol()}
                                     </span>
                                   )}
                                   {formatTokenValue(tx)}

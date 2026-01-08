@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { type Token } from '@/lib/dex/config';
 import {
-  useVBCBalance,
+  useNativeBalance,
   useTokenBalance,
   formatTokenAmount,
   formatTokenAmountForInput,
@@ -38,10 +38,12 @@ export function TokenInput({
 }: TokenInputProps) {
   const { address } = useAccount();
 
-  const { data: vbcBalance } = useVBCBalance(address);
+  const { data: nativeBalance } = useNativeBalance(address);
   const { data: tokenBalance } = useTokenBalance(token.address as Address, address);
 
-  const balance = isNativeToken(token) ? vbcBalance?.value : (tokenBalance as bigint | undefined);
+  const balance = isNativeToken(token)
+    ? nativeBalance?.value
+    : (tokenBalance as bigint | undefined);
 
   const handleMax = () => {
     if (balance) {
@@ -49,7 +51,7 @@ export function TokenInput({
       const maxAmount = isNativeToken(token)
         ? balance > 100000000000000000n
           ? balance - 100000000000000000n
-          : 0n // Leave 0.1 VBC for gas
+          : 0n // Leave 0.1 native token for gas
         : balance;
       onAmountChange(formatTokenAmountForInput(maxAmount, token.decimals, 18));
     }

@@ -96,9 +96,11 @@ export async function GET() {
 
         const price = reserve1Formatted / reserve0Formatted;
 
-        // Format pair name (WVBC -> VBC for display)
-        const displaySymbol0 = symbol0 === 'WVBC' ? 'VBC' : symbol0;
-        const displaySymbol1 = symbol1 === 'WVBC' ? 'VBC' : symbol1;
+        // Format pair name (wrapped native -> native for display)
+        const wrappedNativeSymbol = config.dex?.wrappedNative?.symbol || 'WETH';
+        const nativeSymbol = config.currency?.symbol || 'ETH';
+        const displaySymbol0 = symbol0 === wrappedNativeSymbol ? nativeSymbol : symbol0;
+        const displaySymbol1 = symbol1 === wrappedNativeSymbol ? nativeSymbol : symbol1;
         const pairName = `${displaySymbol0}_${displaySymbol1}`;
 
         summary[pairName] = {

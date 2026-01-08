@@ -57,7 +57,7 @@ function PoolTokenIcon({
   const iconPath = getIcon(symbol);
   const color = getColor(symbol);
 
-  // Priority: 1. Built-in icon (VBC, WVBC, VBCG, USDT), 2. logoURI from database (with security validation)
+  // Priority: 1. Built-in icon from config, 2. logoURI from database (with security validation)
   if (iconPath) {
     return (
       <div
@@ -659,7 +659,7 @@ export function PoolContent({
   // Add liquidity hook
   const {
     addLiquidity,
-    addLiquidityVBC,
+    addLiquidityNative,
     isPending: isAdding,
     isConfirming: isAddConfirming,
     isSuccess: isAddSuccess,
@@ -727,8 +727,8 @@ export function PoolContent({
 
     try {
       if (isNativeToken(tokenA)) {
-        // Add liquidity with VBC
-        await addLiquidityVBC(
+        // Add liquidity with native token
+        await addLiquidityNative(
           tokenBAddress,
           amountBParsed,
           minAmountB,
@@ -737,8 +737,8 @@ export function PoolContent({
           amountAParsed
         );
       } else if (isNativeToken(tokenB)) {
-        // Add liquidity with VBC (swapped)
-        await addLiquidityVBC(
+        // Add liquidity with native token (swapped)
+        await addLiquidityNative(
           tokenAAddress,
           amountAParsed,
           minAmountA,
@@ -771,7 +771,7 @@ export function PoolContent({
     tokenAAddress,
     tokenBAddress,
     addLiquidity,
-    addLiquidityVBC,
+    addLiquidityNative,
   ]);
 
   // Handle remove liquidity (2-step: transfer LP to pair, then burn)

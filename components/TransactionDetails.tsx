@@ -12,7 +12,7 @@ import {
   HashtagIcon,
   ArrowPathIcon,
 } from '@heroicons/react/24/outline';
-import { weiToVBC } from '../lib/bigint-utils';
+import { baseToCurrency } from '../lib/bigint-utils';
 
 interface TransactionData {
   hash: string;
@@ -162,7 +162,7 @@ export default function TransactionDetails({ transaction }: { transaction: Trans
               <div className="flex items-center gap-2">
                 <CurrencyDollarIcon className="w-5 h-5 text-green-400" />
                 <span className="text-lg font-mono text-green-400">
-                  {formatNumber(weiToVBC(transaction.value))}
+                  {formatNumber(baseToCurrency(transaction.value))}
                 </span>
               </div>
             </div>

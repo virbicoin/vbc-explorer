@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { loadConfig } from '@/lib/config';
 import { getLPAddresses, getCachedPoolInfo, getCachedPoolStats } from '@/lib/dex/cache-service';
-import { getVbcPriceFromDex, calculatePoolTvlUsd, ADDRESSES } from '@/lib/dex/priceUtils';
+import { getNativePriceFromDex, calculatePoolTvlUsd, ADDRESSES } from '@/lib/dex/priceUtils';
 import { ethers } from 'ethers';
 
 /**
@@ -22,8 +22,8 @@ export async function GET() {
     const chainName = config.network?.name || 'Virbicoin';
     const chainId = config.network?.chainId || 329;
 
-    // Get VBC price from DEX
-    const vbcPriceUsd = await getVbcPriceFromDex();
+    // Get native price from DEX
+    const nativePriceUsd = await getNativePriceFromDex();
 
     // Calculate total TVL from all pools
     const lpAddresses = await getLPAddresses();
@@ -61,7 +61,7 @@ export async function GET() {
       id: `${chainName.toLowerCase()}-dex`,
       name: `${chainName} DEX`,
       address: config.dex?.factory || ADDRESSES.FACTORY,
-      symbol: config.currency?.symbol || 'VBC',
+      symbol: config.currency?.symbol || 'ETH',
       url: config.network?.explorer || 'https://explorer.digitalregion.jp',
       description: `Decentralized Exchange on ${chainName} Network`,
       chain: chainName,

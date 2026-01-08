@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { loadConfig } from '@/lib/config';
 import {
-  getVbcPriceFromDex,
-  getVbcgPriceFromDex,
+  getNativePriceFromDex,
+  getSecondaryPriceFromDex,
   getTokenPriceUsd,
   ADDRESSES,
   isStablecoin,
@@ -38,13 +38,13 @@ interface PricesResponse {
 export async function GET() {
   try {
     const config = loadConfig();
-    const nativeSymbol = config.currency?.symbol || 'VBC';
+    const nativeSymbol = config.currency?.symbol || 'ETH';
     const chainName = config.network?.name || 'Virbicoin';
 
-    // Get VBC and VBCG prices from DEX (not external API)
-    const [vbcPriceUsd, vbcgPriceUsd] = await Promise.all([
-      getVbcPriceFromDex(),
-      getVbcgPriceFromDex(),
+    // Get native and secondary token prices from DEX (not external API)
+    const [nativePriceUsd, secondaryPriceUsd] = await Promise.all([
+      getNativePriceFromDex(),
+      getSecondaryPriceFromDex(),
     ]);
 
     const coins: Record<string, TokenPrice> = {};
@@ -54,33 +54,35 @@ export async function GET() {
     coins[`${chainName.toLowerCase()}:${ADDRESSES.NATIVE}`] = {
       decimals: config.currency?.decimals || 18,
       symbol: nativeSymbol,
-      price: vbcPriceUsd,
+      price: nativePriceUsd,
       timestamp: timestamp,
-      confidence: vbcPriceUsd > 0 ? 0.99 : 0,
+      confidence: nativePriceUsd > 0 ? 0.99 : 0,
     };
 
-    // Wrapped native token (WVBC)
-    coins[`${chainName.toLowerCase()}:${ADDRESSES.WVBC}`] = {
+    // Wrapped native token
+    coins[`${chainName.toLowerCase()}:${ADDRESSES.WRAPPED_NATIVE}`] = {
       decimals: 18,
       symbol: `W${nativeSymbol}`,
-      price: vbcPriceUsd,
+      price: nativePriceUsd,
       timestamp: timestamp,
-      confidence: vbcPriceUsd > 0 ? 0.99 : 0,
+      confidence: nativePriceUsd > 0 ? 0.99 : 0,
     };
 
-    // VBCG (reward token)
-    coins[`${chainName.toLowerCase()}:${ADDRESSES.VBCG}`] = {
+    // Secondary token (reward token)
+    const secondarySymbol = config.dex?.rewardToken?.symbol || 'REWARD';
+    coins[`${chainName.toLowerCase()}:${ADDRESSES.SECONDARY}`] = {
       decimals: 18,
-      symbol: 'VBCG',
-      price: vbcgPriceUsd,
+      symbol: secondarySymbol,
+      price: secondaryPriceUsd,
       timestamp: timestamp,
-      confidence: vbcgPriceUsd > 0 ? 0.9 : 0,
+      confidence: secondaryPriceUsd > 0 ? 0.9 : 0,
     };
 
-    // USDT - stablecoin is always 1.0
-    coins[`${chainName.toLowerCase()}:${ADDRESSES.USDT}`] = {
-      decimals: 6,
-      symbol: 'USDT',
+    // Stablecoin
+    const stablecoinSymbol = config.dex?.usdt?.symbol || 'USDT';
+    coins[`${chainName.toLowerCase()}:${ADDRESSES.STABLECOIN}`] = {
+      decimals: config.dex?.usdt?.decimals || 6,
+      symbol: stablecoinSymbol,
       price: 1.0, // Stablecoin is always 1.0
       timestamp: timestamp,
       confidence: 0.99,
@@ -91,9 +93,9 @@ export async function GET() {
       const lpAddresses = await getLPAddresses();
       const processedTokens = new Set([
         ADDRESSES.NATIVE,
-        ADDRESSES.WVBC,
-        ADDRESSES.VBCG,
-        ADDRESSES.USDT,
+        ADDRESSES.WRAPPED_NATIVE,
+        ADDRESSES.SECONDARY,
+        ADDRESSES.STABLECOIN,
       ]);
 
       for (const lpAddress of lpAddresses) {
