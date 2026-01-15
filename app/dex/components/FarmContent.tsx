@@ -162,9 +162,13 @@ function FarmPoolCard({
   const formatRewardAmount = (amount: bigint): string => {
     if (amount === 0n) return '0';
     const num = Number(amount) / 1e18;
-    if (num < 0.0001 && num > 0) {
-      return num.toExponential(2);
-    }
+    if (num < 0.0000000001) return num.toFixed(14);
+    if (num < 0.000000001) return num.toFixed(13);
+    if (num < 0.00000001) return num.toFixed(12);
+    if (num < 0.0000001) return num.toFixed(11);
+    if (num < 0.000001) return num.toFixed(10);
+    if (num < 0.00001) return num.toFixed(9);
+    if (num < 0.0001) return num.toFixed(8);
     return num.toLocaleString('en-US', { maximumFractionDigits: 4 });
   };
 

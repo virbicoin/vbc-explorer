@@ -423,7 +423,13 @@ export function TradingChart({
       localization: {
         priceFormatter: (price: number) => {
           if (price === 0) return '0';
-          if (price < 0.0001) return price.toExponential(4);
+          if (price < 0.0000000001) return price.toFixed(14);
+          if (price < 0.000000001) return price.toFixed(13);
+          if (price < 0.00000001) return price.toFixed(12);
+          if (price < 0.0000001) return price.toFixed(11);
+          if (price < 0.000001) return price.toFixed(10);
+          if (price < 0.00001) return price.toFixed(9);
+          if (price < 0.0001) return price.toFixed(8);
           if (price < 0.01) return price.toFixed(6);
           if (price < 1) return price.toFixed(4);
           if (price < 100) return price.toFixed(2);
@@ -491,7 +497,13 @@ export function TradingChart({
   // Format price for display
   const formatPrice = (price: number): string => {
     if (price === 0) return '0';
-    if (price < 0.00001) return price.toExponential(4);
+    if (price < 0.0000000001) return price.toFixed(14);
+    if (price < 0.000000001) return price.toFixed(13);
+    if (price < 0.00000001) return price.toFixed(12);
+    if (price < 0.0000001) return price.toFixed(11);
+    if (price < 0.000001) return price.toFixed(10);
+    if (price < 0.00001) return price.toFixed(9);
+    if (price < 0.0001) return price.toFixed(8);
     if (price < 0.001) return price.toFixed(8);
     if (price < 1) return price.toFixed(6);
     if (price < 100) return price.toFixed(4);
