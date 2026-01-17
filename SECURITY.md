@@ -200,6 +200,35 @@ npm audit --json
 - ✅ CORS configuration
 - ✅ Content-Type validation
 
+### API Response Format Security
+
+API responses follow a standardized format defined in `lib/api-response.ts`:
+
+```typescript
+// Successful paginated response
+{
+  data: [...],
+  meta: {
+    pagination: { total, page, limit, pages, hasMore },
+    timestamp: string
+  }
+}
+
+// Error response
+{
+  error: {
+    code: "ERROR_CODE",
+    message: "Human readable message"
+  },
+  meta: { timestamp: string }
+}
+```
+
+**Security benefits:**
+- Consistent error handling prevents information leakage
+- Pagination limits prevent excessive data exposure
+- Timestamps aid in audit logging
+
 ### Recommended Additional Measures
 
 - 🔲 Web Application Firewall (WAF)
@@ -210,6 +239,23 @@ npm audit --json
 - 🔲 Security monitoring and alerting
 
 ## Changelog
+
+### v0.7.8 (January 2026)
+
+- **API Response Standardization**: Unified response format across all API endpoints
+  - New `lib/api-response.ts` with `paginatedResponse()`, `errorResponse()` utilities
+  - Consistent pagination metadata: `{ total, page, limit, pages, hasMore }`
+  - Error responses include structured error codes and messages
+  - Frontend compatibility maintained for both old and new formats
+
+- **Contract Type Detection Improvement**: Enhanced type inference from database
+  - Multi-source inference: ERC field → type field → name keywords → symbol/decimals
+  - `normalizeContractType()` converts inconsistent formats (ERC20/VRC20 → VRC-20)
+  - Keywords detection: "NFT", "ERC721", "VRC-721" in name/symbol
+
+- **DEX Blacklist LP Filtering**: Blacklisted LP pairs now properly filtered
+  - `getBlacklistedLPAddresses()` function in `lib/dex/cache-service.ts`
+  - Respects `blacklist.lpPairs` from `config.json`
 
 ### v0.7.7 (January 2026)
 
