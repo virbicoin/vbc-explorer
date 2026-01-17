@@ -110,13 +110,55 @@ const registerContract = async (
       return; // Not a contract
     }
 
-    // Try to detect if it's an ERC20 token
-    let isERC20 = false;
+    // Token detection results
+    let tokenType: 'ERC20' | 'ERC721' | 'ERC1155' | 'Contract' = 'Contract';
     let tokenName = '';
     let tokenSymbol = '';
     let tokenDecimals = 0;
 
+    // ERC-165 interface IDs
+    const ERC721_INTERFACE_ID = '0x80ac58cd';
+    const ERC1155_INTERFACE_ID = '0xd9b67a26';
+
+    // Try to detect token type
     try {
+      // First, check for ERC-165 supportsInterface (for NFTs)
+      const erc165ABI = [
+        {
+          constant: true,
+          inputs: [{ name: 'interfaceId', type: 'bytes4' }],
+          name: 'supportsInterface',
+          outputs: [{ name: '', type: 'bool' }],
+          type: 'function',
+        },
+      ];
+      const erc165Contract = new web3Instance.eth.Contract(erc165ABI as any, contractAddress);
+
+      // Check for ERC-721
+      try {
+        const isERC721 = await erc165Contract.methods.supportsInterface(ERC721_INTERFACE_ID).call();
+        if (isERC721) {
+          tokenType = 'ERC721';
+        }
+      } catch {
+        // Not ERC-165 compliant or not ERC-721
+      }
+
+      // Check for ERC-1155
+      if (tokenType === 'Contract') {
+        try {
+          const isERC1155 = await erc165Contract.methods
+            .supportsInterface(ERC1155_INTERFACE_ID)
+            .call();
+          if (isERC1155) {
+            tokenType = 'ERC1155';
+          }
+        } catch {
+          // Not ERC-1155
+        }
+      }
+
+      // Try ERC-20 detection
       const erc20ABI = [
         {
           constant: true,
@@ -159,22 +201,32 @@ const registerContract = async (
       ]);
 
       if (name && symbol) {
-        isERC20 = true;
         tokenName = String(name);
         tokenSymbol = String(symbol);
         tokenDecimals = decimals ? Number(decimals) : 18;
+
+        // Only set as ERC20 if not already detected as NFT
+        if (tokenType === 'Contract') {
+          tokenType = 'ERC20';
+        }
       }
     } catch {
       // Not an ERC20 token or method call failed
     }
 
+    // Convert tokenType to ERC number
+    const ercNumber =
+      tokenType === 'ERC20' ? 2 : tokenType === 'ERC721' ? 721 : tokenType === 'ERC1155' ? 1155 : 0;
+
     // Create contract entry
     await Contract.create({
       address: normalizedAddress,
       blockNumber: blockNumber,
-      ERC: isERC20 ? 2 : 0, // 2 = ERC20, 0 = normal contract
+      ERC: ercNumber,
+      type: tokenType === 'Contract' ? null : `VRC-${tokenType.replace('ERC', '')}`,
       creationTransaction: creationTxHash,
-      contractName: isERC20 ? tokenName : 'Contract',
+      contractName:
+        tokenType !== 'Contract' ? tokenName || tokenSymbol || 'Unknown Token' : 'Contract',
       tokenName: tokenName || null,
       symbol: tokenSymbol || null,
       owner: creatorAddress.toLowerCase(),
@@ -182,9 +234,9 @@ const registerContract = async (
       verified: false,
     });
 
-    console.log(
-      `📝 Contract registered: ${normalizedAddress}${isERC20 ? ` (${tokenSymbol})` : ''}`
-    );
+    const typeLabel =
+      tokenType !== 'Contract' ? ` (${tokenType}: ${tokenSymbol || tokenName})` : '';
+    console.log(`📝 Contract registered: ${normalizedAddress}${typeLabel}`);
   } catch (error: any) {
     // Ignore duplicate key errors
     if (error.code !== 11000) {

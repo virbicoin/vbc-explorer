@@ -14,8 +14,38 @@ import {
   ContractTypes,
   type ContractType,
 } from '../../../lib/api-response';
+import { readConfig } from '../../../lib/config';
 
 export const dynamic = 'force-dynamic';
+
+// Known tokens from config.json (address -> token info)
+interface KnownToken {
+  name: string;
+  symbol: string;
+  decimals: number;
+  type: string;
+}
+
+// Get known tokens from config, cached
+let knownTokensCache: Record<string, KnownToken> | null = null;
+function getKnownTokens(): Record<string, KnownToken> {
+  if (knownTokensCache) return knownTokensCache;
+  try {
+    const config = readConfig();
+    const tokens = (config as any).knownTokens || {};
+    // Normalize addresses to lowercase
+    knownTokensCache = Object.entries(tokens).reduce(
+      (acc, [addr, info]) => {
+        acc[addr.toLowerCase()] = info as KnownToken;
+        return acc;
+      },
+      {} as Record<string, KnownToken>
+    );
+    return knownTokensCache;
+  } catch {
+    return {};
+  }
+}
 
 interface ContractDocument {
   address: string;
@@ -62,11 +92,34 @@ function normalizeTokenType(type: string): string {
 // Helper function to convert ERC number to type string
 // Also infers token type from other fields when ERC is not set
 function getContractType(doc: ContractDocument): string {
-  const { ERC: erc, type, symbol, decimals, contractName, name, tokenName } = doc;
+  const { address, ERC: erc, type, symbol, decimals, contractName, name, tokenName } = doc;
+
+  // First, check if this contract is in knownTokens config
+  const knownTokens = getKnownTokens();
+  const knownToken = address ? knownTokens[address.toLowerCase()] : null;
+  if (knownToken?.type) {
+    return normalizeTokenType(knownToken.type);
+  }
 
   // If type is already set as a string (not 'Contract'), normalize and use it
   if (type && type !== 'Contract') {
     return normalizeTokenType(type);
+  }
+
+  // Check if contract name contains NFT-related keywords FIRST
+  // This takes priority over ERC field since some NFTs are incorrectly marked as ERC20
+  const fullName =
+    `${contractName || ''} ${name || ''} ${tokenName || ''} ${symbol || ''}`.toLowerCase();
+  if (
+    fullName.includes('nft') ||
+    fullName.includes('721') ||
+    fullName.includes('erc721') ||
+    fullName.includes('vrc721')
+  ) {
+    return ContractTypes.VRC721;
+  }
+  if (fullName.includes('1155') || fullName.includes('erc1155') || fullName.includes('vrc1155')) {
+    return ContractTypes.VRC1155;
   }
 
   // Convert ERC number to type string
@@ -81,15 +134,6 @@ function getContractType(doc: ContractDocument): string {
       return ContractTypes.VRC721;
     case 1155:
       return ContractTypes.VRC1155;
-  }
-
-  // Check if contract name contains NFT-related keywords first
-  const fullName = `${contractName || ''} ${name || ''} ${tokenName || ''}`.toLowerCase();
-  if (fullName.includes('nft') || fullName.includes('721')) {
-    return ContractTypes.VRC721;
-  }
-  if (fullName.includes('1155')) {
-    return ContractTypes.VRC1155;
   }
 
   // Infer token type from other fields if ERC is not set or is 0
@@ -193,18 +237,26 @@ export async function GET(request: NextRequest) {
       .toArray();
 
     // Format contracts
+    const knownTokens = getKnownTokens();
     const contracts = contractDocs.map((doc) => {
       const contractDoc = doc as unknown as ContractDocument;
       const contractType = getContractType(contractDoc);
+
+      // Get known token info if available
+      const knownToken = contractDoc.address
+        ? knownTokens[contractDoc.address.toLowerCase()]
+        : null;
+
       return {
         address: contractDoc.address,
         name:
+          knownToken?.name ||
           contractDoc.contractName ||
           contractDoc.tokenName ||
           contractDoc.name ||
           (contractType !== ContractTypes.CONTRACT ? contractDoc.symbol : null) ||
           'Unknown Contract',
-        symbol: contractDoc.symbol || null,
+        symbol: knownToken?.symbol || contractDoc.symbol || null,
         type: contractType,
         verified: contractDoc.verified || false,
         blockNumber: contractDoc.blockNumber || null,

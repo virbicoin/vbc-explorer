@@ -2,6 +2,13 @@ import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
 
+// Resolve environment variable placeholders in strings
+const resolveEnvVars = (str: string): string => {
+  return str.replace(/\$\{([^}]+)\}/g, (_, envVar) => {
+    return process.env[envVar] || '';
+  });
+};
+
 // Function to get MongoDB URI from config.json or environment variable
 const getMongoDBURI = (): string => {
   // Try to read from config.json first
@@ -10,8 +17,12 @@ const getMongoDBURI = (): string => {
     if (fs.existsSync(configPath)) {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
       if (config.database && config.database.uri) {
-        console.log('📄 Using MongoDB URI from config.json');
-        return config.database.uri;
+        const uri = resolveEnvVars(config.database.uri);
+        // Only use config.json URI if it resolves to a valid value
+        if (uri && uri.startsWith('mongodb')) {
+          console.log('📄 Using MongoDB URI from config.json');
+          return uri;
+        }
       }
     }
   } catch {

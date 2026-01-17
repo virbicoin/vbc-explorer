@@ -72,7 +72,10 @@
   "features": {
     "nft": {
       "enabled": true,
-      "metadataProviders": ["ipfs", "http"],
+      "metadataProviders": [
+        "ipfs",
+        "http"
+      ],
       "imageFallback": true,
       "cacheEnabled": true
     },
@@ -121,7 +124,10 @@
       "max": 100
     },
     "cors": {
-      "origin": ["https://explorer.example.com", "http://localhost:3000"],
+      "origin": [
+        "https://explorer.example.com",
+        "http://localhost:3000"
+      ],
       "credentials": true
     }
   },
@@ -251,10 +257,22 @@
     "_comment": "Token Launchpad for no-code token creation. Set factoryAddress to enable."
   },
   "tokenIcons": {
-    "ETH": { "icon": "/img/eth.svg", "color": "from-blue-500 to-purple-600" },
-    "WETH": { "icon": "/img/eth.svg", "color": "from-blue-400 to-purple-500" },
-    "USDT": { "icon": "/img/USDT.svg", "color": "from-green-400 to-emerald-500" },
-    "USDC": { "icon": "/img/USDC.svg", "color": "from-blue-400 to-blue-500" },
+    "ETH": {
+      "icon": "/img/eth.svg",
+      "color": "from-blue-500 to-purple-600"
+    },
+    "WETH": {
+      "icon": "/img/eth.svg",
+      "color": "from-blue-400 to-purple-500"
+    },
+    "USDT": {
+      "icon": "/img/USDT.svg",
+      "color": "from-green-400 to-emerald-500"
+    },
+    "USDC": {
+      "icon": "/img/USDC.svg",
+      "color": "from-blue-400 to-blue-500"
+    },
     "_comment": "Token icons and gradient colors for UI display. Keys are token symbols."
   },
   "blacklist": {
@@ -319,5 +337,19 @@
     ],
     "cacheDuration": 60,
     "_comment": "Supply calculation for /api/total_supply and /api/circulating_supply endpoints (CoinGecko/CMC compatible)"
+  },
+  "knownTokens": {
+    "0x...tokenAddress1": {
+      "name": "Token Name",
+      "symbol": "TKN",
+      "decimals": 18,
+      "type": "VRC-20"
+    },
+    "0x...tokenAddress2": {
+      "name": "NFT Collection",
+      "symbol": "NFT",
+      "decimals": 0,
+      "type": "VRC-721"
+    }
   }
 }
