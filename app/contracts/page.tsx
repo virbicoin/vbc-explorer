@@ -219,74 +219,84 @@ export default function ContractsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-700">
-                  {contracts.map((contract) => (
-                    <tr key={contract.address} className="hover:bg-gray-700/50 transition-colors">
-                      <td className="py-3 px-4">
-                        <Link
-                          href={`/contract/${contract.address}`}
-                          className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors"
-                          title={contract.address}
-                        >
-                          {formatAddress(contract.address)}
-                        </Link>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-200 font-medium">
-                            {contract.name || 'Unknown'}
-                          </span>
-                          {contract.symbol && (
-                            <span className="text-gray-400 text-sm">({contract.symbol})</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${
-                            contract.type === 'VRC-20' || contract.type === 'ERC20'
-                              ? 'bg-blue-500/20 text-blue-400'
-                              : contract.type === 'VRC-721' || contract.type === 'ERC721'
-                                ? 'bg-purple-500/20 text-purple-400'
-                                : contract.type === 'VRC-1155'
-                                  ? 'bg-pink-500/20 text-pink-400'
-                                  : 'bg-gray-500/20 text-gray-400'
-                          }`}
-                        >
-                          {contract.type || 'Contract'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        {contract.verified ? (
-                          <div className="flex items-center gap-1 text-green-400">
-                            <CheckCircleIcon className="w-5 h-5" />
-                            <span className="text-sm">Verified</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 text-gray-500">
-                            <XCircleIcon className="w-5 h-5" />
-                            <span className="text-sm">Unverified</span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="text-gray-400 text-sm">
-                          {contract.compilerVersion || '-'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        {contract.blockNumber ? (
+                  {contracts.map((contract) => {
+                    // Link to /token/ for token contracts, /contract/ for others
+                    const isToken = ['VRC-20', 'VRC-721', 'VRC-1155', 'ERC20', 'ERC721'].includes(
+                      contract.type
+                    );
+                    const linkHref = isToken
+                      ? `/token/${contract.address}`
+                      : `/contract/${contract.address}`;
+
+                    return (
+                      <tr key={contract.address} className="hover:bg-gray-700/50 transition-colors">
+                        <td className="py-3 px-4">
                           <Link
-                            href={`/block/${contract.blockNumber}`}
-                            className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
+                            href={linkHref}
+                            className="text-blue-400 hover:text-blue-300 font-mono text-sm transition-colors"
+                            title={contract.address}
                           >
-                            Block #{contract.blockNumber.toLocaleString()}
+                            {formatAddress(contract.address)}
                           </Link>
-                        ) : (
-                          <span className="text-gray-500 text-sm">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-200 font-medium">
+                              {contract.name || 'Unknown'}
+                            </span>
+                            {contract.symbol && (
+                              <span className="text-gray-400 text-sm">({contract.symbol})</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span
+                            className={`px-2 py-1 rounded text-xs font-medium ${
+                              contract.type === 'VRC-20' || contract.type === 'ERC20'
+                                ? 'bg-blue-500/20 text-blue-400'
+                                : contract.type === 'VRC-721' || contract.type === 'ERC721'
+                                  ? 'bg-purple-500/20 text-purple-400'
+                                  : contract.type === 'VRC-1155'
+                                    ? 'bg-pink-500/20 text-pink-400'
+                                    : 'bg-gray-500/20 text-gray-400'
+                            }`}
+                          >
+                            {contract.type || 'Contract'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {contract.verified ? (
+                            <div className="flex items-center gap-1 text-green-400">
+                              <CheckCircleIcon className="w-5 h-5" />
+                              <span className="text-sm">Verified</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 text-gray-500">
+                              <XCircleIcon className="w-5 h-5" />
+                              <span className="text-sm">Unverified</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-gray-400 text-sm">
+                            {contract.compilerVersion || '-'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {contract.blockNumber ? (
+                            <Link
+                              href={`/block/${contract.blockNumber}`}
+                              className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
+                            >
+                              Block #{contract.blockNumber.toLocaleString()}
+                            </Link>
+                          ) : (
+                            <span className="text-gray-500 text-sm">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

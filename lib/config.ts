@@ -55,9 +55,17 @@ export interface CurrencyConfig {
       enabled: boolean;
       id: string;
     };
+    cmc?: {
+      enabled: boolean;
+      id: string;
+    };
     coinpaprika?: {
       enabled: boolean;
       id: string;
+    };
+    exbitron?: {
+      enabled: boolean;
+      symbol?: string;
     };
   };
 }

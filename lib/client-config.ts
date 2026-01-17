@@ -15,6 +15,9 @@ let currencyCache: {
 let networkCache: {
   name: string;
   chainId: number;
+  rpcUrl: string;
+  explorer: string;
+  blockTime: number;
 } | null = null;
 
 /**
@@ -36,6 +39,9 @@ export async function initializeCurrencyConfig(): Promise<void> {
       networkCache = {
         name: config.network?.name || 'Ethereum',
         chainId: config.network?.chainId || 1,
+        rpcUrl: config.network?.rpcUrl || 'http://localhost:8545',
+        explorer: config.network?.explorer || '',
+        blockTime: config.network?.blockTime || 12,
       };
     }
   } catch {
@@ -49,6 +55,9 @@ export async function initializeCurrencyConfig(): Promise<void> {
     networkCache = {
       name: 'Ethereum',
       chainId: 1,
+      rpcUrl: 'http://localhost:8545',
+      explorer: '',
+      blockTime: 12,
     };
   }
 }
@@ -103,4 +112,31 @@ export function getNetworkName(): string {
  */
 export function getChainId(): number {
   return networkCache?.chainId || 1;
+}
+
+/**
+ * Get RPC URL (client-safe)
+ */
+export function getRpcUrl(): string {
+  return networkCache?.rpcUrl || 'http://localhost:8545';
+}
+
+/**
+ * Get explorer URL (client-safe)
+ */
+export function getExplorerUrl(): string {
+  return networkCache?.explorer || '';
+}
+
+/**
+ * Get full network config (client-safe)
+ */
+export function getNetworkConfig() {
+  return {
+    name: networkCache?.name || 'Ethereum',
+    chainId: networkCache?.chainId || 1,
+    rpcUrl: networkCache?.rpcUrl || 'http://localhost:8545',
+    explorer: networkCache?.explorer || '',
+    blockTime: networkCache?.blockTime || 12,
+  };
 }

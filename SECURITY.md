@@ -49,9 +49,8 @@ Create a `.env.local` file for sensitive values:
 # Required
 MONGODB_URI=mongodb://...
 
-# Optional - API Keys
-COINGECKO_API_KEY=your_api_key
-COINPAPRIKA_API_KEY=your_api_key
+# Optional - API Keys for Price Data
+CMC_API_KEY=your_coinmarketcap_api_key
 ```
 
 ### API Security
@@ -61,6 +60,7 @@ COINPAPRIKA_API_KEY=your_api_key
 The explorer implements rate limiting on sensitive endpoints:
 
 - `/api/contract/verify` - 5 requests per 15 minutes
+- `/api/contracts` - 60 requests per minute
 - `/api/address/*` - 100 requests per 15 minutes
 - `/api/tokens/*` - 100 requests per 15 minutes
 

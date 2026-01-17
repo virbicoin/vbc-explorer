@@ -30,7 +30,7 @@ A modern, real-time blockchain explorer for any EVM-compatible network built wit
 - **⏳ Pending Transactions** - View pending transactions in mempool
 - **💰 Token Management** - Comprehensive ERC-20, ERC-721, and ERC-1155 token tracking with holder analytics
 - **📈 Rich List** - Real-time account balance tracking and wealth distribution analysis
-- **💸 Price Tracking** - Live price updates with multiple API integrations (CoinGecko, CoinPaprika)
+- **💸 Price Tracking** - Live price updates with multiple API integrations (CoinGecko, CoinMarketCap, Coinpaprika, Exbitron, DEX)
 - **⚡ Real-time Sync** - Live blockchain synchronization with WebSocket support
 - **📱 Responsive Design** - Mobile-first design optimized for all devices
 - **🔗 EIP-3091 Support** - Direct URI redirection for ethereum: links
@@ -957,9 +957,17 @@ All configuration is now centralized in `config.json`. The following settings ar
         "enabled": true,
         "id": "ethereum"
       },
+      "cmc": {
+        "enabled": false,
+        "id": "ethereum"
+      },
       "coinpaprika": {
         "enabled": true,
         "id": "eth-ethereum"
+      },
+      "exbitron": {
+        "enabled": true,
+        "symbol": "ETH"
       }
     }
   },

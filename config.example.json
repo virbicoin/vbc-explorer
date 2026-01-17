@@ -30,9 +30,18 @@
         "enabled": true,
         "id": "ethereum"
       },
+      "cmc": {
+        "enabled": false,
+        "id": "ethereum",
+        "_comment": "Requires CMC_API_KEY environment variable"
+      },
       "coinpaprika": {
         "enabled": true,
         "id": "eth-ethereum"
+      },
+      "exbitron": {
+        "enabled": true,
+        "symbol": "ETH"
       }
     },
     "_comment": "For custom networks: name/symbol/unit/gasUnit can be customized (e.g., VirBiCoin/VBC/niku/Gniku)"

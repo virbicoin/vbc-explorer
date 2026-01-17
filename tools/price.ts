@@ -3,9 +3,11 @@
  * Price & DEX Swap Sync Tool (Optimized)
  *
  * Price sources (priority order):
- * 1. Exbitron Exchange API
- * 2. CoinGecko (if configured)
- * 3. DEX on-chain price (fallback)
+ * 1. CoinGecko (if configured)
+ * 2. CoinMarketCap (if configured)
+ * 3. Coinpaprika (if configured)
+ * 4. Exbitron Exchange API
+ * 5. DEX on-chain price (fallback)
  */
 
 import { Market, DexSwap } from '../models/index';
@@ -120,9 +122,135 @@ function getLPAddresses(): string[] {
 // ============================================
 // Price Fetching
 // ============================================
+
+// 1. CoinGecko API
+const fetchCoinGeckoPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } | null> => {
+  if (!currencyConfig?.priceApi?.coingecko?.enabled) return null;
+
+  try {
+    const coinId = currencyConfig.priceApi.coingecko.id;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=btc,usd`,
+      {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'VBC-Explorer/1.0', Accept: 'application/json' },
+      }
+    );
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = (await res.json()) as Record<string, { btc?: number; usd?: number }>;
+      if (data[coinId]) {
+        const price = { quoteUSD: data[coinId].usd || 0, quoteBTC: data[coinId].btc || 0 };
+        if (price.quoteUSD > 0) {
+          log(`✅ CoinGecko: $${price.quoteUSD}`);
+          return price;
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+// 2. CoinMarketCap API
+const fetchCMCPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } | null> => {
+  if (!currencyConfig?.priceApi?.cmc?.enabled) return null;
+
+  try {
+    const coinId = currencyConfig.priceApi.cmc.id;
+    const apiKey = process.env.CMC_API_KEY;
+
+    // CMC requires API key
+    if (!apiKey) {
+      log('⚠️ CMC: API key not configured (set CMC_API_KEY env var)');
+      return null;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(
+      `https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?slug=${coinId}&convert=USD,BTC`,
+      {
+        signal: controller.signal,
+        headers: {
+          'X-CMC_PRO_API_KEY': apiKey,
+          Accept: 'application/json',
+        },
+      }
+    );
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      const coinData = Object.values(data.data || {})[0] as {
+        quote?: { USD?: { price?: number }; BTC?: { price?: number } };
+      };
+      if (coinData?.quote?.USD?.price) {
+        const price = {
+          quoteUSD: coinData.quote.USD.price || 0,
+          quoteBTC: coinData.quote.BTC?.price || 0,
+        };
+        if (price.quoteUSD > 0) {
+          log(`✅ CMC: $${price.quoteUSD}`);
+          return price;
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+// 3. Coinpaprika API
+const fetchCoinpaprikaPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } | null> => {
+  if (!currencyConfig?.priceApi?.coinpaprika?.enabled) return null;
+
+  try {
+    const coinId = currencyConfig.priceApi.coinpaprika.id;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(`https://api.coinpaprika.com/v1/tickers/${coinId}`, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'VBC-Explorer/1.0', Accept: 'application/json' },
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = (await res.json()) as {
+        quotes?: { USD?: { price?: number }; BTC?: { price?: number } };
+      };
+      if (data.quotes?.USD?.price) {
+        const price = {
+          quoteUSD: data.quotes.USD.price || 0,
+          quoteBTC: data.quotes.BTC?.price || 0,
+        };
+        if (price.quoteUSD > 0) {
+          log(`✅ Coinpaprika: $${price.quoteUSD}`);
+          return price;
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+// 4. Exbitron Exchange API
 const fetchExbitronPrice = async (
   symbol: string
 ): Promise<{ quoteUSD: number; quoteBTC: number } | null> => {
+  // Check if explicitly disabled
+  if (currencyConfig?.priceApi?.exbitron?.enabled === false) return null;
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -136,14 +264,21 @@ const fetchExbitronPrice = async (
     if (!response.ok) return null;
 
     const tickers = await response.json();
-    const nativeUsdt = tickers.find((t: { ticker_id: string }) => t.ticker_id === `${symbol}-USDT`);
-    const nativeBtc = tickers.find((t: { ticker_id: string }) => t.ticker_id === `${symbol}-BTC`);
+    const tickerSymbol = currencyConfig?.priceApi?.exbitron?.symbol || symbol;
+    const nativeUsdt = tickers.find(
+      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}-USDT`
+    );
+    const nativeBtc = tickers.find(
+      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}-BTC`
+    );
 
     if (nativeUsdt?.last_price || nativeBtc?.last_price) {
       const quoteUSD = parseFloat(nativeUsdt?.last_price || '0');
       const quoteBTC = parseFloat(nativeBtc?.last_price || '0');
-      log(`✅ Exbitron: $${quoteUSD}`);
-      return { quoteUSD, quoteBTC };
+      if (quoteUSD > 0) {
+        log(`✅ Exbitron: $${quoteUSD}`);
+        return { quoteUSD, quoteBTC };
+      }
     }
     return null;
   } catch {
@@ -151,6 +286,7 @@ const fetchExbitronPrice = async (
   }
 };
 
+// 5. DEX on-chain price (fallback)
 const fetchDexPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } | null> => {
   try {
     const provider = getProvider();
@@ -174,8 +310,10 @@ const fetchDexPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } |
           const r0 = Number(ethers.formatUnits(reserves[0], decimals0));
           const r1 = Number(ethers.formatUnits(reserves[1], decimals1));
           const quoteUSD = token0 === usdt ? r0 / r1 : r1 / r0;
-          log(`✅ DEX: $${quoteUSD.toFixed(8)}`);
-          return { quoteUSD, quoteBTC: 0 };
+          if (quoteUSD > 0) {
+            log(`✅ DEX: $${quoteUSD.toFixed(8)}`);
+            return { quoteUSD, quoteBTC: 0 };
+          }
         }
       } catch {
         continue;
@@ -187,6 +325,14 @@ const fetchDexPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } |
   }
 };
 
+/**
+ * Fetch price from multiple sources in priority order:
+ * 1. CoinGecko
+ * 2. CoinMarketCap (CMC)
+ * 3. Coinpaprika
+ * 4. Exbitron
+ * 5. DEX
+ */
 const fetchCryptoPrice = async (): Promise<PriceData | null> => {
   const symbol = currencyConfig?.symbol;
   if (!symbol) return null;
@@ -196,33 +342,28 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
     return priceCache.data;
   }
 
-  // Try Exbitron first
-  let price = await fetchExbitronPrice(symbol);
+  let price: { quoteUSD: number; quoteBTC: number } | null = null;
 
-  // Try CoinGecko if configured
-  if (!price && currencyConfig?.priceApi?.coingecko?.enabled) {
-    try {
-      const coinId = currencyConfig.priceApi.coingecko.id;
-      const controller = new AbortController();
-      setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(
-        `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=btc,usd`,
-        { signal: controller.signal }
-      );
-      if (res.ok) {
-        const data = (await res.json()) as Record<string, { btc?: number; usd?: number }>;
-        if (data[coinId!]) {
-          price = { quoteUSD: data[coinId!].usd || 0, quoteBTC: data[coinId!].btc || 0 };
-          log(`✅ CoinGecko: $${price.quoteUSD}`);
-        }
-      }
-    } catch {
-      // Ignore
-    }
+  // 1. Try CoinGecko first
+  price = await fetchCoinGeckoPrice();
+
+  // 2. Try CoinMarketCap
+  if (!price) {
+    price = await fetchCMCPrice();
   }
 
-  // Try DEX as fallback
-  if (!price || price.quoteUSD === 0) {
+  // 3. Try Coinpaprika
+  if (!price) {
+    price = await fetchCoinpaprikaPrice();
+  }
+
+  // 4. Try Exbitron
+  if (!price) {
+    price = await fetchExbitronPrice(symbol);
+  }
+
+  // 5. Try DEX as final fallback
+  if (!price) {
     price = await fetchDexPrice();
   }
 

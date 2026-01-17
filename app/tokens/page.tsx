@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react';
 import {
   getCurrencyName,
   getCurrencySymbol,
+  getCurrencyConfig,
+  getNetworkConfig,
   initializeCurrencyConfig,
 } from '../../lib/client-config';
 import { initializeCurrency } from '../../lib/bigint-utils';
@@ -52,7 +54,36 @@ const addToMetaMask = async (token: Token) => {
     return;
   }
 
-  if (token.type === 'Native' || token.address === 'N/A') return;
+  // For native token, add network to MetaMask instead
+  if (token.type === 'Native' || token.address === 'N/A') {
+    try {
+      const networkConfig = getNetworkConfig();
+      const currencyConfig = getCurrencyConfig();
+      const chainIdHex = `0x${networkConfig.chainId.toString(16)}`;
+
+      await ethereum.request({
+        method: 'wallet_addEthereumChain',
+        params: [
+          {
+            chainId: chainIdHex,
+            chainName: networkConfig.name,
+            nativeCurrency: {
+              name: currencyConfig.name,
+              symbol: currencyConfig.symbol,
+              decimals: currencyConfig.decimals,
+            },
+            rpcUrls: [networkConfig.rpcUrl],
+            blockExplorerUrls: networkConfig.explorer ? [networkConfig.explorer] : [],
+          },
+        ],
+      });
+    } catch (err: any) {
+      if (err.code !== 4001) {
+        console.error('Failed to add network to MetaMask:', err);
+      }
+    }
+    return;
+  }
 
   try {
     await ethereum.request({
@@ -92,15 +123,14 @@ export default function TokensPage() {
   const [totalTokens, setTotalTokens] = useState(0);
   const ITEMS_PER_PAGE = 50;
 
-  // Fetch native token total supply from richlist API
+  // Fetch native token total supply from total_supply API
   const fetchNativeSupply = async () => {
     try {
-      const res = await fetch('/api/richlist?page=1&limit=1');
+      const res = await fetch('/api/total_supply');
       if (res.ok) {
-        const data = await res.json();
-        const totalSupply = data.statistics?.totalSupply || 0;
-        // Convert from Wei to native currency and format
-        const supply = (totalSupply / 1e18).toLocaleString(undefined, {
+        const totalSupply = await res.text();
+        // Format with thousands separator
+        const supply = Number(totalSupply).toLocaleString(undefined, {
           minimumFractionDigits: 0,
           maximumFractionDigits: 0,
         });
@@ -356,17 +386,19 @@ export default function TokensPage() {
                           </div>
                         </td>
                         <td className="py-3 px-4 w-24">
-                          {token.type !== 'Native' &&
-                            token.address !== 'N/A' &&
-                            !isNFTToken(token.type) && (
-                              <button
-                                onClick={() => addToMetaMask(token)}
-                                className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
-                                title="Add to MetaMask"
-                              >
-                                🦊
-                              </button>
-                            )}
+                          {!isNFTToken(token.type) && (
+                            <button
+                              onClick={() => addToMetaMask(token)}
+                              className="p-2 hover:bg-gray-600 rounded-lg transition-colors"
+                              title={
+                                token.type === 'Native'
+                                  ? 'Add network to MetaMask'
+                                  : 'Add to MetaMask'
+                              }
+                            >
+                              🦊
+                            </button>
+                          )}
                         </td>
                         <td className="py-3 px-4 w-32">
                           {token.type !== 'Native' && token.verified ? (
