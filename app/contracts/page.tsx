@@ -23,11 +23,23 @@ interface Contract {
   compilerVersion?: string;
 }
 
+// Support both old and new API response formats
 interface ContractsResponse {
-  contracts: Contract[];
-  total: number;
-  page: number;
-  limit: number;
+  // New format
+  data?: Contract[];
+  meta?: {
+    pagination?: {
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    };
+  };
+  // Old format (for backwards compatibility)
+  contracts?: Contract[];
+  total?: number;
+  page?: number;
+  limit?: number;
 }
 
 export default function ContractsPage() {
@@ -70,8 +82,11 @@ export default function ContractsPage() {
         }
 
         const data: ContractsResponse = await response.json();
-        setContracts(data.contracts || []);
-        setTotal(data.total || 0);
+        // Support both new and old API response formats
+        const contractsList = data.data || data.contracts || [];
+        const totalCount = data.meta?.pagination?.total ?? data.total ?? 0;
+        setContracts(contractsList);
+        setTotal(totalCount);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch contracts');
       } finally {

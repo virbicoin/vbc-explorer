@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import dbConnect from '../../../lib/db';
 import mongoose from 'mongoose';
 import {
@@ -7,6 +7,13 @@ import {
   checkRateLimit,
   getClientIp,
 } from '../../../lib/security/validation';
+import {
+  paginatedResponse,
+  rateLimitResponse,
+  internalErrorResponse,
+  ContractTypes,
+  type ContractType,
+} from '../../../lib/api-response';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,23 +73,23 @@ function getContractType(doc: ContractDocument): string {
   switch (erc) {
     case 2:
     case 20:
-      return 'VRC-20';
+      return ContractTypes.VRC20;
     case 3:
     case 223:
-      return 'VRC-223';
+      return ContractTypes.VRC223;
     case 721:
-      return 'VRC-721';
+      return ContractTypes.VRC721;
     case 1155:
-      return 'VRC-1155';
+      return ContractTypes.VRC1155;
   }
 
   // Check if contract name contains NFT-related keywords first
   const fullName = `${contractName || ''} ${name || ''} ${tokenName || ''}`.toLowerCase();
   if (fullName.includes('nft') || fullName.includes('721')) {
-    return 'VRC-721';
+    return ContractTypes.VRC721;
   }
   if (fullName.includes('1155')) {
-    return 'VRC-1155';
+    return ContractTypes.VRC1155;
   }
 
   // Infer token type from other fields if ERC is not set or is 0
@@ -90,21 +97,21 @@ function getContractType(doc: ContractDocument): string {
   if (symbol) {
     // If it has decimals defined, it's definitely an ERC20 token
     if (typeof decimals === 'number') {
-      return 'VRC-20';
+      return ContractTypes.VRC20;
     }
     // If symbol exists but no decimals, check if it looks like a token name
     // Tokens typically have short symbols (2-10 chars)
     if (symbol.length >= 2 && symbol.length <= 10 && /^[A-Z0-9]+$/i.test(symbol)) {
-      return 'VRC-20';
+      return ContractTypes.VRC20;
     }
   }
 
   // If tokenName is set, it's likely a token
   if (tokenName) {
-    return 'VRC-20';
+    return ContractTypes.VRC20;
   }
 
-  return 'Contract';
+  return ContractTypes.CONTRACT;
 }
 
 export async function GET(request: NextRequest) {
@@ -113,10 +120,7 @@ export async function GET(request: NextRequest) {
     const clientIp = getClientIp(request);
     const rateLimitResult = checkRateLimit(`contracts:${clientIp}`, 60, 1);
     if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: rateLimitResult.resetIn },
-        { status: 429 }
-      );
+      return rateLimitResponse(rateLimitResult.resetIn);
     }
 
     const searchParams = request.nextUrl.searchParams;
@@ -131,7 +135,7 @@ export async function GET(request: NextRequest) {
     const db = mongoose.connection.db;
 
     if (!db) {
-      return NextResponse.json({ contracts: [], total: 0, page, limit });
+      return paginatedResponse([], { page, limit, total: 0 });
     }
 
     // Build query - Contract collection contains all contracts
@@ -198,7 +202,7 @@ export async function GET(request: NextRequest) {
           contractDoc.contractName ||
           contractDoc.tokenName ||
           contractDoc.name ||
-          (contractType !== 'Contract' ? contractDoc.symbol : null) ||
+          (contractType !== ContractTypes.CONTRACT ? contractDoc.symbol : null) ||
           'Unknown Contract',
         symbol: contractDoc.symbol || null,
         type: contractType,
@@ -209,17 +213,9 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({
-      contracts,
-      total,
-      page,
-      limit,
-    });
+    return paginatedResponse(contracts, { page, limit, total });
   } catch (error) {
     console.error('Error fetching contracts:', error);
-    return NextResponse.json(
-      { contracts: [], total: 0, error: 'Failed to fetch contracts' },
-      { status: 500 }
-    );
+    return internalErrorResponse('Failed to fetch contracts');
   }
 }

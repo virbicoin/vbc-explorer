@@ -167,8 +167,11 @@ export default function TokensPage() {
         if (!res.ok) throw new Error('Failed to fetch tokens');
         const data = await res.json();
 
+        // Support both new format (data.data) and old format (data.tokens)
+        const tokenList = data.data || data.tokens || [];
+
         // Sort tokens (Native first, then by address descending)
-        const sortedTokens = (data.tokens || []).sort((a: Token, b: Token) => {
+        const sortedTokens = tokenList.sort((a: Token, b: Token) => {
           // Nativeトークンは最初に表示
           if (a.type === 'Native') return -1;
           if (b.type === 'Native') return 1;
@@ -178,10 +181,11 @@ export default function TokensPage() {
         });
         setTokens(sortedTokens);
 
-        // Update pagination info
-        if (data.pagination) {
-          setTotalPages(data.pagination.totalPages || 1);
-          setTotalTokens(data.pagination.total || 0);
+        // Update pagination info (support both new and old format)
+        const pagination = data.meta?.pagination || data.pagination;
+        if (pagination) {
+          setTotalPages(pagination.totalPages || 1);
+          setTotalTokens(pagination.total || 0);
         }
       } catch {
         setTokens([]);

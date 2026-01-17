@@ -5,6 +5,7 @@ import { Contract, connectDB } from '../../../models/index';
 import { loadConfig } from '../../../lib/config';
 import { getWeb3 } from '../../../lib/web3';
 import { apiCache, CACHE_TTL } from '../../../lib/cache';
+import { paginatedResponse, ContractTypes } from '../../../lib/api-response';
 
 // Get shared Web3 instance
 const web3 = getWeb3();
@@ -89,6 +90,14 @@ interface IToken {
   supply?: string;
   verified?: boolean;
 }
+
+// Token types using shared constants
+const TokenTypes = {
+  NATIVE: 'Native' as const,
+  VRC20: ContractTypes.VRC20,
+  VRC721: ContractTypes.VRC721,
+  VRC1155: ContractTypes.VRC1155,
+};
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -523,14 +532,5 @@ export async function GET(request: NextRequest) {
   const endIndex = startIndex + limit;
   const paginatedTokens = allTokens.slice(startIndex, endIndex);
 
-  return NextResponse.json({
-    tokens: paginatedTokens,
-    pagination: {
-      page,
-      limit,
-      total,
-      totalPages,
-      hasMore: page < totalPages,
-    },
-  });
+  return paginatedResponse(paginatedTokens, { page, limit, total });
 }
