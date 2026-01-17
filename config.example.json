@@ -26,22 +26,33 @@
     "decimals": 18,
     "gasUnit": "Gwei",
     "priceApi": {
+      "_comment": "Price APIs are tried in order: CoinGecko → CMC → Coinpaprika → Exbitron → DEX",
       "coingecko": {
         "enabled": true,
-        "id": "ethereum"
+        "id": "ethereum",
+        "_comment": "CoinGecko coin ID (see https://www.coingecko.com/en/api/documentation)"
       },
       "cmc": {
         "enabled": false,
         "id": "ethereum",
-        "_comment": "Requires CMC_API_KEY environment variable"
+        "_comment": "Requires CMC_API_KEY environment variable. ID is the CMC slug."
       },
       "coinpaprika": {
         "enabled": true,
-        "id": "eth-ethereum"
+        "id": "eth-ethereum",
+        "_comment": "Coinpaprika coin ID (see https://api.coinpaprika.com/v1/coins)"
       },
       "exbitron": {
+        "enabled": false,
+        "symbol": "ETH",
+        "_comment": "Exbitron trading symbol"
+      },
+      "dex": {
         "enabled": true,
-        "symbol": "ETH"
+        "pairAddress": "0x0000000000000000000000000000000000000000",
+        "stablecoinAddress": "0x0000000000000000000000000000000000000000",
+        "stablecoinDecimals": 6,
+        "_comment": "DEX fallback: pairAddress is the LP pair with stablecoin, used when external APIs fail"
       }
     },
     "_comment": "For custom networks: name/symbol/unit/gasUnit can be customized (e.g., VirBiCoin/VBC/niku/Gniku)"
