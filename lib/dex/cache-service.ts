@@ -313,8 +313,26 @@ const FACTORY_ABI = [
 ];
 
 /**
+ * Get blacklisted LP addresses from config
+ */
+function getBlacklistedLPAddresses(): Set<string> {
+  const config = loadConfig();
+  const blacklistedLPs = new Set<string>();
+
+  // Get blacklisted LP pairs from config
+  const lpPairs =
+    (config as { blacklist?: { lpPairs?: { address: string }[] } }).blacklist?.lpPairs || [];
+  lpPairs.forEach((lp: { address: string }) => {
+    blacklistedLPs.add(lp.address.toLowerCase());
+  });
+
+  return blacklistedLPs;
+}
+
+/**
  * Get all LP addresses from DEX Factory (dynamic discovery)
  * This includes all pools including those from Launchpad tokens
+ * Filters out blacklisted LP pairs from config
  */
 export async function getLPAddresses(): Promise<string[]> {
   const cacheKey = 'dex:lp_addresses:dynamic';
@@ -323,13 +341,24 @@ export async function getLPAddresses(): Promise<string[]> {
 
   const config = loadConfig();
   const addresses = new Set<string>();
+  const blacklistedAddresses = getBlacklistedLPAddresses();
 
-  // Add configured LP tokens and farm pools as base
+  // Add configured LP tokens and farm pools as base (if not blacklisted)
   const lpTokens = (config.dex?.lpTokens || {}) as Record<string, { address: string }>;
   const farmPools = (config.dex?.farmPools || []) as Array<{ lpToken: string }>;
 
-  Object.values(lpTokens).forEach((lp) => addresses.add(lp.address.toLowerCase()));
-  farmPools.forEach((pool) => addresses.add(pool.lpToken.toLowerCase()));
+  Object.values(lpTokens).forEach((lp) => {
+    const addr = lp.address.toLowerCase();
+    if (!blacklistedAddresses.has(addr)) {
+      addresses.add(addr);
+    }
+  });
+  farmPools.forEach((pool) => {
+    const addr = pool.lpToken.toLowerCase();
+    if (!blacklistedAddresses.has(addr)) {
+      addresses.add(addr);
+    }
+  });
 
   // Get factory address from router
   const routerAddress = config.dex?.router;
@@ -348,18 +377,21 @@ export async function getLPAddresses(): Promise<string[]> {
       const pairsLength = await factoryContract.allPairsLength();
       const numPairs = Number(pairsLength);
 
-      // Fetch all pairs from factory
+      // Fetch all pairs from factory (excluding blacklisted)
       for (let i = 0; i < numPairs; i++) {
         try {
           const pairAddress = await factoryContract.allPairs(i);
-          addresses.add(pairAddress.toLowerCase());
+          const pairAddrLower = pairAddress.toLowerCase();
+          if (!blacklistedAddresses.has(pairAddrLower)) {
+            addresses.add(pairAddrLower);
+          }
         } catch (e) {
           console.error(`Error fetching pair ${i} from factory:`, e);
         }
       }
 
       console.log(
-        `[DEX Cache] Found ${numPairs} pairs from factory, total unique: ${addresses.size}`
+        `[DEX Cache] Found ${numPairs} pairs from factory, ${blacklistedAddresses.size} blacklisted, total unique: ${addresses.size}`
       );
     } catch (e) {
       console.error('[DEX Cache] Error fetching pairs from factory:', e);
