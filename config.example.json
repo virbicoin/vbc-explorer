@@ -72,10 +72,7 @@
   "features": {
     "nft": {
       "enabled": true,
-      "metadataProviders": [
-        "ipfs",
-        "http"
-      ],
+      "metadataProviders": ["ipfs", "http"],
       "imageFallback": true,
       "cacheEnabled": true
     },
@@ -124,10 +121,7 @@
       "max": 100
     },
     "cors": {
-      "origin": [
-        "https://explorer.example.com",
-        "http://localhost:3000"
-      ],
+      "origin": ["https://explorer.example.com", "http://localhost:3000"],
       "credentials": true
     }
   },

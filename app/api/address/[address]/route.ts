@@ -641,18 +641,19 @@ export async function GET(
   // バランスフォーマット関数（WeiからVBCに変換）
   const formatBalance = (balance: string) => {
     try {
-      const numValue = parseFloat(balance);
+      // BigIntを使用して精度を保つ
+      const weiValue = BigInt(balance);
       // WeiからVBCに変換（18桁）
-      if (numValue > 1000000000000000000) {
-        return (numValue / 1000000000000000000).toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 8,
-        });
-      }
-      return numValue.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 8,
-      });
+      const wholePart = weiValue / BigInt(10 ** 18);
+      const fractionalPart = weiValue % BigInt(10 ** 18);
+
+      // 小数部分を文字列に変換してパディング
+      const fractionalStr = fractionalPart.toString().padStart(18, '0');
+      // 末尾のゼロを削除（最低2桁は残す）
+      const trimmedFractional = fractionalStr.replace(/0+$/, '').padEnd(2, '0').slice(0, 8);
+
+      const result = `${wholePart.toLocaleString()}.${trimmedFractional}`;
+      return result;
     } catch {
       return balance;
     }

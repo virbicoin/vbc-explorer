@@ -1160,7 +1160,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                 <div className="flex justify-between items-center py-3 border-b border-gray-700">
                   <span className="text-gray-400">{currencySymbol} Balance</span>
                   <span className="text-white font-medium">
-                    {account ? formatValue(account.balance) : `0 ${currencySymbol}`}
+                    {account ? formatValue(account.balanceRaw) : `0 ${currencySymbol}`}
                   </span>
                 </div>
 
