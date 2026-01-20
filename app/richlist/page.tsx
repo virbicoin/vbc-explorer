@@ -99,10 +99,7 @@ export default function RichlistPage() {
           </div>
           <p className="text-gray-400">
             Top {currencySymbol} holders by balance. Total supply:{' '}
-            {
-              // Convert Wei to native currency for display
-              (richlistData.statistics.totalSupply / 1e18).toLocaleString()
-            }{' '}
+            {richlistData.statistics.totalSupply.toLocaleString()}{' '}
             {currencySymbol}
           </p>
         </div>
