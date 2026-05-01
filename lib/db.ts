@@ -56,7 +56,7 @@ const getOptimizedOptions = () => {
 
   // Default options
   let options = {
-    bufferCommands: false,
+    bufferCommands: true,
     maxPoolSize: isLowMemory ? 5 : 8, // 10→8、軽量時は5
     serverSelectionTimeoutMS: isLowMemory ? 3000 : 5000,
     socketTimeoutMS: isLowMemory ? 30000 : 45000,
