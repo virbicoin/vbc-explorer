@@ -99,8 +99,7 @@ export default function RichlistPage() {
           </div>
           <p className="text-gray-400">
             Top {currencySymbol} holders by balance. Total supply:{' '}
-            {richlistData.statistics.totalSupply.toLocaleString()}{' '}
-            {currencySymbol}
+            {richlistData.statistics.totalSupply.toLocaleString()} {currencySymbol}
           </p>
         </div>
       </div>
