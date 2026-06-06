@@ -2,9 +2,18 @@
  * Utility functions for BigInt operations and currency conversions
  */
 
+/**
+ * Compute 10^exp as BigInt without using the ** operator
+ * (avoids Math.pow transpilation issues in browser bundles)
+ */
+function bigIntPow10(exp: number): bigint {
+  if (exp <= 0) return 1n;
+  return BigInt('1' + '0'.repeat(exp));
+}
+
 // Default conversion factors (will be overridden by config)
-let BASE_TO_CURRENCY = 1000000000000000000n; // 10^18
-let BASE_TO_GAS_UNIT = 1000000000n; // 10^9
+let BASE_TO_CURRENCY = bigIntPow10(18); // 10^18
+let BASE_TO_GAS_UNIT = bigIntPow10(9); // 10^9
 let CURRENCY_UNIT = 'ETH';
 
 let BASE_UNIT = 'wei';
@@ -32,8 +41,8 @@ export async function initializeCurrency() {
       const symbol = config.currency?.symbol || 'ETH';
       const gasUnit = config.currency?.gasUnit || 'Gwei';
 
-      BASE_TO_CURRENCY = BigInt(10) ** BigInt(decimals);
-      BASE_TO_GAS_UNIT = BigInt(10) ** BigInt(9);
+      BASE_TO_CURRENCY = bigIntPow10(decimals);
+      BASE_TO_GAS_UNIT = bigIntPow10(9);
       CURRENCY_UNIT = symbol;
       BASE_UNIT = unit;
       GAS_UNIT = gasUnit;
@@ -61,7 +70,7 @@ export function baseToCurrency(base: string | bigint): string {
 
     // Handle decimal places
     const decimalPlaces = Number(BASE_TO_CURRENCY.toString().length - 1);
-    const factor = 10n ** BigInt(decimalPlaces);
+    const factor = bigIntPow10(decimalPlaces);
     const scaled = (baseBigInt * factor) / BASE_TO_CURRENCY;
 
     let result = scaled.toString();
@@ -102,7 +111,7 @@ export function baseToGasUnit(base: string | bigint): string {
 
     // Handle decimal places for gas unit (up to 9 decimal places)
     const decimalPlaces = 9;
-    const factor = 10n ** BigInt(decimalPlaces);
+    const factor = bigIntPow10(decimalPlaces);
     const scaled = (baseBigInt * factor) / BASE_TO_GAS_UNIT;
 
     let result = scaled.toString();
