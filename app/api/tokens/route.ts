@@ -243,7 +243,7 @@ export async function GET(request: NextRequest) {
     (config as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
   const getIconUrl = (symbol: string): string | undefined => {
     const iconCfg = tokenIcons[symbol];
-    return iconCfg?.icon ? `https://explorer.digitalregion.jp${iconCfg.icon}` : undefined;
+    return iconCfg?.icon ? `https://explorer.virbicoin.com${iconCfg.icon}` : undefined;
   };
 
   // Manually create and add the native token with real stats

@@ -141,7 +141,7 @@ Returns recent trades for a specific trading pair.
 
 - **Chain Name:** VirBiCoin
 - **Chain ID:** 329
-- **RPC URL:** https://rpc.digitalregion.jp
+- **RPC URL:** https://rpc.virbicoin.com
 - **Explorer:** https://explorer.virbicoin.com
 
 ## Notes

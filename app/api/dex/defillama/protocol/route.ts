@@ -62,7 +62,7 @@ export async function GET() {
       name: `${chainName} DEX`,
       address: config.dex?.factory || ADDRESSES.FACTORY,
       symbol: config.currency?.symbol || 'ETH',
-      url: config.network?.explorer || 'https://explorer.digitalregion.jp',
+      url: config.network?.explorer || 'https://explorer.virbicoin.com',
       description: `Decentralized Exchange on ${chainName} Network`,
       chain: chainName,
       logo: null,

@@ -45,7 +45,7 @@ export async function GET() {
     const dexInfo: DexInfo = {
       name: 'VirBiCoin DEX',
       logo: 'https://i.imgur.com/PrvGDTu.png',
-      website: `${config.explorer?.url || 'https://explorer.digitalregion.jp'}/dex`,
+      website: `${config.explorer?.url || 'https://explorer.virbicoin.com'}/dex`,
       description:
         'Decentralized exchange on VirBiCoin network. Swap tokens, provide liquidity, and earn rewards through yield farming.',
       network: {
@@ -56,8 +56,8 @@ export async function GET() {
           symbol: config.currency?.symbol || 'ETH',
           decimals: config.currency?.decimals || 18,
         },
-        rpc_url: config.network?.rpcUrl || 'https://rpc.digitalregion.jp',
-        explorer_url: config.explorer?.url || 'https://explorer.digitalregion.jp',
+        rpc_url: config.network?.rpcUrl || 'https://rpc.virbicoin.com',
+        explorer_url: config.explorer?.url || 'https://explorer.virbicoin.com',
       },
       contracts: {
         factory: config.dex?.factory || '',
@@ -67,7 +67,7 @@ export async function GET() {
         twitter: config.social?.x || 'https://x.com/VirBiCoin',
         telegram: config.social?.telegram,
         discord: config.social?.discord,
-        documentation: `${config.explorer?.url || 'https://explorer.digitalregion.jp'}/dex/docs`,
+        documentation: `${config.explorer?.url || 'https://explorer.virbicoin.com'}/dex/docs`,
       },
       features: {
         swap: true,

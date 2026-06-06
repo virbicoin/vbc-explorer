@@ -1,6 +1,6 @@
 {
   "name": "vbc-explorer",
-  "version": "0.7.6",
+  "version": "0.8.0",
   "description": "A modern blockchain explorer for VirBiCoin network with NFT support, contract verification, and real-time statistics",
   "keywords": [
     "blockchain",
@@ -23,7 +23,7 @@
     "Hackmod",
     "Bakon"
   ],
-  "homepage": "https://explorer.digitalregion.jp",
+  "homepage": "https://explorer.virbicoin.com",
   "bugs": {
     "url": "https://github.com/virbicoin/vbc-explorer/issues"
   },
