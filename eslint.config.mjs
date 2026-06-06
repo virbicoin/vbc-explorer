@@ -11,6 +11,7 @@ const eslintConfig = [
       'react-hooks/purity': 'warn',
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/static-components': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
     },
   },
 ];
