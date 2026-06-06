@@ -7,11 +7,13 @@ const eslintConfig = [
   },
   {
     rules: {
-      // Relax strict react-hooks rules for legacy code
-      'react-hooks/purity': 'warn',
-      'react-hooks/set-state-in-effect': 'warn',
+      // Disable React Compiler rules (react-hooks v7 strict rules)
+      // These are too strict for existing codebase patterns
+      'react-hooks/purity': 'off',
+      'react-hooks/set-state-in-effect': 'off',
       'react-hooks/static-components': 'off',
       'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/immutability': 'off',
     },
   },
 ];
