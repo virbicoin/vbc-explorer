@@ -1,17 +1,43 @@
+<p align="center">
+  <img src="public/img/explorer-logo.png" alt="VBC Explorer Logo" height="150">
+</p>
 
+<h1 align="center">VirBiCoin Explorer</h1>
 
-# VirBiCoin Explorer
+<p align="center">
+  <strong>Modern Real-time Blockchain Explorer for EVM-Compatible Networks</strong>
+</p>
 
-<img src="public/img/explorer-logo.png" alt="VBC Explorer logo" height="200" />
+<p align="center">
+  <a href="https://explorer.virbicoin.com">
+    <img src="https://img.shields.io/badge/Explorer-explorer.virbicoin.com-cyan?style=for-the-badge&logo=google-chrome&logoColor=white" alt="Explorer">
+  </a>
+  <a href="https://www.virbicoin.com">
+    <img src="https://img.shields.io/badge/Website-virbicoin.com-green?style=for-the-badge&logo=ethereum&logoColor=white" alt="Website">
+  </a>
+  <a href="https://discord.virbicoin.com">
+    <img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord">
+  </a>
+</p>
 
-[![Lint/Format](https://github.com/virbicoin/vbc-explorer/actions/workflows/lint.yml/badge.svg)](https://github.com/virbicoin/vbc-explorer/actions/workflows/lint.yml)
-[![Node.js CI](https://github.com/virbicoin/vbc-explorer/actions/workflows/node.js.yml/badge.svg)](https://github.com/virbicoin/vbc-explorer/actions/workflows/node.js.yml)
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
-[![Node.js](https://img.shields.io/badge/Node.js-24.x-339933?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![Next.js](https://img.shields.io/badge/Next.js-16+-000000?style=flat&logo=next.js&logoColor=white)](https://nextjs.org/)
-[![EIP-3091](https://img.shields.io/badge/EIP--3091-Supported-brightgreen)](https://eips.ethereum.org/EIPS/eip-3091)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <a href="https://github.com/virbicoin/vbc-explorer/actions/workflows/lint.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/virbicoin/vbc-explorer/lint.yml?style=flat-square&label=lint" alt="Lint">
+  </a>
+  <a href="https://github.com/virbicoin/vbc-explorer/actions/workflows/node.js.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/virbicoin/vbc-explorer/node.js.yml?style=flat-square&label=CI" alt="CI">
+  </a>
+  <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" alt="Next.js">
+  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/MongoDB-8-47A248?style=flat-square&logo=mongodb&logoColor=white" alt="MongoDB">
+  <img src="https://img.shields.io/badge/Node.js-≥24-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/EIP--3091-Supported-brightgreen?style=flat-square" alt="EIP-3091">
+  <a href="https://opensource.org/licenses/MIT">
+    <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License: MIT">
+  </a>
+</p>
+
+---
 
 A modern, real-time blockchain explorer for any EVM-compatible network built with Next.js 15 App Router, TypeScript, and MongoDB. Features advanced NFT support, contract verification, comprehensive token analytics, built-in DEX, and Token Launchpad.
 
