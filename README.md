@@ -22,10 +22,7 @@
 
 <p align="center">
   <a href="https://github.com/virbicoin/vbc-explorer/actions/workflows/lint.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/virbicoin/vbc-explorer/lint.yml?style=flat-square&label=lint" alt="Lint">
-  </a>
-  <a href="https://github.com/virbicoin/vbc-explorer/actions/workflows/node.js.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/virbicoin/vbc-explorer/node.js.yml?style=flat-square&label=CI" alt="CI">
+    <img src="https://img.shields.io/github/actions/workflow/status/virbicoin/vbc-explorer/lint.yml?style=flat-square&label=CI" alt="CI">
   </a>
   <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" alt="Next.js">
   <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
