@@ -114,8 +114,6 @@ export function MyTokens() {
       const pauseResult = pauseResults?.[i];
 
       if (result.status === 'success' && result.result) {
-        let tokenData: TokenInfo;
-
         const [
           creator,
           name,
@@ -137,7 +135,7 @@ export function MyTokens() {
           string,
           string,
         ];
-        tokenData = {
+        const tokenData: TokenInfo = {
           address: userTokenAddresses[i] as string,
           name,
           symbol,

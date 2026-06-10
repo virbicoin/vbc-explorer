@@ -39,7 +39,7 @@ export async function GET() {
     }
 
     const blockNumber = Number(latestBlock.number);
-    let gasPrices: bigint[] = [];
+    const gasPrices: bigint[] = [];
 
     // First try to get gas prices from database (more reliable for low-traffic chains)
     try {

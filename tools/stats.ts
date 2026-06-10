@@ -115,7 +115,7 @@ const updateStats = async (range: number, interval: number, rescan: boolean): Pr
     await connectDB();
   }
 
-  let latestBlockBigInt = await web3.eth.getBlockNumber();
+  const latestBlockBigInt = await web3.eth.getBlockNumber();
   let latestBlock = toNumber(latestBlockBigInt);
 
   interval = Math.abs(parseInt(interval.toString()));

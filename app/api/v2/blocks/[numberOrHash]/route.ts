@@ -23,7 +23,7 @@ export async function GET(
     await connectDB();
 
     // Determine if it's a block number or hash
-    let query: { number?: number; hash?: string } = {};
+    const query: { number?: number; hash?: string } = {};
     if (numberOrHash.startsWith('0x')) {
       query.hash = numberOrHash.toLowerCase();
     } else {

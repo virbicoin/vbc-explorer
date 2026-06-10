@@ -165,7 +165,7 @@ const checkMemory = () => {
 // Improved batch processing with parallel execution and delay (CPU optimized)
 const processBatchWithDelay = async (
   batch: any[],
-  processor: Function,
+  processor: (item: unknown) => Promise<unknown>,
   concurrency: number = 1
 ) => {
   const results = [];

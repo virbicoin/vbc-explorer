@@ -169,7 +169,7 @@ export async function GET(request: NextRequest) {
   });
 
   // Fetch all tokens from the database
-  let dbTokens = (await Token.find({}).lean()) as Record<string, unknown>[];
+  const dbTokens = (await Token.find({}).lean()) as Record<string, unknown>[];
 
   // Get addresses already in tokens collection
   const existingTokenAddresses = new Set(

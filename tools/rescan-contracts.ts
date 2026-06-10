@@ -180,7 +180,7 @@ async function rescanContracts(options: {
   }
 
   // Build query
-  let query: any = {};
+  const query: any = {};
   if (options.address) {
     query.address = options.address.toLowerCase();
   } else if (options.unknown) {

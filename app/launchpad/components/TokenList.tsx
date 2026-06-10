@@ -254,12 +254,10 @@ export function TokenList() {
         // Skip tokens with zero total supply (fully burned via burn())
         if (actualTotalSupply <= BigInt(0)) continue;
 
-        let tokenData: TokenInfo;
-
         // getTokenDetails returns fields including metadata
         const [creator, name, symbol, decimals, , createdAt, logoUrl, description, website] =
           result.result as [string, string, string, number, bigint, bigint, string, string, string];
-        tokenData = {
+        const tokenData: TokenInfo = {
           address: allTokens[i] as string,
           name,
           symbol,

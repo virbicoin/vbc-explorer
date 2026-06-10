@@ -52,7 +52,7 @@ export async function GET(
       to?: string;
     }
 
-    let query: TxQuery = {};
+    const query: TxQuery = {};
     if (filter === 'to') {
       query.to = sanitizedAddress.toLowerCase();
     } else if (filter === 'from') {

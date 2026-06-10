@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     interface TxQuery {
       creates?: { $exists: boolean; $ne: null };
     }
-    let query: TxQuery = {};
+    const query: TxQuery = {};
     if (type === 'contract_creation') {
       query.creates = { $exists: true, $ne: null };
     }

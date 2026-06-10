@@ -97,7 +97,7 @@ export async function POST(
     // Parse request body (form-data or JSON)
     const contentType = request.headers.get('content-type') || '';
     let body: Record<string, string> = {};
-    let filesData: Record<string, string> = {};
+    const filesData: Record<string, string> = {};
 
     if (contentType.includes('multipart/form-data')) {
       const formData = await request.formData();
@@ -280,7 +280,7 @@ export async function POST(
 
     if (isVerified) {
       // Extract license
-      let license = license_type || 'none';
+      const license = license_type || 'none';
 
       // Normalize compiler version
       let normalizedVersion = compiler_version || installedSolcVersion;

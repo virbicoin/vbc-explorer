@@ -13,8 +13,8 @@ interface DailyStats {
 }
 
 // Cache for daily stats
-let dailyStatsCache: { [key: string]: DailyStats[] } = {};
-let lastFetchTime: { [key: string]: number } = {};
+const dailyStatsCache: { [key: string]: DailyStats[] } = {};
+const lastFetchTime: { [key: string]: number } = {};
 const CACHE_DURATION = 300000; // 5 minutes
 
 export async function GET(request: NextRequest) {
