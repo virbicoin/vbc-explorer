@@ -257,9 +257,9 @@ Edit `config.json` for your blockchain:
 ## 🛠️ Tech Stack
 
 ### Frontend
-- **Next.js 15+** - App Router with React Server Components
+- **Next.js 16+** - App Router with React Server Components
 - **React 19+** - Latest React with Concurrent Features  
-- **TypeScript 5+** - Full type safety and enhanced DX
+- **TypeScript 6+** - Full type safety and enhanced DX
 - **Tailwind CSS v4+** - Utility-first styling with custom design system
 - **Heroicons** - Beautiful SVG icon library
 
@@ -274,6 +274,7 @@ Edit `config.json` for your blockchain:
 - **TypeScript** - Static type checking and IntelliSense
 - **ESLint** - Code linting with custom rules
 - **Prettier** - Automated code formatting  
+- **Vitest** - Unit testing for pure logic (`npm run test`)
 - **ts-node** - TypeScript execution for tools and scripts
 
 ### Deployment & Production

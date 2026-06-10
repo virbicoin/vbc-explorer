@@ -16,11 +16,13 @@ VBC Explorer は、VirBiCoin 向けのモダンなブロックチェーンエク
 ## 技術スタック
 
 - **フレームワーク**: Next.js 16+（App Router）
-- **言語**: TypeScript 5.9+
+- **言語**: TypeScript 6+
 - **データベース**: MongoDB（Mongoose 9）
 - **スタイリング**: Tailwind CSS 4
 - **Web3**: ethers.js 6, web3.js 4, viem 2, wagmi 3
 - **状態管理**: @tanstack/react-query 5
+- **テスト**: Vitest 4
+- **Lint/型**: ESLint 9 + typescript-eslint 8
 - **プロセスマネージャー**: PM2
 - **プロキシ**: proxy.ts（非推奨の middleware.ts を置き換え）
 
