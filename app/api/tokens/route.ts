@@ -6,6 +6,7 @@ import { loadConfig } from '../../../lib/config';
 import { getWeb3 } from '../../../lib/web3';
 import { apiCache, CACHE_TTL } from '../../../lib/cache';
 import { paginatedResponse, ContractTypes } from '../../../lib/api-response';
+import { logger } from '../../../lib/logger';
 
 // Get shared Web3 instance
 const web3 = getWeb3();
@@ -41,6 +42,49 @@ const LAUNCHPAD_V2_ABI = [
     inputs: [],
     name: 'logoUrl',
     outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
+
+// TokenFactory ABI - only the getAllTokens reader is needed here
+const TOKEN_FACTORY_ABI = [
+  {
+    inputs: [],
+    name: 'getAllTokens',
+    outputs: [{ name: '', type: 'address[]' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
+
+// Minimal ERC20 metadata ABI for discovering Launchpad tokens not yet in the DB
+const ERC20_META_ABI = [
+  {
+    inputs: [],
+    name: 'name',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'symbol',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'decimals',
+    outputs: [{ name: '', type: 'uint8' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'totalSupply',
+    outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
     type: 'function',
   },
@@ -233,6 +277,70 @@ export async function GET(request: NextRequest) {
       verified: contract.verified || false,
     };
     dbTokens.push(tokenEntry as Record<string, unknown>);
+  }
+
+  // Add Launchpad tokens straight from the TokenFactory so they appear even when
+  // the one-off /api/launchpad/register call was missed at creation time.
+  const launchpadFactoryAddress = config.launchpad?.factoryAddress;
+  if (
+    launchpadFactoryAddress &&
+    launchpadFactoryAddress !== '0x0000000000000000000000000000000000000000'
+  ) {
+    try {
+      const factory = new web3.eth.Contract(TOKEN_FACTORY_ABI, launchpadFactoryAddress);
+      const factoryTokens = (await factory.methods.getAllTokens().call()) as string[];
+
+      const missingFactoryTokens = (factoryTokens || []).filter((addr) => {
+        const lower = addr?.toLowerCase();
+        return lower && !existingTokenAddresses.has(lower);
+      });
+
+      for (const tokenAddress of missingFactoryTokens) {
+        const lower = tokenAddress.toLowerCase();
+        const tokenContract = new web3.eth.Contract(ERC20_META_ABI, tokenAddress);
+
+        let name = 'Unknown';
+        let symbol = 'UNKNOWN';
+        let decimals = 18;
+        let totalSupply = '0';
+
+        try {
+          name = (await tokenContract.methods.name().call()) as string;
+        } catch {
+          /* ignore */
+        }
+        try {
+          symbol = (await tokenContract.methods.symbol().call()) as string;
+        } catch {
+          /* ignore */
+        }
+        try {
+          decimals = Number(await tokenContract.methods.decimals().call());
+        } catch {
+          /* ignore */
+        }
+        try {
+          totalSupply = String(await tokenContract.methods.totalSupply().call());
+        } catch {
+          /* ignore */
+        }
+
+        dbTokens.push({
+          address: lower,
+          name,
+          symbol,
+          decimals,
+          totalSupply,
+          holders: 0,
+          type: 'VRC-20',
+          supply: totalSupply,
+          verified: verificationMap.get(lower) || false,
+        } as Record<string, unknown>);
+        existingTokenAddresses.add(lower);
+      }
+    } catch (err) {
+      logger.error('Failed to load Launchpad factory tokens', { error: err });
+    }
   }
 
   // Get chain statistics for native token
