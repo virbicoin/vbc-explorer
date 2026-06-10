@@ -7,6 +7,7 @@ import { getWeb3 } from '../../../lib/web3';
 import { apiCache, CACHE_TTL } from '../../../lib/cache';
 import { paginatedResponse, ContractTypes } from '../../../lib/api-response';
 import { logger } from '../../../lib/logger';
+import { normalizeLegacyLogoUrl } from '../../../lib/utils';
 import { TokenFactoryV2ABI } from '../../../abi/TokenFactoryV2ABI';
 
 // Get shared Web3 instance
@@ -367,9 +368,19 @@ export async function GET(request: NextRequest) {
   // Get tokenIcons from config for centralized icon lookup
   const tokenIcons =
     (config as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
+  // Resolve the current explorer base URL/host from config so icon links and
+  // legacy logo URL normalization both target the live domain.
+  const explorerBaseUrl =
+    (config as { explorer?: { url?: string } }).explorer?.url || 'https://explorer.virbicoin.com';
+  let explorerHost = 'explorer.virbicoin.com';
+  try {
+    explorerHost = new URL(explorerBaseUrl).hostname;
+  } catch {
+    // Keep the default host if the configured URL is malformed.
+  }
   const getIconUrl = (symbol: string): string | undefined => {
     const iconCfg = tokenIcons[symbol];
-    return iconCfg?.icon ? `https://explorer.virbicoin.com${iconCfg.icon}` : undefined;
+    return iconCfg?.icon ? `${explorerBaseUrl}${iconCfg.icon}` : undefined;
   };
 
   // Manually create and add the native token with real stats
@@ -547,7 +558,11 @@ export async function GET(request: NextRequest) {
       // Get logo URL from config or database or onchain
       const tokenAddr = typeof token.address === 'string' ? token.address.toLowerCase() : '';
       const tokenSymbol = typeof token.symbol === 'string' ? token.symbol : '';
-      const dbLogoUrl = typeof token.logoUrl === 'string' ? token.logoUrl : null;
+      // Normalize legacy explorer domain (explorer.digitalregion.jp now returns 502).
+      const dbLogoUrl = normalizeLegacyLogoUrl(
+        typeof token.logoUrl === 'string' ? token.logoUrl : null,
+        explorerHost
+      );
 
       // Get icon from centralized tokenIcons by symbol
       const symbolIconUrl = getIconUrl(tokenSymbol);
@@ -579,7 +594,7 @@ export async function GET(request: NextRequest) {
         try {
           const onchainLogoUrl = await fetchLaunchpadLogoUrl(token.address);
           if (onchainLogoUrl) {
-            logoUrl = onchainLogoUrl;
+            logoUrl = normalizeLegacyLogoUrl(onchainLogoUrl, explorerHost);
           }
         } catch {
           // Ignore errors for onchain fetch

@@ -14,6 +14,7 @@ import {
   isValidHex,
   isValidAddress,
   isValidHash,
+  normalizeLegacyLogoUrl,
 } from '@/lib/utils/format';
 
 describe('formatTokenBalance', () => {
@@ -151,5 +152,43 @@ describe('hex/address/hash validators', () => {
     expect(isValidAddress('0x' + 'a'.repeat(39))).toBe(false);
     expect(isValidHash('0x' + 'b'.repeat(64))).toBe(true);
     expect(isValidHash('0x' + 'b'.repeat(63))).toBe(false);
+  });
+});
+
+describe('normalizeLegacyLogoUrl', () => {
+  it('rewrites legacy explorer host to the current host', () => {
+    expect(
+      normalizeLegacyLogoUrl(
+        'https://explorer.digitalregion.jp/img/STEN.svg',
+        'explorer.virbicoin.com'
+      )
+    ).toBe('https://explorer.virbicoin.com/img/STEN.svg');
+  });
+
+  it('leaves non-legacy URLs untouched', () => {
+    expect(
+      normalizeLegacyLogoUrl('https://explorer.virbicoin.com/img/VBC.svg', 'explorer.virbicoin.com')
+    ).toBe('https://explorer.virbicoin.com/img/VBC.svg');
+    expect(normalizeLegacyLogoUrl('https://cdn.example.com/a.png', 'explorer.virbicoin.com')).toBe(
+      'https://cdn.example.com/a.png'
+    );
+  });
+
+  it('returns null for empty or nullish input', () => {
+    expect(normalizeLegacyLogoUrl(null, 'explorer.virbicoin.com')).toBeNull();
+    expect(normalizeLegacyLogoUrl(undefined, 'explorer.virbicoin.com')).toBeNull();
+    expect(normalizeLegacyLogoUrl('   ', 'explorer.virbicoin.com')).toBeNull();
+  });
+
+  it('returns non-URL strings as-is (e.g. relative paths)', () => {
+    expect(normalizeLegacyLogoUrl('/img/STEN.svg', 'explorer.virbicoin.com')).toBe('/img/STEN.svg');
+  });
+
+  it('supports a custom legacy host list', () => {
+    expect(
+      normalizeLegacyLogoUrl('https://old.example.com/a.png', 'new.example.com', [
+        'old.example.com',
+      ])
+    ).toBe('https://new.example.com/a.png');
   });
 });
