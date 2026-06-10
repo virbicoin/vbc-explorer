@@ -14,6 +14,7 @@ import {
   PlayIcon,
   PhotoIcon,
 } from '@heroicons/react/24/outline';
+import { isMintAddress, isBurnAddress } from '../../../lib/address/transfer-classification';
 
 interface TokenData {
   token: {
@@ -599,14 +600,8 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
           from: string | null | undefined,
           to: string | null | undefined
         ) => {
-          const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
-          const DEAD_ADDR = '0x000000000000000000000000000000000000dead';
-
-          const fromLower = (from || '').toLowerCase();
-          const toLower = (to || '').toLowerCase();
-
           // Mint (from zero address or "System")
-          if (fromLower === ZERO_ADDR || from === 'System') {
+          if (isMintAddress(from)) {
             return (
               <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-emerald-500/20 text-emerald-400">
                 <span>✨</span>
@@ -616,7 +611,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
           }
 
           // Burn (to zero address or dead address)
-          if (toLower === ZERO_ADDR || toLower === DEAD_ADDR || to === 'System') {
+          if (isBurnAddress(to)) {
             return (
               <span className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-red-500/20 text-red-400">
                 <span>🔥</span>
@@ -699,13 +694,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                         </td>
                         <td className="py-3 px-4">
                           {(() => {
-                            const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
-                            const DEAD_ADDR = '0x000000000000000000000000000000000000dead';
-                            const toLower = transfer.to?.toLowerCase() || '';
-                            const isBurn =
-                              transfer.to === 'System' ||
-                              toLower === ZERO_ADDR ||
-                              toLower === DEAD_ADDR;
+                            const isBurn = isBurnAddress(transfer.to);
 
                             return isBurn ? (
                               <span className="text-red-400 text-sm">Burn Address</span>

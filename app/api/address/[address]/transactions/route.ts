@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { connectDB } from '../../../../../models/index';
+import { tryGetDb } from '../../../../../lib/db/get-db';
 
 // Transaction schema - 正しいコレクション名を使用
 const transactionSchema = new mongoose.Schema(
@@ -133,7 +134,7 @@ export async function GET(
   const skip = (page - 1) * limit;
 
   try {
-    const db = mongoose.connection.db;
+    const db = tryGetDb();
 
     // 通常のトランザクションを取得
     const transactions = await Transaction.find({

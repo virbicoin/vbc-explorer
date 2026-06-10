@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../lib/db';
-import mongoose from 'mongoose';
+import { tryGetDb } from '../../../../lib/db/get-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     if (period === '90d') days = 90;
 
     await dbConnect();
-    const db = mongoose.connection.db;
+    const db = tryGetDb();
     if (!db) {
       return NextResponse.json({ stats: [] });
     }

@@ -1,5 +1,5 @@
-import mongoose from 'mongoose';
 import { connectDB as connectDBFromModels } from '../models/index';
+import { requireDb } from './db/get-db';
 
 // Use the connectDB function from models/index.ts
 async function connectDB() {
@@ -47,10 +47,7 @@ export async function getChainStats() {
     throw new Error('Database connection failed');
   }
 
-  const db = mongoose.connection.db;
-  if (!db) {
-    throw new Error('Database connection not available');
-  }
+  const db = requireDb();
 
   // Get latest block information with caching
   const { latestBlockDoc, latestBlock } = await getCachedData(
@@ -235,9 +232,11 @@ export async function getChainStats() {
       const uniqueAddresses = new Set();
 
       if (transactions) {
-        transactions.forEach((tx: any) => {
-          if (tx.from) uniqueAddresses.add(tx.from.toLowerCase());
-          if (tx.to) uniqueAddresses.add(tx.to.toLowerCase());
+        transactions.forEach((tx) => {
+          const from = (tx as { from?: string }).from;
+          const to = (tx as { to?: string }).to;
+          if (from) uniqueAddresses.add(from.toLowerCase());
+          if (to) uniqueAddresses.add(to.toLowerCase());
         });
       }
 

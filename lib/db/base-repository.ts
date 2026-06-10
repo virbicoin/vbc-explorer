@@ -187,7 +187,9 @@ export abstract class BaseRepository<T extends Document> {
   /**
    * Bulk write operations
    */
-  async bulkWrite(operations: any[]): Promise<mongoose.mongo.BulkWriteResult> {
+  async bulkWrite(
+    operations: Parameters<Model<T>['bulkWrite']>[0]
+  ): Promise<mongoose.mongo.BulkWriteResult> {
     return this.model.bulkWrite(operations);
   }
 

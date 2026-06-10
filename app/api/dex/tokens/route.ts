@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/models/index';
-import mongoose from 'mongoose';
+import { tryGetDb } from '@/lib/db/get-db';
 import Web3 from 'web3';
 import { loadConfig } from '@/lib/config';
 import { fetchDexConfig, setMinimalConfig, getNativeToken } from '@/lib/dex/contract-service';
@@ -255,7 +255,7 @@ export async function GET() {
       });
     }
     await connectDB();
-    const db = mongoose.connection.db;
+    const db = tryGetDb();
 
     const resultTokens: DexToken[] = [];
 

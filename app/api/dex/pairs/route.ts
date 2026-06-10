@@ -4,7 +4,7 @@ import Web3 from 'web3';
 import { loadConfig } from '@/lib/config';
 import { fetchDexConfig, setMinimalConfig, getNativeToken } from '@/lib/dex/contract-service';
 import dbConnect from '@/lib/db';
-import mongoose from 'mongoose';
+import { tryGetDb } from '@/lib/db/get-db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -401,7 +401,7 @@ export async function GET() {
     // Third pass: Fetch logo URIs from database for remaining tokens
     try {
       await dbConnect();
-      const db = mongoose.connection.db;
+      const db = tryGetDb();
 
       if (db) {
         // Collect token addresses that still don't have icons

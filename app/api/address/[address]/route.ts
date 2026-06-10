@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { connectDB } from '../../../../models/index';
+import { tryGetDb } from '../../../../lib/db/get-db';
 import { getWeb3 } from '../../../../lib/web3';
 import { apiCache, CACHE_TTL } from '../../../../lib/cache';
 import { loadConfig } from '../../../../lib/config';
@@ -580,7 +581,7 @@ export async function GET(
   }
 
   // TokenTransferも取得（直接DBアクセス）
-  const db = mongoose.connection.db;
+  const db = tryGetDb();
   const tokenTransfers = db
     ? await db
         .collection('tokentransfers')

@@ -11,6 +11,7 @@ import {
   getSecurityHeaders,
   isValidContentType,
 } from '../../../../lib/security';
+import { normalizeCompilerVersion, SOLC_RELEASES } from '../../../../lib/contract/solc-utils';
 
 // Function to read config
 const readConfig = () => {
@@ -69,40 +70,6 @@ const SUPPORTED_COMPILER_VERSIONS = [
   '0.8.15',
   '0.6.12', // Legacy support
 ];
-
-// Helper function to normalize compiler version
-function normalizeCompilerVersion(version: string): string {
-  // Remove 'v' prefix if present
-  let normalized = version.startsWith('v') ? version.substring(1) : version;
-  // Remove commit hash if present (e.g., "0.8.20+commit.a1b79de6" -> "0.8.20")
-  normalized = normalized.split('+')[0];
-  return normalized;
-}
-
-// Solc version to full release name mapping
-// These are the exact release names from https://binaries.soliditylang.org/bin/list.json
-const SOLC_RELEASES: Record<string, string> = {
-  '0.8.33': 'v0.8.33+commit.e14f2714',
-  '0.8.32': 'v0.8.32+commit.3b2e1c26',
-  '0.8.31': 'v0.8.31+commit.46dfe0ff',
-  '0.8.30': 'v0.8.30+commit.73712a01',
-  '0.8.29': 'v0.8.29+commit.ab55807c',
-  '0.8.28': 'v0.8.28+commit.7893614a',
-  '0.8.27': 'v0.8.27+commit.40a35a09',
-  '0.8.26': 'v0.8.26+commit.8a97fa7a',
-  '0.8.25': 'v0.8.25+commit.b61c2a91',
-  '0.8.24': 'v0.8.24+commit.e11b9ed9',
-  '0.8.23': 'v0.8.23+commit.f704f362',
-  '0.8.22': 'v0.8.22+commit.4fc1097e',
-  '0.8.21': 'v0.8.21+commit.d9974bed',
-  '0.8.20': 'v0.8.20+commit.a1b79de6',
-  '0.8.19': 'v0.8.19+commit.7dd6d404',
-  '0.8.18': 'v0.8.18+commit.87f61d96',
-  '0.8.17': 'v0.8.17+commit.8df45f5f',
-  '0.8.16': 'v0.8.16+commit.07a7930e',
-  '0.8.15': 'v0.8.15+commit.e14f2714',
-  '0.6.12': 'v0.6.12+commit.27d51765',
-};
 
 // Load a specific version of solc compiler
 async function loadSolcVersion(version: string): Promise<unknown> {

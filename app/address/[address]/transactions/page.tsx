@@ -6,39 +6,14 @@ import Link from 'next/link';
 import { ArrowLeftIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../../../lib/client-config';
 import { initializeCurrency } from '../../../../lib/bigint-utils';
-
-interface TokenInfo {
-  address: string;
-  name: string;
-  symbol: string;
-  decimals: number;
-  type: string;
-  value: string;
-  tokenId?: number;
-  from?: string;
-  to?: string;
-  direction?: 'in' | 'out';
-}
-
-interface Transaction {
-  hash: string;
-  from: string;
-  to: string;
-  value: string;
-  timestamp: number;
-  blockNumber: number;
-  gasUsed?: number;
-  status?: number | string;
-  type?: string;
-  action?: string;
-  direction?: 'in' | 'out' | 'self';
-  tokenInfo?: TokenInfo;
-  tokenTransfers?: TokenInfo[];
-  nftInfo?: {
-    tokenId: number;
-    tokenAddress: string;
-  };
-}
+import {
+  formatAddress,
+  formatTimestamp,
+  getTimeAgo,
+  formatNativeValueDetailed,
+  type AddressTransaction as Transaction,
+} from '../../../../lib/address/format';
+import { getTransactionTypeBadge, formatTokenValue } from '../components/transaction-display';
 
 export default function AddressTransactionsPage({
   params,
@@ -104,166 +79,7 @@ export default function AddressTransactionsPage({
     );
   }
 
-  const formatValue = (value: string) => {
-    try {
-      const weiValue = BigInt(value);
-      const nativeValue = Number(weiValue) / 1e18;
-      if (nativeValue === 0) return `0 ${currencySymbol}`;
-      if (nativeValue < 0.000001) return `<0.000001 ${currencySymbol}`;
-      if (nativeValue < 1) return `${nativeValue.toFixed(6)} ${currencySymbol}`;
-      if (nativeValue < 1000) return `${nativeValue.toFixed(4)} ${currencySymbol}`;
-      return `${nativeValue.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${currencySymbol}`;
-    } catch {
-      return `${value} ${currencySymbol}`;
-    }
-  };
-
-  const formatAddress = (address: string) => {
-    if (!address) return 'N/A';
-    return `${address.slice(0, 8)}...${address.slice(-6)}`;
-  };
-
-  const formatTimestamp = (timestamp: number) => {
-    const date = new Date(timestamp * 1000);
-    return date.toLocaleString(undefined, { timeZoneName: 'short' });
-  };
-
-  const getTimeAgo = (timestamp: number) => {
-    const now = Math.floor(Date.now() / 1000);
-    const diff = now - timestamp;
-
-    if (diff < 60) return `${diff}s ago`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
-  };
-
-  // MetaMask準拠のトランザクションタイプバッジを返す
-  const getTransactionTypeBadge = (tx: Transaction) => {
-    const type = tx.type || 'unknown';
-    const action = tx.action || type;
-    const direction = tx.direction || 'out';
-
-    const styles: Record<string, { bg: string; text: string; icon: string }> = {
-      send: { bg: 'bg-red-500/20', text: 'text-red-400', icon: '↑' },
-      receive: { bg: 'bg-green-500/20', text: 'text-green-400', icon: '↓' },
-      token_transfer: { bg: 'bg-purple-500/20', text: 'text-purple-400', icon: '⇄' },
-      nft_transfer: { bg: 'bg-pink-500/20', text: 'text-pink-400', icon: '🎨' },
-      approve: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: '✓' },
-      swap: { bg: 'bg-blue-500/20', text: 'text-blue-400', icon: '⟲' },
-      liquidity: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', icon: '💧' },
-      stake: { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: '📥' },
-      unstake: { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: '📤' },
-      harvest: { bg: 'bg-lime-500/20', text: 'text-lime-400', icon: '🌾' },
-      mint: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', icon: '✨' },
-      burn: { bg: 'bg-red-600/20', text: 'text-red-500', icon: '🔥' },
-      contract_creation: { bg: 'bg-indigo-500/20', text: 'text-indigo-400', icon: '📄' },
-      contract_interaction: { bg: 'bg-violet-500/20', text: 'text-violet-400', icon: '⚡' },
-      mining_reward: { bg: 'bg-yellow-500/20', text: 'text-yellow-400', icon: '⛏️' },
-      unknown: { bg: 'bg-gray-500/20', text: 'text-gray-400', icon: '?' },
-    };
-
-    const style = styles[type] || styles['unknown'];
-
-    let directionIcon = '';
-    if (type !== 'send' && type !== 'receive' && type !== 'mining_reward') {
-      if (direction === 'in') directionIcon = ' ↓';
-      else if (direction === 'out') directionIcon = ' ↑';
-    }
-
-    return (
-      <span
-        className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${style.bg} ${style.text}`}
-      >
-        <span>{style.icon}</span>
-        <span>
-          {action}
-          {directionIcon}
-        </span>
-      </span>
-    );
-  };
-
-  // トークン転送値をフォーマット（単一）
-  const formatSingleTokenValue = (tokenInfo: TokenInfo) => {
-    const { value, decimals, symbol, tokenId, type, direction } = tokenInfo;
-
-    if (type === 'VRC-721' || type === 'ERC721' || tokenId !== undefined) {
-      return <span className="text-pink-400">Token ID: #{tokenId}</span>;
-    }
-
-    // ERC20の場合 - 常にシンボルを使用
-    try {
-      const numValue = BigInt(value);
-      const divisor = BigInt(10 ** decimals);
-      const intPart = numValue / divisor;
-      const fracPart = numValue % divisor;
-      const formatted =
-        fracPart > 0n
-          ? `${intPart}.${fracPart.toString().padStart(decimals, '0').slice(0, 4)}`
-          : intPart.toString();
-      const color = direction === 'in' ? 'text-green-400' : 'text-red-400';
-      const prefix = direction === 'in' ? '+' : '-';
-      return (
-        <span className={color}>
-          {prefix}
-          {formatted} {symbol}
-        </span>
-      );
-    } catch {
-      return (
-        <span className="text-purple-400">
-          {value} {symbol}
-        </span>
-      );
-    }
-  };
-
-  // トークン転送値をフォーマット（複数対応）
-  const formatTokenValue = (tx: Transaction) => {
-    // 複数のトークン転送がある場合
-    if (tx.tokenTransfers && tx.tokenTransfers.length > 0) {
-      return (
-        <div className="flex flex-col gap-1">
-          {tx.tokenTransfers.map((transfer, idx) => (
-            <div key={idx}>{formatSingleTokenValue(transfer)}</div>
-          ))}
-        </div>
-      );
-    }
-
-    // 単一のtokenInfoの場合（後方互換）
-    if (!tx.tokenInfo) return null;
-
-    const { value, decimals, symbol, tokenId, type } = tx.tokenInfo;
-
-    if (type === 'VRC-721' || type === 'ERC721' || tokenId !== undefined) {
-      return <span className="text-pink-400">Token ID: #{tokenId}</span>;
-    }
-
-    // ERC20の場合 - 常にシンボルを使用
-    try {
-      const numValue = BigInt(value);
-      const divisor = BigInt(10 ** decimals);
-      const intPart = numValue / divisor;
-      const fracPart = numValue % divisor;
-      const formatted =
-        fracPart > 0n
-          ? `${intPart}.${fracPart.toString().padStart(decimals, '0').slice(0, 4)}`
-          : intPart.toString();
-      return (
-        <span className="text-purple-400">
-          {formatted} {symbol}
-        </span>
-      );
-    } catch {
-      return (
-        <span className="text-purple-400">
-          {value} {symbol}
-        </span>
-      );
-    }
-  };
+  const formatValue = (value: string) => formatNativeValueDetailed(value, currencySymbol);
 
   if (loading) {
     return (

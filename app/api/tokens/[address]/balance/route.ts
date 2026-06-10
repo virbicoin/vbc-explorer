@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import { connectDB } from '../../../../../models/index';
+import { requireDb } from '../../../../../lib/db/get-db';
 import {
   sanitizeAddress,
   isValidAddress,
@@ -79,10 +79,7 @@ export async function GET(
       );
     }
 
-    const db = mongoose.connection.db;
-    if (!db) {
-      throw new Error('Database connection not established');
-    }
+    const db = requireDb();
 
     // Get token info for decimals (using sanitized lowercase address)
     const token = await db.collection('tokens').findOne({

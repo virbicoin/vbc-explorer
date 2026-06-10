@@ -10,6 +10,7 @@
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
+import { requireDb } from '../lib/db/get-db';
 
 // Load config
 const configPath = path.join(process.cwd(), 'config.json');
@@ -104,10 +105,7 @@ async function createIndexes(): Promise<void> {
   await mongoose.connect(MONGODB_URI);
   console.log('✅ Connected\n');
 
-  const db = mongoose.connection.db;
-  if (!db) {
-    throw new Error('Database connection not established');
-  }
+  const db = requireDb();
 
   for (const def of INDEX_DEFINITIONS) {
     console.log(`📦 Collection: ${def.collection}`);

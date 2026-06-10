@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import { weiToVBC } from '../../../lib/bigint-utils';
 import { connectDB } from '../../../models/index';
 import { getTransactionTypeGlobal, TransactionTypeResult } from '../../../lib/transaction-utils';
+import { tryGetDb } from '../../../lib/db/get-db';
 
 // トランザクションキャッシュ
 interface CacheEntry {
@@ -49,7 +49,7 @@ async function fetchTransactionsData(
   hasPageParams: boolean
 ): Promise<TransactionResponse[] | PaginatedResponse> {
   await connectDB();
-  const db = mongoose.connection.db;
+  const db = tryGetDb();
   const skip = (page - 1) * limit;
 
   let totalCount = 0;

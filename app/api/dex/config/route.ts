@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { fetchDexConfig, setMinimalConfig, getNativeToken } from '@/lib/dex/contract-service';
 import { loadConfig } from '@/lib/config';
 import dbConnect from '@/lib/db';
-import mongoose from 'mongoose';
+import { tryGetDb } from '@/lib/db/get-db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -72,7 +72,7 @@ export async function GET(request: Request) {
     let poolsWithLogos = config.pools;
     try {
       await dbConnect();
-      const db = mongoose.connection.db;
+      const db = tryGetDb();
       if (db && config.pools.length > 0) {
         // Collect all unique token addresses from pools
         const tokenAddresses = new Set<string>();

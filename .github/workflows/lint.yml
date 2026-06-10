@@ -8,7 +8,7 @@ on:
 
 jobs:
   check:
-    name: Lint, Format & Typecheck
+    name: Lint, Format, Typecheck & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,3 +20,4 @@ jobs:
 
       - run: npm ci
       - run: npm run check
+      - run: npm run test

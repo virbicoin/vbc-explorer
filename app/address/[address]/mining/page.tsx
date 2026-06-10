@@ -6,6 +6,12 @@ import Link from 'next/link';
 import { ArrowLeftIcon, CubeIcon } from '@heroicons/react/24/outline';
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../../../lib/client-config';
 import { initializeCurrency } from '../../../../lib/bigint-utils';
+import {
+  formatAddress,
+  formatTimestamp,
+  getTimeAgo,
+  formatNativeValueDetailed,
+} from '../../../../lib/address/format';
 
 interface Transaction {
   hash: string;
@@ -79,39 +85,7 @@ export default function AddressMiningPage({ params }: { params: Promise<{ addres
     );
   }
 
-  const formatValue = (value: string) => {
-    try {
-      const weiValue = BigInt(value);
-      const nativeValue = Number(weiValue) / 1e18;
-      if (nativeValue === 0) return `0 ${currencySymbol}`;
-      if (nativeValue < 0.000001) return `<0.000001 ${currencySymbol}`;
-      if (nativeValue < 1) return `${nativeValue.toFixed(6)} ${currencySymbol}`;
-      if (nativeValue < 1000) return `${nativeValue.toFixed(4)} ${currencySymbol}`;
-      return `${nativeValue.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${currencySymbol}`;
-    } catch {
-      return `${value} ${currencySymbol}`;
-    }
-  };
-
-  const formatAddress = (address: string) => {
-    if (!address) return 'N/A';
-    return `${address.slice(0, 8)}...${address.slice(-6)}`;
-  };
-
-  const formatTimestamp = (timestamp: number) => {
-    const date = new Date(timestamp * 1000);
-    return date.toLocaleString(undefined, { timeZoneName: 'short' });
-  };
-
-  const getTimeAgo = (timestamp: number) => {
-    const now = Math.floor(Date.now() / 1000);
-    const diff = now - timestamp;
-
-    if (diff < 60) return `${diff}s ago`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
-  };
+  const formatValue = (value: string) => formatNativeValueDetailed(value, currencySymbol);
 
   if (loading) {
     return (

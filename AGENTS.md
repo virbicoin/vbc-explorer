@@ -8,10 +8,11 @@ Practical instructions for AI coding agents working in this repository.
 - Do not duplicate long docs here; follow links in the Reference section.
 
 ## Quick Start
-- Requirements: Node.js >= 18, npm >= 8.
+- Requirements: Node.js >= 20, npm >= 8.
 - Install: `npm install`
 - Dev server: `npm run dev`
 - Quality gate: `npm run check`
+- Tests: `npm run test` (Vitest; `test:watch` / `test:coverage` も利用可)
 - Individual checks:
   - `npm run lint`
   - `npm run typecheck`
@@ -20,18 +21,23 @@ Practical instructions for AI coding agents working in this repository.
 ## Architecture Map
 - App routes and pages: `app/`
 - API routes: `app/api/`
+- Etherscan 互換 API のドメイン別モジュール: `lib/api/blockscout/`（`app/api/route.ts` は薄いディスパッチャ）
 - Shared components: `components/`
 - Business logic and utilities: `lib/`
+- Pure helpers with unit tests: `lib/security/`, `lib/services/`, `lib/contract/`, `lib/address/`, `lib/db/get-db.ts`, `lib/logger.ts`
 - Database models: `models/`
 - Sync and maintenance tools: `tools/`
+- Unit tests (Vitest): `tests/`
 - Runtime configuration: `config.json` via `lib/config.ts`
 
 ## Coding Conventions
 - TypeScript strict mode is enabled; keep types explicit and safe.
 - Reuse shared types/constants from `lib/types/` (for example `ZERO_ADDRESS`).
 - Prefer existing service/utility layers in `lib/services/`, `lib/utils/`, `lib/db/` before adding new logic.
-- Keep App Router API handlers thin; push heavy logic into `lib/services/`.
+- Keep App Router API handlers thin; push heavy logic into `lib/services/` or `lib/api/blockscout/`.
 - Preserve response patterns from `lib/api-response.ts` for consistency.
+- Server-side code (API routes, tools, DB layer) should log via `lib/logger.ts` instead of `console.*`.
+- When extracting pure logic, add Vitest coverage under `tests/` and keep behavior identical.
 
 ## API Security Checklist
 For new or modified API handlers in `app/api/**`:

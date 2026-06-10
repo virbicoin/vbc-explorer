@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import dbConnect from '@/lib/db';
-import mongoose from 'mongoose';
+import { requireDb, tryGetDb } from '@/lib/db/get-db';
 import { loadConfig } from '@/lib/config';
 
 interface LpToken {
@@ -98,15 +98,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ pair
     await dbConnect();
 
     // Wait for DB to be ready
-    if (!mongoose.connection.db) {
+    if (!tryGetDb()) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    const db = mongoose.connection.db;
-
-    if (!db) {
-      throw new Error('Database connection not available');
-    }
+    const db = requireDb();
 
     const swaps = await db
       .collection('dex_swaps')

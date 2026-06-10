@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import { getChainStats } from '../../../../lib/stats';
 import { connectDB } from '../../../../models/index';
+import { requireDb } from '../../../../lib/db/get-db';
 import {
   getNftOwnershipFromDb,
   groupTokensByHolder,
@@ -407,10 +408,7 @@ export async function GET(
           };
         }
         // コントラクト作成Tx
-        const db = mongoose.connection.db;
-        if (!db) {
-          throw new Error('Database connection not established');
-        }
+        const db = requireDb();
         const contractCreateTx = await db.collection('tokentransfers').findOne(
           {
             to: { $regex: new RegExp(`^${address}$`, 'i') },
@@ -806,10 +804,7 @@ export async function GET(
     }
 
     // Get token holders - use case-insensitive match with direct database access
-    const db = mongoose.connection.db;
-    if (!db) {
-      throw new Error('Database connection not established');
-    }
+    const db = requireDb();
 
     // Get total holders count for pagination (exclude zero address and dead address)
     const totalHolders = await db.collection('tokenholders').countDocuments({

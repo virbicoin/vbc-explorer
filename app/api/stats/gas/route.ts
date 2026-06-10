@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getWeb3 } from '../../../../lib/web3';
 import dbConnect from '../../../../lib/db';
-import mongoose from 'mongoose';
+import { tryGetDb } from '../../../../lib/db/get-db';
 import { getGasUnitServer } from '../../../../lib/config';
 
 export const dynamic = 'force-dynamic';
@@ -44,7 +44,7 @@ export async function GET() {
     // First try to get gas prices from database (more reliable for low-traffic chains)
     try {
       await dbConnect();
-      const db = mongoose.connection.db;
+      const db = tryGetDb();
       if (db) {
         // Get gas prices from recent transactions in database
         const recentTxs = await db

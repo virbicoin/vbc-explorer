@@ -12,6 +12,7 @@ import mongoose from 'mongoose';
 import humanStandardTokenAbi from 'human-standard-token-abi';
 import fs from 'fs';
 import path from 'path';
+import { requireDb } from '../lib/db/get-db';
 
 // Import NFT service for ownership calculation
 import {
@@ -561,10 +562,7 @@ async function updateErc20TokenWithRealData(tokenAddress: string) {
 
     await connectDB();
 
-    const db = mongoose.connection.db;
-    if (!db) {
-      throw new Error('Database connection not established');
-    }
+    const db = requireDb();
 
     // Upsert transfers in batches
     const transferBatchSize = 200;
@@ -690,10 +688,7 @@ async function updateTokenWithRealData(tokenAddress: string) {
     // Connect to database
     await connectDB();
 
-    const db = mongoose.connection.db;
-    if (!db) {
-      throw new Error('Database connection not established');
-    }
+    const db = requireDb();
 
     console.log('🔗 Database connection confirmed');
 
@@ -1334,10 +1329,7 @@ async function syncLPTokensFromFactory() {
       await connectDB();
     }
 
-    const db = mongoose.connection.db;
-    if (!db) {
-      throw new Error('Database connection not established');
-    }
+    const db = requireDb();
 
     // Process each pair
     for (let i = 0; i < pairsLength; i++) {

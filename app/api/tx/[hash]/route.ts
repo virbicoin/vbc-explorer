@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import { Transaction, Block, connectDB } from '../../../../models/index';
 import { getTransactionTypeGlobal } from '../../../../lib/transaction-utils';
+import { tryGetDb } from '../../../../lib/db/get-db';
 import {
   sanitizeHash,
   isValidHash,
@@ -185,7 +185,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     });
 
     // トークン転送情報を取得
-    const db = mongoose.connection.db;
+    const db = tryGetDb();
     let tokenTransfers: Array<Record<string, unknown>> = [];
 
     // Get tokenIcons from config for centralized icon lookup

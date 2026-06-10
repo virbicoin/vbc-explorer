@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import dbConnect from '../../../lib/db';
-import mongoose from 'mongoose';
+import { tryGetDb } from '../../../lib/db/get-db';
 import {
   escapeRegex,
   sanitizeSearchQuery,
@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
 
     await dbConnect();
-    const db = mongoose.connection.db;
+    const db = tryGetDb();
 
     if (!db) {
       return paginatedResponse([], { page, limit, total: 0 });

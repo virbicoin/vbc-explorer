@@ -1,150 +1,157 @@
-# CLAUDE.md - VBC Explorer Project Guide
+# CLAUDE.md - VBC Explorer プロジェクトガイド
 
-This file provides guidance to Claude Code (claude.ai/code) when working with this codebase.
+このファイルは、Claude Code（claude.ai/code）が本コードベースで作業する際のガイドです。
 
-## Project Overview
+## プロジェクト概要
 
-VBC Explorer is a modern blockchain explorer for VirBiCoin (and any EVM-compatible network) built with Next.js 16 App Router, TypeScript, and MongoDB. It includes NFT support, contract verification, DEX (decentralized exchange), Token Launchpad, and comprehensive API endpoints compatible with GeckoTerminal, CoinMarketCap, and DefiLlama.
+VBC Explorer は、VirBiCoin 向けのモダンなブロックチェーンエクスプローラーです（EVM 互換であれば他のネットワークでも動作します）。Next.js 16 App Router・TypeScript・MongoDB で構築しています。
 
-## Tech Stack
+主な機能は次のとおりです。
 
-- **Framework**: Next.js 16+ (App Router)
-- **Language**: TypeScript 5.9+
-- **Database**: MongoDB with Mongoose 9
-- **Styling**: Tailwind CSS 4
+- NFT の表示・管理
+- スマートコントラクトの検証
+- DEX（分散型取引所）と Token Launchpad
+- GeckoTerminal / CoinMarketCap / DefiLlama 互換の API エンドポイント
+
+## 技術スタック
+
+- **フレームワーク**: Next.js 16+（App Router）
+- **言語**: TypeScript 5.9+
+- **データベース**: MongoDB（Mongoose 9）
+- **スタイリング**: Tailwind CSS 4
 - **Web3**: ethers.js 6, web3.js 4, viem 2, wagmi 3
-- **State Management**: @tanstack/react-query 5
-- **Process Manager**: PM2
-- **Proxy**: proxy.ts (replaces deprecated middleware.ts)
+- **状態管理**: @tanstack/react-query 5
+- **プロセスマネージャー**: PM2
+- **プロキシ**: proxy.ts（非推奨の middleware.ts を置き換え）
 
-## Project Structure
+## プロジェクト構造
 
 ```
-app/                    # Next.js App Router pages and API routes
-  api/                  # API endpoints
-    address/            # Address info, transactions, tokens, mining
-    block/              # Block details
-    blocks/             # Block listing
-    blockheight/        # Current block height
-    circulating_supply/ # Circulating supply (CoinGecko/CMC compatible)
-    compile/            # Solidity compilation
-    config/             # Client configuration
-    contract/           # Contract verification & interaction
-    contracts/          # Contract listing
-    dex/                # DEX APIs
-      cmc/              # CoinMarketCap compatible endpoints
-      defillama/        # DefiLlama compatible endpoints
-      geckoterminal/    # GeckoTerminal V2 compatible endpoints
-      chart/            # Price chart data
-      pairs/            # Trading pairs
-      pools/            # Liquidity pools
-      tokens/           # DEX tokens
-      stats/            # DEX statistics
-      external-price/   # External price data
-    launchpad/          # Token Launchpad APIs
-    network/            # Network/node info
-    realtime/           # Real-time data
-    richlist/           # Rich list
-    search/             # Search APIs
-    stats/              # Network statistics, gas, daily
-    tokens/             # Token APIs
-    total_supply/       # Total supply (CoinGecko/CMC compatible)
-    transactions/       # Transaction listing & pending
-    tx/                 # Transaction details
-    v2/                 # Blockscout v2 compatible APIs
-    web3relay/          # Web3 RPC relay
-    ws/                 # WebSocket relay
-    route.ts            # Etherscan-compatible API
-  api-docs/             # API documentation page
-  components/           # Page-specific components
-  dex/                  # DEX pages (Swap, Pool, Farm, Analytics, Docs)
-  launchpad/            # Token Launchpad pages
-  token/[address]/      # Token detail pages
+app/                    # Next.js App Router のページと API ルート
+  api/                  # API エンドポイント
+    address/            # アドレス情報、トランザクション、トークン、マイニング
+    block/              # ブロック詳細
+    blocks/             # ブロック一覧
+    blockheight/        # 現在のブロック高
+    circulating_supply/ # 循環供給量（CoinGecko/CMC 互換）
+    compile/            # Solidity コンパイル
+    config/             # クライアント設定
+    contract/           # コントラクト検証・操作
+    contracts/          # コントラクト一覧
+    dex/                # DEX API
+      cmc/              # CoinMarketCap 互換エンドポイント
+      defillama/        # DefiLlama 互換エンドポイント
+      geckoterminal/    # GeckoTerminal V2 互換エンドポイント
+      chart/            # 価格チャートデータ
+      pairs/            # 取引ペア
+      pools/            # 流動性プール
+      tokens/           # DEX トークン
+      stats/            # DEX 統計
+      external-price/   # 外部価格データ
+    launchpad/          # Token Launchpad API
+    network/            # ネットワーク/ノード情報
+    realtime/           # リアルタイムデータ
+    richlist/           # リッチリスト
+    search/             # 検索 API
+    stats/              # ネットワーク統計、ガス、日次
+    tokens/             # トークン API
+    total_supply/       # 総供給量（CoinGecko/CMC 互換）
+    transactions/       # トランザクション一覧・保留中
+    tx/                 # トランザクション詳細
+    v2/                 # Blockscout v2 互換 API
+    web3relay/          # Web3 RPC リレー
+    ws/                 # WebSocket リレー
+    route.ts            # Etherscan 互換 API
+  api-docs/             # API ドキュメントページ
+  components/           # ページ固有のコンポーネント
+  dex/                  # DEX ページ（Swap, Pool, Farm, Analytics, Docs）
+  launchpad/            # Token Launchpad ページ
+  token/[address]/      # トークン詳細ページ
   
-abi/                    # Smart contract ABIs
-  MasterChefABI.ts      # MasterChef farming contract
-  TokenFactoryABI.ts    # Legacy token factory
-  TokenFactoryV2ABI.ts  # V2 token factory with metadata
+abi/                    # スマートコントラクト ABI
+  MasterChefABI.ts      # MasterChef ファーミングコントラクト
+  TokenFactoryABI.ts    # 旧トークンファクトリ
+  TokenFactoryV2ABI.ts  # メタデータ付き V2 トークンファクトリ
   
-components/             # Shared components
-config/                 # Configuration (farming.ts)
-hooks/                  # Custom React hooks
-  useDexConfig.ts       # DEX configuration hook
-  useDexTokens.ts       # DEX tokens hook
-  useFarming.ts         # Farming hook
-  useLaunchpadConfig.ts # Launchpad configuration hook
-  useTokenConfig.ts     # Token configuration hook
+components/             # 共有コンポーネント
+config/                 # 設定（farming.ts）
+hooks/                  # カスタム React フック
+  useDexConfig.ts       # DEX 設定フック
+  useDexTokens.ts       # DEX トークンフック
+  useFarming.ts         # ファーミングフック
+  useLaunchpadConfig.ts # Launchpad 設定フック
+  useTokenConfig.ts     # トークン設定フック
   
-lib/                    # Utility libraries
-  cache/                # In-memory caching
-  db/                   # Database abstraction layer
-  dex/                  # DEX-specific utilities & cache service
-  security/             # Input validation & rate limiting
-  services/             # Business logic services
-  types/                # TypeScript type definitions
-  utils/                # Utility functions
-  web3/                 # Web3 singleton provider
-  bigint-utils.ts       # BigInt utilities
-  client-config.ts      # Client-side configuration
-  config.ts             # Server-side configuration
-  db.ts                 # Database connection
-  etherUnits.ts         # Unit conversion
-  filters.ts            # Data filters
-  launchpad-token-source.ts # Launchpad token data
-  models.ts             # Model interfaces
-  price-service.ts      # Price data service
-  stats.ts              # Statistics utilities
-  supply.ts             # Supply calculation
-  transaction-utils.ts  # Transaction utilities
+lib/                    # ユーティリティライブラリ
+  cache/                # インメモリキャッシュ
+  db/                   # データベース抽象化レイヤー
+  dex/                  # DEX 固有ユーティリティ & キャッシュサービス
+  security/             # 入力検証 & レート制限
+  services/             # ビジネスロジックサービス
+  types/                # TypeScript 型定義
+  utils/                # ユーティリティ関数
+  web3/                 # Web3 シングルトンプロバイダ
+  bigint-utils.ts       # BigInt ユーティリティ
+  client-config.ts      # クライアント側設定
+  config.ts             # サーバー側設定
+  db.ts                 # データベース接続
+  etherUnits.ts         # 単位変換
+  filters.ts            # データフィルタ
+  launchpad-token-source.ts # Launchpad トークンデータ
+  models.ts             # モデルインターフェース
+  price-service.ts      # 価格データサービス
+  stats.ts              # 統計ユーティリティ
+  supply.ts             # 供給量計算
+  transaction-utils.ts  # トランザクションユーティリティ
   
-models/                 # Mongoose models
-tools/                  # CLI tools for blockchain sync
-  sync.ts               # Blockchain synchronization
-  tokens.ts             # Token data sync (NFT/ERC20)
-  stats.ts              # Statistics calculation
-  richlist.ts           # Rich list generation
-  price.ts              # Price + DEX swap sync
-  register-contracts.ts # Contract registration
-  optimize-indexes.ts   # Database index optimization
-  add-token.ts          # Manual token addition
+models/                 # Mongoose モデル
+tools/                  # ブロックチェーン同期用 CLI ツール
+  sync.ts               # ブロックチェーン同期
+  tokens.ts             # トークンデータ同期（NFT/ERC20）
+  stats.ts              # 統計計算
+  richlist.ts           # リッチリスト生成
+  price.ts              # 価格 + DEX スワップ同期
+  register-contracts.ts # コントラクト登録
+  optimize-indexes.ts   # データベースインデックス最適化
+  add-token.ts          # 手動トークン追加
   
-types/                  # TypeScript type definitions
-logs/                   # Log files
-public/                 # Static assets
+types/                  # TypeScript 型定義
+logs/                   # ログファイル
+public/                 # 静的アセット
 ```
 
-## Performance Optimizations
+## パフォーマンス最適化
 
-### Web3 Singleton (`lib/web3/provider.ts`)
-- Single Web3 instance shared across all API routes
-- Avoids creating new connections for each request
-- Lazy initialization for faster startup
+### Web3 シングルトン（`lib/web3/provider.ts`）
+- すべての API ルートで単一の Web3 インスタンスを共有
+- リクエストごとに新しい接続を作成するのを回避
+- 高速起動のための遅延初期化
 
-### In-Memory Cache (`lib/cache/memory-cache.ts`)
-- LRU-like cache with TTL support
-- Reduces database queries and RPC calls
-- Configurable memory limits (default 50MB)
-- Auto-cleanup of expired entries
+### インメモリキャッシュ（`lib/cache/memory-cache.ts`）
+- TTL 対応の LRU 風キャッシュ
+- データベースクエリと RPC 呼び出しを削減
+- メモリ上限を設定可能（デフォルト 50MB）
+- 期限切れエントリの自動クリーンアップ
 
 ```typescript
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 
-// Cache for 1 minute
+// 1 分間キャッシュ
 const data = await apiCache.getOrSet('key', fetcher, CACHE_TTL.MEDIUM);
 ```
 
-### DEX Cache Service (`lib/dex/cache-service.ts`)
-Centralized caching for DEX/GeckoTerminal API endpoints to reduce RPC calls:
-- **Token info cache**: 30 min TTL (symbol, name, decimals rarely change)
-- **Pool info cache**: 10s TTL (reserves change frequently)
-- **Pool stats cache**: 10s TTL (volume/tx stats)
-- **VBC price cache**: 10s TTL
-- **Response-level cache**: 30-60s for full API responses
+### DEX キャッシュサービス（`lib/dex/cache-service.ts`）
+DEX と GeckoTerminal の API 向けにキャッシュを一元管理し、RPC 呼び出しを減らします。キャッシュの種類は次のとおりです。
+- **トークン情報キャッシュ**: TTL 30 分（symbol, name, decimals はほぼ変化しない）
+- **プール情報キャッシュ**: TTL 10 秒（リザーブは頻繁に変化）
+- **プール統計キャッシュ**: TTL 10 秒（出来高/トランザクション統計）
+- **VBC 価格キャッシュ**: TTL 10 秒
+- **レスポンス単位キャッシュ**: API レスポンス全体を 30〜60 秒
 
-Key benefits:
-- Reduces RPC calls by 80%+ under load
-- Batch processing with concurrency limits (2-3 pools at a time)
-- Shared provider instance across all requests
+主な利点:
+- 高負荷時に RPC 呼び出しを 80% 以上削減
+- 並列数制限付きのバッチ処理（一度に 2〜3 プール）
+- 全リクエストでプロバイダインスタンスを共有
 
 ```typescript
 import {
@@ -155,68 +162,73 @@ import {
   getLPAddresses,
 } from '@/lib/dex/cache-service';
 
-// Get cached data (automatically fetches if not cached)
+// キャッシュ済みデータを取得（未キャッシュなら自動で取得）
 const poolInfo = await getCachedPoolInfo(poolAddress);
 const vbcPrice = await getCachedVBCPrice();
 ```
 
-### Next.js Optimizations (`next.config.ts`)
-- `output: 'standalone'` - Smaller deployment size
-- `optimizePackageImports` - Tree-shaking for large packages
-- `serverExternalPackages` - Prevent bundling heavy server deps
-- `compress: true` - Gzip compression enabled
+### Next.js 最適化（`next.config.ts`）
+- `output: 'standalone'` - デプロイサイズを縮小
+- `optimizePackageImports` - 大きなパッケージのツリーシェイキング
+- `serverExternalPackages` - 重いサーバー依存のバンドルを防止
+- `compress: true` - Gzip 圧縮を有効化
 
-### Database Indexes (`npm run optimize-indexes`)
-- Compound indexes for common query patterns
-- Background index creation (non-blocking)
-- Run after initial setup for best performance
+### データベースインデックス（`npm run optimize-indexes`）
+- 一般的なクエリパターン向けの複合インデックス
+- バックグラウンドでのインデックス作成（ノンブロッキング）
+- 最良のパフォーマンスのため初期セットアップ後に実行
 
-## Common Commands
+## よく使うコマンド
 
 ```bash
-# Development
-npm run dev             # Start development server
-npm run build           # Build for production
-npm run start           # Start production server
+# 開発
+npm run dev             # 開発サーバーを起動
+npm run build           # 本番ビルド
+npm run start           # 本番サーバーを起動
 
-# Code Quality
-npm run lint            # Run ESLint
-npm run lint:fix        # Fix ESLint issues
-npm run typecheck       # TypeScript type checking
-npm run format          # Format code with Prettier
-npm run format:check    # Check formatting
-npm run check           # Run lint, typecheck, and format:check
+# コード品質
+npm run lint            # ESLint を実行
+npm run lint:fix        # ESLint の問題を修正
+npm run typecheck       # TypeScript 型チェック
+npm run format          # Prettier でコード整形
+npm run format:check    # 整形チェック
+npm run check           # lint, typecheck, format:check を実行
 
-# Blockchain Sync Tools
-npm run sync            # Sync blockchain data
-npm run tokens          # Sync token (NFT/ERC20) data
-npm run stats           # Calculate statistics
-npm run richlist        # Generate rich list
-npm run price           # Update price + DEX swap data (Exbitron + on-chain)
+# テスト
+npm run test            # Vitest でユニットテストを実行
+npm run test:watch      # ウォッチモードでテストを実行
+npm run test:coverage   # カバレッジ付きでテストを実行
 
-# Database Management
-npm run optimize-indexes # Create/optimize DB indexes
-npm run create-indexes   # Create database indexes
+# ブロックチェーン同期ツール
+npm run sync            # ブロックチェーンデータを同期
+npm run tokens          # トークン（NFT/ERC20）データを同期
+npm run stats           # 統計を計算
+npm run richlist        # リッチリストを生成
+npm run price           # 価格 + DEX スワップデータを更新（Exbitron + オンチェーン）
 
-# PM2 Process Management
-pm2 restart explorer    # Restart explorer
-pm2 logs explorer       # View logs
-pm2 logs price          # View price sync logs
-pm2 status              # Check service status
-pm2 monit               # Monitor resources
+# データベース管理
+npm run optimize-indexes # DB インデックスを作成/最適化
+npm run create-indexes   # データベースインデックスを作成
+
+# PM2 プロセス管理
+pm2 restart explorer    # explorer を再起動
+pm2 logs explorer       # ログを表示
+pm2 logs price          # 価格同期のログを表示
+pm2 status              # サービス状態を確認
+pm2 monit               # リソースを監視
 ```
 
-## Price & DEX Data Architecture
+## 価格 & DEX データアーキテクチャ
 
-### Price Sources (tools/price.ts, lib/price-service.ts)
-Price APIs are tried in priority order:
+### 価格ソース（tools/price.ts, lib/price-service.ts）
+価格は次の API を上から順に試し、最初に取得できた値を使います。
 1. **CoinGecko** - `https://api.coingecko.com/api/v3/simple/price`
-2. **CoinMarketCap** - Requires `CMC_API_KEY` environment variable
+2. **CoinMarketCap** - 環境変数 `CMC_API_KEY` が必要
 3. **Coinpaprika** - `https://api.coinpaprika.com/v1/tickers`
 4. **Exbitron** - `https://api.exbitron.digital/api/v2/peatio/public/markets`
-5. **DEX Fallback** - On-chain price from LP pair reserves
+5. **DEX フォールバック** - LP ペアのリザーブから算出するオンチェーン価格
 
-Configure in `config.json` under `currency.priceApi`:
+`config.json` の `currency.priceApi` で設定します:
 ```json
 "priceApi": {
   "coingecko": { "enabled": true, "id": "virbicoin" },
@@ -226,67 +238,67 @@ Configure in `config.json` under `currency.priceApi`:
   "dex": { "enabled": true, "pairAddress": "0x..." }
 }
 ```
-- **Update Intervals**: Price every 5 minutes, DEX swaps every 15 seconds
+- **更新間隔**: 価格は 5 分ごと、DEX スワップは 15 秒ごと
 
-### Price Service (lib/price-service.ts)
-Centralized price data access for all API routes:
+### 価格サービス（lib/price-service.ts）
+すべての API ルートから価格データを取得するための共通モジュールです。
 ```typescript
 import { getNativePrice, getPriceFromDatabase } from '@/lib/price-service';
 
-// Get current price with source info
+// ソース情報付きの現在価格を取得
 const priceData = await getNativePrice();
-// Returns: { price: 0.000217, source: 'Market DB', timestamp: Date }
+// 戻り値: { price: 0.000217, source: 'Market DB', timestamp: Date }
 ```
 
-### DEX Swap Sync
-- Syncs Swap events from Router contract to `DexSwap` collection
-- Powers GeckoTerminal OHLCV, CMC trades, and chart APIs
+### DEX スワップ同期
+- Router コントラクトの Swap イベントを `DexSwap` コレクションに同期
+- GeckoTerminal の OHLCV、CMC trades、チャート API を支える
 
-## Security Features
+## セキュリティ機能
 
-### Input Validation (`lib/security/validation.ts`)
-- Address/hash format validation with `sanitizeAddress()`, `sanitizeHash()`
-- Pagination parameter validation with `validatePagination()`
-- Regex escaping to prevent ReDoS attacks
-- **NoSQL injection prevention**: Use direct lowercase matching instead of `$regex`
-- **Image URL validation**: `isValidImageUrl()` for external token images
-  - HTTPS-only enforcement (blocks http://)
-  - Dangerous scheme blocking (javascript:, data:, vbscript:, file:)
-  - XSS pattern detection (onclick=, onerror=, <script)
-  - Use `sanitizeImageUrl()` wrapper that returns null for invalid URLs
+### 入力検証（`lib/security/validation.ts`）
+- `sanitizeAddress()`, `sanitizeHash()` によるアドレス/ハッシュ形式の検証
+- `validatePagination()` によるページネーションパラメータの検証
+- ReDoS 攻撃を防ぐための正規表現エスケープ
+- **NoSQL インジェクション対策**: `$regex` の代わりに小文字での直接マッチングを使用
+- **画像 URL 検証**: 外部トークン画像向けの `isValidImageUrl()`
+  - HTTPS のみ許可（http:// をブロック）
+  - 危険なスキームのブロック（javascript:, data:, vbscript:, file:）
+  - XSS パターン検出（onclick=, onerror=, <script）
+  - 無効な URL に対して null を返す `sanitizeImageUrl()` ラッパーを使用
 
-### Rate Limiting
-- Token bucket algorithm per client IP
-- Configurable limits per endpoint (default: 100 req/min)
-- Stricter limits for sensitive endpoints:
-  - Contract verification: 10 req/10s
-  - Contract POST/update: 10 req/min
-  - Contract interact: 30 req/min
+### レート制限
+- クライアント IP ごとのトークンバケットアルゴリズム
+- エンドポイントごとに上限を設定可能（デフォルト: 100 req/min）
+- 機微なエンドポイントにはより厳しい上限:
+  - コントラクト検証: 10 req/10s
+  - コントラクト POST/更新: 10 req/min
+  - コントラクト操作: 30 req/min
   - Blockscout API: 100 req/min
-  - Token balance: 60 req/min
+  - トークン残高: 60 req/min
 
-### Security Headers (`proxy.ts`)
+### セキュリティヘッダ（`proxy.ts`）
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `X-XSS-Protection: 1; mode=block`
-- `Strict-Transport-Security` (production only)
-- `Content-Security-Policy` for API routes
+- `Strict-Transport-Security`（本番のみ）
+- API ルート向けの `Content-Security-Policy`
 
-### DEX Blacklist Filtering (`lib/dex/cache-service.ts`)
-- LP pairs listed in `config.json` `blacklist.lpPairs` are excluded from all DEX APIs
-- Affects `/api/dex/geckoterminal/pools`, `/api/dex/stats`, etc.
-- Use for deprecated/test pools
+### DEX ブラックリストフィルタリング（`lib/dex/cache-service.ts`）
+- `config.json` の `blacklist.lpPairs` に列挙した LP ペアは、すべての DEX API から除外
+- `/api/dex/geckoterminal/pools`、`/api/dex/stats` などに影響
+- 非推奨/テスト用プールに使用
 
-### DEX Price Security
-- **On-chain price derivation**: VBC/USDT pairs use pool reserve ratio for price calculation
-- Prevents external API manipulation attacks
-- TVL calculated as sum of both token reserves (50/50 pool)
+### DEX 価格セキュリティ
+- **オンチェーン価格導出**: VBC/USDT ペアはプールのリザーブ比率で価格を計算
+- 外部 API の操作による攻撃を防止
+- TVL は両トークンのリザーブ合計として計算（50/50 プール）
 
-### API Security
-- Request body size limits
-- Content-Type validation
-- Source code size limit (500KB for contract verification)
-- Input validation on all write operations
+### API セキュリティ
+- リクエストボディサイズの上限
+- Content-Type の検証
+- ソースコードサイズの上限（コントラクト検証で 500KB）
+- すべての書き込み操作に対する入力検証
 
 ```typescript
 import { 
@@ -303,9 +315,9 @@ import {
   getSecurityHeaders 
 } from '@/lib/security';
 
-// In API route - Complete example
+// API ルート内 - 完全な例
 export async function GET(request: NextRequest) {
-  // 1. Rate limiting
+  // 1. レート制限
   const clientIp = getClientIp(request);
   const rateLimit = checkRateLimit(`endpoint:${clientIp}`, 60, 30);
   if (!rateLimit.allowed) {
@@ -315,7 +327,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // 2. Input validation
+  // 2. 入力検証
   const address = searchParams.get('address');
   if (!isValidAddress(address)) {
     return NextResponse.json(
@@ -324,128 +336,128 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // 3. Sanitize and use
+  // 3. サニタイズして使用
   const sanitizedAddress = sanitizeAddress(address);
-  // ... use sanitizedAddress in DB queries
+  // ... DB クエリで sanitizedAddress を使用
 
   return NextResponse.json(data, { headers: getSecurityHeaders() });
 }
 ```
 
-## Key Implementation Details
+## 主要な実装の詳細
 
-### NFT Token Transfers (tools/tokens.ts)
+### NFT トークン転送（tools/tokens.ts）
 
-When syncing NFT transfers, the unique key is `tokenAddress + tokenId + blockNumber + to`. This is crucial because:
-- One transaction can emit multiple Transfer events (batch mint/burn)
-- Using only `transactionHash` as key causes data loss
+NFT 転送の同期では、`tokenAddress + tokenId + blockNumber + to` を一意キーとして使います。これは次の理由から重要です。
+- 1 つのトランザクションが複数の Transfer イベントを発行することがある（バッチ mint/burn）
+- `transactionHash` だけをキーにすると、データが失われてしまう
 
-### Token Ownership Calculation (app/api/tokens/[address]/route.ts)
+### トークン所有者の計算（app/api/tokens/[address]/route.ts）
 
-NFT ownership is calculated by:
-1. Fetching all Transfer events sorted by timestamp
-2. Building a `tokenOwnership` Map
-3. Deleting from map when `to === ZERO_ADDR` (burn)
-4. Setting owner when transfer to non-zero address
-5. Final map size = actual NFT supply (excluding burned)
+NFT の所有者は次のように計算されます:
+1. すべての Transfer イベントをタイムスタンプ順に取得
+2. `tokenOwnership` Map を構築
+3. `to === ZERO_ADDR`（burn）のときに Map から削除
+4. 非ゼロアドレスへの転送時に所有者を設定
+5. 最終的な Map のサイズ = 実際の NFT 供給量（burn 済みを除く）
 
-### Database Collections
+### データベースコレクション
 
-- `blocks` - Block data
-- `transactions` - Transaction data
-- `contracts` - Verified contracts (ERC field: 0=contract, 2=ERC20, 721=VRC-721, 1155=VRC-1155)
-- `tokens` - Token metadata
-- `tokentransfers` - Token transfer events
-- `tokenholders` - Token holder balances
-- `accounts` - Account balances
-- `markets` - Price data from multiple sources (updated by price.ts)
-- `dexswaps` - DEX swap events (updated by price.ts)
+- `blocks` - ブロックデータ
+- `transactions` - トランザクションデータ
+- `contracts` - 検証済みコントラクト（ERC フィールド: 0=コントラクト, 2=ERC20, 721=VRC-721, 1155=VRC-1155）
+- `tokens` - トークンメタデータ
+- `tokentransfers` - トークン転送イベント
+- `tokenholders` - トークン保有者残高
+- `accounts` - アカウント残高
+- `markets` - 複数ソースからの価格データ（price.ts が更新）
+- `dexswaps` - DEX スワップイベント（price.ts が更新）
 
-### Contract Type Detection (`app/api/contracts/route.ts`)
-The API infers token type from multiple sources:
-1. **ERC field** - 2/20=VRC-20, 721=VRC-721, 1155=VRC-1155
-2. **type field** - Normalized to VRC-XX format (ERC20 → VRC-20)
-3. **Name inference** - Names containing 'nft'/'721' → VRC-721
-4. **Symbol inference** - Has symbol + decimals → VRC-20
-5. **tokenName field** - If set → VRC-20
+### コントラクトタイプ判定（`app/api/contracts/route.ts`）
+API は、次の複数の手がかりからトークンの種類を推定します。
+1. **ERC フィールド** - 2/20=VRC-20, 721=VRC-721, 1155=VRC-1155
+2. **type フィールド** - VRC-XX 形式に正規化（ERC20 → VRC-20）
+3. **名前からの推定** - 'nft'/'721' を含む名前 → VRC-721
+4. **シンボルからの推定** - symbol + decimals あり → VRC-20
+5. **tokenName フィールド** - 設定あり → VRC-20
 
-All types use constants from `lib/api-response.ts`: `ContractTypes.VRC20`, etc.
+すべてのタイプは `lib/api-response.ts` の定数を使用: `ContractTypes.VRC20` など。
 
-### Configuration
+### 設定
 
-Main config file: `config.json` (not in git, use `config.example.json` as template)
+メイン設定ファイル: `config.json`（git 管理外。`config.example.json` をテンプレートとして使用）
 
-Key config sections:
-- `web3Provider` - RPC endpoint
-- `database` - MongoDB connection
-- `dex` - DEX contract addresses
-- `launchpad` - Token factory address
-- `network` - Chain ID and name
+主な設定セクション:
+- `web3Provider` - RPC エンドポイント
+- `database` - MongoDB 接続
+- `dex` - DEX コントラクトアドレス
+- `launchpad` - トークンファクトリアドレス
+- `network` - チェーン ID と名称
 
-## Common Issues & Solutions
+## よくある問題と解決策
 
-### Missing NFT Token IDs
-If some NFTs don't appear, run `npm run tokens` to resync. The sync tool now correctly handles multiple Transfer events per transaction.
+### NFT トークン ID の欠落
+一部の NFT が表示されないときは、`npm run tokens` を実行して再同期してください。同期ツールは、1 つのトランザクションに複数の Transfer イベントが含まれる場合も正しく処理します。
 
-### Type Errors with window.ethereum
-Global type definitions are in `types/global.d.ts`.
+### window.ethereum の型エラー
+グローバル型定義は `types/global.d.ts` にあります。
 
-### Memory Issues with Sync Tools
-Memory limits are configured via `MEMORY_LIMIT_MB` env var. Adjust in npm scripts if needed.
+### 同期ツールのメモリ問題
+メモリ上限は `MEMORY_LIMIT_MB` 環境変数で設定します。必要に応じて npm スクリプト内で調整してください。
 
-## New Features (2026-01)
+## 新機能（2026-01）
 
-### Address Type Redirect
-- `/address/[address]` automatically redirects to `/contract/` or `/token/` based on address type
-- Implemented in `proxy.ts` using lightweight type check API
-- API endpoint: `GET /api/address/[address]/type` returns `{ type: 'token' | 'contract' | 'wallet' }`
+### アドレスタイプによるリダイレクト
+- `/address/[address]` は、アドレスタイプに応じて `/contract/` または `/token/` へ自動リダイレクト
+- 軽量なタイプ判定 API を用いて `proxy.ts` で実装
+- API エンドポイント: `GET /api/address/[address]/type` は `{ type: 'token' | 'contract' | 'wallet' }` を返す
 
-### Gas Tracker
-- Real-time gas price tracking with slow/standard/fast/instant tiers
-- API endpoint: `GET /api/stats/gas`
-- Displayed on homepage
+### ガストラッカー
+- slow/standard/fast/instant の各ティアによるリアルタイムのガス価格追跡
+- API エンドポイント: `GET /api/stats/gas`
+- ホームページに表示
 
-### Daily Statistics
-- Historical transaction and block statistics
-- API endpoint: `GET /api/stats/daily?period=7d|30d|90d`
-- Displayed on `/stats` page with charts
+### 日次統計
+- 過去のトランザクション・ブロック統計
+- API エンドポイント: `GET /api/stats/daily?period=7d|30d|90d`
+- `/stats` ページにチャートで表示
 
-### Network Information
-- Node version, client info, and network details
-- API endpoint: `GET /api/network/node`
-- Displayed on `/network` page
+### ネットワーク情報
+- ノードバージョン、クライアント情報、ネットワーク詳細
+- API エンドポイント: `GET /api/network/node`
+- `/network` ページに表示
 
-### Contracts List
-- Browse all verified and unverified contracts
-- API endpoint: `GET /api/contracts`
-- Page: `/contracts`
+### コントラクト一覧
+- 検証済み・未検証のすべてのコントラクトを閲覧
+- API エンドポイント: `GET /api/contracts`
+- ページ: `/contracts`
 
-### Pending Transactions
-- View pending transactions in mempool
-- API endpoint: `GET /api/transactions/pending`
-- Page: `/txs/pending`
+### 保留中トランザクション
+- mempool 内の保留中トランザクションを表示
+- API エンドポイント: `GET /api/transactions/pending`
+- ページ: `/txs/pending`
 
-### Dynamic Configuration
-All hardcoded values have been moved to `config.json`:
-- Network name, Chain ID, RPC URL, Explorer URL
-- Currency name, symbol, decimals
-- DEX contract addresses
-- Social links
+### 動的設定
+以前はコードに直接書かれていた値を、すべて `config.json` に集約しました。
+- ネットワーク名、チェーン ID、RPC URL、エクスプローラー URL
+- 通貨名、シンボル、小数桁数
+- DEX コントラクトアドレス
+- ソーシャルリンク
 
-Components that use dynamic config:
-- `AddVBCButton.tsx` - MetaMask network addition
-- `api-docs/page.tsx` - API documentation
-- `dex/docs/page.tsx` - DEX documentation
-- `contract/verify/page.tsx` - Hardhat config examples
-- `network/page.tsx` - Network information
+動的設定を使用するコンポーネント:
+- `AddVBCButton.tsx` - MetaMask へのネットワーク追加
+- `api-docs/page.tsx` - API ドキュメント
+- `dex/docs/page.tsx` - DEX ドキュメント
+- `contract/verify/page.tsx` - Hardhat 設定例
+- `network/page.tsx` - ネットワーク情報
 
-## API Response Format
+## API レスポンス形式
 
-### Standard Response Format (`lib/api-response.ts`)
-All paginated APIs use a unified response structure:
+### 標準レスポンス形式（`lib/api-response.ts`）
+ページネーション対応のすべての API は統一されたレスポンス構造を使用します:
 
 ```typescript
-// Success response
+// 成功レスポンス
 {
   "data": [...],
   "meta": {
@@ -459,7 +471,7 @@ All paginated APIs use a unified response structure:
   }
 }
 
-// Error response
+// エラーレスポンス
 {
   "error": {
     "code": "RATE_LIMIT_EXCEEDED",
@@ -469,65 +481,65 @@ All paginated APIs use a unified response structure:
 }
 ```
 
-### Response Utilities
+### レスポンスユーティリティ
 ```typescript
 import {
-  paginatedResponse,    // Paginated data response
-  successResponse,      // Non-paginated success
-  errorResponse,        // Custom error
-  rateLimitResponse,    // 429 rate limit
+  paginatedResponse,    // ページネーション付きデータレスポンス
+  successResponse,      // ページネーションなしの成功
+  errorResponse,        // カスタムエラー
+  rateLimitResponse,    // 429 レート制限
   notFoundResponse,     // 404 not found
-  internalErrorResponse, // 500 server error
+  internalErrorResponse, // 500 サーバーエラー
   ContractTypes,        // { VRC20: 'VRC-20', VRC721: 'VRC-721', ... }
-  normalizeContractType // ERC20 → VRC-20 normalization
+  normalizeContractType // ERC20 → VRC-20 正規化
 } from '@/lib/api-response';
 ```
 
-### Frontend Compatibility
-Frontend pages support both old and new formats:
+### フロントエンド互換性
+フロントエンドのページは新旧両方の形式に対応します:
 ```typescript
 const data = await res.json();
 const items = data.data || data.contracts || [];
 const total = data.meta?.pagination?.total ?? data.total ?? 0;
 ```
 
-## API Endpoints
+## API エンドポイント
 
-### Token API
-- `GET /api/tokens/[address]` - Token details, holders, transfers, NFT items
-- Query params: `holdersPage`, `holdersLimit`, `transfersPage`, `transfersLimit`, `nftsPage`, `nftsLimit`
+### トークン API
+- `GET /api/tokens/[address]` - トークン詳細、保有者、転送、NFT アイテム
+- クエリパラメータ: `holdersPage`, `holdersLimit`, `transfersPage`, `transfersLimit`, `nftsPage`, `nftsLimit`
 
-### Contract API
-- `POST /api/contract/verify` - Verify contract source code (supports single-file and Standard JSON Input)
-- `GET /api/contract/[address]` - Get contract info
-- `GET /api/contract/status/[address]` - Get contract verification status
+### コントラクト API
+- `POST /api/contract/verify` - コントラクトのソースコードを検証（単一ファイルと Standard JSON Input に対応）
+- `GET /api/contract/[address]` - コントラクト情報を取得
+- `GET /api/contract/status/[address]` - コントラクトの検証ステータスを取得
 
-### Contract Verification API (Etherscan/Hardhat Compatible)
-- `POST /api?module=contract&action=verifysourcecode` - Submit contract for verification (JSON body or form-urlencoded)
-- `GET /api?module=contract&action=checkverifystatus&guid=...` - Check verification status
-- `GET /api?module=contract&action=getabi&address=...` - Get contract ABI
-- `GET /api?module=contract&action=getsourcecode&address=...` - Get verified source code
+### コントラクト検証 API（Etherscan/Hardhat 互換）
+- `POST /api?module=contract&action=verifysourcecode` - 検証のためコントラクトを送信（JSON ボディまたは form-urlencoded）
+- `GET /api?module=contract&action=checkverifystatus&guid=...` - 検証ステータスを確認
+- `GET /api?module=contract&action=getabi&address=...` - コントラクト ABI を取得
+- `GET /api?module=contract&action=getsourcecode&address=...` - 検証済みソースコードを取得
 
-**Supported Compiler Versions:**
-- 0.8.15 - 0.8.33 (with full commit hash mapping)
-- 0.6.12 (legacy support)
+**対応コンパイラバージョン:**
+- 0.8.15 - 0.8.33（完全な commit ハッシュマッピング付き）
+- 0.6.12（レガシーサポート）
 
-**Verification Parameters:**
-| Parameter | Required | Description |
+**検証パラメータ:**
+| パラメータ | 必須 | 説明 |
 |-----------|----------|-------------|
-| `contractaddress` / `address` | Yes | Contract address |
-| `sourceCode` | Yes* | Solidity source code (single file mode) |
-| `standardJsonInput` | Yes* | Standard JSON Input (multi-file mode) |
-| `compilerversion` / `compilerVersion` | Yes | Compiler version (e.g., `v0.8.30+commit.73712a01` or `0.8.30`) |
-| `contractname` / `contractName` | No | Contract name (auto-detected if not provided) |
-| `optimizationUsed` / `optimization` | No | Enable optimization (`1`/`0` or `true`/`false`) |
-| `runs` / `optimizationRuns` | No | Optimization runs (default: 200) |
-| `evmversion` / `evmVersion` | No | EVM version (default: `paris`) |
-| `constructorArguements` / `constructorArguments` | No | ABI-encoded constructor arguments |
+| `contractaddress` / `address` | はい | コントラクトアドレス |
+| `sourceCode` | はい* | Solidity ソースコード（単一ファイルモード） |
+| `standardJsonInput` | はい* | Standard JSON Input（複数ファイルモード） |
+| `compilerversion` / `compilerVersion` | はい | コンパイラバージョン（例: `v0.8.30+commit.73712a01` または `0.8.30`） |
+| `contractname` / `contractName` | いいえ | コントラクト名（未指定の場合は自動検出） |
+| `optimizationUsed` / `optimization` | いいえ | 最適化を有効化（`1`/`0` または `true`/`false`） |
+| `runs` / `optimizationRuns` | いいえ | 最適化の runs（デフォルト: 200） |
+| `evmversion` / `evmVersion` | いいえ | EVM バージョン（デフォルト: `paris`） |
+| `constructorArguements` / `constructorArguments` | いいえ | ABI エンコードされたコンストラクタ引数 |
 
-*Either `sourceCode` or `standardJsonInput` is required.
+*`sourceCode` または `standardJsonInput` のいずれかが必須です。
 
-**Standard JSON Input Format:**
+**Standard JSON Input 形式:**
 ```json
 {
   "language": "Solidity",
@@ -543,218 +555,261 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 }
 ```
 
-**Contract Name Format for Standard JSON Input:**
-- `FileName.sol:ContractName` (e.g., `MyContract.sol:MyContract`)
+**Standard JSON Input でのコントラクト名の形式:**
+- `FileName.sol:ContractName`（例: `MyContract.sol:MyContract`）
 
 ### DEX API
-- `GET /api/dex/pairs` - List trading pairs
-- `GET /api/dex/tokens` - List tokens
-- `GET /api/dex/chart/[pair]` - Price chart data
-- `GET /api/dex/external-price` - External price (Exbitron + DEX fallback)
+- `GET /api/dex/pairs` - 取引ペア一覧
+- `GET /api/dex/tokens` - トークン一覧
+- `GET /api/dex/chart/[pair]` - 価格チャートデータ
+- `GET /api/dex/external-price` - 外部価格（Exbitron + DEX フォールバック）
 
-### DEX API - GeckoTerminal Compatible (Full V2 API)
-All endpoints validate address parameters with `ethers.isAddress()` and sanitize query parameters.
-Error responses use standard JSON:API format: `{ errors: [{ status: "404", title: "..." }] }`
+### DEX API - GeckoTerminal 互換（フル V2 API）
+どのエンドポイントも、アドレスパラメータを `ethers.isAddress()` で検証し、クエリパラメータをサニタイズします。
+エラーレスポンスは標準の JSON:API 形式です: `{ errors: [{ status: "404", title: "..." }] }`
 
-| Endpoint | Parameters | Limits |
+| エンドポイント | パラメータ | 制限 |
 |----------|------------|--------|
-| `/api/dex/geckoterminal/networks` | - | Cache: 1 hour |
-| `/api/dex/geckoterminal/dexes` | - | Cache: 1 hour |
-| `/api/dex/geckoterminal/pools` | - | Cache: 30s |
-| `/api/dex/geckoterminal/pool/[address]` | address (validated) | Cache: 30s |
-| `/api/dex/geckoterminal/token/[address]` | address (validated) | Cache: 60s |
+| `/api/dex/geckoterminal/networks` | - | キャッシュ: 1 時間 |
+| `/api/dex/geckoterminal/dexes` | - | キャッシュ: 1 時間 |
+| `/api/dex/geckoterminal/pools` | - | キャッシュ: 30s |
+| `/api/dex/geckoterminal/pool/[address]` | address（検証あり） | キャッシュ: 30s |
+| `/api/dex/geckoterminal/token/[address]` | address（検証あり） | キャッシュ: 60s |
 | `/api/dex/geckoterminal/ohlcv/[pool]` | timeframe, aggregate, limit, currency | limit: 1-1000, aggregate: 1-60, type: ohlcv_request_response |
 | `/api/dex/geckoterminal/trades/[pool]` | limit, trade_volume_in_usd_greater_than | limit: 1-300 |
-| `/api/dex/geckoterminal/simple/price` | addresses (comma-separated) | max 30 addresses, format: { "0x...": "price" } |
+| `/api/dex/geckoterminal/simple/price` | addresses（カンマ区切り） | 最大 30 アドレス, format: { "0x...": "price" } |
 | `/api/dex/geckoterminal/trending_pools` | page | page: 1-100 |
 | `/api/dex/geckoterminal/new_pools` | page | page: 1-100 |
-| `/api/dex/geckoterminal/search/pools` | query, page | query: 2-100 chars, page: 1-100 |
-| `/api/dex/geckoterminal/info` | - | Cache: 1 hour |
+| `/api/dex/geckoterminal/search/pools` | query, page | query: 2-100 文字, page: 1-100 |
+| `/api/dex/geckoterminal/info` | - | キャッシュ: 1 時間 |
 
-### DEX API - CoinMarketCap Compatible
-- `GET /api/dex/cmc/summary` - DEX summary
-- `GET /api/dex/cmc/ticker` - Trading pairs with price/volume
-- `GET /api/dex/cmc/assets` - Listed assets
-- `GET /api/dex/cmc/trades/[pair]` - Recent trades
-- `GET /api/dex/cmc/orderbook/[pair]` - AMM orderbook simulation
+### DEX API - CoinMarketCap 互換
+- `GET /api/dex/cmc/summary` - DEX サマリー
+- `GET /api/dex/cmc/ticker` - 価格/出来高付きの取引ペア
+- `GET /api/dex/cmc/assets` - 上場アセット
+- `GET /api/dex/cmc/trades/[pair]` - 最近の取引
+- `GET /api/dex/cmc/orderbook/[pair]` - AMM オーダーブックのシミュレーション
 
-### DEX API - DefiLlama Compatible
-- `GET /api/dex/defillama` - Protocol info with TVL
-- `GET /api/dex/defillama/tvl` - TVL (plain number)
-- `GET /api/dex/defillama/pools` - Pool data (yields format)
-- `GET /api/dex/defillama/prices` - Token prices with confidence
-- `GET /api/dex/defillama/historical` - Historical TVL (30 days)
+### DEX API - DefiLlama 互換
+- `GET /api/dex/defillama` - TVL 付きのプロトコル情報
+- `GET /api/dex/defillama/tvl` - TVL（プレーンな数値）
+- `GET /api/dex/defillama/pools` - プールデータ（yields 形式）
+- `GET /api/dex/defillama/prices` - 信頼度付きのトークン価格
+- `GET /api/dex/defillama/historical` - 過去の TVL（30 日）
 
-### Statistics API
-- `GET /api/stats` - Network statistics
-- `GET /api/stats/gas` - Gas price tracker (slow/standard/fast/instant)
-- `GET /api/stats/daily` - Daily statistics (transactions, blocks, gas)
+### 統計 API
+- `GET /api/stats` - ネットワーク統計
+- `GET /api/stats/gas` - ガス価格トラッカー（slow/standard/fast/instant）
+- `GET /api/stats/daily` - 日次統計（トランザクション、ブロック、ガス）
 
-### Network API
-- `GET /api/network/node` - Node information (version, client, peers)
+### ネットワーク API
+- `GET /api/network/node` - ノード情報（バージョン、クライアント、ピア）
 
-### Contracts API
-- `GET /api/contracts` - List all contracts with pagination and filters
+### コントラクト一覧 API
+- `GET /api/contracts` - ページネーションとフィルタ付きで全コントラクトを一覧
 
-### Pending Transactions API
-- `GET /api/transactions/pending` - Pending transactions in mempool
+### 保留中トランザクション API
+- `GET /api/transactions/pending` - mempool 内の保留中トランザクション
 
-### Address Type API
-- `GET /api/address/[address]/type` - Check if address is token, contract, or wallet
+### アドレスタイプ API
+- `GET /api/address/[address]/type` - アドレスが token / contract / wallet のいずれかを判定
 
-## Code Style
+## コードスタイル
 
-- Use functional components with hooks
-- Prefer `async/await` over `.then()`
-- Use TypeScript strict mode
-- Follow ESLint rules (eslint-config-next)
-- Use Tailwind CSS for styling
-- Locale: Japanese (ja) for user-facing content
+- フックを用いた関数コンポーネントを使用
+- `.then()` より `async/await` を優先
+- TypeScript の strict モードを使用
+- ESLint ルールに従う（eslint-config-next）
+- スタイリングには Tailwind CSS を使用
+- ロケール: ユーザー向け表示は日本語（ja）
 
-## Architecture Improvement Proposals
+## アーキテクチャ改善提案
 
-### Current Issues
+### 現在の課題
 
-1. **Code Duplication**
-   - `models/index.ts` and `lib/models.ts` have duplicate interfaces
-   - Token ownership calculation logic exists in both API and tools
+1. **コードの重複**
+   - ~~トークン所有者の計算ロジックが API とツールの両方に存在~~ → ✅ `lib/services/nft.service.ts` に集約済み
+   - ~~Solidity コンパイラ補助関数が複数の検証ルートで重複~~ → ✅ `lib/contract/solc-utils.ts` に集約済み
+   - `models/index.ts` と `lib/models.ts` にインターフェースの重複（残）
 
-2. **Large Files**
-   - `app/api/tokens/[address]/route.ts` (~1400 lines)
-   - `tools/tokens.ts` (~1200 lines)
+2. **大きなファイル**
+   - ~~`app/api/route.ts`（約 2040 行）~~ → ✅ 465 行へ分割（`lib/api/blockscout/` に account/handlers/proxy/verification/shared を分離）
+   - `app/api/tokens/[address]/route.ts`（約 1500 行・残）
+   - `tools/tokens.ts`（約 1550 行・残）
 
-3. **Scattered DB Access**
-   - Direct `mongoose.connection.db` usage across API routes
-   - No abstraction layer for database operations
+3. **DB アクセスの分散**
+   - ~~API ルート全体で `mongoose.connection.db` を直接使用~~ → ✅ `lib/db/get-db.ts`（`getDb`/`requireDb`/`tryGetDb`）に集約済み
+   - ~~複数の接続関数が並存~~ → ✅ `lib/db.ts` の `dbConnect` を `models/index.ts` の `connectDB` へ委譲し一本化
 
-4. **Type Inconsistencies**
-   - DB schemas and API response types defined separately
+4. **テスト不足**
+   - ~~自動テストが存在しない~~ → ✅ Vitest を導入し純粋ロジックを中心に 146 テストを整備
+   - CI（`.github/workflows/lint.yml`）で `npm run check` の後に `npm run test` を実行
 
-### Proposed Architecture (Future Refactoring)
+5. **型の不整合**
+   - DB スキーマと API レスポンス型が別々に定義されている（残）
 
-**Phase 1 & 2 Completed:**
+### テスト基盤（`tests/`）
+
+- **ランナー**: Vitest（`vitest.config.ts`、`vite-tsconfig-paths` で `@/` エイリアス解決）
+- **対象**: 副作用のない純粋関数を中心にテスト
+  - `lib/security/validation.ts`（アドレス/ハッシュ検証、ページネーション、画像 URL）
+  - `lib/services/nft.service.ts`（NFT 所有者計算）
+  - `lib/bigint-utils.ts` / `lib/utils/format.ts`（金額・表示整形）
+  - `lib/transaction-utils.ts`（トランザクション種別判定）
+  - `lib/logger.ts`（ログレベル判定）
+  - `lib/db/get-db.ts`（DB ハンドルガード）
+  - `lib/contract/solc-utils.ts`（コンパイラバージョン/メタデータ処理）
+  - `lib/address/format.ts` / `lib/address/transfer-classification.ts`（表示整形・mint/burn 判定）
+- **方針**: DB や RPC に依存する処理はサービス/ハンドラに寄せ、純粋ロジックを切り出してテスト可能にする
+
+### 構造化ロギング（`lib/logger.ts`）
+
+- 依存ゼロの軽量ロガー。`LOG_LEVEL` 環境変数でレベル制御（既定 `info`、テスト時は `error` のみ）
+- サーバー側（API ルート・同期ツール・DB 層）では `console.*` ではなく `logger` を優先
+
+```typescript
+import { logger } from '@/lib/logger';
+logger.info('MongoDB connected', { db: 'explorerDB' });
+logger.error('Sync failed', { error });
+```
+
+### 提案アーキテクチャ（将来のリファクタリング）
 
 ```
 lib/
-  types/                    # ✅ Centralized type definitions
-    index.ts                # Core types (Block, Transaction, Account, Token, etc.)
-  
-  db/                       # ✅ Database abstraction layer
-    connection.ts           # Singleton DB connection manager
-    base-repository.ts      # Base repository with common CRUD operations
-    index.ts                # Barrel exports
-  
-  services/                 # ✅ Business logic layer
-    nft.service.ts          # NFT ownership calculation (shared)
-    index.ts                # Barrel exports
-  
-  utils/                    # ✅ Utility functions
-    format.ts               # Formatting helpers (address, time, numbers)
-    index.ts                # Barrel exports
-    sync.service.ts         # Blockchain sync logic
-    
-  types/                    # Centralized type definitions
-    index.ts                # Re-export all types
-    token.types.ts          # Token, NFT, Holder types
-    block.types.ts
-    api-response.types.ts   # API response DTOs
+  types/                    # ✅ 集約された型定義
+    index.ts                # コア型（Block, Transaction, Account, Token など）
+
+  db/                       # ✅ データベース抽象化レイヤー
+    connection.ts           # シングルトン DB 接続マネージャー
+    base-repository.ts      # 共通 CRUD 操作を備えたベースリポジトリ
+    get-db.ts               # ✅ ネイティブ Db ハンドル取得（getDb/requireDb/tryGetDb）
+    index.ts                # バレルエクスポート
+
+  services/                 # ✅ ビジネスロジックレイヤー
+    nft.service.ts          # NFT 所有者計算（共有）
+    index.ts                # バレルエクスポート
+
+  api/blockscout/           # ✅ Etherscan 互換 API のドメイン別モジュール
+    shared.ts               # 共有シングルトン（config/client/Token/応答ヘルパー）
+    account.ts              # account アクション
+    handlers.ts             # block/transaction/token/stats/logs/contract
+    proxy.ts                # JSON-RPC プロキシ
+    verification.ts         # コントラクト検証
+
+  contract/
+    solc-utils.ts           # ✅ Solidity コンパイラ補助（共有）
+
+  address/
+    format.ts               # ✅ アドレスページ向け表示整形・型
+    transfer-classification.ts # ✅ mint/burn 判定（依存ゼロ・client 安全）
+
+  logger.ts                 # ✅ 構造化ロガー
+
+  utils/                    # ✅ ユーティリティ関数
+    format.ts               # 整形ヘルパー（アドレス、時刻、数値）
+    index.ts                # バレルエクスポート
 
 app/
   api/
+    route.ts                # ✅ 薄いディスパッチャ（465 行）
     tokens/[address]/
-      route.ts              # Thin controller (use services)
-      
+      route.ts              # ✅ NFT サービスを利用
+
 tools/
-  sync.ts                   # Use shared services
-  tokens.ts                 # Use shared services
+  tokens.ts                 # ✅ 共有サービス/定数/ヘルパーを利用
 ```
 
-### Remaining Work (Phase 3-5)
+### 残作業
 
 ```
 lib/
-  db/repositories/          # TODO: Entity-specific repositories
-    token.repository.ts     # Token-specific queries
+  db/repositories/          # TODO: エンティティ固有のリポジトリ
+    token.repository.ts     # Token 固有のクエリ
     block.repository.ts
     transaction.repository.ts
     holder.repository.ts
-  
-  services/                 # TODO: Additional services
-    token.service.ts        # Token data aggregation
-    sync.service.ts         # Blockchain sync logic
 
-app/
-  api/
-    tokens/[address]/
-      route.ts              # ✅ Now uses NFT service
-      
-tools/
-  tokens.ts                 # ✅ Uses shared ZERO_ADDR constant
+  services/                 # TODO: 追加サービス
+    token.service.ts        # トークンデータの集約
+    sync.service.ts         # ブロックチェーン同期ロジック
 ```
 
-1. **Single Source of Truth** ✅
-   - One place for type definitions (`lib/types/index.ts`)
-   - One place for business logic (e.g., `lib/services/nft.service.ts`)
+- `app/api/tokens/[address]/route.ts` / `tools/tokens.ts` のさらなる分割
+- `any` 型の段階的削減（ESLint で `@typescript-eslint/no-explicit-any` を warn 計上中）
+- DB スキーマと API レスポンス型の統一
 
-2. **Repository Pattern** (Partial)
-   - Base repository class created (`lib/db/base-repository.ts`)
-   - Entity-specific repositories TODO
+### 使用例
 
-3. **Service Layer** ✅
-   - Business logic separated from API routes and CLI tools
-   - Both API and tools import from services
-
-4. **Utility Functions** ✅
-   - Centralized formatting (`lib/utils/format.ts`)
-   - Address validation, time formatting, number formatting
-
-### Usage Examples
-
-**Import types:**
+**型を import:**
 ```typescript
 import { Token, Transaction, Block, ZERO_ADDRESS } from '@/lib/types';
 ```
 
-**Import NFT service:**
+**NFT サービスを import:**
 ```typescript
 import { getNftOwnershipFromDb, calculateNftOwnership } from '@/lib/services';
 ```
 
-**Import utilities:**
+**DB ハンドルを取得:**
+```typescript
+import { getDb, requireDb, tryGetDb } from '@/lib/db';
+```
+
+**ユーティリティを import:**
 ```typescript
 import { formatTokenBalance, timeAgo, shortenAddress } from '@/lib/utils';
 ```
 
-### Migration Status
+### 移行状況
 
-1. ✅ **Phase 1**: Created `lib/types/` with consolidated type definitions
-2. ✅ **Phase 2**: Created `lib/db/` with connection manager and base repository
-3. ✅ **Phase 3**: Created `lib/services/` with NFT service
-4. ✅ **Phase 4**: Refactored Token API to use services
-5. 🔄 **Phase 5**: Tools partially migrated (using shared constants)
+1. ✅ **フェーズ 1**: 型定義を統合した `lib/types/` を作成
+2. ✅ **フェーズ 2**: 接続マネージャーとベースリポジトリを備えた `lib/db/` を作成
+3. ✅ **フェーズ 3**: NFT サービスを備えた `lib/services/` を作成
+4. ✅ **フェーズ 4**: Token API をサービス利用にリファクタリング
+5. ✅ **フェーズ 5**: テスト基盤（Vitest）・構造化ロギング・DB ハンドル集約を整備
+6. ✅ **フェーズ 6**: Etherscan 互換 API（`app/api/route.ts`）をドメイン別モジュールへ分割
+7. 🔄 **フェーズ 7**: リポジトリパターンと残る大型ファイルの分割（進行中）
 
-### Benefits
+### 利点
 
-- **Maintainability**: Changes in one place, not multiple files
-- **Testability**: Services can be unit tested independently
-- **Consistency**: Same logic produces same results everywhere
-- **Type Safety**: Centralized types prevent mismatches
+- **保守性**: 複数ファイルではなく一箇所の変更で済む
+- **テスト容易性**: 純粋ロジックを個別に単体テストできる
+- **一貫性**: 同じロジックがどこでも同じ結果を生む
+- **型安全性**: 集約された型が不整合を防ぐ
+
+
+## コミット署名（GPG）
+
+このリポジトリのコミットは GPG 署名が有効です（`commit.gpgsign`）。AI エージェントは
+秘密情報であるパスフレーズを代理入力できないため、gpg-agent のキャッシュが切れていると
+`git commit` が署名失敗で中断することがあります。
+
+- 署名が切れているときは、ユーザーがターミナルで一度パスフレーズを入力してください
+  （`git commit` の再実行、または `echo test | gpg --clearsign` を一度実行）。一度
+  入力すれば gpg-agent がしばらくキャッシュします。
+- パスフレーズは秘密情報です。AI エージェントへ渡したりディスクへ保存したりしないで
+  ください。
+- コミット失敗を未然に防ぎたい場合は、コミット前にキャッシュを温める pre-commit フック
+  （署名キャッシュが切れていればパスフレーズ入力を促す）を利用する方法があります。
 
 ## 関連リポジトリ
 
-VirBiCoin エコシステムは以下の6つのリポジトリで構成されています：
+VirBiCoin エコシステムは以下のリポジトリで構成されています:
 
 | リポジトリ | 役割 | ローカルパス | URL |
 |-----------|------|-------------|-----|
-| **virbicoin.com** | 公式Webサイト（メインサイト） | `../virbicoin.com` | [github.com/virbicoin/virbicoin.com](https://github.com/virbicoin/virbicoin.com) |
+| **virbicoin.com** | 公式 Web サイト（メインサイト） | `../virbicoin.com` | [github.com/virbicoin/virbicoin.com](https://github.com/virbicoin/virbicoin.com) |
+| **go-virbicoin** | メインクライアント（Gvbc, Go 実装） | `../go-virbicoin` | [github.com/virbicoin/go-virbicoin](https://github.com/virbicoin/go-virbicoin) |
+| **openvirbicoin** | Rust クライアント（Ovbc, OpenEthereum フォーク） | `../openvirbicoin` | [github.com/virbicoin/openvirbicoin](https://github.com/virbicoin/openvirbicoin) |
 | **vbc-stats** | ネットワーク統計ダッシュボード | `../vbc-stats` | [github.com/virbicoin/vbc-stats](https://github.com/virbicoin/vbc-stats) |
 | **vbc-explorer** ← 本リポジトリ | ブロックチェーンエクスプローラー | `../vbc-explorer` | [github.com/virbicoin/vbc-explorer](https://github.com/virbicoin/vbc-explorer) |
-| **go-virbicoin** | メインクライアント（Gvbc, Go実装） | `../go-virbicoin` | [github.com/virbicoin/go-virbicoin](https://github.com/virbicoin/go-virbicoin) |
 | **open-virbicoin-pool** | マイニングプール | `../open-virbicoin-pool` | [github.com/virbicoin/open-virbicoin-pool](https://github.com/virbicoin/open-virbicoin-pool) |
-| **vbc-rpc** | RPCノードステータス & JSON-RPCプロキシ | `../vbc-rpc` | [github.com/virbicoin/vbc-rpc](https://github.com/virbicoin/vbc-rpc) |
+| **vbc-rpc** | RPC ノードステータス & JSON-RPC プロキシ | `../vbc-rpc` | [github.com/virbicoin/vbc-rpc](https://github.com/virbicoin/vbc-rpc) |
 
 ### 依存関係
 
+- **openvirbicoin**: go-virbicoin（Gvbc）と同じ VirBiCoin ネットワーク（chainId 329）に接続する代替クライアント（Ovbc, Rust 実装）
 - **vbc-explorer** → **go-virbicoin**: JSON-RPC 経由でブロックチェーンデータを取得
 - **vbc-stats** → **go-virbicoin**: Gvbc ノードが eth-netstats-client プロトコルでブロック/統計データを送信
 - **open-virbicoin-pool** → **go-virbicoin**: マイニングプールが Gvbc ノードから作業を取得
