@@ -7,6 +7,7 @@ import { getWeb3 } from '../../../lib/web3';
 import { apiCache, CACHE_TTL } from '../../../lib/cache';
 import { paginatedResponse, ContractTypes } from '../../../lib/api-response';
 import { logger } from '../../../lib/logger';
+import { TokenFactoryV2ABI } from '../../../abi/TokenFactoryV2ABI';
 
 // Get shared Web3 instance
 const web3 = getWeb3();
@@ -42,17 +43,6 @@ const LAUNCHPAD_V2_ABI = [
     inputs: [],
     name: 'logoUrl',
     outputs: [{ name: '', type: 'string' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const;
-
-// TokenFactory ABI - only the getAllTokens reader is needed here
-const TOKEN_FACTORY_ABI = [
-  {
-    inputs: [],
-    name: 'getAllTokens',
-    outputs: [{ name: '', type: 'address[]' }],
     stateMutability: 'view',
     type: 'function',
   },
@@ -281,13 +271,25 @@ export async function GET(request: NextRequest) {
 
   // Add Launchpad tokens straight from the TokenFactory so they appear even when
   // the one-off /api/launchpad/register call was missed at creation time.
-  const launchpadFactoryAddress = config.launchpad?.factoryAddress;
-  if (
-    launchpadFactoryAddress &&
-    launchpadFactoryAddress !== '0x0000000000000000000000000000000000000000'
-  ) {
+  // Add Launchpad tokens straight from the TokenFactory so they appear even when
+  // the one-off /api/launchpad/register call was missed at creation time. Both
+  // the current factory and any legacy factories are scanned (the Launchpad UI
+  // merges the same set), so tokens like VBCAT on an older factory still show.
+  const launchpadFactoryAddresses = [
+    config.launchpad?.factoryAddress,
+    ...(config.launchpad?.legacyFactories || []).map((f) => f.address),
+  ].filter(
+    (addr): addr is `0x${string}` => !!addr && addr !== '0x0000000000000000000000000000000000000000'
+  );
+
+  // De-duplicate factory addresses (case-insensitive)
+  const uniqueFactoryAddresses = Array.from(
+    new Map(launchpadFactoryAddresses.map((a) => [a.toLowerCase(), a] as const)).values()
+  );
+
+  for (const factoryAddress of uniqueFactoryAddresses) {
     try {
-      const factory = new web3.eth.Contract(TOKEN_FACTORY_ABI, launchpadFactoryAddress);
+      const factory = new web3.eth.Contract(TokenFactoryV2ABI, factoryAddress);
       const factoryTokens = (await factory.methods.getAllTokens().call()) as string[];
 
       const missingFactoryTokens = (factoryTokens || []).filter((addr) => {
@@ -331,7 +333,10 @@ export async function GET(request: NextRequest) {
           symbol,
           decimals,
           totalSupply,
-          holders: 0,
+          // A token with supply has at least its creator as a holder. Seed with 1
+          // so it passes the "holders > 0" listing filter; the real holder count
+          // is resolved later from the tokenholders collection when available.
+          holders: totalSupply !== '0' ? 1 : 0,
           type: 'VRC-20',
           supply: totalSupply,
           verified: verificationMap.get(lower) || false,
@@ -339,7 +344,10 @@ export async function GET(request: NextRequest) {
         existingTokenAddresses.add(lower);
       }
     } catch (err) {
-      logger.error('Failed to load Launchpad factory tokens', { error: err });
+      logger.error('Failed to load Launchpad factory tokens', {
+        factory: factoryAddress,
+        error: err,
+      });
     }
   }
 
@@ -454,6 +462,16 @@ export async function GET(request: NextRequest) {
               tokenAddress: { $regex: new RegExp(`^${token.address}$`, 'i') },
               holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] },
             });
+
+            // Fall back to the seeded holder count when the tokenholders
+            // collection has no entries yet (e.g. a Launchpad token that was
+            // never run through the sync/register flow) but the token has supply.
+            if (actualHolders === 0) {
+              const seeded = typeof token.holders === 'number' ? token.holders : 0;
+              if (seeded > 0) {
+                actualHolders = seeded;
+              }
+            }
           } catch (err) {
             console.error(`Error fetching holder count for ${token.address}:`, err);
           }
