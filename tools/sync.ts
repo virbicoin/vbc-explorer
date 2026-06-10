@@ -46,7 +46,7 @@ const initDB = async () => {
   }
 };
 
-// メモリ監視機能を追加
+// Add memory monitoring
 const checkMemory = () => {
   const usage = process.memoryUsage();
   const usedMB = Math.round(usage.heapUsed / 1024 / 1024);
@@ -673,13 +673,13 @@ const writeTransactionsToDB: WriteTransactionsToDB = async function (
 const listenBlocks = function (): void {
   console.log('🚀 Starting real-time block listener...');
 
-  const pollInterval = 5000; // Poll every 5 seconds (3秒→5秒に延長)
+  const pollInterval = 5000; // Poll every 5 seconds (extended from 3s to 5s)
   let lastProcessedBlock = 0;
-  let isProcessing = false; // 重複処理を防ぐフラグ
+  let isProcessing = false; // Flag to prevent duplicate processing
 
   const poll = async (): Promise<void> => {
     if (isProcessing) {
-      return; // 既に処理中の場合はスキップ
+      return; // Skip if already processing
     }
 
     try {
@@ -1162,11 +1162,11 @@ const runRichlist = async () => {
 };
 
 const runAll = async () => {
-  // 最初にデータベース接続を確立
+  // Establish the database connection first
   console.log('🔗 Initializing database connection for all tasks...');
   await initDB();
 
-  // 接続が確立されるまで待機
+  // Wait until the connection is established
   let retries = 0;
   const maxRetries = 10;
   while (mongoose.connection.readyState !== 1 && retries < maxRetries) {
@@ -1182,12 +1182,12 @@ const runAll = async () => {
 
   console.log('✅ Database connection established, starting all tasks...');
 
-  // 各mainを順次実行（データベース接続の競合を防ぐ）
+  // Run each main sequentially (to avoid database connection contention)
   try {
-    // まずstatsとrichlistを並行実行
+    // First run stats and richlist in parallel
     await Promise.all([statsMain(), runRichlist()]);
 
-    // その後、syncとtokensを実行
+    // Then run sync and tokens
     await Promise.all([main(), tokensMain()]);
   } catch (error) {
     console.error('❌ Error in runAll:', error);

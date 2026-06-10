@@ -10,13 +10,13 @@
 import type { JSX } from 'react';
 import type { AddressTransaction, TokenInfo } from '../../../../lib/address/format';
 
-// MetaMask準拠のトランザクションタイプバッジを返す
+// Return a MetaMask-style transaction type badge
 export function getTransactionTypeBadge(tx: AddressTransaction): JSX.Element {
   const type = tx.type || 'unknown';
   const action = tx.action || type;
   const direction = tx.direction || 'out';
 
-  // タイプごとのスタイル定義
+  // Style definitions per type
   const styles: Record<string, { bg: string; text: string; icon: string }> = {
     send: { bg: 'bg-red-500/20', text: 'text-red-400', icon: '↑' },
     receive: { bg: 'bg-green-500/20', text: 'text-green-400', icon: '↓' },
@@ -38,7 +38,7 @@ export function getTransactionTypeBadge(tx: AddressTransaction): JSX.Element {
 
   const style = styles[type] || styles['unknown'];
 
-  // 方向矢印（receive/sendの場合を除く）
+  // Direction arrow (except for send/receive)
   let directionIcon = '';
   if (type !== 'send' && type !== 'receive' && type !== 'mining_reward') {
     if (direction === 'in') directionIcon = ' ↓';
@@ -58,16 +58,16 @@ export function getTransactionTypeBadge(tx: AddressTransaction): JSX.Element {
   );
 }
 
-// トークン転送値をフォーマット（単一）
+// Format a token transfer value (single)
 export function formatSingleTokenValue(tokenInfo: TokenInfo): JSX.Element {
   const { value, decimals, symbol, tokenId, type, direction } = tokenInfo;
 
-  // NFTの場合
+  // NFT case
   if (type === 'VRC-721' || type === 'ERC721' || tokenId !== undefined) {
     return <span className="text-pink-400">Token ID: #{tokenId}</span>;
   }
 
-  // ERC20の場合 - 常にシンボルを使用
+  // ERC20 case - always use the symbol
   try {
     const numValue = BigInt(value);
     const divisor = BigInt(10 ** decimals);
@@ -94,9 +94,9 @@ export function formatSingleTokenValue(tokenInfo: TokenInfo): JSX.Element {
   }
 }
 
-// トークン転送値をフォーマット（複数対応）
+// Format token transfer values (supports multiple)
 export function formatTokenValue(tx: AddressTransaction): JSX.Element | null {
-  // 複数のトークン転送がある場合
+  // When there are multiple token transfers
   if (tx.tokenTransfers && tx.tokenTransfers.length > 0) {
     return (
       <div className="flex flex-col gap-1">
@@ -107,17 +107,17 @@ export function formatTokenValue(tx: AddressTransaction): JSX.Element | null {
     );
   }
 
-  // 単一のtokenInfoの場合（後方互換）
+  // For a single tokenInfo (backward compatibility)
   if (!tx.tokenInfo) return null;
 
   const { value, decimals, symbol, tokenId, type } = tx.tokenInfo;
 
-  // NFTの場合
+  // NFT case
   if (type === 'VRC-721' || type === 'ERC721' || tokenId !== undefined) {
     return <span className="text-pink-400">Token ID: #{tokenId}</span>;
   }
 
-  // ERC20の場合 - 常にシンボルを使用
+  // ERC20 case - always use the symbol
   try {
     const numValue = BigInt(value);
     const divisor = BigInt(10 ** decimals);

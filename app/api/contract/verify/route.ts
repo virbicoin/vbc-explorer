@@ -422,7 +422,7 @@ export async function POST(request: NextRequest) {
         console.warn(
           'Old Solidity syntax detected. Compilation may fail with modern compiler versions.'
         );
-        // finalCompilerVersion = '0.8.19'; // 強制しない
+        // finalCompilerVersion = '0.8.19'; // do not force
       }
     }
 
@@ -696,7 +696,7 @@ export async function POST(request: NextRequest) {
     console.log('Available contracts:', Object.keys(compiledOutput.contracts || {}));
 
     let compiledContract = null;
-    const actualContractName = detectedContractName; // 検出されたコントラクト名を優先
+    const actualContractName = detectedContractName; // Prefer the detected contract name
 
     // Check if compiledOutput.contracts exists and has content
     if (!compiledOutput.contracts || Object.keys(compiledOutput.contracts).length === 0) {

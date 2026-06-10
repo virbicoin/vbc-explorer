@@ -391,7 +391,7 @@ export async function GET(
         const { metadata: fetchedMetadata, tokenURI } = await fetchNFTMetadata(address, tokenIdNum);
         let metadata: any;
         if (!fetchedMetadata) {
-          // 失敗時も最低限のダミーmetadataを返す（tokenURIは取得できていれば設定）
+          // Return minimal dummy metadata even on failure (set tokenURI if it was obtained)
           metadata = {
             name: `Token #${tokenIdNum}`,
             description: '',
@@ -401,13 +401,13 @@ export async function GET(
             createdAt: null,
           };
         } else {
-          // メタデータが取得できた場合、tokenURIを追加
+          // If metadata was obtained, add tokenURI
           metadata = {
             ...fetchedMetadata,
             tokenURI: tokenURI,
           };
         }
-        // コントラクト作成Tx
+        // Contract creation Tx
         const db = requireDb();
         const contractCreateTx = await db.collection('tokentransfers').findOne(
           {
@@ -418,7 +418,7 @@ export async function GET(
           { sort: { timestamp: 1 } }
         );
 
-        // Transfer履歴（tokenId一致のみ）
+        // Transfer history (matching tokenId only)
         const tokenTransfers = await db
           .collection('tokentransfers')
           .find({
@@ -427,18 +427,18 @@ export async function GET(
           })
           .sort({ timestamp: 1 })
           .toArray();
-        // 各Txの詳細情報も取得
+        // Also fetch details for each Tx
         const txHashes = tokenTransfers.map((tx) => tx.transactionHash);
         const txDetails = await db
           .collection('transactions')
           .find({ hash: { $in: txHashes } })
           .toArray();
         const txDetailMap = Object.fromEntries(txDetails.map((tx) => [tx.hash, tx]));
-        // transfers生成
+        // Generate transfers
         let transfers = await Promise.all(
           tokenTransfers.map(async (tx) => {
             const detail = txDetailMap[tx.transactionHash] || {};
-            // blockNumberを多段で取得
+            // Get blockNumber in multiple steps
             const blockNumber =
               detail.blockNumber ?? tx.blockNumber ?? tx.block_number ?? tx.block ?? null;
             let blockDetail = null;
@@ -452,7 +452,7 @@ export async function GET(
                 difficulty: detail.block.difficulty,
               };
             } else if (blockNumber !== null && blockNumber !== undefined) {
-              // blockがnullの場合はblockNumberからblocksコレクションを参照
+              // If block is null, look up the blocks collection by blockNumber
               const block = await db.collection('blocks').findOne({ number: blockNumber });
               if (block) {
                 blockDetail = {
@@ -487,7 +487,7 @@ export async function GET(
             };
           })
         );
-        // Createイベントを履歴の先頭に
+        // Put the Create event at the top of the history
         if (contractCreateTx) {
           const detail = txDetailMap[contractCreateTx.transactionHash] || {};
           let blockDetail = null;
@@ -525,7 +525,7 @@ export async function GET(
             ...transfers,
           ];
         }
-        // owner/creator/createdAtのセット
+        // Set owner/creator/createdAt
         let owner = null;
         let creator = null;
         let createdAt = null;
@@ -536,7 +536,7 @@ export async function GET(
             owner = txDetail.to;
             if (!creator || creator === ZERO_ADDR) {
               if (txDetail.from && txDetail.from !== ZERO_ADDR) {
-                creator = txDetail.from; // ZERO_ADDR 以外なら採用
+                creator = txDetail.from; // adopt if not ZERO_ADDR
               }
             }
             createdAt = txDetail.timestamp
@@ -555,14 +555,14 @@ export async function GET(
           }
         }
 
-        /* ---------- 推測ロジックでcreatorを補完 ---------- */
+        /* ---------- Infer the creator with heuristic logic ---------- */
         if (!creator) {
-          // ContractコレクションからbyteCode取得
+          // Get byteCode from the Contract collection
           const contractDoc = await db
             .collection('Contract')
             .findOne({ address: { $regex: new RegExp(`^${address}$`, 'i') } });
           if (contractDoc && contractDoc.byteCode) {
-            // to:null のトランザクションを取得
+            // Get transactions with to:null
             const txs = await db
               .collection('transactions')
               .find({ to: null, input: { $exists: true } })
@@ -578,7 +578,7 @@ export async function GET(
               creator = matchTx.from;
             }
           }
-          // Fallback: コントラクト作成Txのfrom
+          // Fallback: from of the contract creation Tx
           if (
             (!creator || creator === ZERO_ADDR) &&
             contractCreateTx &&
@@ -590,9 +590,9 @@ export async function GET(
         }
         // console.log removed (debug)
 
-        // ======================= 追加 fallback =======================
+        // ======================= Additional fallback =======================
         if (!creator) {
-          // 1) 最古の to=contract アドレス Tx の from
+          // 1) from of the oldest Tx with to=contract address
           const colNames2 = ['Transaction', 'transactions'];
           for (const col of colNames2) {
             const firstNonZeroTx = await db.collection(col).findOne(
@@ -608,7 +608,7 @@ export async function GET(
             }
           }
 
-          // 2) isContractCreation フラグ付き Tx
+          // 2) Tx with the isContractCreation flag
           if (!creator) {
             const deployTxByFlag = await db.collection('Transaction').findOne(
               {
@@ -625,9 +625,9 @@ export async function GET(
           // console.log removed (debug)
         }
         // ============================================================
-        /* ---------- 推測ロジック終了 ---------- */
+        /* ---------- End of heuristic logic ---------- */
 
-        // Token情報も取得
+        // Also fetch token info
         const foundTokenArr = await Token.find({
           address: { $regex: new RegExp(`^${address}$`, 'i') },
         }).lean();
@@ -823,11 +823,11 @@ export async function GET(
       .limit(holdersLimit)
       .toArray();
 
-    // 各holderの所有tokenId配列をtokentransfersから集計してセット
-    // NFTサービスを使用して所有権を計算（トークンの現在の所有者を正確に計算）
+    // Aggregate each holder's owned tokenId array from tokentransfers and set it
+    // Use the NFT service to compute ownership (accurately determine the current token owner)
     const { ownership: tokenOwnership } = await getNftOwnershipFromDb(db, address);
 
-    // 各ホルダーの所有tokenIdを設定
+    // Set each holder's owned tokenIds
     const { holderTokens } = groupTokensByHolder(tokenOwnership);
     for (const holder of holders) {
       holder.tokenIds = holderTokens.get(holder.holderAddress.toLowerCase()) || [];
@@ -1009,7 +1009,7 @@ export async function GET(
           bytecode: null,
         };
 
-    // コントラクト作成トランザクションを取得
+    // Get the contract creation transaction
     const contractCreateTx = await db.collection('tokentransfers').findOne(
       {
         to: { $regex: new RegExp(`^${address}$`, 'i') },
@@ -1019,14 +1019,14 @@ export async function GET(
       { sort: { timestamp: 1 } }
     );
 
-    // 推測的にコントラクト作成Txを特定しCreatorを取得
+    // Heuristically identify the contract creation Tx and get the Creator
     let creator = null;
-    // --- ここからバイトコード推測ロジック ---
-    // まずContract（大文字）を優先
+    // --- Start of bytecode heuristic logic ---
+    // Prefer Contract (capitalized) first
     const contractDoc = await db
       .collection('Contract')
       .findOne({ address: { $regex: new RegExp(`^${address}$`, 'i') } });
-    // console.log('contractDoc:', contractDoc); // ここでbyteCodeが必ず入る
+    // console.log('contractDoc:', contractDoc); // byteCode is always present here
     if (contractDoc && contractDoc.byteCode) {
       let txs = await db
         .collection('transactions')
@@ -1048,7 +1048,7 @@ export async function GET(
       const contractCode = normalizeHex(contractDoc.byteCode as string);
       let matchTx = txs.find((tx) => {
         const txInput = normalizeHex(tx.input as string);
-        // 比較長さを短くして柔軟にマッチ
+        // Shorten the comparison length for a more flexible match
         const minLen = 40; // 20 bytes * 2 hex chars
         return (
           contractCode.slice(0, minLen) === txInput.slice(0, minLen) ||
@@ -1062,16 +1062,16 @@ export async function GET(
         });
       }
       if (matchTx && matchTx.from && matchTx.from !== ZERO_ADDR) {
-        // console.log('推測マッチTx:', matchTx);
-        creator = matchTx.from; // ←ここで必ず上書き
+        // console.log('inferred match Tx:', matchTx);
+        creator = matchTx.from; // always overwrite here
       } else {
         const nonZeroFromTx = txs.find((tx) => tx.from && tx.from !== ZERO_ADDR);
         if (nonZeroFromTx) {
           creator = nonZeroFromTx.from;
         }
       }
-      // console.log('推測creator:', creator);
-      // 追加のfallback: to:null かつ from != ZERO_ADDR の最古Tx
+      // console.log('inferred creator:', creator);
+      // Additional fallback: oldest Tx with to:null and from != ZERO_ADDR
       if (!creator) {
         const deployTx = await db.collection('transactions').findOne(
           {
@@ -1085,9 +1085,9 @@ export async function GET(
         }
       }
     }
-    // --- ここまでバイトコード推測ロジック ---
+    // --- End of bytecode heuristic logic ---
 
-    // contractCreateTxのfromをCreatorとして採用（まだ設定されていない場合）
+    // Adopt contractCreateTx's from as the Creator (if not already set)
     if (
       (!creator || creator === ZERO_ADDR) &&
       contractCreateTx &&
@@ -1096,10 +1096,10 @@ export async function GET(
     ) {
       creator = contractCreateTx.from;
     }
-    // console.log('推測creator最終:', creator);
+    // console.log('final inferred creator:', creator);
 
-    // fallback: コントラクトアドレス宛のトランザクションのうち
-    // from がゼロアドレス以外で最も古いものを Creator に採用
+    // fallback: among transactions sent to the contract address,
+    // adopt the oldest one whose from is not the zero address as the Creator
     if (!creator) {
       const colNames = ['Transaction', 'transactions'];
       for (const col of colNames) {
@@ -1116,7 +1116,7 @@ export async function GET(
         }
       }
 
-      // さらに creates フィールドを持つデプロイTx を検索
+      // Also search for a deploy Tx that has a creates field
       if (!creator) {
         const deployTx = await db.collection('Transaction').findOne({
           creates: { $regex: new RegExp(`^${address}$`, 'i') },
@@ -1127,16 +1127,16 @@ export async function GET(
         }
       }
     }
-    // console.log('NFT 最終 creator (fallback):', creator);
+    // console.log('NFT final creator (fallback):', creator);
 
-    // tokenId指定時のOwner決定ロジック
+    // Owner determination logic when tokenId is specified
     let tokenIdParam = null;
     if (searchParams && searchParams.get) {
       tokenIdParam = searchParams.get('tokenId');
     }
     let ownerAddress = null;
     if (tokenIdParam) {
-      // tokenId一致の全トランスファーを昇順で取得
+      // Get all transfers matching tokenId in ascending order
       const tokenTransfers = await db
         .collection('tokentransfers')
         .find({
@@ -1154,7 +1154,7 @@ export async function GET(
 
     // For NFT tokens, add NFT-specific information
     if (token.type === 'VRC-721' || token.type === 'VRC-1155') {
-      // Transfer履歴の先頭にコントラクト作成Txを追加
+      // Add the contract creation Tx at the top of the transfer history
       let nftTransfers =
         transfers.length > 0
           ? transfers.map((transfer: Record<string, unknown>) => {
@@ -1248,24 +1248,24 @@ export async function GET(
           balance: formatTokenAmount(balanceRaw, Number(token.decimals ?? (isNFT ? 0 : 18)), isNFT),
           balanceRaw: balanceRaw,
           percentage: percentage,
-          tokenIds: (holder.tokenIds as number[]) || [], // DB値そのまま返す
+          tokenIds: (holder.tokenIds as number[]) || [], // return DB value as-is
         };
       });
 
-      // tokenOwnershipマップから全NFTアイテムを取得（ページネーションに依存しない）
+      // Get all NFT items from the tokenOwnership map (independent of pagination)
       const allNftItems: Array<{ tokenId: number; owner: string }> = [];
       for (const [tokenId, owner] of tokenOwnership.entries()) {
         allNftItems.push({ tokenId, owner });
       }
-      // tokenId降順でソート
+      // Sort by tokenId descending
       allNftItems.sort((a, b) => b.tokenId - a.tokenId);
 
       const totalNftItems = allNftItems.length;
 
-      // NFTアイテムのページネーション
+      // NFT item pagination
       const paginatedNftItems = allNftItems.slice((nftsPage - 1) * nftsLimit, nftsPage * nftsLimit);
 
-      // 実際のNFT供給量（バーンを考慮）
+      // Actual NFT supply (accounting for burns)
       const actualNftSupply = totalNftItems.toString();
 
       const nftData = {
@@ -1296,7 +1296,7 @@ export async function GET(
         },
         holders: mappedHolders,
         transfers: nftTransfers,
-        nftItems: paginatedNftItems, // 全NFTアイテム（ページネーション済み）
+        nftItems: paginatedNftItems, // all NFT items (paginated)
         pagination: {
           holders: {
             page: holdersPage,
@@ -1427,7 +1427,7 @@ export async function GET(
                 ),
                 balanceRaw: balanceRaw,
                 percentage: percentage,
-                tokenIds: (holder.tokenIds as number[]) || [], // DB値そのまま返す
+                tokenIds: (holder.tokenIds as number[]) || [], // return DB value as-is
               };
             }),
       transfers:
@@ -1449,7 +1449,7 @@ export async function GET(
               valueRaw: transfer.value as string,
               timestamp: transfer.timestamp as Date,
               timeAgo: getTimeAgo(transfer.timestamp as Date),
-              tokenId: transfer.tokenId, // ← DB値をそのまま返す
+              tokenId: transfer.tokenId, // return DB value as-is
             })),
       pagination: {
         holders: {

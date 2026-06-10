@@ -261,7 +261,7 @@ const TransactionList = ({
   newTransactionHashes: Set<string>;
   now: number;
 }) => {
-  // MetaMask準拠のトランザクションタイプバッジを生成
+  // Generate a MetaMask-style transaction type badge
   const getTransactionTypeBadge = (type?: string, action?: string) => {
     const typeConfig: Record<string, { bg: string; text: string; icon: string }> = {
       send: { bg: 'bg-red-100', text: 'text-red-700', icon: '↑' },
@@ -404,7 +404,7 @@ const TransactionList = ({
   );
 };
 
-// タイムアウト付きフェッチ関数
+// Fetch helper with timeout
 const fetchWithTimeout = async (url: string, timeout = 10000): Promise<Response> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -419,7 +419,7 @@ const fetchWithTimeout = async (url: string, timeout = 10000): Promise<Response>
   }
 };
 
-// ローディングスケルトン
+// Loading skeleton
 const SkeletonCard = () => (
   <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 flex items-center gap-4 min-h-[140px] h-full animate-pulse">
     <div className="flex-shrink-0 w-8 h-8 bg-gray-700 rounded"></div>
@@ -487,7 +487,7 @@ export default function Page() {
   };
 
   useEffect(() => {
-    // 設定を取得
+    // Fetch config
     const fetchConfig = async () => {
       try {
         // Initialize currency conversion factors
@@ -516,20 +516,20 @@ export default function Page() {
     fetchConfig();
   }, []);
 
-  // リアルタイムデータ用のポーリング（3秒間隔）
+  // Polling for realtime data (every 3 seconds)
   useEffect(() => {
     const fetchRealtimeData = async () => {
       try {
         const response = await fetchWithTimeout('/api/realtime', 5000);
         const realtimeData = await response.json();
 
-        // loading状態やerror状態の場合は既存データを保持
+        // Keep existing data when in loading or error state
         if (realtimeData.loading || realtimeData.error) {
           console.log('[Realtime] API returned loading/error state, keeping existing data');
           return;
         }
 
-        // latestBlockとlastBlockTimestampをリアルタイムで更新
+        // Update latestBlock and lastBlockTimestamp in real time
         if (realtimeData.latestBlock && realtimeData.latestBlock > 0) {
           const latestBlockTimestamp = realtimeData.blocks?.[0]?.timestamp || 0;
           setStats((prev) => ({
@@ -559,7 +559,7 @@ export default function Page() {
           }
         }
 
-        // 空データの場合は既存データを保持
+        // Keep existing data when empty
         const blocksArray = Array.isArray(realtimeData.blocks)
           ? realtimeData.blocks.slice(0, 25)
           : [];
@@ -567,7 +567,7 @@ export default function Page() {
           setBlocks(blocksArray);
         }
 
-        // Transactions処理（空データの場合は既存データを保持）
+        // Handle transactions (keep existing data when empty)
         const transactionsData = Array.isArray(realtimeData.transactions)
           ? realtimeData.transactions
           : [];
@@ -593,7 +593,7 @@ export default function Page() {
           setLastTopTransactionHash(newTopTransactionHash);
         }
 
-        // 空データの場合は既存データを保持
+        // Keep existing data when empty
         if (transactionsData.length > 0) {
           const transactionsArray = transactionsData.slice(0, 25);
           setTransactions(transactionsArray);
@@ -606,18 +606,18 @@ export default function Page() {
     };
 
     fetchRealtimeData();
-    const realtimeInterval = setInterval(fetchRealtimeData, 3000); // 3秒間隔
+    const realtimeInterval = setInterval(fetchRealtimeData, 3000); // Every 3 seconds
 
     return () => clearInterval(realtimeInterval);
   }, [isInitialLoad, lastTopBlock, lastTopTransactionHash]);
 
-  // 統計データ用のポーリング（30秒間隔 - 重いので頻度を下げる）
+  // Polling for stats data (every 30 seconds - less frequent since it's heavy)
   useEffect(() => {
     const fetchStatsData = async () => {
       try {
         const response = await fetchWithTimeout('/api/stats?enhanced=true', 10000);
         const statsData = await response.json();
-        // latestBlockは除外してマージ（リアルタイムAPIを優先）
+        // Merge while excluding latestBlock (prefer the realtime API)
         setStats((prev) => ({
           ...statsData,
           latestBlock: prev.latestBlock > 0 ? prev.latestBlock : statsData.latestBlock,
@@ -628,12 +628,12 @@ export default function Page() {
     };
 
     fetchStatsData();
-    const statsInterval = setInterval(fetchStatsData, 30000); // 30秒間隔
+    const statsInterval = setInterval(fetchStatsData, 30000); // Every 30 seconds
 
     return () => clearInterval(statsInterval);
   }, []);
 
-  // ガス統計データ用のポーリング（15秒間隔）
+  // Polling for gas stats data (every 15 seconds)
   useEffect(() => {
     const fetchGasStats = async () => {
       try {
@@ -648,7 +648,7 @@ export default function Page() {
     };
 
     fetchGasStats();
-    const gasInterval = setInterval(fetchGasStats, 15000); // 15秒間隔
+    const gasInterval = setInterval(fetchGasStats, 15000); // Every 15 seconds
 
     return () => clearInterval(gasInterval);
   }, []);

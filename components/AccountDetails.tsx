@@ -61,7 +61,7 @@ export default function AccountDetails({ address }: AccountDetailsProps) {
   const [copiedAddress, setCopiedAddress] = useState(false);
   const [config, setConfig] = useState<Config | null>(null);
 
-  // プール名を取得する関数
+  // Function to get the pool name
   const getPoolName = (address: string) => {
     if (!address || !config?.miners) return null;
 
@@ -76,7 +76,7 @@ export default function AccountDetails({ address }: AccountDetailsProps) {
     // Initialize currency settings
     initializeCurrency();
 
-    // 設定を取得
+    // Fetch config
     const fetchConfig = async () => {
       try {
         const response = await fetch('/api/config');

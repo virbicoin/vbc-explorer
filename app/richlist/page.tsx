@@ -105,7 +105,7 @@ export default function RichlistPage() {
       </div>
 
       <main className="container mx-auto px-4 py-8">
-        {/* Summary Stats - テーブルの上に移動 */}
+        {/* Summary Stats - moved above the table */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-gray-700/50 rounded-lg p-4 border border-gray-600/50">
             <h3 className="text-sm font-medium text-gray-300 mb-2">Total Addresses</h3>
@@ -251,7 +251,7 @@ export default function RichlistPage() {
                 </table>
               </div>
 
-              {/* Pagination - トランザクション形式に変更 */}
+              {/* Pagination - changed to transaction style */}
               {richlistData.pagination.totalPages > 1 && (
                 <div className="flex justify-center items-center gap-2 mt-6">
                   <button
@@ -263,7 +263,7 @@ export default function RichlistPage() {
                   </button>
 
                   <div className="flex gap-1">
-                    {/* 最初のページ */}
+                    {/* First page */}
                     <button
                       onClick={() => handlePageChange(1)}
                       className={`px-3 py-2 rounded transition-colors ${
@@ -275,14 +275,14 @@ export default function RichlistPage() {
                       1
                     </button>
 
-                    {/* 現在のページ周辺のページ番号 */}
+                    {/* Page numbers around the current page */}
                     {(() => {
                       const pages = [];
                       const totalPages = richlistData.pagination.totalPages;
 
-                      // 最後のページが選択されている場合の処理
+                      // Handle the case where the last page is selected
                       if (currentPage === totalPages && totalPages > 1) {
-                        // 最後のページが選択されている場合、最後の数ページを表示
+                        // When the last page is selected, show the last few pages
                         const startPage = Math.max(2, totalPages - 2);
                         for (let i = startPage; i < totalPages; i++) {
                           pages.push(
@@ -298,11 +298,11 @@ export default function RichlistPage() {
                         return pages;
                       }
 
-                      // 通常のページネーション
+                      // Normal pagination
                       const startPage = 2;
                       const endPage = Math.min(totalPages - 1, Math.max(4, currentPage + 1));
 
-                      // 連続したページ番号を生成（2から始まる）
+                      // Generate consecutive page numbers (starting from 2)
                       for (let i = startPage; i <= Math.min(endPage, totalPages - 1); i++) {
                         pages.push(
                           <button
@@ -318,7 +318,7 @@ export default function RichlistPage() {
                           </button>
                         );
 
-                        // 最初の数ページを表示した後に省略記号を入れる
+                        // Insert an ellipsis after showing the first few pages
                         if (i === 3 && totalPages > 5 && currentPage < totalPages - 2) {
                           pages.push(
                             <span key="ellipsis" className="text-gray-500 px-2">
@@ -332,7 +332,7 @@ export default function RichlistPage() {
                       return pages;
                     })()}
 
-                    {/* 最後のページ */}
+                    {/* Last page */}
                     {richlistData.pagination.totalPages > 1 && (
                       <button
                         onClick={() => handlePageChange(richlistData.pagination.totalPages)}
@@ -357,7 +357,7 @@ export default function RichlistPage() {
                 </div>
               )}
 
-              {/* ページ情報 */}
+              {/* Pagination info */}
               <div className="text-center mt-4 text-gray-400 text-sm">
                 Showing accounts {(currentPage - 1) * 50 + 1} to{' '}
                 {Math.min(currentPage * 50, richlistData.pagination.total)} of{' '}

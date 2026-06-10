@@ -21,10 +21,20 @@ const DEAD_ADDR = '0x000000000000000000000000000000000000dead';
 
 // Blacklisted token addresses from config
 const blacklistConfig =
-  (config as { blacklist?: { tokens?: { address: string }[]; lpPairs?: { address: string }[] } })
-    .blacklist || {};
+  (
+    config as {
+      blacklist?: {
+        tokens?: { address: string }[];
+        lpPairs?: { address: string }[];
+        symbols?: string[];
+      };
+    }
+  ).blacklist || {};
 const BLACKLISTED_TOKENS = (blacklistConfig.tokens || []).map((t) => t.address.toLowerCase());
 const BLACKLISTED_LP_PAIRS = (blacklistConfig.lpPairs || []).map((p) => p.address.toLowerCase());
+// Blacklisted token symbols (case-insensitive). Hides junk/test tokens such as
+// TEST/FIX/FIX2 that share a symbol across many Launchpad addresses.
+const BLACKLISTED_SYMBOLS = (blacklistConfig.symbols || []).map((s) => s.toLowerCase());
 
 // ERC20 ABI for totalSupply
 const ERC20_ABI = [
@@ -614,6 +624,11 @@ export async function GET(request: NextRequest) {
       if (!/^0x[0-9a-fA-F]{40}$/.test(addr)) return false;
       // Exclude blacklisted tokens
       if (BLACKLISTED_TOKENS.includes(addr) || BLACKLISTED_LP_PAIRS.includes(addr)) {
+        return false;
+      }
+      // Exclude tokens whose symbol is blacklisted (e.g. TEST/FIX/FIX2)
+      const symbol = (t as IToken).symbol;
+      if (symbol && BLACKLISTED_SYMBOLS.includes(symbol.toLowerCase())) {
         return false;
       }
       // Exclude tokens with 0 holders

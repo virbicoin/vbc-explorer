@@ -30,7 +30,7 @@ async function dbConnect(): Promise<mongoose.Connection> {
   return mongoose.connection;
 }
 
-// 軽量化: 接続プールのクリーンアップ
+// Lightweight cleanup of the connection pool
 export async function dbDisconnect() {
   if (mongoose.connection.readyState !== mongoose.ConnectionStates.disconnected) {
     await mongoose.disconnect();

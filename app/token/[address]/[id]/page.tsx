@@ -83,7 +83,7 @@ export default function TokenIdDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  // 1. API取得時にmetadataだけでなく全体をtokenDetailとして保持
+  // 1. On API fetch, keep the whole response as tokenDetail, not just metadata
   const [tokenDetail, setTokenDetail] = useState<TokenDetail | null>(null);
 
   // Add NFT to MetaMask
@@ -199,7 +199,7 @@ export default function TokenIdDetailPage() {
 
   // summaryStats constant removed (unused)
 
-  // Transfer履歴をtokenId降順でソート
+  // Sort the transfer history by tokenId descending
   const sortedTransfers = tokenDetail?.transfers
     ? [...tokenDetail.transfers].sort((a, b) => Number(b.tokenId) - Number(a.tokenId))
     : [];
@@ -275,7 +275,7 @@ export default function TokenIdDetailPage() {
         </div>
         {/* Image and metadata */}
         <div className="bg-gray-800 rounded-lg border border-gray-700 p-6 mb-8 flex flex-col md:flex-row gap-8 relative">
-          {/* Add to MetaMask button - 右上に配置 */}
+          {/* Add to MetaMask button - placed in the top right */}
           <button
             onClick={addNFTToMetaMask}
             className="absolute top-4 right-4 flex items-center gap-2 px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded-lg transition-colors text-sm font-medium"
@@ -283,7 +283,7 @@ export default function TokenIdDetailPage() {
           >
             🦊 Add to MetaMask
           </button>
-          {/* 画像 */}
+          {/* Image */}
           {tokenDetail?.metadata?.image ? (
             <div className="w-48 h-48 relative bg-gray-900 rounded-lg overflow-hidden flex-shrink-0">
               <Image
@@ -308,7 +308,7 @@ export default function TokenIdDetailPage() {
                 {tokenDetail?.metadata?.name || `Token #${id}`}
               </h2>
               <p className="text-gray-300 mb-4">{tokenDetail?.metadata?.description || '-'}</p>
-              {/* 追加情報 */}
+              {/* Additional info */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
                 <div className="text-sm text-gray-400 flex items-center gap-2">
                   <span className="font-bold">Token Type:</span>

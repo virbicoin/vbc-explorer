@@ -973,7 +973,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
         .map(([pid]) => pid);
 
       if (pidsWithReward.length === 0) {
-        setError('収穫可能な報酬がありません');
+        setError('No rewards available to harvest');
         return false;
       }
 

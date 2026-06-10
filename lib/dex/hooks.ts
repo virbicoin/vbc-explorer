@@ -348,7 +348,7 @@ export function useSwap() {
     to: Address
   ) => {
     try {
-      // VirBiCoin系Router
+      // VirBiCoin-style router
       return await writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,
@@ -357,7 +357,7 @@ export function useSwap() {
         value: amountIn,
       });
     } catch {
-      // 標準UniswapV2 (deadline有り)
+      // Standard UniswapV2 (with deadline)
       return writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,
@@ -376,7 +376,7 @@ export function useSwap() {
     to: Address
   ) => {
     try {
-      // VirBiCoin系Router
+      // VirBiCoin-style router
       return await writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,
@@ -384,7 +384,7 @@ export function useSwap() {
         args: [amountIn, amountOutMin, path, to],
       });
     } catch {
-      // 標準UniswapV2 (deadline有り)
+      // Standard UniswapV2 (with deadline)
       return writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,
@@ -402,7 +402,7 @@ export function useSwap() {
     to: Address
   ) => {
     try {
-      // deadline無し版
+      // No-deadline variant
       return await writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,
@@ -410,7 +410,7 @@ export function useSwap() {
         args: [amountIn, amountOutMin, path, to],
       });
     } catch {
-      // 標準UniswapV2 (deadline有り)
+      // Standard UniswapV2 (with deadline)
       return writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,
@@ -456,7 +456,7 @@ export function useAddLiquidity() {
     amountNative: bigint
   ) => {
     try {
-      // VirBiCoin系Router
+      // VirBiCoin-style router
       return await writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,
@@ -465,7 +465,7 @@ export function useAddLiquidity() {
         value: amountNative,
       });
     } catch {
-      // 標準UniswapV2 (deadline有り)
+      // Standard UniswapV2 (with deadline)
       return writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,
@@ -487,7 +487,7 @@ export function useAddLiquidity() {
     to: Address
   ) => {
     try {
-      // deadline無し版
+      // No-deadline variant
       return await writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,
@@ -495,7 +495,7 @@ export function useAddLiquidity() {
         args: [tokenA, tokenB, amountADesired, amountBDesired, amountAMin, amountBMin, to],
       });
     } catch {
-      // 標準UniswapV2 (deadline有り)
+      // Standard UniswapV2 (with deadline)
       return writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,
@@ -579,7 +579,7 @@ export function useRemoveLiquidity() {
     to: Address
   ) => {
     try {
-      // VirBiCoin系Router
+      // VirBiCoin-style router
       return await writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,
@@ -587,7 +587,7 @@ export function useRemoveLiquidity() {
         args: [token, liquidity, amountTokenMin, amountNativeMin, to],
       });
     } catch {
-      // 標準UniswapV2 (deadline有り)
+      // Standard UniswapV2 (with deadline)
       return writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,
@@ -607,7 +607,7 @@ export function useRemoveLiquidity() {
     to: Address
   ) => {
     try {
-      // deadline無し版
+      // No-deadline variant
       return await writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,
@@ -615,7 +615,7 @@ export function useRemoveLiquidity() {
         args: [tokenA, tokenB, liquidity, amountAMin, amountBMin, to],
       });
     } catch {
-      // 標準UniswapV2 (deadline有り)
+      // Standard UniswapV2 (with deadline)
       return writeContract({
         address: contracts.router,
         abi: ROUTER_ABI,

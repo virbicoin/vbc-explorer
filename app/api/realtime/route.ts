@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { connectDB, Block, Transaction } from '../../../models/index';
 
 /**
- * リアルタイム更新用の軽量APIエンドポイント
- * トップページの Latest Block と Latest Blocks/Transactions 用
- * キャッシュ期間を短く、データ量を最小限にして高速レスポンスを実現
+ * Lightweight API endpoint for real-time updates
+ * Used for the Latest Block and Latest Blocks/Transactions on the home page
+ * Uses a short cache duration and minimal payload for fast responses
  */
 
 interface RealtimeData {
@@ -25,31 +25,31 @@ interface RealtimeData {
   timestamp: number;
 }
 
-// 軽量キャッシュ（10秒）
+// Lightweight cache (10 seconds)
 let realtimeCache: RealtimeData | null = null;
 let cacheTimestamp = 0;
-const CACHE_DURATION = 10000; // 10秒キャッシュ
+const CACHE_DURATION = 10000; // 10-second cache
 
-// バックグラウンド更新フラグ
+// Background update flag
 let isUpdating = false;
 
 async function fetchRealtimeData(): Promise<RealtimeData> {
   await connectDB();
 
-  // 最新10ブロックと最新10トランザクションを並列取得
+  // Fetch the latest 10 blocks and 10 transactions in parallel
   const [blocksResult, transactionsResult] = await Promise.allSettled([
     Block.find({})
       .sort({ number: -1 })
       .limit(10)
       .select({ number: 1, hash: 1, timestamp: 1, miner: 1, _id: 0 })
       .lean()
-      .maxTimeMS(5000), // 5秒タイムアウト
+      .maxTimeMS(5000), // 5-second timeout
     Transaction.find({})
       .sort({ blockNumber: -1, transactionIndex: -1 })
       .limit(10)
       .select({ hash: 1, from: 1, to: 1, value: 1, timestamp: 1, _id: 0 })
       .lean()
-      .maxTimeMS(5000), // 5秒タイムアウト
+      .maxTimeMS(5000), // 5-second timeout
   ]);
 
   const blocks =
@@ -92,7 +92,7 @@ async function fetchRealtimeData(): Promise<RealtimeData> {
   };
 }
 
-// バックグラウンドでキャッシュを更新
+// Update cache in the background
 async function updateCacheInBackground() {
   if (isUpdating) return;
   isUpdating = true;
@@ -112,7 +112,7 @@ export async function GET() {
   const now = Date.now();
 
   try {
-    // キャッシュが有効な場合は即座に返す
+    // Return immediately if the cache is still valid
     if (realtimeCache && now - cacheTimestamp < CACHE_DURATION) {
       return NextResponse.json(realtimeCache, {
         headers: {
@@ -121,7 +121,7 @@ export async function GET() {
       });
     }
 
-    // キャッシュが古いが存在する場合: 古いデータを返しつつバックグラウンドで更新
+    // Cache is stale but exists: return stale data while updating in the background
     if (realtimeCache) {
       updateCacheInBackground();
       return NextResponse.json(realtimeCache, {
@@ -131,7 +131,7 @@ export async function GET() {
       });
     }
 
-    // 初回リクエスト: 5秒タイムアウトで取得
+    // First request: fetch with a 5-second timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Realtime fetch timeout')), 5000);
     });
@@ -148,7 +148,7 @@ export async function GET() {
         },
       });
     } catch {
-      // タイムアウト時は空データを返しつつ、バックグラウンドで更新
+      // On timeout, return empty data while updating in the background
       updateCacheInBackground();
       return NextResponse.json({
         latestBlock: 0,

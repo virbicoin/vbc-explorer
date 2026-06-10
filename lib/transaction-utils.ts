@@ -1,8 +1,8 @@
 /**
- * MetaMask準拠のトランザクションタイプ分類ユーティリティ
+ * MetaMask-compatible transaction type classification utilities
  */
 
-// MetaMask準拠のトランザクションタイプを判定するためのメソッドIDマップ
+// Method ID map used to determine MetaMask-compatible transaction types
 export const METHOD_IDS: Record<string, { type: string; action: string }> = {
   // ERC20
   '0xa9059cbb': { type: 'token_transfer', action: 'Transfer' },
@@ -48,7 +48,7 @@ export const METHOD_IDS: Record<string, { type: string; action: string }> = {
   '0x60806040': { type: 'contract_creation', action: 'Contract Deploy' },
 };
 
-// トランザクションタイプの結果型
+// Result type for the transaction type
 export interface TransactionTypeResult {
   type: string;
   action: string;
@@ -56,7 +56,7 @@ export interface TransactionTypeResult {
 }
 
 /**
- * トランザクションタイプを判定する関数（アドレスコンテキストあり）
+ * Determine the transaction type (with address context)
  */
 export function getTransactionType(
   tx: {
@@ -121,7 +121,7 @@ export function getTransactionType(
 }
 
 /**
- * トランザクションタイプを判定する関数（アドレスコンテキストなし - グローバル用）
+ * Determine the transaction type (without address context - for global use)
  */
 export function getTransactionTypeGlobal(tx: {
   from: string;
@@ -158,7 +158,7 @@ export function getTransactionTypeGlobal(tx: {
   return { type: 'contract_interaction', action: 'Contract Call' };
 }
 
-// トランザクションタイプに対応する表示設定
+// Display settings for each transaction type
 export const TRANSACTION_TYPE_CONFIG: Record<
   string,
   {
@@ -211,7 +211,7 @@ export const TRANSACTION_TYPE_CONFIG: Record<
 };
 
 /**
- * トランザクションタイプの表示設定を取得
+ * Get the display settings for a transaction type
  */
 export function getTransactionTypeDisplay(type: string) {
   return TRANSACTION_TYPE_CONFIG[type] || TRANSACTION_TYPE_CONFIG.contract_interaction;

@@ -39,7 +39,7 @@ const initDB = async () => {
   }
 };
 
-// メモリ監視機能を追加
+// Add memory monitoring
 const checkMemory = () => {
   const usage = process.memoryUsage();
   const usedMB = Math.round(usage.heapUsed / 1024 / 1024);
@@ -307,7 +307,7 @@ const getStats = async function (
     return;
   }
 
-  // メモリ監視を追加
+  // Add memory monitoring
   if (!checkMemory()) {
     console.log('💾 Memory limit reached, pausing stats processing for 5 seconds');
     await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -398,7 +398,7 @@ const checkBlockDBExistsThenWrite = async function (
       const blockStat = new BlockStat(stat);
       await blockStat.save();
 
-      // 1000ブロックごとにログ出力（500から1000に変更）
+      // Log every 1000 blocks (changed from 500 to 1000)
       if (blockNumber % 1000 === 0) {
         console.log(`📦 Processed ${blockNumber} blocks for statistics`);
       }
@@ -418,11 +418,11 @@ const checkBlockDBExistsThenWrite = async function (
 };
 
 // Configuration for statistics calculation
-const minutes = 5; // 2→5分に延長
+const minutes = 5; // extended from 2 to 5 minutes
 const statInterval = minutes * 60 * 1000;
 
 let rescan = false; /* rescan: true - rescan range */
-let range = 250; // 500→250に削減
+let range = 250; // reduced from 500 to 250
 let interval = 100;
 
 /**

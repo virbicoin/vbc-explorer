@@ -96,7 +96,7 @@ export default function TransactionsPage() {
     };
     fetchConfig();
 
-    // 統計データを取得
+    // Fetch stats data
     const fetchStats = async () => {
       try {
         const response = await fetch('/api/stats?enhanced=true');
@@ -116,7 +116,7 @@ export default function TransactionsPage() {
     };
     fetchStats();
 
-    // ブロックデータを取得
+    // Fetch block data
     const fetchBlocks = async () => {
       try {
         const response = await fetch('/api/blocks?page=1&limit=1');
@@ -149,7 +149,7 @@ export default function TransactionsPage() {
           throw new Error('Failed to fetch transactions');
         }
         const data = await response.json();
-        setTransactions(data.transactions || data); // APIレスポンス形式に対応
+        setTransactions(data.transactions || data); // Support the API response format
         if (data.pagination) {
           setTotalPages(data.pagination.totalPages);
           setTotalTransactions(data.pagination.total);
@@ -202,12 +202,12 @@ export default function TransactionsPage() {
     return `${address.slice(0, 8)}...${address.slice(-6)}`;
   };
 
-  // MetaMask準拠のトランザクションタイプバッジを生成（他のページと統一）
+  // Generate a MetaMask-style transaction type badge (consistent with other pages)
   const getTransactionTypeBadge = (tx: Transaction) => {
     const type = tx.type || 'unknown';
     const action = tx.action || type;
 
-    // タイプごとのスタイル定義（暗いテーマ統一）
+    // Style definitions per type (consistent dark theme)
     const styles: Record<string, { bg: string; text: string; icon: string }> = {
       send: { bg: 'bg-red-500/20', text: 'text-red-400', icon: '↑' },
       receive: { bg: 'bg-green-500/20', text: 'text-green-400', icon: '↓' },
@@ -242,11 +242,11 @@ export default function TransactionsPage() {
   const formatTransactionFee = (gasPrice?: number, gasUsed?: number) => {
     if (!gasPrice || !gasUsed) return 'N/A';
     try {
-      // gasPriceは文字列として保存されている可能性があるため、文字列として扱う
+      // gasPrice may be stored as a string, so treat it as a string
       const gasPriceStr = gasPrice.toString();
       const gasUsedNum = Number(gasUsed);
 
-      // gasPriceがWei単位で保存されている場合（1000000000 = 1 Gwei）
+      // When gasPrice is stored in Wei (1000000000 = 1 Gwei)
       const gasPriceWei = BigInt(gasPriceStr);
       const gasUsedBigInt = BigInt(gasUsedNum);
       const totalFeeWei = gasPriceWei * gasUsedBigInt;
@@ -262,7 +262,7 @@ export default function TransactionsPage() {
     }
   };
 
-  // サマリーカード用データ
+  // Data for the summary cards
   const summaryStats = [
     {
       title: 'Total Transactions',
@@ -283,10 +283,10 @@ export default function TransactionsPage() {
       value: (() => {
         if (stats.avgGasPrice === '0' || !stats.avgGasPrice) return 'N/A';
         try {
-          // APIから返される値が既にGwei単位の可能性があるため、まず数値として解析
+          // The value returned from the API may already be in Gwei, so parse it as a number first
           const gasPrice = parseFloat(stats.avgGasPrice);
 
-          // 値が非常に小さい場合（0.02など）、既にGwei単位と仮定
+          // If the value is very small (e.g. 0.02), assume it is already in Gwei
           if (gasPrice < 1000) {
             if (gasPrice >= 1) {
               return `${Math.round(gasPrice)} ${gasUnit}`;
@@ -295,7 +295,7 @@ export default function TransactionsPage() {
             }
           }
 
-          // 大きな値の場合、WeiからGweiに変換
+          // For large values, convert from Wei to Gwei
           const gasPriceWei = BigInt(stats.avgGasPrice);
           const gasPriceGasUnit = Number(gasPriceWei) / 1e9;
 
@@ -502,7 +502,7 @@ export default function TransactionsPage() {
             </button>
 
             <div className="flex items-center gap-2">
-              {/* 最初のページ */}
+              {/* First page */}
               {currentPage > 3 && (
                 <>
                   <button
@@ -515,7 +515,7 @@ export default function TransactionsPage() {
                 </>
               )}
 
-              {/* 現在のページ周辺 */}
+              {/* Pages around the current page */}
               {Array.from({ length: 5 }, (_, i) => currentPage - 2 + i)
                 .filter((page) => page >= 1 && page <= totalPages)
                 .map((page) => (
@@ -532,7 +532,7 @@ export default function TransactionsPage() {
                   </button>
                 ))}
 
-              {/* 最後のページ */}
+              {/* Last page */}
               {currentPage < totalPages - 2 && (
                 <>
                   {currentPage < totalPages - 3 && <span className="text-gray-500">...</span>}
@@ -556,7 +556,7 @@ export default function TransactionsPage() {
           </div>
         )}
 
-        {/* ページ情報 */}
+        {/* Pagination info */}
         <div className="text-center mt-4 text-gray-400 text-sm">
           Showing transactions {(currentPage - 1) * transactionsPerPage + 1} to{' '}
           {Math.min(currentPage * transactionsPerPage, totalTransactions)} of{' '}

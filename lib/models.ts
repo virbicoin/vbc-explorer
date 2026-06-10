@@ -247,5 +247,5 @@ export const BlockStat =
   mongoose.models.BlockStat || mongoose.model<IBlockStat>('BlockStat', BlockStatSchema);
 export const Market = mongoose.models.Market || mongoose.model<IMarket>('Market', MarketSchema);
 
-// Mongoose 7対応の設定
+// Settings for Mongoose 7 compatibility
 mongoose.set('strictQuery', false);

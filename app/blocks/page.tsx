@@ -61,7 +61,7 @@ export default function BlocksPage() {
   const [latestBlockTimestamp, setLatestBlockTimestamp] = useState(0);
 
   useEffect(() => {
-    // 設定を取得
+    // Fetch config
     const fetchConfig = async () => {
       try {
         const response = await fetch('/api/config');
@@ -75,7 +75,7 @@ export default function BlocksPage() {
     };
     fetchConfig();
 
-    // 統計データを取得
+    // Fetch stats data
     const fetchStats = async () => {
       try {
         const response = await fetch('/api/stats?enhanced=true');
@@ -100,7 +100,7 @@ export default function BlocksPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // ブロック一覧を取得（ポーリング付き）
+  // Fetch the block list (with polling)
   useEffect(() => {
     let isMounted = true;
 
@@ -111,7 +111,7 @@ export default function BlocksPage() {
         }
         setError(null);
 
-        // キャッシュを無効化してフェッチ
+        // Fetch with cache disabled
         const response = await fetch(`/api/blocks?page=${currentPage}&limit=50&_t=${Date.now()}`, {
           cache: 'no-store',
           headers: {
@@ -129,7 +129,7 @@ export default function BlocksPage() {
           setBlocks(blocksData);
           setTotalPages(data.pagination?.totalPages || 1);
           setTotalBlocks(data.pagination?.total || 0);
-          // 最新ブロックのタイムスタンプをリアルタイムで更新
+          // Update the latest block timestamp in real time
           if (blocksData.length > 0 && blocksData[0].timestamp) {
             setLatestBlockTimestamp(Number(blocksData[0].timestamp));
           }
@@ -145,10 +145,10 @@ export default function BlocksPage() {
       }
     };
 
-    // 初回ロード
+    // Initial load
     fetchBlocks(true);
 
-    // ページ1の場合のみポーリング（5秒間隔）
+    // Poll only on page 1 (every 5 seconds)
     let interval: NodeJS.Timeout | null = null;
     if (currentPage === 1) {
       interval = setInterval(() => fetchBlocks(false), 5000);
@@ -197,7 +197,7 @@ export default function BlocksPage() {
     };
   };
 
-  // サマリーカード用ダミー値（本番ではAPIや集計値を利用）
+  // Dummy values for the summary cards (use API or aggregated values in production)
   const summaryStats = [
     {
       title: 'Latest Block',
@@ -223,7 +223,7 @@ export default function BlocksPage() {
     {
       title: 'Last Block Found',
       value: (() => {
-        // blocksから取得したリアルタイムのタイムスタンプを優先
+        // Prefer the realtime timestamp obtained from blocks
         const timestamp =
           latestBlockTimestamp > 0 ? latestBlockTimestamp : stats.lastBlockTimestamp;
         if (timestamp && timestamp > 0) {
@@ -404,7 +404,7 @@ export default function BlocksPage() {
             </button>
 
             <div className="flex items-center gap-2">
-              {/* 最初のページ */}
+              {/* First page */}
               {currentPage > 3 && (
                 <>
                   <button
@@ -417,7 +417,7 @@ export default function BlocksPage() {
                 </>
               )}
 
-              {/* 現在のページ周辺 */}
+              {/* Pages around the current page */}
               {Array.from({ length: 5 }, (_, i) => currentPage - 2 + i)
                 .filter((page) => page >= 1 && page <= totalPages)
                 .map((page) => (
@@ -434,7 +434,7 @@ export default function BlocksPage() {
                   </button>
                 ))}
 
-              {/* 最後のページ */}
+              {/* Last page */}
               {currentPage < totalPages - 2 && (
                 <>
                   {currentPage < totalPages - 3 && <span className="text-gray-500">...</span>}
@@ -458,7 +458,7 @@ export default function BlocksPage() {
           </div>
         )}
 
-        {/* ページ情報 */}
+        {/* Pagination info */}
         <div className="text-center mt-4 text-gray-400 text-sm">
           Showing blocks {(currentPage - 1) * 50 + 1} to {Math.min(currentPage * 50, totalBlocks)}{' '}
           of {totalBlocks.toLocaleString()} total blocks

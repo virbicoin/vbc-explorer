@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const config = loadConfig();
 
-    // クライアントサイドで必要な設定のみを返す
+    // Return only the config needed on the client side
     const clientConfig = {
       miners: config.miners,
       explorer: config.explorer,

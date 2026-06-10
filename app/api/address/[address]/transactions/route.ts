@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import { connectDB } from '../../../../../models/index';
 import { tryGetDb } from '../../../../../lib/db/get-db';
 
-// Transaction schema - 正しいコレクション名を使用
+// Transaction schema - use the correct collection name
 const transactionSchema = new mongoose.Schema(
   {
     hash: String,
@@ -23,7 +23,7 @@ const transactionSchema = new mongoose.Schema(
 
 const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', transactionSchema);
 
-// MetaMask準拠のトランザクションタイプを判定
+// Determine MetaMask-compliant transaction type
 const METHOD_IDS: Record<string, { type: string; action: string }> = {
   // ERC20
   '0xa9059cbb': { type: 'token_transfer', action: 'Transfer' },
@@ -136,7 +136,7 @@ export async function GET(
   try {
     const db = tryGetDb();
 
-    // 通常のトランザクションを取得
+    // Get regular transactions
     const transactions = await Transaction.find({
       $or: [
         { from: { $regex: new RegExp(`^${address}$`, 'i') } },
@@ -147,7 +147,7 @@ export async function GET(
       .skip(skip)
       .limit(limit);
 
-    // 総件数を取得
+    // Get total count
     const totalTransactions = await Transaction.countDocuments({
       $or: [
         { from: { $regex: new RegExp(`^${address}$`, 'i') } },
@@ -155,7 +155,7 @@ export async function GET(
       ],
     });
 
-    // トークン転送を取得
+    // Get token transfers
     const tokenTransfers = db
       ? await db
           .collection('tokentransfers')
@@ -174,7 +174,7 @@ export async function GET(
       )
     );
 
-    // トークン情報を取得
+    // Get token info
     const tokenAddresses = [
       ...new Set(tokenTransfers.map((t) => (t as Record<string, unknown>).tokenAddress as string)),
     ].filter(Boolean);
@@ -206,7 +206,7 @@ export async function GET(
       }
     }
 
-    // トークン転送をハッシュでマップ化
+    // Map token transfers by hash
     const tokenTransferMap = new Map<string, Record<string, unknown>[]>();
     for (const tt of tokenTransfers) {
       const t = tt as Record<string, unknown>;
@@ -219,7 +219,7 @@ export async function GET(
 
     const totalPages = Math.ceil(totalTransactions / limit);
 
-    // トランザクションデータをフォーマット
+    // Format transaction data
     const formattedTransactions = transactions.map((tx) => {
       const txData = tx as unknown as Record<string, unknown>;
       const hash = String(txData.hash || '').toLowerCase();
@@ -251,15 +251,15 @@ export async function GET(
         gasPrice: txData.gasPrice,
       };
 
-      // トークン情報を追加（複数のトークン転送に対応）
+      // Add token info (supports multiple token transfers)
       const tokenTransfersForTx = tokenTransferMap.get(hash);
       if (tokenTransfersForTx && tokenTransfersForTx.length > 0) {
-        // このアドレスに関連する転送を優先
-        // 1. このアドレスが受け取った転送（in）
-        // 2. このアドレスが送った転送（out）
+        // Prioritize transfers related to this address
+        // 1. Transfers this address received (in)
+        // 2. Transfers this address sent (out)
         const addressLower = address.toLowerCase();
 
-        // 受け取り（in）を優先的に表示
+        // Show incoming (in) transfers first
         const incomingTransfer = tokenTransfersForTx.find(
           (t) => (t.to as string).toLowerCase() === addressLower
         );
@@ -267,7 +267,7 @@ export async function GET(
           (t) => (t.from as string).toLowerCase() === addressLower
         );
 
-        // 受け取りを優先、なければ送金を表示
+        // Prefer incoming; otherwise show outgoing
         const primaryTransfer = incomingTransfer || outgoingTransfer || tokenTransfersForTx[0];
         const tt = primaryTransfer;
         const tokenAddr = (tt.tokenAddress as string).toLowerCase();
@@ -284,7 +284,7 @@ export async function GET(
           tokenId: tt.tokenId,
         };
 
-        // 全てのトークン転送情報を追加
+        // Add all token transfer info
         result.tokenTransfers = tokenTransfersForTx.map((t) => {
           const addr = (t.tokenAddress as string).toLowerCase();
           const info = tokenInfoMap.get(addr);
@@ -304,7 +304,7 @@ export async function GET(
           };
         });
 
-        // NFTの場合
+        // NFT case
         if (tt.tokenId !== undefined && tt.tokenId !== null) {
           result.nftInfo = {
             tokenId: tt.tokenId,

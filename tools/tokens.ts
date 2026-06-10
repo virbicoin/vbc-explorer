@@ -632,7 +632,7 @@ async function updateErc20TokenWithRealData(tokenAddress: string) {
   }
 }
 
-// 全VRC-20トークンを一括で更新する関数（LPトークン含む）
+// Function to update all VRC-20 tokens at once (including LP tokens)
 async function updateAllErc20Tokens() {
   try {
     if (mongoose.connection.readyState !== 1) {
@@ -854,7 +854,7 @@ async function scanForTokens() {
     while (fromBlock <= latestBlockNumber) {
       const toBlock = Math.min(fromBlock + BLOCKS_PER_BATCH - 1, latestBlockNumber);
 
-      // 5000ブロック単位でログ出力
+      // Log every 5000 blocks
       if (fromBlock % 5000 === 0) {
         console.log(`🔍 Scanning blocks from ${fromBlock} to ${toBlock}...`);
       }
@@ -1087,7 +1087,7 @@ async function scanForTokens() {
         }
       }
 
-      // 5000ブロック単位でログ出力
+      // Log every 5000 blocks
       if (fromBlock % 5000 === 0) {
         console.log(
           `📊 Block range ${fromBlock}-${toBlock}: Found ${newTokensFound} new tokens, skipped ${existingTokensSkipped} existing tokens`
@@ -1139,7 +1139,7 @@ async function scanForTokens() {
   );
 }
 
-// 全VRC-721トークンを一括で更新する関数（バッチ処理で最適化）
+// Function to update all VRC-721 tokens at once (optimized with batch processing)
 async function updateAllVrc721Tokens() {
   try {
     // Ensure DB connection
@@ -1486,7 +1486,7 @@ Without options, the scanner runs continuously and:
     console.log('🔄 Initial LP token sync from factory...');
     await syncLPTokensFromFactory();
 
-    // Default: 通常のトークンスキャン＋VRC-721/VRC-20トークンの定期自動更新
+    // Default: regular token scan + periodic auto-update of VRC-721/VRC-20 tokens
     await scanForTokens(); // Run once on start
 
     // Initial update of VRC-20 tokens (includes LP tokens)
@@ -1501,7 +1501,7 @@ Without options, the scanner runs continuously and:
       }
     }, SCAN_INTERVAL_MS);
 
-    // VRC-721トークンの自動更新（scanForTokensと同じ間隔で）
+    // Auto-update VRC-721 tokens (at the same interval as scanForTokens)
     setInterval(async () => {
       try {
         await updateAllVrc721Tokens();
@@ -1510,7 +1510,7 @@ Without options, the scanner runs continuously and:
       }
     }, SCAN_INTERVAL_MS);
 
-    // VRC-20トークンの自動更新（5分ごと）
+    // Auto-update VRC-20 tokens (every 5 minutes)
     const VRC20_UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
     setInterval(async () => {
       try {

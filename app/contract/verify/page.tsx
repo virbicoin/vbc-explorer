@@ -42,7 +42,7 @@ interface FormData {
   licenseType: string;
 }
 
-// エラー箇所の型定義を追加
+// Add a type definition for the error location
 interface CompilationError {
   type?: string;
   message?: string;

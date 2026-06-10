@@ -31,7 +31,7 @@ const isNFTToken = (type: string) => {
   return nftTypes.some((t) => type.toUpperCase().includes(t.toUpperCase()));
 };
 
-// MetaMask追加関数
+// Function to add a token to MetaMask
 const addToMetaMask = async (token: Token) => {
   // NFTs cannot be added to MetaMask as ERC20 tokens
   if (isNFTToken(token.type)) {
@@ -172,11 +172,11 @@ export default function TokensPage() {
 
         // Sort tokens (Native first, then by address descending)
         const sortedTokens = tokenList.sort((a: Token, b: Token) => {
-          // Nativeトークンは最初に表示
+          // Show the Native token first
           if (a.type === 'Native') return -1;
           if (b.type === 'Native') return 1;
 
-          // その他のトークンはアドレスでソート（新しい順）
+          // Sort other tokens by address (newest first)
           return b.address.localeCompare(a.address);
         });
         setTokens(sortedTokens);
@@ -449,7 +449,7 @@ export default function TokensPage() {
             </button>
 
             <div className="flex items-center gap-2">
-              {/* 最初のページ */}
+              {/* First page */}
               {currentPage > 3 && (
                 <>
                   <button
@@ -462,7 +462,7 @@ export default function TokensPage() {
                 </>
               )}
 
-              {/* 現在のページ周辺 */}
+              {/* Pages around the current page */}
               {Array.from({ length: 5 }, (_, i) => currentPage - 2 + i)
                 .filter((page) => page >= 1 && page <= totalPages)
                 .map((page) => (
@@ -479,7 +479,7 @@ export default function TokensPage() {
                   </button>
                 ))}
 
-              {/* 最後のページ */}
+              {/* Last page */}
               {currentPage < totalPages - 2 && (
                 <>
                   {currentPage < totalPages - 3 && <span className="text-gray-500">...</span>}
@@ -503,7 +503,7 @@ export default function TokensPage() {
           </div>
         )}
 
-        {/* ページ情報 */}
+        {/* Pagination info */}
         {totalTokens > 0 && (
           <div className="text-center mt-4 text-gray-400 text-sm">
             Showing tokens {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{' '}

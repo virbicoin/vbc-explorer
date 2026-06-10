@@ -188,9 +188,9 @@ export const DEFAULT_TOKENS = new Proxy([] as Token[], {
 export const SLIPPAGE_OPTIONS = [50, 100, 300] as const; // 0.5%, 1%, 3%
 export const DEFAULT_SLIPPAGE = 100; // 1%
 
-// ABIs - UniswapV2互換ルータ向け
-// Note: チェーン/フォークによって関数名・引数（deadline有無）が異なることがある
-// 例: WETH() ではなく WVBC()、swapExactETHForTokens ではなく swapExactVBCForTokens など
+// ABIs - for UniswapV2-compatible routers
+// Note: function names and arguments (e.g. presence of deadline) may differ by chain/fork
+// e.g. WVBC() instead of WETH(), swapExactVBCForTokens instead of swapExactETHForTokens
 export const ROUTER_ABI = [
   {
     inputs: [],
@@ -213,7 +213,7 @@ export const ROUTER_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
-  // ---- Liquidity (deadline無し版が存在するRouterがある) ----
+  // ---- Liquidity (some routers have a no-deadline variant) ----
   {
     inputs: [
       { type: 'address', name: 'tokenA' },
@@ -356,7 +356,7 @@ export const ROUTER_ABI = [
     stateMutability: 'nonpayable',
     type: 'function',
   },
-  // ---- Swaps (deadline無し版が存在するRouterがある) ----
+  // ---- Swaps (some routers have a no-deadline variant) ----
   {
     inputs: [
       { type: 'uint256', name: 'amountIn' },

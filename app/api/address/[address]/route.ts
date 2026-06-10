@@ -51,7 +51,7 @@ const transactionSchema = new mongoose.Schema(
   { collection: 'Transaction' }
 );
 
-// TokenTransferスキーマも定義
+// TokenTransfer schema is also defined
 const tokenTransferSchema = new mongoose.Schema(
   {
     transactionHash: String,
@@ -110,7 +110,7 @@ const TokenTransfer =
 const Contract = mongoose.models.Contract || mongoose.model('Contract', contractSchema);
 const Block = mongoose.models.Block || mongoose.model('Block', blockSchema);
 
-// MetaMask準拠のトランザクションタイプを判定
+// Determine MetaMask-compliant transaction type
 const METHOD_IDS: Record<string, { type: string; action: string }> = {
   // ERC20
   '0xa9059cbb': { type: 'token_transfer', action: 'Transfer' },
@@ -156,7 +156,7 @@ const METHOD_IDS: Record<string, { type: string; action: string }> = {
   '0x60806040': { type: 'contract_creation', action: 'Contract Deploy' },
 };
 
-// トランザクションタイプを判定する関数
+// Function to determine the transaction type
 function getTransactionType(
   tx: {
     from: string;
@@ -257,22 +257,22 @@ export async function GET(
     );
   }
 
-  // DBからアカウント取得 (use lowercase comparison instead of regex)
+  // Get account from DB (use lowercase comparison instead of regex)
   const account = await Account.findOne({
     address: { $regex: new RegExp(`^${address}$`, 'i') },
   }).lean();
 
-  // コントラクト情報を取得
+  // Get contract info
   const contract = await Contract.findOne({
     address: { $regex: new RegExp(`^${address}$`, 'i') },
   }).lean();
 
-  // config.jsonから既知のコントラクト名を取得
+  // Get known contract name from config.json
   const getKnownContractName = (addr: string): { name: string; type: string } | null => {
     const lowerAddr = addr.toLowerCase();
     const cfg = config;
 
-    // DEXコントラクト
+    // DEX contracts
     if (cfg.dex) {
       if (cfg.dex.factory?.toLowerCase() === lowerAddr)
         return { name: 'SimpleFactoryV2', type: 'DEX Factory' };
@@ -285,7 +285,7 @@ export async function GET(
       if (cfg.dex.rewardToken?.address?.toLowerCase() === lowerAddr)
         return { name: cfg.dex.rewardToken.name || 'Reward Token', type: 'ERC20' };
 
-      // DEXトークン
+      // DEX tokens
       if (cfg.dex.tokens) {
         for (const [, token] of Object.entries(cfg.dex.tokens)) {
           const t = token as { address?: string; name?: string; symbol?: string };
@@ -295,7 +295,7 @@ export async function GET(
         }
       }
 
-      // LPトークン
+      // LP tokens
       if (cfg.dex.lpTokens) {
         for (const [, lp] of Object.entries(cfg.dex.lpTokens)) {
           const lpToken = lp as { address?: string; name?: string; symbol?: string };
@@ -314,7 +314,7 @@ export async function GET(
     return null;
   };
 
-  // Web3でコントラクトコードを確認（DBにない場合でもコントラクトかどうか判定）
+  // Check contract code via Web3 (determine whether it is a contract even if not in DB)
   let isContract = false;
   let contractCode = '0x';
   try {
@@ -324,11 +324,11 @@ export async function GET(
     // ignore
   }
 
-  // Web3からリアルタイムバランス取得（表示用のみ）
+  // Get real-time balance from Web3 (display only)
   let realBalance = '0';
   try {
     const balanceWei = await web3.eth.getBalance(address);
-    // BigIntを文字列に変換
+    // Convert BigInt to string
     realBalance = balanceWei.toString();
   } catch {
     // ignore
@@ -339,13 +339,13 @@ export async function GET(
   const totalSupplyNative = await calculateTotalSupply();
   const totalSupplyWei = totalSupplyNative * 1e18;
 
-  // percentageを動的に計算
+  // Calculate percentage dynamically
   let percent = 0;
   if (totalSupplyWei > 0) {
     percent = (parseFloat(realBalance) / totalSupplyWei) * 100;
   }
 
-  // percentage/rankはDBの値をそのまま使う（nullの場合は0を返す）
+  // Use the DB values for percentage/rank as-is (return 0 when null)
   let rank = null;
   if (Array.isArray(account)) {
     rank = account[0]?.rank ?? null;
@@ -353,7 +353,7 @@ export async function GET(
     rank = account?.rank ?? null;
   }
 
-  // トランザクション情報を取得（より多くのトランザクションを取得して分類）
+  // Get transaction info (fetch more transactions to classify them)
   const allTransactions = await Transaction.find({
     $or: [
       { from: { $regex: new RegExp(`^${address}$`, 'i') } },
@@ -361,19 +361,19 @@ export async function GET(
     ],
   })
     .sort({ timestamp: -1 })
-    .limit(50); // より多くのトランザクションを取得
+    .limit(50); // fetch more transactions
 
-  // 通常のトランザクションとマイニング報酬を分類
+  // Classify regular transactions and mining rewards
   const regularTransactions = allTransactions.filter(
     (tx) =>
       tx.from !== '0x0000000000000000000000000000000000000000' &&
       tx.to !== '0x0000000000000000000000000000000000000000'
   );
 
-  // 表示用のトランザクション（通常のトランザクションのみ、最大10件）
+  // Transactions for display (regular transactions only, up to 10)
   const displayTransactions = regularTransactions.slice(0, 10);
 
-  // 通常のトランザクション数を取得（システムアドレス以外）
+  // Get the regular transaction count (excluding system addresses)
   const regularTransactionCount = await Transaction.countDocuments({
     $or: [
       { from: { $regex: new RegExp(`^${address}$`, 'i') } },
@@ -385,7 +385,7 @@ export async function GET(
     ],
   });
 
-  // 全トランザクション数を取得
+  // Get the total transaction count
   const transactionCount = await Transaction.countDocuments({
     $or: [
       { from: { $regex: new RegExp(`^${address}$`, 'i') } },
@@ -393,18 +393,18 @@ export async function GET(
     ],
   });
 
-  // 採掘したブロック数を取得
+  // Get the number of mined blocks
   const blocksMined = await Block.countDocuments({
     miner: { $regex: new RegExp(`^${address}$`, 'i') },
   });
 
-  // 時間フォーマット関数（Unix timestamp対応）
+  // Time formatting function (supports Unix timestamps)
   const getTimeAgo = (timestamp: Date | number | null): string => {
     if (!timestamp) return 'Unknown';
 
     let targetTime: Date;
     if (typeof timestamp === 'number') {
-      // Unix timestampの場合（秒単位）
+      // Unix timestamp case (in seconds)
       targetTime = new Date(timestamp * 1000);
     } else if (timestamp instanceof Date) {
       targetTime = timestamp;
@@ -415,7 +415,7 @@ export async function GET(
     const now = new Date();
     const diff = now.getTime() - targetTime.getTime();
 
-    // 負の値の場合（未来の日付）は0として扱う
+    // Treat negative values (future dates) as 0
     if (diff < 0) return 'just now';
 
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -428,7 +428,7 @@ export async function GET(
     return 'just now';
   };
 
-  // 日付フォーマット関数
+  // Date formatting function
   const formatDate = (timestamp: Date | number | null): string => {
     if (!timestamp) return 'Unknown';
 
@@ -444,31 +444,31 @@ export async function GET(
     return targetTime.toLocaleString(undefined, { timeZoneName: 'short' });
   };
 
-  // マイニング報酬を計算（ブロック報酬 + ガス料金）
+  // Calculate mining rewards (block reward + gas fees)
   const minedBlocks = await Block.find({
     miner: { $regex: new RegExp(`^${address}$`, 'i') },
   })
     .sort({ timestamp: -1 })
     .limit(10);
 
-  // マイニング報酬トランザクションを生成
+  // Generate mining reward transactions
   const miningRewards = await Promise.all(
     minedBlocks.map(async (block) => {
       try {
-        // Web3からブロック情報を取得
+        // Get block info from Web3
         const blockInfo = await web3.eth.getBlock(block.number, true);
 
-        // 実際の報酬を計算
+        // Calculate the actual reward
         let actualReward = 0;
 
-        // 1. ブロック報酬（8 VBC固定）
+        // 1. Block reward (fixed at 8 VBC)
         const blockReward = 8;
 
-        // 2. ガス料金の計算（ブロック内の全トランザクションから）
+        // 2. Calculate gas fees (from all transactions in the block)
         let totalGasFees = 0;
         if (blockInfo.transactions && blockInfo.transactions.length > 0) {
           for (const tx of blockInfo.transactions) {
-            // 型ガード: txがオブジェクトでgasPriceとgasUsedプロパティを持つかチェック
+            // Type guard: check that tx is an object with gasPrice and gasUsed properties
             if (typeof tx === 'object' && tx !== null && 'gasPrice' in tx && 'gasUsed' in tx) {
               const txObj = tx as { gasPrice?: bigint; gasUsed?: bigint };
               if (typeof txObj.gasPrice === 'bigint' && typeof txObj.gasUsed === 'bigint') {
@@ -479,26 +479,26 @@ export async function GET(
           }
         }
 
-        // 3. 実際のバランス変化を取得
+        // 3. Get the actual balance change
         try {
           if (block.number > 0) {
             const balanceBefore = await web3.eth.getBalance(address, block.number - 1);
             const balanceAfter = await web3.eth.getBalance(address, block.number);
             const balanceChange = (Number(balanceAfter) - Number(balanceBefore)) / 1e18;
 
-            // バランス変化が正の値の場合、それを実際の報酬として使用
+            // If the balance change is positive, use it as the actual reward
             if (balanceChange > 0) {
               actualReward = balanceChange;
             } else {
-              // バランス変化が0以下の場合、ブロック報酬とガス料金の合計を使用
+              // If the balance change is <= 0, use the sum of block reward and gas fees
               actualReward = blockReward + totalGasFees;
             }
           } else {
-            // ジェネシスブロックの場合
+            // Genesis block case
             actualReward = blockReward + totalGasFees;
           }
         } catch {
-          // バランス取得に失敗した場合は計算値を使用
+          // If fetching the balance fails, use the calculated value
           actualReward = blockReward + totalGasFees;
         }
 
@@ -519,12 +519,12 @@ export async function GET(
           },
         };
       } catch {
-        // フォールバック: 固定報酬を使用
+        // Fallback: use a fixed reward
         return {
           hash: block.hash,
           from: '0x0000000000000000000000000000000000000000',
           to: address,
-          value: '8.00000000', // 固定報酬
+          value: '8.00000000', // fixed reward
           timestamp: block.timestamp,
           timeAgo: getTimeAgo(block.timestamp),
           blockNumber: block.number,
@@ -540,7 +540,7 @@ export async function GET(
     })
   );
 
-  // 最初と最後のトランザクションを取得（通常のトランザクション）
+  // Get the first and last transactions (regular transactions)
   const firstTx = await Transaction.findOne({
     $or: [
       { from: { $regex: new RegExp(`^${address}$`, 'i') } },
@@ -555,7 +555,7 @@ export async function GET(
     ],
   }).sort({ timestamp: -1 });
 
-  // マイニング報酬の最初と最後を取得
+  // Get the first and last mining rewards
   const firstMiningBlock = await Block.findOne({
     miner: { $regex: new RegExp(`^${address}$`, 'i') },
   }).sort({ timestamp: 1 });
@@ -564,7 +564,7 @@ export async function GET(
     miner: { $regex: new RegExp(`^${address}$`, 'i') },
   }).sort({ timestamp: -1 });
 
-  // 最初の活動日時を決定（通常のトランザクションとマイニングの早い方）
+  // Determine the first activity time (the earlier of regular transactions and mining)
   let firstActivity = firstTx?.timestamp;
   if (firstMiningBlock?.timestamp) {
     if (!firstActivity || firstMiningBlock.timestamp < firstActivity) {
@@ -572,7 +572,7 @@ export async function GET(
     }
   }
 
-  // 最後の活動日時を決定（通常のトランザクションとマイニングの遅い方）
+  // Determine the last activity time (the later of regular transactions and mining)
   let lastActivity = lastTx?.timestamp;
   if (lastMiningBlock?.timestamp) {
     if (!lastActivity || lastMiningBlock.timestamp > lastActivity) {
@@ -580,7 +580,7 @@ export async function GET(
     }
   }
 
-  // TokenTransferも取得（直接DBアクセス）
+  // Also fetch TokenTransfers (direct DB access)
   const db = tryGetDb();
   const tokenTransfers = db
     ? await db
@@ -596,7 +596,7 @@ export async function GET(
         .toArray()
     : [];
 
-  // トークン転送数を取得
+  // Get the token transfer count
   const tokenTransferCount = db
     ? await db.collection('tokentransfers').countDocuments({
         $or: [
@@ -606,7 +606,7 @@ export async function GET(
       })
     : 0;
 
-  // トークン情報のマップを作成（高速化のため）
+  // Build a map of token info (for speed)
   const tokenAddresses = [
     ...new Set(tokenTransfers.map((t) => (t as Record<string, unknown>).tokenAddress as string)),
   ].filter(Boolean);
@@ -616,7 +616,7 @@ export async function GET(
   >();
 
   if (db && tokenAddresses.length > 0) {
-    // addressフィールドで検索（tokensコレクションの構造に合わせる）
+    // Search by the address field (matching the tokens collection structure)
     const tokens = await db
       .collection('tokens')
       .find({
@@ -639,18 +639,18 @@ export async function GET(
     }
   }
 
-  // バランスフォーマット関数（WeiからVBCに変換）
+  // Balance formatting function (convert Wei to VBC)
   const formatBalance = (balance: string) => {
     try {
-      // BigIntを使用して精度を保つ
+      // Use BigInt to preserve precision
       const weiValue = BigInt(balance);
-      // WeiからVBCに変換（18桁）
+      // Convert Wei to VBC (18 digits)
       const wholePart = weiValue / BigInt(10 ** 18);
       const fractionalPart = weiValue % BigInt(10 ** 18);
 
-      // 小数部分を文字列に変換してパディング
+      // Convert the fractional part to a string and pad it
       const fractionalStr = fractionalPart.toString().padStart(18, '0');
-      // 末尾のゼロを削除（最低2桁は残す）
+      // Remove trailing zeros (keep at least 2 digits)
       const trimmedFractional = fractionalStr.replace(/0+$/, '').padEnd(2, '0').slice(0, 8);
 
       const result = `${wholePart.toLocaleString()}.${trimmedFractional}`;
@@ -675,14 +675,14 @@ export async function GET(
     }
   };
 
-  // トークン転送のトランザクションハッシュを収集（タイプ判定用）
+  // Collect token transfer transaction hashes (for type detection)
   const tokenTxHashes = new Set(
     tokenTransfers.map((tx) =>
       String((tx as Record<string, unknown>).transactionHash || '').toLowerCase()
     )
   );
 
-  // トークントランスファー情報をハッシュでマップ化
+  // Map token transfer info by hash
   const tokenTransferMap = new Map<string, Array<Record<string, unknown>>>();
   for (const tt of tokenTransfers) {
     const t = tt as Record<string, unknown>;
@@ -693,7 +693,7 @@ export async function GET(
     tokenTransferMap.get(hash)!.push(t);
   }
 
-  // MetaMask準拠のトランザクションリストを構築
+  // Build a MetaMask-compliant transaction list
   interface FormattedTransaction {
     hash: string;
     from: string;
@@ -740,7 +740,7 @@ export async function GET(
   const allTxs: FormattedTransaction[] = [];
   const processedHashes = new Set<string>();
 
-  // 1. 全トランザクションを処理（通常トランザクション）
+  // 1. Process all transactions (regular transactions)
   for (const tx of displayTransactions) {
     const txData = tx as Record<string, unknown>;
     const hash = String(txData.hash || '').toLowerCase();
@@ -778,13 +778,13 @@ export async function GET(
       input: txData.input as string | undefined,
     };
 
-    // トークン転送情報があれば追加
+    // Add token transfer info if present
     const tokenTransfersForTx = tokenTransferMap.get(hash);
     if (tokenTransfersForTx && tokenTransfersForTx.length > 0) {
-      // このアドレスに関連する転送を優先
+      // Prioritize transfers related to this address
       const addressLower = address.toLowerCase();
 
-      // 受け取り（in）を優先的に表示
+      // Show incoming (in) transfers first
       const incomingTransfer = tokenTransfersForTx.find(
         (t) => (t.to as string).toLowerCase() === addressLower
       );
@@ -792,7 +792,7 @@ export async function GET(
         (t) => (t.from as string).toLowerCase() === addressLower
       );
 
-      // 受け取りを優先、なければ送金を表示
+      // Prefer incoming; otherwise show outgoing
       const primaryTransfer = incomingTransfer || outgoingTransfer || tokenTransfersForTx[0];
       const tt = primaryTransfer;
       const tokenAddr = (tt.tokenAddress as string).toLowerCase();
@@ -808,7 +808,7 @@ export async function GET(
         tokenId: tt.tokenId as number | undefined,
       };
 
-      // 全てのトークン転送情報を追加
+      // Add all token transfer info
       formatted.tokenTransfers = tokenTransfersForTx.map((t) => {
         const addr = (t.tokenAddress as string).toLowerCase();
         const info = tokenInfoMap.get(addr);
@@ -827,7 +827,7 @@ export async function GET(
         };
       });
 
-      // NFTの場合
+      // NFT case
       if (tt.tokenId !== undefined && tt.tokenId !== null) {
         formatted.nftInfo = {
           tokenId: tt.tokenId as number,
@@ -841,7 +841,7 @@ export async function GET(
     allTxs.push(formatted);
   }
 
-  // 2. トークントランスファーで、まだ処理されていないものを追加
+  // 2. Add token transfers that have not been processed yet
   for (const tt of tokenTransfers) {
     const t = tt as Record<string, unknown>;
     const hash = String(t.transactionHash || '').toLowerCase();
@@ -909,7 +909,7 @@ export async function GET(
     allTxs.push(formatted);
   }
 
-  // 3. マイニング報酬を追加
+  // 3. Add mining rewards
   for (const tx of miningRewards.slice(0, 10)) {
     const hash = tx.hash?.toLowerCase();
     if (hash && processedHashes.has(hash)) continue;
@@ -931,7 +931,7 @@ export async function GET(
     });
   }
 
-  // タイムスタンプでソート
+  // Sort by timestamp
   allTxs.sort((a, b) => {
     const timeA =
       typeof a.timestamp === 'number' ? a.timestamp * 1000 : new Date(a.timestamp).getTime();
@@ -940,10 +940,10 @@ export async function GET(
     return timeB - timeA;
   });
 
-  // contractが配列の場合は最初の要素を使う
+  // If contract is an array, use the first element
   const contractObj = Array.isArray(contract) ? contract[0] : contract;
 
-  // コントラクト情報を構築（DBにある場合はDB情報を使用、ない場合はブロックチェーンから取得した情報を使用）
+  // Build contract info (use DB info when available, otherwise use info fetched from the blockchain)
   let contractInfo = null;
   if (contractObj) {
     contractInfo = {
@@ -960,7 +960,7 @@ export async function GET(
       isContract: true,
     };
   } else if (isContract) {
-    // DBにないがコントラクトの場合、config.jsonから既知の名前を取得
+    // If not in DB but is a contract, get the known name from config.json
     const knownContract = getKnownContractName(address);
     contractInfo = {
       address: address,
@@ -974,18 +974,18 @@ export async function GET(
       blockNumber: 0,
       creator: '',
       isContract: true,
-      bytecodeSize: Math.floor((contractCode.length - 2) / 2), // バイトコードサイズ（バイト単位）
-      knownContract: knownContract !== null, // config.jsonで既知のコントラクトかどうか
+      bytecodeSize: Math.floor((contractCode.length - 2) / 2), // bytecode size (in bytes)
+      knownContract: knownContract !== null, // whether it is a known contract in config.json
     };
   }
 
   return NextResponse.json({
     account: {
       address,
-      balance: formatBalance(realBalance), // 表示用（フォーマット済み）
-      balanceRaw: realBalance, // 生の値
-      percentage: percent.toFixed(4), // 動的計算値
-      rank, // DB値そのまま
+      balance: formatBalance(realBalance), // for display (formatted)
+      balanceRaw: realBalance, // raw value
+      percentage: percent.toFixed(4), // dynamically calculated value
+      rank, // DB value as-is
       transactionCount: transactionCount || 0,
       blocksMined: blocksMined || 0,
       tokenTransferCount: tokenTransferCount || 0,
@@ -998,10 +998,10 @@ export async function GET(
     },
     contract: contractInfo,
     transactions: allTxs,
-    // 分類情報を追加
+    // Add classification info
     transactionStats: {
-      regularCount: regularTransactionCount || 0, // 実際の通常トランザクション数を使用
-      miningCount: blocksMined || 0, // 実際のマイニングブロック数を使用
+      regularCount: regularTransactionCount || 0, // use the actual regular transaction count
+      miningCount: blocksMined || 0, // use the actual mined block count
       totalCount: (regularTransactionCount || 0) + (blocksMined || 0),
     },
   });

@@ -4,7 +4,7 @@ import { connectDB } from '../../../models/index';
 import { getTransactionTypeGlobal, TransactionTypeResult } from '../../../lib/transaction-utils';
 import { tryGetDb } from '../../../lib/db/get-db';
 
-// トランザクションキャッシュ
+// Transaction cache
 interface CacheEntry {
   data: TransactionResponse[] | PaginatedResponse;
   timestamp: number;
@@ -38,9 +38,9 @@ interface PaginatedResponse {
 }
 
 const transactionsCache = new Map<string, CacheEntry>();
-const CACHE_DURATION = 300000; // 5分キャッシュ (for t4g.small)
+const CACHE_DURATION = 300000; // 5-minute cache (for t4g.small)
 
-// バックグラウンド更新フラグ
+// Background update flag
 const updateInProgress = new Set<string>();
 
 async function fetchTransactionsData(
@@ -123,7 +123,7 @@ async function fetchTransactionsData(
   return formattedTransactions;
 }
 
-// バックグラウンドでキャッシュを更新
+// Update cache in the background
 async function updateCacheInBackground(
   cacheKey: string,
   page: number,
@@ -156,20 +156,20 @@ export async function GET(request: Request) {
     const now = Date.now();
     const cached = transactionsCache.get(cacheKey);
 
-    // キャッシュが有効な場合は返す
+    // Return cache if still valid
     if (cached && now - cached.timestamp < CACHE_DURATION) {
       console.log(`[Transactions] Cache hit (age: ${now - cached.timestamp}ms)`);
       return NextResponse.json(cached.data);
     }
 
-    // キャッシュが古いが存在する場合: 古いデータを返しつつバックグラウンドで更新
+    // Cache is stale but exists: return stale data while updating in the background
     if (cached) {
       console.log('[Transactions] Returning stale cache, updating in background');
       updateCacheInBackground(cacheKey, page, limit, hasPageParams);
       return NextResponse.json(cached.data);
     }
 
-    // 初回リクエスト: タイムアウト付きで取得
+    // First request: fetch with a timeout
     console.log('[Transactions] First request, fetching with timeout...');
 
     const timeoutPromise = new Promise<never>((_, reject) => {

@@ -4,7 +4,7 @@ import { connectDB, Block } from '../../../models/index';
 
 import { getGasUnitServer } from '../../../lib/config';
 
-// 統計データのキャッシュ
+// Stats data cache
 interface StatsCacheData {
   basic: Record<string, unknown>;
   enhanced: Record<string, unknown>;
@@ -16,9 +16,9 @@ interface StatsCache {
 }
 
 let statsCache: StatsCache | null = null;
-const STATS_CACHE_DURATION = 300000; // 5分キャッシュ (for t4g.small)
+const STATS_CACHE_DURATION = 300000; // 5-minute cache (for t4g.small)
 
-// デフォルトの統計データ（初期ロード用）
+// Default stats data (for initial load)
 function getDefaultStats(gasUnit: string) {
   return {
     basic: {
@@ -44,12 +44,12 @@ function getDefaultStats(gasUnit: string) {
       activeMiners: 0,
       lastBlockTime: null,
       lastBlockTimestamp: null,
-      loading: true, // フロントエンドで再フェッチするフラグ
+      loading: true, // Flag for the frontend to re-fetch
     },
   };
 }
 
-// バックグラウンドでキャッシュを更新
+// Update cache in the background
 let isUpdating = false;
 async function updateCacheInBackground() {
   if (isUpdating) return;
@@ -116,7 +116,7 @@ export async function GET(request: Request) {
   try {
     const now = Date.now();
 
-    // キャッシュが有効な場合はキャッシュを返す
+    // Return the cache if it is still valid
     if (statsCache && now - statsCache.timestamp < STATS_CACHE_DURATION) {
       console.log(`[Stats] Returning cached data (age: ${now - statsCache.timestamp}ms)`);
       if (!enhanced) {
@@ -125,7 +125,7 @@ export async function GET(request: Request) {
       return NextResponse.json(statsCache.data.enhanced);
     }
 
-    // キャッシュが古いが存在する場合: 古いデータを返しつつバックグラウンドで更新
+    // Cache is stale but exists: return stale data while updating in the background
     if (statsCache) {
       console.log('[Stats] Returning stale cache, updating in background');
       updateCacheInBackground();
@@ -135,10 +135,10 @@ export async function GET(request: Request) {
       return NextResponse.json(statsCache.data.enhanced);
     }
 
-    // 初回リクエスト: 同期的にデータを取得（タイムアウト付き）
+    // First request: fetch data synchronously (with a timeout)
     console.log('[Stats] First request, fetching data with timeout...');
 
-    // 15秒タイムアウトで取得を試みる
+    // Try to fetch with a 15-second timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Stats fetch timeout')), 15000);
     });
@@ -148,7 +148,7 @@ export async function GET(request: Request) {
 
       console.log('[Stats] Stats fetched successfully:', { latestBlock: stats.latestBlock });
 
-      // activeMinersは後で計算（バックグラウンドで）
+      // activeMiners is calculated later (in the background)
       const enhancedStats = {
         latestBlock: stats.latestBlock,
         avgBlockTime: stats.avgBlockTime,
@@ -158,7 +158,7 @@ export async function GET(request: Request) {
         totalTransactions: stats.totalTransactions,
         avgGasPrice: stats.avgTransactionFee,
         avgTransactionFee: `${stats.avgTransactionFee} ${gasUnit}`,
-        activeMiners: 0, // 初回は0、バックグラウンドで更新
+        activeMiners: 0, // 0 on first load, updated in the background
         lastBlockTime: stats.lastBlockTime,
         lastBlockTimestamp: stats.lastBlockTimestamp,
       };
@@ -168,7 +168,7 @@ export async function GET(request: Request) {
         timestamp: Date.now(),
       };
 
-      // バックグラウンドでactiveMinersを更新
+      // Update activeMiners in the background
       updateCacheInBackground();
 
       console.log(`[Stats] Request completed in ${Date.now() - startTime}ms`);
@@ -178,7 +178,7 @@ export async function GET(request: Request) {
       return NextResponse.json(enhancedStats);
     } catch (timeoutError) {
       console.log('[Stats] Initial fetch timed out, returning default data');
-      // タイムアウト時はデフォルトデータを返しつつ、バックグラウンドで更新
+      // On timeout, return default data while updating in the background
       updateCacheInBackground();
       const defaultStats = getDefaultStats(gasUnit);
       return NextResponse.json(enhanced ? defaultStats.enhanced : defaultStats.basic);

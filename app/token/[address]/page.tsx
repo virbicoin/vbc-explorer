@@ -111,7 +111,7 @@ interface ImageLoadState {
   [tokenId: number]: 'loading' | 'loaded' | 'error' | 'initial';
 }
 
-// アドレス省略表示関数（SystemやMining Rewardはそのまま表示）
+// Abbreviate address for display (System and Mining Reward are shown as-is)
 const formatAddress = (address: string) => {
   if (!address) return 'N/A';
   if (address === 'System' || address === 'Mining Reward') return address;
@@ -147,32 +147,32 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
 
   // getTransactionForTokenId function removed (unused)
 
-  // 有効なタブIDのリスト
+  // List of valid tab IDs
   const validTabs = ['holders', 'transfers', 'balance', 'source', 'tokenids'];
 
-  // URLハッシュからタブを読み取る
+  // Read the tab from the URL hash
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.slice(1); // #を除去
+      const hash = window.location.hash.slice(1); // Remove the #
       if (hash && validTabs.includes(hash)) {
         setActiveTab(hash);
       }
     };
 
-    // 初期ロード時にハッシュを読み取る
+    // Read the hash on initial load
     handleHashChange();
 
-    // ハッシュ変更イベントをリッスン
+    // Listen for hash change events
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // タブ切り替え時にURLハッシュを更新
+  // Update the URL hash when switching tabs
   const handleTabChange = useCallback(
     (tabId: string) => {
       setActiveTab(tabId);
-      // URLハッシュを更新（履歴に追加せず置き換え）
+      // Update the URL hash (replace instead of pushing to history)
       const url = new URL(window.location.href);
       url.hash = tabId;
       router.replace(url.toString(), { scroll: false });
@@ -413,7 +413,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
   // Load metadata when tokenids tab is active and we have token data
   useEffect(() => {
     if (activeTab === 'tokenids' && tokenData && tokenData.nftItems) {
-      // nftItemsからtokenIdを取得してメタデータを読み込む
+      // Get the tokenId from nftItems and load its metadata
       tokenData.nftItems.forEach(({ tokenId }) => {
         if (!tokenMetadata[tokenId] && !metadataLoading[tokenId]) {
           fetchTokenMetadata(tokenId);
@@ -422,17 +422,17 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
     }
   }, [activeTab, tokenData, address, fetchTokenMetadata, metadataLoading, tokenMetadata]);
 
-  // スクロール用useEffect
+  // useEffect for scrolling
   useEffect(() => {
     if (activeTab === 'tokenids') {
-      // タブ切り替え後に少し遅延してからスクロール
+      // Scroll after a short delay following the tab switch
       const timer = setTimeout(() => {
         const tokenIdsSection = document.querySelector('[data-tab-content="tokenids"]');
         if (tokenIdsSection) {
           const element = tokenIdsSection as HTMLElement;
           const rect = element.getBoundingClientRect();
           const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-          const targetY = scrollTop + rect.top - 120; // ヘッダー分のオフセット
+          const targetY = scrollTop + rect.top - 120; // Offset for the header
 
           window.scrollTo({
             top: targetY,
@@ -444,7 +444,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
     }
   }, [activeTab]);
 
-  // NFT固有の情報を表示するかどうかを判定
+  // Determine whether to display NFT-specific information
   const isNFT = tokenData?.token?.isNFT || tokenData?.token?.type === 'VRC-721';
 
   // Pagination component
@@ -595,7 +595,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
         );
 
       case 'transfers':
-        // MetaMask準拠のトランザクションタイプバッジを生成（他のページと統一）
+        // Generate a MetaMask-style transaction type badge (consistent with other pages)
         const getTransferTypeBadge = (
           from: string | null | undefined,
           to: string | null | undefined
@@ -795,7 +795,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {tokenData?.nftItems && tokenData.nftItems.length > 0 ? (
-                // nftItemsを使用してNFT一覧を表示（既にtokenId降順でソート済み）
+                // Display the NFT list using nftItems (already sorted by tokenId descending)
                 tokenData.nftItems.map(({ tokenId, owner }) => {
                   const metadata = tokenMetadata[tokenId];
                   const isLoading = metadataLoading[tokenId];
@@ -907,21 +907,21 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                                       <Link
                                         href={tokenDetailUrl}
                                         className="text-blue-400 hover:text-blue-300 transition-colors"
-                                        title="NFT詳細ページへ"
+                                        title="View NFT details"
                                       >
                                         {title}
                                       </Link>
                                     );
                                   })()}
                                 </h5>
-                                {/* createdAtを右側に表示 */}
+                                {/* Show createdAt on the right side */}
                                 {metadata.createdAt && (
                                   <span className="text-xs text-gray-500 ml-2 whitespace-nowrap">
                                     Created: {new Date(metadata.createdAt).toLocaleString()}
                                   </span>
                                 )}
                               </div>
-                              {/* descriptionを必ず表示 */}
+                              {/* Always show the description */}
                               <p className="text-sm text-gray-400 mb-2">
                                 {metadata.description || '-'}
                               </p>

@@ -36,17 +36,17 @@ interface BlocksResponse {
   pagination: PaginationInfo;
 }
 
-// キャッシュ設定
+// Cache settings
 interface CacheEntry {
   data: BlocksResponse;
   timestamp: number;
 }
 
 const blocksCache = new Map<string, CacheEntry>();
-const CACHE_DURATION_PAGE1 = 10000; // ページ1: 10秒キャッシュ（リアルタイム性重視）
-const CACHE_DURATION_OTHER = 300000; // その他: 5分キャッシュ
+const CACHE_DURATION_PAGE1 = 10000; // Page 1: 10-second cache (prioritize real-time freshness)
+const CACHE_DURATION_OTHER = 300000; // Others: 5-minute cache
 
-// バックグラウンド更新フラグ
+// Background update flag
 const updateInProgress = new Set<string>();
 
 async function fetchBlocksData(page: number, limit: number): Promise<BlocksResponse> {
@@ -54,11 +54,11 @@ async function fetchBlocksData(page: number, limit: number): Promise<BlocksRespo
 
   const skip = (page - 1) * limit;
 
-  // ブロック総数を取得（推定カウントで高速化）
+  // Get total block count (use estimated count for speed)
   const totalBlocks = await Block.estimatedDocumentCount();
   const totalPages = Math.ceil(totalBlocks / limit);
 
-  // MongoDBからブロックを取得（インデックス済みで高速）
+  // Fetch blocks from MongoDB (fast via indexes)
   const blocks = await Block.find({})
     .sort({ number: -1 })
     .skip(skip)
@@ -86,7 +86,7 @@ async function fetchBlocksData(page: number, limit: number): Promise<BlocksRespo
     .lean()
     .maxTimeMS(30000);
 
-  // ブロックデータを整形
+  // Format block data
   const formattedBlocks: BlockData[] = blocks.map((block: Record<string, unknown>) => ({
     number: String(block.number ?? '0'),
     hash: String(block.hash ?? ''),
@@ -120,7 +120,7 @@ async function fetchBlocksData(page: number, limit: number): Promise<BlocksRespo
   };
 }
 
-// バックグラウンドでキャッシュを更新
+// Update cache in the background
 async function updateCacheInBackground(cacheKey: string, page: number, limit: number) {
   if (updateInProgress.has(cacheKey)) return;
   updateInProgress.add(cacheKey);
@@ -147,10 +147,10 @@ export async function GET(request: NextRequest) {
     const now = Date.now();
     const cached = blocksCache.get(cacheKey);
 
-    // ページ1はリアルタイム性重視で短いキャッシュ
+    // Page 1 uses a short cache to prioritize real-time freshness
     const cacheDuration = page === 1 ? CACHE_DURATION_PAGE1 : CACHE_DURATION_OTHER;
 
-    // キャッシュが有効な場合は返す
+    // Return cache if still valid
     if (cached && now - cached.timestamp < cacheDuration) {
       console.log(`[Blocks] Cache hit (page: ${page}, age: ${now - cached.timestamp}ms)`);
       return NextResponse.json(cached.data, {
@@ -161,8 +161,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // ページ1の場合: キャッシュが古い場合は必ず新しいデータを取得
-    // ページ2以降: 古いキャッシュを返しつつバックグラウンドで更新
+    // Page 1: always fetch fresh data when the cache is stale
+    // Page 2 onward: return stale cache while updating in the background
     if (cached && page !== 1) {
       console.log(`[Blocks] Returning stale cache (page: ${page}), updating in background`);
       updateCacheInBackground(cacheKey, page, limit);
@@ -174,7 +174,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 初回リクエストまたはページ1の更新: タイムアウト付きで取得
+    // First request or page 1 refresh: fetch with a timeout
     console.log(`[Blocks] Fetching fresh data (page: ${page})...`);
 
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -194,7 +194,7 @@ export async function GET(request: NextRequest) {
       });
     } catch (timeoutError) {
       console.log('[Blocks] Fetch timed out, returning cached or empty data');
-      // タイムアウト時は古いキャッシュがあれば返す
+      // On timeout, return the stale cache if available
       if (cached) {
         updateCacheInBackground(cacheKey, page, limit);
         return NextResponse.json(cached.data, {

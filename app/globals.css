@@ -226,7 +226,7 @@ a:hover {
   }
 }
 
-/* ダークモード用のスタイル */
+/* Styles for dark mode */
 .dark body {
   @apply bg-gray-900 text-gray-200;
 }

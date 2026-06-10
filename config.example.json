@@ -270,6 +270,7 @@
     "_comment": "Token icons and gradient colors for UI display. Keys are token symbols."
   },
   "blacklist": {
+    "symbols": ["TEST", "FIX", "FIX2"],
     "tokens": [
       {
         "address": "0x0000000000000000000000000000000000000000",

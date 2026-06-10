@@ -14,7 +14,7 @@ export async function GET(
     const addressLower = address.toLowerCase();
     const doc = await Contract.findOne({ address: addressLower }).lean(true);
 
-    // 型ガード関数でsourceCodeプロパティの存在をチェック
+    // Type guard function to check for the sourceCode property
     const hasSourceCode = (d: unknown): d is { sourceCode: string } =>
       typeof d === 'object' &&
       d !== null &&

@@ -64,7 +64,7 @@ export async function GET(
   const skip = (page - 1) * limit;
 
   try {
-    // マイニング報酬のブロックを取得
+    // Get blocks with mining rewards
     const minedBlocks = await Block.find({
       miner: { $regex: new RegExp(`^${address}$`, 'i') },
     })
@@ -72,31 +72,31 @@ export async function GET(
       .skip(skip)
       .limit(limit);
 
-    // 総件数を取得
+    // Get total count
     const totalBlocks = await Block.countDocuments({
       miner: { $regex: new RegExp(`^${address}$`, 'i') },
     });
 
     const totalPages = Math.ceil(totalBlocks / limit);
 
-    // マイニング報酬トランザクションを生成
+    // Generate mining reward transactions
     const miningRewards = await Promise.all(
       minedBlocks.map(async (block) => {
         try {
-          // Web3からブロック情報を取得
+          // Get block info from Web3
           const blockInfo = await web3.eth.getBlock(block.number, true);
 
-          // 実際の報酬を計算
+          // Calculate the actual reward
           let actualReward = 0;
 
-          // 1. ブロック報酬（8 VBC固定）
+          // 1. Block reward (fixed at 8 VBC)
           const blockReward = 8;
 
-          // 2. ガス料金の計算（ブロック内の全トランザクションから）
+          // 2. Calculate gas fees (from all transactions in the block)
           let totalGasFees = 0;
           if (blockInfo.transactions && blockInfo.transactions.length > 0) {
             for (const tx of blockInfo.transactions) {
-              // 型ガード: txがオブジェクトでgasPriceとgasUsedプロパティを持つかチェック
+              // Type guard: check that tx is an object with gasPrice and gasUsed properties
               if (typeof tx === 'object' && tx !== null && 'gasPrice' in tx && 'gasUsed' in tx) {
                 const txObj = tx as { gasPrice?: bigint; gasUsed?: bigint };
                 if (typeof txObj.gasPrice === 'bigint' && typeof txObj.gasUsed === 'bigint') {
@@ -107,26 +107,26 @@ export async function GET(
             }
           }
 
-          // 3. 実際のバランス変化を取得
+          // 3. Get the actual balance change
           try {
             if (block.number > 0) {
               const balanceBefore = await web3.eth.getBalance(address, block.number - 1);
               const balanceAfter = await web3.eth.getBalance(address, block.number);
               const balanceChange = (Number(balanceAfter) - Number(balanceBefore)) / 1e18;
 
-              // バランス変化が正の値の場合、それを実際の報酬として使用
+              // If the balance change is positive, use it as the actual reward
               if (balanceChange > 0) {
                 actualReward = balanceChange;
               } else {
-                // バランス変化が0以下の場合、ブロック報酬とガス料金の合計を使用
+                // If the balance change is <= 0, use the sum of block reward and gas fees
                 actualReward = blockReward + totalGasFees;
               }
             } else {
-              // ジェネシスブロックの場合
+              // Genesis block case
               actualReward = blockReward + totalGasFees;
             }
           } catch {
-            // バランス取得に失敗した場合は計算値を使用
+            // If fetching the balance fails, use the calculated value
             actualReward = blockReward + totalGasFees;
           }
 
@@ -146,12 +146,12 @@ export async function GET(
             },
           };
         } catch {
-          // フォールバック: 固定報酬を使用
+          // Fallback: use a fixed reward
           return {
             hash: block.hash,
             from: '0x0000000000000000000000000000000000000000',
             to: address,
-            value: '8.00000000', // 固定報酬
+            value: '8.00000000', // fixed reward
             timestamp: block.timestamp,
             blockNumber: block.number,
             type: 'mining_reward',

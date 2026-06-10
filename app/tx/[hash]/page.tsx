@@ -110,7 +110,7 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
   const { getTokenIcon, getTokenColor } = useTokenConfig();
 
   useEffect(() => {
-    // 設定を取得
+    // Fetch config
     const fetchConfig = async () => {
       try {
         // Initialize currency conversion factors
@@ -232,7 +232,7 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
     };
   };
 
-  // MetaMask準拠のトランザクションタイプバッジを生成
+  // Generate a MetaMask-style transaction type badge
   const getTransactionTypeBadge = (type?: string, action?: string) => {
     const typeConfig: Record<string, { bg: string; text: string; icon: string }> = {
       send: { bg: 'bg-red-100', text: 'text-red-700', icon: '↑' },
@@ -267,11 +267,11 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
 
   const copyToClipboard = async (text: string) => {
     try {
-      // モダンなブラウザでは Clipboard API を使用
+      // Use the Clipboard API in modern browsers
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
       } else {
-        // フォールバック: 古いブラウザや非セキュアコンテキスト用
+        // Fallback: for older browsers or non-secure contexts
         const textArea = document.createElement('textarea');
         textArea.value = text;
         textArea.style.position = 'fixed';
@@ -284,7 +284,7 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
         textArea.remove();
       }
 
-      // コピー成功時のフィードバック
+      // Feedback on successful copy
       setCopiedItem(text);
       setTimeout(() => {
         setCopiedItem(null);
@@ -650,7 +650,7 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
               </div>
               <div className="space-y-3">
                 {transaction.tokenTransfers.map((transfer, index) => {
-                  // トークン値をフォーマット
+                  // Format the token value
                   const formatTokenAmount = () => {
                     if (
                       transfer.type === 'VRC-721' ||

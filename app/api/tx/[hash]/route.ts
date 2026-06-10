@@ -184,7 +184,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       status: actualTransaction.status,
     });
 
-    // トークン転送情報を取得
+    // Get token transfer info
     const db = tryGetDb();
     let tokenTransfers: Array<Record<string, unknown>> = [];
 
@@ -204,7 +204,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         .toArray();
 
       if (transfers.length > 0) {
-        // トークン情報を取得
+        // Get token info
         const tokenAddresses = [...new Set(transfers.map((t) => t.tokenAddress as string))].filter(
           Boolean
         );
@@ -274,7 +274,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           }
         }
 
-        // トークン転送をフォーマット
+        // Format token transfers
         tokenTransfers = transfers.map((t) => {
           const tokenAddr = ((t.tokenAddress as string) || '').toLowerCase();
           const info = tokenInfoMap.get(tokenAddr);
@@ -309,7 +309,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // MetaMask compliant type info
       txType: typeInfo.type,
       txAction: typeInfo.action,
-      // トークン転送情報
+      // Token transfer info
       tokenTransfers: tokenTransfers,
       block: block
         ? {

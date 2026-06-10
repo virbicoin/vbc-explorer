@@ -46,7 +46,7 @@ export default function SearchPage() {
   const [config, setConfig] = useState<Config | null>(null);
 
   useEffect(() => {
-    // 設定を取得
+    // Fetch config
     const fetchConfig = async () => {
       try {
         // Initialize currency config cache

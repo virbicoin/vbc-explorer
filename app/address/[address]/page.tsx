@@ -192,7 +192,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
     }
   }, [resolvedParams.address, router]);
 
-  // 通貨記号が取得できるまでローディング表示
+  // Show loading until the currency symbol is available
   if (!currencySymbol) {
     return (
       <div className="min-h-screen bg-gray-900 text-white">
@@ -208,11 +208,11 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
 
   const copyToClipboard = async (text: string) => {
     try {
-      // モダンなブラウザでは Clipboard API を使用
+      // Use the Clipboard API in modern browsers
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
       } else {
-        // フォールバック: 古いブラウザや非セキュアコンテキスト用
+        // Fallback: for older browsers or non-secure contexts
         const textArea = document.createElement('textarea');
         textArea.value = text;
         textArea.style.position = 'fixed';
@@ -225,7 +225,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
         textArea.remove();
       }
 
-      // コピー成功時のフィードバック
+      // Feedback on successful copy
       setCopiedItem(text);
       setTimeout(() => {
         setCopiedItem(null);
@@ -273,7 +273,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
   };
 
   const getAddressName = () => {
-    // コントラクトの場合
+    // Contract case
     if (
       contract?.name &&
       contract.name !== 'Unknown Contract' &&
@@ -282,13 +282,13 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
       return contract.name;
     }
 
-    // プールアドレスの場合
+    // Pool address case
     const minerInfo = getMinerDisplayInfo(resolvedParams.address);
     if (minerInfo.isPool) {
       return minerInfo.name;
     }
 
-    // システムアドレスの場合
+    // System address case
     if (resolvedParams.address === '0x0000000000000000000000000000000000000000') {
       return 'System';
     }
@@ -329,12 +329,12 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
   }
 
   // Filter transactions by type (needed for both contract and wallet views)
-  // Mining rewards以外の全てのトランザクションを通常トランザクションとして表示
+  // Show all transactions except mining rewards as regular transactions
   const regularTransactions = transactions.filter((tx) => tx.type !== 'mining_reward');
 
   const miningRewards = transactions.filter((tx) => tx.type === 'mining_reward');
 
-  // 統計情報を使用して件数を表示（APIから取得した正確な件数）
+  // Display counts using the stats info (accurate counts from the API)
   const regularCount = transactionStats?.regularCount || regularTransactions.length;
   const miningCount = transactionStats?.miningCount || miningRewards.length;
   const tokenTransferCount = tokenTransfers.length;

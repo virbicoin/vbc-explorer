@@ -294,12 +294,12 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
   }) => {
     const { value, decimals, symbol, tokenId, type, direction } = tokenInfo;
 
-    // NFTの場合
+    // NFT case
     if (type === 'VRC-721' || type === 'ERC721' || tokenId !== undefined) {
       return <span className="text-pink-400">Token ID: #{tokenId}</span>;
     }
 
-    // ERC20の場合
+    // ERC20 case
     try {
       const numValue = BigInt(value);
       const divisor = BigInt(10 ** decimals);
@@ -333,7 +333,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
 
   // Format token value with decimals (multiple tokens)
   const formatTokenValue = (tx: Transaction) => {
-    // 複数のトークン転送がある場合
+    // When there are multiple token transfers
     if (tx.tokenTransfers && tx.tokenTransfers.length > 0) {
       return (
         <div className="flex flex-col gap-1">
@@ -344,7 +344,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
       );
     }
 
-    // 単一のtokenInfoの場合（後方互換）
+    // For a single tokenInfo (backward compatibility)
     if (tx.tokenInfo) {
       return formatSingleTokenValue(tx.tokenInfo);
     }
@@ -449,12 +449,12 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
     return `${Math.floor(diff / 86400)}d ago`;
   };
 
-  // MetaMask準拠のトランザクションタイプバッジを生成（他のページと統一）
+  // Generate a MetaMask-style transaction type badge (consistent with other pages)
   const getTransactionTypeBadge = (tx: Transaction) => {
     const type = tx.type || 'unknown';
     const action = tx.action || type;
 
-    // タイプごとのスタイル定義（暗いテーマ統一）
+    // Style definitions per type (consistent dark theme)
     const styles: Record<string, { bg: string; text: string; icon: string }> = {
       send: { bg: 'bg-red-500/20', text: 'text-red-400', icon: '↑' },
       receive: { bg: 'bg-green-500/20', text: 'text-green-400', icon: '↓' },

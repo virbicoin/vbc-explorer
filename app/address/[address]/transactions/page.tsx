@@ -263,7 +263,7 @@ export default function AddressTransactionsPage({
                   </button>
 
                   <div className="flex items-center gap-2">
-                    {/* 最初のページ */}
+                    {/* First page */}
                     {currentPage > 3 && (
                       <>
                         <button
@@ -276,7 +276,7 @@ export default function AddressTransactionsPage({
                       </>
                     )}
 
-                    {/* 現在のページ周辺 */}
+                    {/* Pages around the current page */}
                     {Array.from({ length: 5 }, (_, i) => currentPage - 2 + i)
                       .filter((page) => page >= 1 && page <= totalPages)
                       .map((page) => (
@@ -293,7 +293,7 @@ export default function AddressTransactionsPage({
                         </button>
                       ))}
 
-                    {/* 最後のページ */}
+                    {/* Last page */}
                     {currentPage < totalPages - 2 && (
                       <>
                         {currentPage < totalPages - 3 && <span className="text-gray-500">...</span>}
@@ -317,7 +317,7 @@ export default function AddressTransactionsPage({
                 </div>
               )}
 
-              {/* ページ情報 */}
+              {/* Pagination info */}
               <div className="text-center mt-4 text-gray-400 text-sm">
                 Showing transactions {(currentPage - 1) * 50 + 1} to{' '}
                 {Math.min(currentPage * 50, totalTransactions)} of{' '}
