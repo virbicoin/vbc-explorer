@@ -156,32 +156,56 @@ describe('hex/address/hash validators', () => {
 });
 
 describe('normalizeLegacyLogoUrl', () => {
-  it('rewrites legacy explorer host to the current host', () => {
+  const LEGACY = ['explorer.digitalregion.jp'];
+
+  it('rewrites a configured legacy explorer host to the current host', () => {
     expect(
       normalizeLegacyLogoUrl(
         'https://explorer.digitalregion.jp/img/STEN.svg',
-        'explorer.virbicoin.com'
+        'explorer.virbicoin.com',
+        LEGACY
       )
     ).toBe('https://explorer.virbicoin.com/img/STEN.svg');
   });
 
   it('leaves non-legacy URLs untouched', () => {
     expect(
-      normalizeLegacyLogoUrl('https://explorer.virbicoin.com/img/VBC.svg', 'explorer.virbicoin.com')
+      normalizeLegacyLogoUrl(
+        'https://explorer.virbicoin.com/img/VBC.svg',
+        'explorer.virbicoin.com',
+        LEGACY
+      )
     ).toBe('https://explorer.virbicoin.com/img/VBC.svg');
-    expect(normalizeLegacyLogoUrl('https://cdn.example.com/a.png', 'explorer.virbicoin.com')).toBe(
-      'https://cdn.example.com/a.png'
-    );
+    expect(
+      normalizeLegacyLogoUrl('https://cdn.example.com/a.png', 'explorer.virbicoin.com', LEGACY)
+    ).toBe('https://cdn.example.com/a.png');
+  });
+
+  it('is a no-op when no legacy hosts are configured', () => {
+    expect(
+      normalizeLegacyLogoUrl(
+        'https://explorer.digitalregion.jp/img/STEN.svg',
+        'explorer.virbicoin.com'
+      )
+    ).toBe('https://explorer.digitalregion.jp/img/STEN.svg');
+  });
+
+  it('is a no-op when the current host is unknown', () => {
+    expect(
+      normalizeLegacyLogoUrl('https://explorer.digitalregion.jp/img/STEN.svg', '', LEGACY)
+    ).toBe('https://explorer.digitalregion.jp/img/STEN.svg');
   });
 
   it('returns null for empty or nullish input', () => {
-    expect(normalizeLegacyLogoUrl(null, 'explorer.virbicoin.com')).toBeNull();
-    expect(normalizeLegacyLogoUrl(undefined, 'explorer.virbicoin.com')).toBeNull();
-    expect(normalizeLegacyLogoUrl('   ', 'explorer.virbicoin.com')).toBeNull();
+    expect(normalizeLegacyLogoUrl(null, 'explorer.virbicoin.com', LEGACY)).toBeNull();
+    expect(normalizeLegacyLogoUrl(undefined, 'explorer.virbicoin.com', LEGACY)).toBeNull();
+    expect(normalizeLegacyLogoUrl('   ', 'explorer.virbicoin.com', LEGACY)).toBeNull();
   });
 
   it('returns non-URL strings as-is (e.g. relative paths)', () => {
-    expect(normalizeLegacyLogoUrl('/img/STEN.svg', 'explorer.virbicoin.com')).toBe('/img/STEN.svg');
+    expect(normalizeLegacyLogoUrl('/img/STEN.svg', 'explorer.virbicoin.com', LEGACY)).toBe(
+      '/img/STEN.svg'
+    );
   });
 
   it('supports a custom legacy host list', () => {

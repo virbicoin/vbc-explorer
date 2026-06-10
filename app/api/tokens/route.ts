@@ -368,18 +368,32 @@ export async function GET(request: NextRequest) {
   // Get tokenIcons from config for centralized icon lookup
   const tokenIcons =
     (config as { tokenIcons?: Record<string, { icon?: string; color?: string }> }).tokenIcons || {};
-  // Resolve the current explorer base URL/host from config so icon links and
-  // legacy logo URL normalization both target the live domain.
-  const explorerBaseUrl =
-    (config as { explorer?: { url?: string } }).explorer?.url || 'https://explorer.virbicoin.com';
-  let explorerHost = 'explorer.virbicoin.com';
+  // Resolve the explorer base URL/host from config so icon links and legacy
+  // logo URL normalization target the live domain. No network-specific values
+  // are hardcoded here; everything is driven by config.json.
+  const explorerCfg =
+    (config as { explorer?: { url?: string; legacyUrls?: string[] } }).explorer || {};
+  const explorerBaseUrl = explorerCfg.url || '';
+  let explorerHost = '';
   try {
-    explorerHost = new URL(explorerBaseUrl).hostname;
+    explorerHost = explorerBaseUrl ? new URL(explorerBaseUrl).hostname : '';
   } catch {
-    // Keep the default host if the configured URL is malformed.
+    explorerHost = '';
   }
+  // Hosts of decommissioned explorer domains whose on-chain logoUrl() values
+  // should be rewritten to the current host (optional, config-driven).
+  const legacyExplorerHosts = (explorerCfg.legacyUrls || [])
+    .map((u) => {
+      try {
+        return new URL(u).hostname;
+      } catch {
+        return u.trim();
+      }
+    })
+    .filter(Boolean);
   const getIconUrl = (symbol: string): string | undefined => {
     const iconCfg = tokenIcons[symbol];
+    // With no explorer URL configured, fall back to a same-origin relative path.
     return iconCfg?.icon ? `${explorerBaseUrl}${iconCfg.icon}` : undefined;
   };
 
@@ -558,10 +572,11 @@ export async function GET(request: NextRequest) {
       // Get logo URL from config or database or onchain
       const tokenAddr = typeof token.address === 'string' ? token.address.toLowerCase() : '';
       const tokenSymbol = typeof token.symbol === 'string' ? token.symbol : '';
-      // Normalize legacy explorer domain (explorer.digitalregion.jp now returns 502).
+      // Normalize on-chain/DB logoUrl from any configured legacy explorer host.
       const dbLogoUrl = normalizeLegacyLogoUrl(
         typeof token.logoUrl === 'string' ? token.logoUrl : null,
-        explorerHost
+        explorerHost,
+        legacyExplorerHosts
       );
 
       // Get icon from centralized tokenIcons by symbol
@@ -594,7 +609,7 @@ export async function GET(request: NextRequest) {
         try {
           const onchainLogoUrl = await fetchLaunchpadLogoUrl(token.address);
           if (onchainLogoUrl) {
-            logoUrl = normalizeLegacyLogoUrl(onchainLogoUrl, explorerHost);
+            logoUrl = normalizeLegacyLogoUrl(onchainLogoUrl, explorerHost, legacyExplorerHosts);
           }
         } catch {
           // Ignore errors for onchain fetch

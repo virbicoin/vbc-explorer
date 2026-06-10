@@ -157,7 +157,8 @@
     "url": "https://explorer.example.com",
     "apiUrl": "https://explorer.example.com/api",
     "copyright": "Your Company Name",
-    "github": "https://github.com/virbicoin/vbc-explorer"
+    "github": "https://github.com/virbicoin/vbc-explorer",
+    "legacyUrls": []
   },
   "network": {
     "chainId": 1,

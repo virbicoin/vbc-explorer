@@ -160,28 +160,25 @@ export function isValidHex(str: string): boolean {
 }
 
 /**
- * Legacy explorer hosts that have been migrated to the current domain.
- * On-chain token logoUrl() values may still point at the old
- * explorer.digitalregion.jp host, which now returns HTTP 502 while the new
- * domain serves the same image paths.
- */
-const LEGACY_EXPLORER_HOSTS: readonly string[] = ['explorer.digitalregion.jp'];
-
-/**
- * Rewrite logo URLs that point at a legacy explorer host to the current
- * explorer host so images keep resolving after a domain migration.
+ * Rewrite logo URLs that point at a configured legacy explorer host to the
+ * current explorer host so images keep resolving after a domain migration.
+ * Both domains are expected to serve the same image paths.
  *
- * Returns null for empty/invalid input and leaves non-legacy or non-URL
- * values untouched.
+ * This helper is network-agnostic: legacy hosts are supplied by the caller
+ * (driven by `config.explorer.legacyUrls`), never hardcoded here. It is a no-op
+ * when no legacy hosts are configured or the current host is unknown. Returns
+ * null for empty/invalid input and leaves non-legacy or non-URL values
+ * untouched.
  */
 export function normalizeLegacyLogoUrl(
   url: string | null | undefined,
   currentExplorerHost: string,
-  legacyHosts: readonly string[] = LEGACY_EXPLORER_HOSTS
+  legacyHosts: readonly string[] = []
 ): string | null {
   if (!url || typeof url !== 'string') return null;
   const trimmed = url.trim();
   if (!trimmed) return null;
+  if (!currentExplorerHost || legacyHosts.length === 0) return trimmed;
   try {
     const parsed = new URL(trimmed);
     if (legacyHosts.includes(parsed.hostname)) {

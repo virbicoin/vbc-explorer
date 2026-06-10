@@ -78,6 +78,13 @@ export interface ExplorerConfig {
   apiUrl?: string;
   copyright?: string;
   github?: string;
+  /**
+   * Decommissioned explorer domains (full URLs) whose on-chain token
+   * logoUrl() values should be rewritten to the current `url` host.
+   * Optional and empty by default; used after a domain migration where the
+   * old host no longer serves images but shares the same image paths.
+   */
+  legacyUrls?: string[];
 }
 
 export interface GeneralConfig {
