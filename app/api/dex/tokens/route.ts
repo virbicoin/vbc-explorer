@@ -396,7 +396,7 @@ export async function GET() {
           const tokenInfoPromises = tokensNotInDb.map(async (addr) => {
             try {
               const tokenContract = new web3.eth.Contract(ERC20_ABI, addr);
-              const [name, symbol, decimals] = await Promise.all([
+              const [name, symbol, decimals, logoUrl] = await Promise.all([
                 tokenContract.methods
                   .name()
                   .call()
@@ -409,12 +409,22 @@ export async function GET() {
                   .decimals()
                   .call()
                   .catch(() => 18),
+                tokenContract.methods
+                  .logoUrl()
+                  .call()
+                  .catch(() => ''),
               ]);
+              const symbolStr = String(symbol);
+              // Priority: 1. config.json icon by symbol, 2. on-chain logoUrl (Launchpad tokens)
+              const logoURI =
+                getIconBySymbol(symbolStr).icon ||
+                (logoUrl && String(logoUrl) !== '' ? String(logoUrl) : undefined);
               return {
                 address: addr as `0x${string}`,
                 name: String(name),
-                symbol: String(symbol),
+                symbol: symbolStr,
                 decimals: Number(decimals),
+                logoURI,
               };
             } catch (err) {
               console.error(`Error fetching token info for ${addr}:`, err);

@@ -238,7 +238,7 @@
         "symbol": "ALT",
         "decimals": 18
       },
-      "fee": "1000000000000000000000",
+      "fee": "800000000000000000000",
       "discountLabel": "20% OFF",
       "burnNote": "will be permanently burned",
       "contractFunctions": {

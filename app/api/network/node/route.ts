@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getWeb3, getProviderUrl } from '@/lib/web3/provider';
+import Web3 from 'web3';
+import { getProviderUrl } from '@/lib/web3/provider';
 import { loadConfig } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
@@ -20,10 +21,11 @@ interface NodeInfo {
 
 export async function GET() {
   try {
-    const web3 = getWeb3();
     const config = loadConfig();
-    // Use network.rpcUrl from config for display, fallback to web3Provider.url
+    // Display the configured public RPC URL and query that same node so the
+    // shown URL and the reported version/height always come from one source.
     const rpcUrl = config.network?.rpcUrl || getProviderUrl();
+    const web3 = new Web3(rpcUrl);
 
     const startTime = Date.now();
 

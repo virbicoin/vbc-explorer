@@ -291,6 +291,13 @@ const priceData = await getNativePrice();
 - `/api/dex/geckoterminal/pools`、`/api/dex/stats` などに影響
 - 非推奨/テスト用プールに使用
 
+### トークン一覧のブラックリスト（`/api/tokens`）
+- `config.json` の `blacklist` で `/api/tokens`（および `/tokens` ページ）の表示を制御
+  - `symbols`: シンボル一致で除外（例: `TEST`/`FIX`/`FIX2`）。同名で複数アドレスがあるテスト/ジャンクトークンを一括で隠す
+  - `tokens`: アドレス一致で除外
+  - `lpPairs`: LP ペアアドレスで除外
+- Launchpad トークンは現行 + `launchpad.legacyFactories` の TokenFactory から取得し、`tokenholders` 未登録でも供給があれば表示
+
 ### DEX 価格セキュリティ
 - **オンチェーン価格導出**: VBC/USDT ペアはプールのリザーブ比率で価格を計算
 - 外部 API の操作による攻撃を防止
