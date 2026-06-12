@@ -82,58 +82,9 @@ export function errorResponse(message: string, result: unknown = null) {
 // Block Reward Schedule
 // ============================================
 
-const FIRST_REDUCTION_BLOCK = 4_200_000;
-const REWARD_REDUCTION_INTERVAL = 2_100_000;
-const BASE_REWARD = 8;
-const MIN_REWARD = 1;
-
-/**
- * Returns the block reward in VBC for a given block number.
- * First reduction at block 4,200,000, then every 2,100,000 blocks.
- * Schedule: 8 -> 7 -> 6 -> 5 -> 4 -> 3 -> 2 -> 1 VBC
- */
-export function getBlockRewardForHeight(blockNumber: number): number {
-  if (blockNumber < FIRST_REDUCTION_BLOCK) return BASE_REWARD;
-  const reductions =
-    Math.floor((blockNumber - FIRST_REDUCTION_BLOCK) / REWARD_REDUCTION_INTERVAL) + 1;
-  if (reductions >= 7) return MIN_REWARD;
-  return BASE_REWARD - reductions;
-}
-
-/**
- * Returns the block reward in wei (string) for API responses.
- */
-export function getBlockRewardWeiForHeight(blockNumber: number): string {
-  return (BigInt(getBlockRewardForHeight(blockNumber)) * BigInt(10 ** 18)).toString();
-}
-
-/**
- * Calculates cumulative mining reward from block 0 to the given block number,
- * accounting for the gradual reward reduction schedule.
- */
-export function calculateTotalMiningReward(blockNumber: number): number {
-  if (blockNumber <= 0) return 0;
-
-  let total = 0;
-
-  // First epoch: block 0 to FIRST_REDUCTION_BLOCK (reward = 8 VBC)
-  const firstEpochBlocks = Math.min(blockNumber, FIRST_REDUCTION_BLOCK);
-  total += firstEpochBlocks * BASE_REWARD;
-
-  let remaining = blockNumber - firstEpochBlocks;
-  let currentReward = BASE_REWARD - 1;
-
-  // Subsequent epochs: each REWARD_REDUCTION_INTERVAL blocks
-  while (remaining > 0 && currentReward >= MIN_REWARD) {
-    const blocksInEpoch = Math.min(remaining, REWARD_REDUCTION_INTERVAL);
-    total += blocksInEpoch * currentReward;
-    remaining -= blocksInEpoch;
-    currentReward--;
-  }
-
-  if (remaining > 0) {
-    total += remaining * MIN_REWARD;
-  }
-
-  return total;
-}
+// Implementation lives in a pure module so client components can use it too.
+export {
+  getBlockRewardForHeight,
+  getBlockRewardWeiForHeight,
+  calculateTotalMiningReward,
+} from '@/lib/reward-schedule';
