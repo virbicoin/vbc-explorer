@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate average block time (last 100 blocks)
-    let avgBlockTime = 13;
+    let avgBlockTime = 12;
     try {
       const recentBlocks = await Block.find({})
         .sort({ number: -1 })

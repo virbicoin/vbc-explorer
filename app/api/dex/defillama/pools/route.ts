@@ -41,7 +41,7 @@ async function calculateFarmingAPR(
   lpTokenAddress: string,
   lpTvlUsd: number,
   rewardTokenPriceUsd: number,
-  blockTime: number = 13
+  blockTime: number = 12
 ): Promise<number> {
   try {
     const masterChef = new ethers.Contract(masterChefAddress, MASTERCHEF_ABI, provider);
@@ -159,7 +159,7 @@ export async function GET() {
         const masterChefAddress =
           (config.dex?.masterChef as { address?: string })?.address ||
           '0x12A656c2DeE0EA2685398d52AcF78974fCD67B27';
-        const blockTime = config.network?.blockTime || 13;
+        const blockTime = config.network?.blockTime || 12;
 
         // Get symbol mappings from config
         const nativeSymbol = config.currency?.symbol || 'VBC';

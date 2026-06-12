@@ -204,7 +204,7 @@ const apiCategories: ApiCategory[] = [
         path: '/api/v2/stats',
         description: 'Get network statistics',
         response:
-          '{"total_blocks":"12345","total_transactions":"67890","average_block_time":13000,...}',
+          '{"total_blocks":"12345","total_transactions":"67890","average_block_time":12000,...}',
         sampleUrl: '/api/v2/stats',
       },
     ],
@@ -241,7 +241,7 @@ const apiCategories: ApiCategory[] = [
         path: '/api/stats',
         description: 'Network statistics overview',
         response:
-          '{"latestBlock":1274207,"avgBlockTime":"13.41","difficulty":"...","hashrate":"...","totalTxs":...}',
+          '{"latestBlock":1274207,"avgBlockTime":"12.41","difficulty":"...","hashrate":"...","totalTxs":...}',
         sampleUrl: '/api/stats',
       },
       {
