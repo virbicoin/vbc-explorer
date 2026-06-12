@@ -246,6 +246,7 @@ Edit `config.json` for your blockchain:
 - **Rich List** - Real-time wealth distribution and account rankings
 - **Price Tracking** - Multi-API price feeds with historical data
 - **Gas Analytics** - Gas price tracking with unit customization (Gniku/niku)
+- **Halving Countdown** - Live countdown to the next block reward reduction with era progress
 - **Performance Metrics** - Transaction throughput and network performance
 
 ### 🔗 **Advanced Integration**
