@@ -9,7 +9,15 @@
 
 import { type Address } from 'viem';
 import { connectDB, Block, Transaction, Account, Contract } from '@/models/index';
-import { configJson, publicClient, Token, successResponse, errorResponse, getBlockRewardWeiForHeight, calculateTotalMiningReward } from './shared';
+import {
+  configJson,
+  publicClient,
+  Token,
+  successResponse,
+  errorResponse,
+  getBlockRewardWeiForHeight,
+  calculateTotalMiningReward,
+} from './shared';
 
 // ============================================
 // Block Module

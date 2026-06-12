@@ -94,7 +94,8 @@ const MIN_REWARD = 1;
  */
 export function getBlockRewardForHeight(blockNumber: number): number {
   if (blockNumber < FIRST_REDUCTION_BLOCK) return BASE_REWARD;
-  const reductions = Math.floor((blockNumber - FIRST_REDUCTION_BLOCK) / REWARD_REDUCTION_INTERVAL) + 1;
+  const reductions =
+    Math.floor((blockNumber - FIRST_REDUCTION_BLOCK) / REWARD_REDUCTION_INTERVAL) + 1;
   if (reductions >= 7) return MIN_REWARD;
   return BASE_REWARD - reductions;
 }

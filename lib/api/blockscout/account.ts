@@ -8,7 +8,13 @@
 
 import { type Address } from 'viem';
 import { connectDB, Block, Transaction } from '@/models/index';
-import { configJson, publicClient, successResponse, errorResponse, getBlockRewardWeiForHeight } from './shared';
+import {
+  configJson,
+  publicClient,
+  successResponse,
+  errorResponse,
+  getBlockRewardWeiForHeight,
+} from './shared';
 
 export async function getBalance(address: string) {
   try {

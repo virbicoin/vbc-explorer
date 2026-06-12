@@ -3,7 +3,6 @@ import mongoose from 'mongoose';
 import { connectDB } from '../../../../models/index';
 import { tryGetDb } from '../../../../lib/db/get-db';
 import { getWeb3 } from '../../../../lib/web3';
-import { apiCache, CACHE_TTL } from '../../../../lib/cache';
 import { loadConfig } from '../../../../lib/config';
 import { calculateTotalSupply } from '../../../../lib/supply';
 import {
