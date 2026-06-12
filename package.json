@@ -32,6 +32,7 @@
     "npm": ">=8.0.0"
   },
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "dev": "next dev",
     "dev:turbo": "next dev",
     "build": "next build",

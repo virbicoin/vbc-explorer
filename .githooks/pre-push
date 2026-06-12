@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+# Pre-push hook: run the same checks as CI (lint.yml) before pushing.
+# Enabled via the package.json "prepare" script, which sets
+# `git config core.hooksPath .githooks`.
+
+echo "> pre-push: running 'npm run check'..."
+if ! npm run check; then
+  echo ""
+  echo "x Checks failed; push aborted."
+  echo "  Most issues can be auto-fixed with 'npm run format' and 'npm run lint:fix'."
+  exit 1
+fi
+
+echo "> pre-push: running 'npm run test'..."
+if ! npm run test; then
+  echo ""
+  echo "x Tests failed; push aborted."
+  exit 1
+fi
+echo "+ pre-push: checks and tests passed."
