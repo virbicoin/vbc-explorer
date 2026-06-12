@@ -8,7 +8,7 @@
 
 import { type Address } from 'viem';
 import { connectDB, Block, Transaction } from '@/models/index';
-import { configJson, publicClient, successResponse, errorResponse } from './shared';
+import { configJson, publicClient, successResponse, errorResponse, getBlockRewardWeiForHeight } from './shared';
 
 export async function getBalance(address: string) {
   try {
@@ -182,11 +182,10 @@ export async function getMinedBlocks(address: string, page = 1, offset = 10) {
       .limit(offset)
       .lean();
 
-    const blockReward = configJson.supply?.blockReward || 8;
     const result = blocks.map((block: Record<string, unknown>) => ({
       blockNumber: String(block.number),
       timeStamp: String(block.timestamp || ''),
-      blockReward: (BigInt(blockReward) * BigInt(10 ** 18)).toString(),
+      blockReward: getBlockRewardWeiForHeight(Number(block.number)),
     }));
 
     return successResponse(result);

@@ -9,7 +9,7 @@
 
 import { type Address } from 'viem';
 import { connectDB, Block, Transaction, Account, Contract } from '@/models/index';
-import { configJson, publicClient, Token, successResponse, errorResponse } from './shared';
+import { configJson, publicClient, Token, successResponse, errorResponse, getBlockRewardWeiForHeight, calculateTotalMiningReward } from './shared';
 
 // ============================================
 // Block Module
@@ -18,18 +18,18 @@ import { configJson, publicClient, Token, successResponse, errorResponse } from 
 export async function getBlockReward(blockno: string) {
   try {
     await connectDB();
-    const block = await Block.findOne({ number: parseInt(blockno) }).lean();
+    const blockNum = parseInt(blockno);
+    const block = await Block.findOne({ number: blockNum }).lean();
 
     if (!block) {
       return errorResponse('Block not found');
     }
 
-    const blockReward = configJson.supply?.blockReward || 8;
     const result = {
       blockNumber: String(block.number),
       timeStamp: String(block.timestamp || ''),
       blockMiner: block.miner,
-      blockReward: (BigInt(blockReward) * BigInt(10 ** 18)).toString(),
+      blockReward: getBlockRewardWeiForHeight(blockNum),
       uncles: [],
       uncleInclusionReward: '0',
     };
@@ -192,10 +192,8 @@ export async function getTokenHolders(contractaddress: string, page = 1, offset 
 export async function getEthSupply() {
   try {
     const blockNumber = await publicClient.getBlockNumber();
-    const blockReward = configJson.supply?.blockReward || 8;
     const premineAmount = configJson.supply?.premineAmount || 1;
-    const totalSupply = Number(blockNumber) * blockReward + premineAmount;
-    // Return in wei
+    const totalSupply = calculateTotalMiningReward(Number(blockNumber)) + premineAmount;
     return successResponse((BigInt(Math.floor(totalSupply)) * BigInt(10 ** 18)).toString());
   } catch (error) {
     return errorResponse('Error fetching supply');

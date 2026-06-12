@@ -11,6 +11,7 @@
 
 import { createPublicClient, http, formatEther, type Address } from 'viem';
 import { loadConfig } from './config';
+import { calculateTotalMiningReward } from './api/blockscout/shared';
 
 // ============================================
 // Configuration
@@ -184,7 +185,7 @@ export async function getExcludedBalances(): Promise<Map<string, bigint>> {
 
 /**
  * Calculate Total Supply
- * Formula: (Block Height × Block Reward) + Pre-mine Amount
+ * Accounts for gradual reward reduction: 8 -> 7 -> ... -> 1 VBC every 4,200,000 blocks.
  */
 export async function calculateTotalSupply(): Promise<number> {
   // Check cache first
@@ -193,11 +194,9 @@ export async function calculateTotalSupply(): Promise<number> {
   }
 
   const blockNumber = await getBlockNumber();
-  const blockReward = supplyConfig.blockReward;
   const premineAmount = supplyConfig.premineAmount;
 
-  // Calculate: (blockNumber * blockReward) + premineAmount
-  const totalSupply = Number(blockNumber) * blockReward + premineAmount;
+  const totalSupply = calculateTotalMiningReward(Number(blockNumber)) + premineAmount;
 
   // Update cache
   cache.totalSupply = {
