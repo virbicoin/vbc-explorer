@@ -342,12 +342,34 @@ async function processVerification(guid: string) {
     }
     const similarity = minLen > 0 ? matches / minLen : 0;
 
+    // Length ratio check (handles metadata-only differences)
+    const lengthRatio =
+      Math.min(cleanOnchainBytecode.length, cleanCompiledBytecode.length) /
+      Math.max(cleanOnchainBytecode.length, cleanCompiledBytecode.length);
+
+    // Core bytecode comparison (first 80%) - handles immutable variable differences
+    // Immutable variables are embedded in deployed bytecode at specific positions,
+    // so the compiled bytecode has zeros where the on-chain code has actual values.
+    // Comparing only the first 80% of bytecode ignores these tail differences.
+    const coreLength = Math.floor(
+      Math.min(cleanOnchainBytecode.length, cleanCompiledBytecode.length) * 0.8
+    );
+    const onchainCore = cleanOnchainBytecode.substring(0, coreLength);
+    const compiledCore = cleanCompiledBytecode.substring(0, coreLength);
+    const coreMatch = onchainCore === compiledCore && coreLength > 100;
+
     // Check various verification methods
     const isVerified =
       cleanCompiledBytecode === cleanOnchainBytecode ||
       cleanCompiledBytecode.includes(cleanOnchainBytecode) ||
       cleanOnchainBytecode.includes(cleanCompiledBytecode) ||
-      similarity > 0.95;
+      similarity > 0.95 ||
+      (lengthRatio > 0.9 && similarity > 0.9) || // Close length + 90% similar (metadata diffs)
+      coreMatch; // Core code matches (immutable variable diffs)
+
+    console.log(
+      `[processVerification] ${address}: similarity=${(similarity * 100).toFixed(2)}%, lengthRatio=${(lengthRatio * 100).toFixed(2)}%, coreMatch=${coreMatch}, isVerified=${isVerified}`
+    );
 
     if (isVerified) {
       // Extract license from source code

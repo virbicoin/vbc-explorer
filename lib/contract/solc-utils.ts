@@ -50,8 +50,13 @@ export const SOLC_RELEASES: Record<string, string> = {
 
 /**
  * Modernize old Solidity syntax so legacy sources compile under newer compilers.
- * Strips NatSpec block comments, rewrites `var`, `suicide`, `throw`, and relaxes
- * strict 0.8.x pragmas to `^0.8.0`.
+ * Strips NatSpec block comments, rewrites `var`, `suicide`, `throw`.
+ *
+ * NOTE: We intentionally do NOT modify pragma statements. Changing a strict pragma
+ * (e.g. `pragma solidity 0.8.30;`) to a caret range (`^0.8.0`) causes the compiler
+ * to embed a different version in the metadata hash, resulting in bytecode mismatches
+ * during verification. The loaded solc version must match the pragma naturally, or
+ * `^0.8.x` style pragmas already allow any compatible minor version.
  */
 export function modernizeSyntax(sourceCode: string): string {
   let modernized = sourceCode;
@@ -67,26 +72,6 @@ export function modernizeSyntax(sourceCode: string): string {
 
   // Replace throw with revert
   modernized = modernized.replace(/\bthrow\b/g, 'revert()');
-
-  // Convert strict pragma to flexible pragma for 0.8.x versions
-  modernized = modernized.replace(/pragma\s+solidity\s+(\d+\.\d+\.\d+)\s*;/g, (match, version) => {
-    const parts = version.split('.');
-    if (parts[0] === '0' && parts[1] === '8') {
-      return 'pragma solidity ^0.8.0;';
-    }
-    return match;
-  });
-
-  modernized = modernized.replace(
-    /pragma\s+solidity\s+=\s*(\d+\.\d+\.\d+)\s*;/g,
-    (match, version) => {
-      const parts = version.split('.');
-      if (parts[0] === '0' && parts[1] === '8') {
-        return 'pragma solidity ^0.8.0;';
-      }
-      return match;
-    }
-  );
 
   return modernized;
 }

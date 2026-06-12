@@ -55,12 +55,12 @@ describe('modernizeSyntax', () => {
     expect(modernizeSyntax('var amount = 5;')).toContain('uint256 amount =');
   });
 
-  it('relaxes a strict 0.8.x pragma to a caret range', () => {
-    expect(modernizeSyntax('pragma solidity 0.8.20;')).toContain('pragma solidity ^0.8.0;');
+  it('preserves strict 0.8.x pragma unchanged (no rewriting)', () => {
+    expect(modernizeSyntax('pragma solidity 0.8.20;')).toContain('pragma solidity 0.8.20;');
   });
 
-  it('relaxes a strict equals 0.8.x pragma to a caret range', () => {
-    expect(modernizeSyntax('pragma solidity =0.8.19;')).toContain('pragma solidity ^0.8.0;');
+  it('preserves strict equals 0.8.x pragma unchanged', () => {
+    expect(modernizeSyntax('pragma solidity =0.8.19;')).toContain('pragma solidity =0.8.19;');
   });
 
   it('does not rewrite non-0.8 pragmas', () => {
