@@ -6,7 +6,7 @@
  * 1. CoinGecko (if configured)
  * 2. CoinMarketCap (if configured)
  * 3. Coinpaprika (if configured)
- * 4. Exbitron Exchange API
+ * 4. WikaEx Exchange API
  * 5. DEX on-chain price (fallback)
  */
 
@@ -244,18 +244,18 @@ const fetchCoinpaprikaPrice = async (): Promise<{ quoteUSD: number; quoteBTC: nu
   }
 };
 
-// 4. Exbitron Exchange API
-const fetchExbitronPrice = async (
+// 4. WikaEx Exchange API (CoinGecko-compatible endpoint)
+const fetchWikaExPrice = async (
   symbol: string
 ): Promise<{ quoteUSD: number; quoteBTC: number } | null> => {
   // Check if explicitly disabled
-  if (currencyConfig?.priceApi?.exbitron?.enabled === false) return null;
+  if (currencyConfig?.priceApi?.wikaex?.enabled === false) return null;
 
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    const response = await fetch('https://api.exbitron.com/api/v1/cg/tickers', {
+    const response = await fetch('https://wikaex.com/api/spot/coingecko/tickers', {
       signal: controller.signal,
       headers: { 'User-Agent': 'VBC-Explorer/1.0', Accept: 'application/json' },
     });
@@ -264,19 +264,19 @@ const fetchExbitronPrice = async (
     if (!response.ok) return null;
 
     const tickers = await response.json();
-    const tickerSymbol = currencyConfig?.priceApi?.exbitron?.symbol || symbol;
+    const tickerSymbol = currencyConfig?.priceApi?.wikaex?.symbol || symbol;
     const nativeUsdt = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}-USDT`
+      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}_USDT`
     );
     const nativeBtc = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}-BTC`
+      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}_BTC`
     );
 
     if (nativeUsdt?.last_price || nativeBtc?.last_price) {
       const quoteUSD = parseFloat(nativeUsdt?.last_price || '0');
       const quoteBTC = parseFloat(nativeBtc?.last_price || '0');
       if (quoteUSD > 0) {
-        log(`✅ Exbitron: $${quoteUSD}`);
+        log(`✅ WikaEx: $${quoteUSD}`);
         return { quoteUSD, quoteBTC };
       }
     }
@@ -330,7 +330,7 @@ const fetchDexPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } |
  * 1. CoinGecko
  * 2. CoinMarketCap (CMC)
  * 3. Coinpaprika
- * 4. Exbitron
+ * 4. WikaEx
  * 5. DEX
  */
 const fetchCryptoPrice = async (): Promise<PriceData | null> => {
@@ -357,9 +357,9 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
     price = await fetchCoinpaprikaPrice();
   }
 
-  // 4. Try Exbitron
+  // 4. Try WikaEx
   if (!price) {
-    price = await fetchExbitronPrice(symbol);
+    price = await fetchWikaExPrice(symbol);
   }
 
   // 5. Try DEX as final fallback

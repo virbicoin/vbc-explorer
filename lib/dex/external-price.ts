@@ -216,10 +216,10 @@ export async function getExternalPriceData(): Promise<ExternalPriceData> {
     return cachedData;
   }
 
-  // Get price from price service (uses Market DB first, then Exbitron)
+  // Get price from price service (uses Market DB first, then WikaEx)
   const priceData = await getNativePrice();
   const nativePriceUsd = priceData?.priceUSD || 0;
-  const priceSource = priceData?.source === 'database' ? 'Market DB' : 'Exbitron';
+  const priceSource = priceData?.source === 'database' ? 'Market DB' : 'WikaEx';
 
   // Then calculate TVL from blockchain using the native price
   const totalTvlUsd = await calculateTvlFromBlockchain(nativePriceUsd);

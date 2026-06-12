@@ -206,7 +206,7 @@ npm run sync            # ブロックチェーンデータを同期
 npm run tokens          # トークン（NFT/ERC20）データを同期
 npm run stats           # 統計を計算
 npm run richlist        # リッチリストを生成
-npm run price           # 価格 + DEX スワップデータを更新（Exbitron + オンチェーン）
+npm run price           # 価格 + DEX スワップデータを更新（WikaEx + オンチェーン）
 
 # データベース管理
 npm run optimize-indexes # DB インデックスを作成/最適化
@@ -227,7 +227,7 @@ pm2 monit               # リソースを監視
 1. **CoinGecko** - `https://api.coingecko.com/api/v3/simple/price`
 2. **CoinMarketCap** - 環境変数 `CMC_API_KEY` が必要
 3. **Coinpaprika** - `https://api.coinpaprika.com/v1/tickers`
-4. **Exbitron** - `https://api.exbitron.digital/api/v2/peatio/public/markets`
+4. **WikaEx** - `https://wikaex.com/api/spot/coingecko/tickers`
 5. **DEX フォールバック** - LP ペアのリザーブから算出するオンチェーン価格
 
 `config.json` の `currency.priceApi` で設定します:
@@ -236,7 +236,7 @@ pm2 monit               # リソースを監視
   "coingecko": { "enabled": true, "id": "virbicoin" },
   "cmc": { "enabled": false, "id": "virbicoin" },
   "coinpaprika": { "enabled": true, "id": "vbc-virbicoin" },
-  "exbitron": { "enabled": true, "symbol": "VBC" },
+  "wikaex": { "enabled": true, "symbol": "VBC" },
   "dex": { "enabled": true, "pairAddress": "0x..." }
 }
 ```
@@ -579,7 +579,7 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 - `GET /api/dex/pairs` - 取引ペア一覧
 - `GET /api/dex/tokens` - トークン一覧
 - `GET /api/dex/chart/[pair]` - 価格チャートデータ
-- `GET /api/dex/external-price` - 外部価格（Exbitron + DEX フォールバック）
+- `GET /api/dex/external-price` - 外部価格（WikaEx + DEX フォールバック）
 
 ### DEX API - GeckoTerminal 互換（フル V2 API）
 どのエンドポイントも、アドレスパラメータを `ethers.isAddress()` で検証し、クエリパラメータをサニタイズします。

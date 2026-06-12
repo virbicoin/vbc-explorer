@@ -53,7 +53,7 @@ A modern, real-time blockchain explorer for any EVM-compatible network built wit
 - **⏳ Pending Transactions** - View pending transactions in mempool
 - **💰 Token Management** - Comprehensive ERC-20, ERC-721, and ERC-1155 token tracking with holder analytics
 - **📈 Rich List** - Real-time account balance tracking and wealth distribution analysis
-- **💸 Price Tracking** - Live price updates with priority fallback (CoinGecko → CoinMarketCap → Coinpaprika → Exbitron → DEX)
+- **💸 Price Tracking** - Live price updates with priority fallback (CoinGecko → CoinMarketCap → Coinpaprika → WikaEx → DEX)
 - **⚡ Real-time Sync** - Live blockchain synchronization with WebSocket support
 - **📱 Responsive Design** - Mobile-first design optimized for all devices
 - **🔗 EIP-3091 Support** - Direct URI redirection for ethereum: links
@@ -104,7 +104,7 @@ The explorer includes a built-in decentralized exchange (DEX) with the following
 - `/api/dex/defillama`, `/api/dex/defillama/tvl`, `/api/dex/defillama/pools`
 
 #### Price Data
-- `/api/dex/external-price` - Exbitron + DEX on-chain fallback
+- `/api/dex/external-price` - WikaEx + DEX on-chain fallback
 
 ### Yield Farming
 - Stake LP tokens to earn reward tokens
@@ -989,7 +989,7 @@ All configuration is now centralized in `config.json`. The following settings ar
         "enabled": true,
         "id": "eth-ethereum"
       },
-      "exbitron": {
+      "wikaex": {
         "enabled": true,
         "symbol": "ETH"
       }

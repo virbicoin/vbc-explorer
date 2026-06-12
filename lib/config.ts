@@ -63,7 +63,7 @@ export interface CurrencyConfig {
       enabled: boolean;
       id: string;
     };
-    exbitron?: {
+    wikaex?: {
       enabled: boolean;
       symbol?: string;
     };

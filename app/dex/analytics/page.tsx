@@ -157,7 +157,7 @@ export default function AnalyticsPage() {
         if (externalPrice.success && externalPrice.data) {
           if (externalPrice.data.nativePriceUsd > 0) {
             nativePrice = externalPrice.data.nativePriceUsd;
-            priceSource = externalPrice.data.source?.price || 'Exbitron';
+            priceSource = externalPrice.data.source?.price || 'WikaEx';
           }
           if (externalPrice.data.nativeSymbol) {
             nativeSymbol = externalPrice.data.nativeSymbol;

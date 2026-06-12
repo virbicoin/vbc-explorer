@@ -9,7 +9,7 @@
  * 2. CoinGecko
  * 3. CoinMarketCap (CMC)
  * 4. Coinpaprika
- * 5. Exbitron
+ * 5. WikaEx
  * 6. DEX (not implemented in this service - handled by tools/price.ts)
  */
 
@@ -21,7 +21,7 @@ export interface PriceData {
   priceUSD: number;
   priceBTC: number;
   timestamp: number;
-  source: 'database' | 'coingecko' | 'cmc' | 'coinpaprika' | 'exbitron' | 'dex';
+  source: 'database' | 'coingecko' | 'cmc' | 'coinpaprika' | 'wikaex' | 'dex';
 }
 
 // In-memory cache for API routes (short-lived)
@@ -188,18 +188,18 @@ export async function getPriceFromCoinpaprika(): Promise<PriceData | null> {
 }
 
 /**
- * Fetch price from Exbitron API
+ * Fetch price from WikaEx API (CoinGecko-compatible endpoint)
  */
-export async function getPriceFromExbitron(symbol: string): Promise<PriceData | null> {
+export async function getPriceFromWikaEx(symbol: string): Promise<PriceData | null> {
   const currencyConfig = getCurrencyConfig();
   // Check if explicitly disabled
-  if (currencyConfig?.priceApi?.exbitron?.enabled === false) return null;
+  if (currencyConfig?.priceApi?.wikaex?.enabled === false) return null;
 
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-    const response = await fetch('https://api.exbitron.com/api/v1/cg/tickers', {
+    const response = await fetch('https://wikaex.com/api/spot/coingecko/tickers', {
       signal: controller.signal,
       headers: { 'User-Agent': 'VBC-Explorer/1.0', Accept: 'application/json' },
     });
@@ -208,13 +208,13 @@ export async function getPriceFromExbitron(symbol: string): Promise<PriceData | 
     if (!response.ok) return null;
 
     const tickers = await response.json();
-    const tickerSymbol = currencyConfig?.priceApi?.exbitron?.symbol || symbol;
+    const tickerSymbol = currencyConfig?.priceApi?.wikaex?.symbol || symbol;
 
     const usdtTicker = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}-USDT`
+      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}_USDT`
     );
     const btcTicker = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}-BTC`
+      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}_BTC`
     );
 
     if (usdtTicker?.last_price || btcTicker?.last_price) {
@@ -225,7 +225,7 @@ export async function getPriceFromExbitron(symbol: string): Promise<PriceData | 
           priceUSD,
           priceBTC: btcTicker?.last_price ? parseFloat(btcTicker.last_price) : 0,
           timestamp: Date.now(),
-          source: 'exbitron',
+          source: 'wikaex',
         };
       }
     }
@@ -237,7 +237,7 @@ export async function getPriceFromExbitron(symbol: string): Promise<PriceData | 
 
 /**
  * Get current native token price
- * Priority: Database -> CoinGecko -> CMC -> Coinpaprika -> Exbitron
+ * Priority: Database -> CoinGecko -> CMC -> Coinpaprika -> WikaEx
  */
 export async function getNativePrice(): Promise<PriceData | null> {
   // Check memory cache first
@@ -266,9 +266,9 @@ export async function getNativePrice(): Promise<PriceData | null> {
     price = await getPriceFromCoinpaprika();
   }
 
-  // 5. Try Exbitron
+  // 5. Try WikaEx
   if (!price) {
-    price = await getPriceFromExbitron(symbol);
+    price = await getPriceFromWikaEx(symbol);
   }
 
   if (price) {
@@ -291,8 +291,8 @@ export async function getPrice(symbol?: string): Promise<PriceData | null> {
     return getNativePrice();
   }
 
-  // For other tokens, try Exbitron only
-  return getPriceFromExbitron(targetSymbol);
+  // For other tokens, try WikaEx only
+  return getPriceFromWikaEx(targetSymbol);
 }
 
 /**

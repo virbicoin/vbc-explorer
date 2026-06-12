@@ -53,11 +53,11 @@ export async function GET() {
       });
     }
 
-    // Get price from price service (uses Market DB first, then Exbitron)
+    // Get price from price service (uses Market DB first, then WikaEx)
     const [priceData, totalTvlUsd] = await Promise.all([getNativePrice(), fetchDefiLlamaTvl()]);
 
     const nativePriceUsd = priceData?.priceUSD || 0;
-    const priceSource = priceData?.source === 'database' ? 'Market DB' : 'Exbitron';
+    const priceSource = priceData?.source === 'database' ? 'Market DB' : 'WikaEx';
 
     cachedData = {
       nativePriceUsd,
