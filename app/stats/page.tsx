@@ -16,6 +16,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../lib/client-config';
 import { initializeCurrency } from '../../lib/bigint-utils';
+import HalvingCountdown from '../../components/HalvingCountdown';
 
 interface NetworkStats {
   latestBlock: number;
@@ -254,6 +255,15 @@ export default function StatsPage() {
               <div className="text-xs text-gray-400 mt-2">No maximum supply cap</div>
             </div>
           </div>
+        </section>
+
+        {/* Halving Countdown */}
+        <section className="mb-8">
+          <h2 className="text-xl font-semibold text-gray-100 mb-4 flex items-center gap-2">
+            <ClockIcon className="w-6 h-6 text-teal-400" />
+            Halving Countdown
+          </h2>
+          <HalvingCountdown latestBlock={stats?.latestBlock} avgBlockTime={stats?.avgBlockTime} />
         </section>
 
         {/* Gas Tracker */}
