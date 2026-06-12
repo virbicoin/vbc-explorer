@@ -84,4 +84,4 @@ core.*
 # Logs
 logs/
 *.log
-*.bak
+*.bak.claude/
