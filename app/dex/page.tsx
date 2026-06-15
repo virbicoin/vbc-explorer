@@ -9,6 +9,7 @@ import {
   CircleStackIcon,
   CurrencyDollarIcon,
 } from '@heroicons/react/24/outline';
+import { initializeCurrencyConfig, getNetworkName } from '../../lib/client-config';
 
 // Loading component
 function LoadingSkeleton() {
@@ -135,6 +136,12 @@ function DexPageContent() {
   const [showChart, setShowChart] = useState(true);
   const [nativePrice, setNativePrice] = useState<number | null>(null);
   const [nativeSymbol, setNativeSymbol] = useState<string>('');
+  const [dexName, setDexName] = useState('DEX');
+
+  // Resolve the DEX name from config (network name) for the heading.
+  useEffect(() => {
+    initializeCurrencyConfig().then(() => setDexName(`${getNetworkName()} DEX`));
+  }, []);
 
   // Fetch native token price from external API
   useEffect(() => {
@@ -218,7 +225,7 @@ function DexPageContent() {
                 </svg>
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-white">VirBiCoin DEX</h1>
+                <h1 className="text-3xl font-bold text-white">{dexName}</h1>
                 <p className="text-gray-400 mt-1">
                   Swap tokens, provide liquidity and earn rewards
                 </p>

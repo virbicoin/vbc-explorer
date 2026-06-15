@@ -11,6 +11,7 @@ import {
   MinimalContracts,
 } from '@/config/farming';
 import { MASTER_CHEF_ABI, ERC20_ABI } from '@/abi/MasterChefABI';
+import { initializeCurrencyConfig, getCurrencyConfig } from '@/lib/client-config';
 
 // DEX token configuration interface
 interface DexTokenConfig {
@@ -254,6 +255,8 @@ export function useFarming(options: UseFarmingOptions = {}) {
       } catch (switchError: unknown) {
         // Chain not added, try to add it
         if ((switchError as { code?: number })?.code === 4902) {
+          await initializeCurrencyConfig();
+          const currencyInfo = getCurrencyConfig();
           await window.ethereum.request({
             method: 'wallet_addEthereumChain',
             params: [
@@ -263,9 +266,9 @@ export function useFarming(options: UseFarmingOptions = {}) {
                 rpcUrls: [networkConfig.rpcUrl],
                 blockExplorerUrls: [networkConfig.explorer],
                 nativeCurrency: {
-                  name: 'VBC',
-                  symbol: 'VBC',
-                  decimals: 18,
+                  name: currencyInfo.name,
+                  symbol: currencyInfo.symbol,
+                  decimals: currencyInfo.decimals,
                 },
               },
             ],
@@ -803,6 +806,8 @@ export function useFarming(options: UseFarmingOptions = {}) {
         } catch (switchError: unknown) {
           // Chain not added, try to add it
           if ((switchError as { code?: number })?.code === 4902) {
+            await initializeCurrencyConfig();
+            const currencyInfo = getCurrencyConfig();
             await window.ethereum.request({
               method: 'wallet_addEthereumChain',
               params: [
@@ -812,9 +817,9 @@ export function useFarming(options: UseFarmingOptions = {}) {
                   rpcUrls: [networkConfig.rpcUrl],
                   blockExplorerUrls: [networkConfig.explorer],
                   nativeCurrency: {
-                    name: 'VBC',
-                    symbol: 'VBC',
-                    decimals: 18,
+                    name: currencyInfo.name,
+                    symbol: currencyInfo.symbol,
+                    decimals: currencyInfo.decimals,
                   },
                 },
               ],

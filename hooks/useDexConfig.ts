@@ -42,6 +42,11 @@ export interface DexConfigData {
     wrappedNative: TokenInfo;
     reward: TokenInfo;
   };
+  currency?: {
+    name: string;
+    symbol: string;
+    decimals: number;
+  };
   lastUpdated: number;
 }
 

@@ -41,13 +41,13 @@ interface DexInfo {
 export async function GET() {
   try {
     const config = loadConfig();
+    const networkName = config.network?.name || config.currency?.name || 'Blockchain';
 
     const dexInfo: DexInfo = {
-      name: 'VirBiCoin DEX',
+      name: config.dex?.name || `${networkName} DEX`,
       logo: 'https://i.imgur.com/PrvGDTu.png',
       website: `${config.explorer?.url || 'https://explorer.virbicoin.com'}/dex`,
-      description:
-        'Decentralized exchange on VirBiCoin network. Swap tokens, provide liquidity, and earn rewards through yield farming.',
+      description: `Decentralized exchange on ${networkName} network. Swap tokens, provide liquidity, and earn rewards through yield farming.`,
       network: {
         name: config.network?.name || 'VirBiCoin',
         chain_id: config.network?.chainId || 329,

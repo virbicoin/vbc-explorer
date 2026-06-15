@@ -270,12 +270,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     ];
 
     // Build DEX info
+    const dexName =
+      config.dex?.name || `${config.network?.name || config.currency?.name || 'Blockchain'} DEX`;
     const dexInfo = {
       id: `${networkSlug}_dex`,
       type: 'dex',
       attributes: {
-        name: 'VirBiCoin DEX',
-        identifier: 'VirBiCoin DEX',
+        name: dexName,
+        identifier: dexName,
         url: null,
       },
     };

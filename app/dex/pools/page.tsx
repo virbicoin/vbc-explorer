@@ -228,7 +228,10 @@ export default function PoolsPage() {
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-white">Liquidity Pools</h1>
-                <p className="text-gray-400 mt-1">All liquidity pools on VirBiCoin DEX</p>
+                <p className="text-gray-400 mt-1">
+                  All liquidity pools on{' '}
+                  {dexConfig?.currency?.name ? `${dexConfig.currency.name} DEX` : 'the DEX'}
+                </p>
               </div>
             </div>
             <nav className="hidden md:flex items-center gap-2 bg-gray-800/50 rounded-xl p-1">
