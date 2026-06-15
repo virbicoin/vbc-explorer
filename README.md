@@ -255,6 +255,13 @@ Edit `config.json` for your blockchain:
 - **Multi-language Support** - Configurable currency units and symbols
 - **Mobile Responsive** - Optimized experience across all devices
 
+### 🔎 **SEO & Discoverability**
+- **Per-entity metadata** - Server-rendered titles, descriptions and canonical URLs for every block, transaction, address and token, enriched off the render path with live data (token name/symbol, tx value, address balance)
+- **Dynamic Open Graph images** - Branded 1200×630 link-preview cards generated per entity (`summary_large_image`)
+- **Structured data (JSON-LD)** - BreadcrumbList on entity pages; WebSite (with a sitelinks search action) and Organization site-wide
+- **Sitemap & robots.txt** - Generated `sitemap.xml` and `robots.txt`, custom `noindex` 404, and shareable `/search?q=` URLs
+- **Config-driven & generic** - All names derive from `config.json`, so SEO works on any chain with no hardcoded coin names
+
 ## 🛠️ Tech Stack
 
 ### Frontend
