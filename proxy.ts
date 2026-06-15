@@ -21,27 +21,37 @@ export async function proxy(request: NextRequest) {
       // Validate address format
       if (address && /^0x[a-fA-F0-9]{40}$/.test(address)) {
         try {
-          // Use lightweight type check API
+          // Use the lightweight type-check API. Bound it with a short timeout:
+          // the type check connects to MongoDB, so a slow or unreachable DB
+          // must not be allowed to hang the /address page. On timeout we abort
+          // and fall through to render the page normally (no redirect).
           const baseUrl = request.nextUrl.origin;
-          const typeResponse = await fetch(`${baseUrl}/api/address/${address}/type`, {
-            headers: { Accept: 'application/json' },
-          });
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 2000);
+          try {
+            const typeResponse = await fetch(`${baseUrl}/api/address/${address}/type`, {
+              headers: { Accept: 'application/json' },
+              signal: controller.signal,
+            });
 
-          if (typeResponse.ok) {
-            const typeData = await typeResponse.json();
+            if (typeResponse.ok) {
+              const typeData = await typeResponse.json();
 
-            if (typeData.type === 'token') {
-              // Redirect to token page
-              return NextResponse.redirect(new URL(`/token/${address}`, request.url));
+              if (typeData.type === 'token') {
+                // Redirect to token page
+                return NextResponse.redirect(new URL(`/token/${address}`, request.url));
+              }
+
+              if (typeData.type === 'contract') {
+                // Redirect to contract page
+                return NextResponse.redirect(new URL(`/contract/${address}`, request.url));
+              }
             }
-
-            if (typeData.type === 'contract') {
-              // Redirect to contract page
-              return NextResponse.redirect(new URL(`/contract/${address}`, request.url));
-            }
+          } finally {
+            clearTimeout(timeout);
           }
         } catch (error) {
-          // If API call fails, let the page handle it
+          // If the type check fails or times out, let the page render.
           console.error('Proxy redirect error:', error);
         }
       }
