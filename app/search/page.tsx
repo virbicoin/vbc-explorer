@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   MagnifyingGlassIcon,
@@ -38,12 +39,13 @@ interface SearchResult {
   };
 }
 
-export default function SearchPage() {
+function SearchPageContent() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<Config | null>(null);
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     // Fetch config
@@ -90,6 +92,16 @@ export default function SearchPage() {
       setLoading(false);
     }
   };
+
+  // Pre-fill and run the search from a ?q= URL param — shareable search links,
+  // and the target of the WebSite SearchAction structured data.
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q) {
+      setQuery(q);
+      handleSearch(q);
+    }
+  }, [searchParams]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -350,5 +362,13 @@ export default function SearchPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={null}>
+      <SearchPageContent />
+    </Suspense>
   );
 }
