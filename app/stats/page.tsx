@@ -13,6 +13,9 @@ import {
   FireIcon,
   ServerIcon,
   GlobeAltIcon,
+  SignalIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../lib/client-config';
 import { initializeCurrency } from '../../lib/bigint-utils';
@@ -51,10 +54,36 @@ interface GasStats {
   baseFee?: string;
 }
 
+interface ChainInfo {
+  chainId: number;
+  networkName: string;
+  rpcUrl: string;
+}
+
+interface NodeInfo {
+  name: string;
+  url: string;
+  status: 'online' | 'offline' | 'syncing';
+  latency: number;
+  blockHeight: number;
+  version: string;
+  networkId?: number;
+  chainId?: number;
+  peerCount?: number;
+  isSyncing?: boolean;
+}
+
 export default function StatsPage() {
   const [stats, setStats] = useState<NetworkStats | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [gasStats, setGasStats] = useState<GasStats | null>(null);
+  const [chainInfo, setChainInfo] = useState<ChainInfo>({
+    chainId: 0,
+    networkName: '',
+    rpcUrl: '',
+  });
+  const [nodes, setNodes] = useState<NodeInfo[]>([]);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
   const [dailyStatsLoading, setDailyStatsLoading] = useState(false);
   const [currencySymbol, setCurrencySymbol] = useState<string>('');
@@ -92,6 +121,32 @@ export default function StatsPage() {
           // Gas stats API might not exist yet
         }
 
+        // Fetch chain info from config (network name, chain ID, RPC URL)
+        try {
+          const configRes = await fetch('/api/config/client');
+          if (configRes.ok) {
+            const configData = await configRes.json();
+            setChainInfo({
+              chainId: configData.network?.chainId || 0,
+              networkName: configData.network?.name || configData.currency?.name || '',
+              rpcUrl: configData.network?.rpcUrl || '',
+            });
+          }
+        } catch {
+          // Config API might be unavailable
+        }
+
+        // Fetch node status
+        try {
+          const nodeRes = await fetch('/api/network/node');
+          if (nodeRes.ok) {
+            const nodeData = await nodeRes.json();
+            setNodes([nodeData]);
+          }
+        } catch {
+          // Node API might be unavailable
+        }
+
         // Fetch daily stats
         try {
           setDailyStatsLoading(true);
@@ -105,6 +160,8 @@ export default function StatsPage() {
         } finally {
           setDailyStatsLoading(false);
         }
+
+        setLastUpdate(new Date());
       } catch (error) {
         console.error('Error fetching stats:', error);
       } finally {
@@ -129,6 +186,32 @@ export default function StatsPage() {
     return hashrate;
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'online':
+        return 'text-green-400';
+      case 'offline':
+        return 'text-red-400';
+      case 'syncing':
+        return 'text-yellow-400';
+      default:
+        return 'text-gray-400';
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'online':
+        return <CheckCircleIcon className="w-5 h-5 text-green-400" />;
+      case 'offline':
+        return <ExclamationTriangleIcon className="w-5 h-5 text-red-400" />;
+      case 'syncing':
+        return <ArrowPathIcon className="w-5 h-5 text-yellow-400 animate-spin" />;
+      default:
+        return <SignalIcon className="w-5 h-5 text-gray-400" />;
+    }
+  };
+
   if (loading && !stats) {
     return (
       <div className="min-h-screen bg-gray-900 text-white">
@@ -151,8 +234,13 @@ export default function StatsPage() {
             <h1 className="text-3xl font-bold text-gray-100">Network Statistics</h1>
           </div>
           <p className="text-gray-400">
-            Comprehensive statistics and analytics for the blockchain network.
+            Network status, node health, and comprehensive analytics for the blockchain.
           </p>
+          {lastUpdate && (
+            <p className="text-gray-500 text-sm mt-2">
+              Last updated: {lastUpdate.toLocaleTimeString()}
+            </p>
+          )}
         </div>
       </div>
 
@@ -213,6 +301,45 @@ export default function StatsPage() {
                 {formatNumber(stats?.activeMiners)}
               </div>
               <div className="text-xs text-gray-400 mt-2">Last 100 blocks</div>
+            </div>
+          </div>
+        </section>
+
+        {/* Chain Information */}
+        <section className="mb-8">
+          <h2 className="text-xl font-semibold text-gray-100 mb-4 flex items-center gap-2">
+            <ServerIcon className="w-6 h-6 text-blue-400" />
+            Chain Information
+          </h2>
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+            <div className="space-y-4">
+              <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                <span className="text-gray-400">Network Status</span>
+                <span
+                  className={`font-medium flex items-center gap-2 ${stats?.isConnected ? 'text-green-400' : 'text-red-400'}`}
+                >
+                  {stats?.isConnected ? (
+                    <CheckCircleIcon className="w-5 h-5" />
+                  ) : (
+                    <ExclamationTriangleIcon className="w-5 h-5" />
+                  )}
+                  {stats?.isConnected ? 'Online' : 'Offline'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                <span className="text-gray-400">Network Name</span>
+                <span className="text-white font-medium">{chainInfo.networkName || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                <span className="text-gray-400">Chain ID</span>
+                <span className="text-white font-medium">{chainInfo.chainId || 'N/A'}</span>
+              </div>
+              <div className="flex justify-between items-center py-2">
+                <span className="text-gray-400">RPC URL</span>
+                <span className="text-blue-400 font-mono text-sm break-all text-right">
+                  {chainInfo.rpcUrl || 'N/A'}
+                </span>
+              </div>
             </div>
           </div>
         </section>
@@ -311,6 +438,79 @@ export default function StatsPage() {
             <div className="mt-4 text-center text-gray-400 text-sm">
               Average Transaction Fee:{' '}
               <span className="text-white font-medium">{stats?.avgTransactionFee || 'N/A'}</span>
+            </div>
+          </div>
+        </section>
+
+        {/* Node Status */}
+        <section className="mb-8">
+          <h2 className="text-xl font-semibold text-gray-100 mb-4 flex items-center gap-2">
+            <SignalIcon className="w-6 h-6 text-green-400" />
+            Node Status
+          </h2>
+          <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-700">
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">Node</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">URL</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                      Status
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                      Latency
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                      Block Height
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-400">
+                      Version
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-700">
+                  {nodes.length > 0 ? (
+                    nodes.map((node, index) => (
+                      <tr key={index} className="hover:bg-gray-700/50 transition-colors">
+                        <td className="py-3 px-4">
+                          <span className="text-white font-medium">{node.name}</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-blue-400 font-mono text-sm">{node.url}</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            {getStatusIcon(node.status)}
+                            <span className={`capitalize ${getStatusColor(node.status)}`}>
+                              {node.status}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-gray-300">
+                            {node.latency ? `${node.latency}ms` : '-'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-gray-300">
+                            {node.blockHeight?.toLocaleString() || '-'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-gray-400 text-sm">{node.version || '-'}</span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-gray-400">
+                        Node status is unavailable.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </section>
@@ -429,7 +629,7 @@ export default function StatsPage() {
         {/* Quick Links */}
         <section>
           <h2 className="text-xl font-semibold text-gray-100 mb-4">Quick Links</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Link
               href="/blocks"
               className="bg-gray-800 rounded-lg border border-gray-700 p-6 hover:bg-gray-700 transition-colors"
@@ -465,6 +665,19 @@ export default function StatsPage() {
                 <div>
                   <div className="font-semibold text-gray-100">Rich List</div>
                   <div className="text-sm text-gray-400">Top holders by balance</div>
+                </div>
+              </div>
+            </Link>
+
+            <Link
+              href="/api-docs"
+              className="bg-gray-800 rounded-lg border border-gray-700 p-6 hover:bg-gray-700 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <ServerIcon className="w-8 h-8 text-purple-400" />
+                <div>
+                  <div className="font-semibold text-gray-100">API</div>
+                  <div className="text-sm text-gray-400">Access network data via API</div>
                 </div>
               </div>
             </Link>

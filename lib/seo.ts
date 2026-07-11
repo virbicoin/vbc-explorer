@@ -256,14 +256,7 @@ export function buildTokenMetadata(address: string, token?: TokenIdentity): Meta
 
 // ---- Static hub / listing pages -------------------------------------------
 
-export type HubKey =
-  | 'blocks'
-  | 'transactions'
-  | 'tokens'
-  | 'contracts'
-  | 'richlist'
-  | 'stats'
-  | 'network';
+export type HubKey = 'blocks' | 'transactions' | 'tokens' | 'contracts' | 'richlist' | 'stats';
 
 const HUBS: Record<HubKey, { title: string; path: string; describe: (network: string) => string }> =
   {
@@ -299,13 +292,7 @@ const HUBS: Record<HubKey, { title: string; path: string; describe: (network: st
       title: 'Statistics',
       path: '/stats',
       describe: (n) =>
-        `Live statistics for the ${n} blockchain — hashrate, difficulty, gas price, block time and daily activity.`,
-    },
-    network: {
-      title: 'Network',
-      path: '/network',
-      describe: (n) =>
-        `Node and network information for the ${n} blockchain — client versions, peers and chain details.`,
+        `Live statistics and network status for the ${n} blockchain — node health, hashrate, difficulty, gas price, block time and daily activity.`,
     },
   };
 
