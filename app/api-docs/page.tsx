@@ -369,6 +369,29 @@ const apiCategories: ApiCategory[] = [
       },
       {
         method: 'GET',
+        path: '/api/address/[address]/export',
+        description:
+          'Download transaction history as Etherscan/BscScan-compatible CSV (max 5000 rows, oldest first, UTF-8 BOM)',
+        params: [
+          'address (required)',
+          'type (optional) - txs (default) or tokentxs',
+          'startblock (optional) - Start block number',
+          'endblock (optional) - End block number',
+        ],
+        response: 'text/csv attachment ("Txhash","Blockno","UnixTimestamp",...)',
+        sampleUrl: '/api/address/0x0000000000000000000000000000000000000000/export?type=txs',
+      },
+      {
+        method: 'GET',
+        path: '/api/address/[address]/approvals',
+        description:
+          'Active ERC-20 token approvals granted by the address (scanned from Approval events; cached 10 min)',
+        params: ['address (required)', 'refresh (optional) - 1 to bypass the cache'],
+        response:
+          '{"approvals":[{"token":"0x...","tokenSymbol":"...","spender":"0x...","spenderTag":"DEX: Router","allowance":"...","isUnlimited":false}],"scannedEvents":...}',
+      },
+      {
+        method: 'GET',
         path: '/api/richlist',
         description: 'Top addresses by balance',
         params: ['page (optional)', 'limit (optional, default: 100)'],
