@@ -7,6 +7,7 @@ import { ethers } from 'ethers';
 import { TokenFactoryV2ABI } from '@/abi/TokenFactoryV2ABI';
 import { TokenFactoryABI, ERC20ABI } from '@/abi/TokenFactoryABI';
 import { useLaunchpadConfig, type LegacyFactory } from '@/hooks/useLaunchpadConfig';
+import { normalizeLegacyLogoUrl } from '@/lib/utils';
 import Link from 'next/link';
 
 // Dead address - tokens sent here are considered burned
@@ -459,7 +460,19 @@ export function TokenList() {
         ) : (
           <div className="space-y-3">
             {paginatedTokens.map((token) => (
-              <TokenCard key={token.address} token={token} />
+              <TokenCard
+                key={token.address}
+                token={{
+                  ...token,
+                  // Rewrite logos hosted on decommissioned explorer domains to the current host
+                  logoUrl:
+                    normalizeLegacyLogoUrl(
+                      token.logoUrl,
+                      config?.explorerHost || '',
+                      config?.legacyExplorerHosts || []
+                    ) || undefined,
+                }}
+              />
             ))}
           </div>
         )}

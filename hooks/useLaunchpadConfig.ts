@@ -39,6 +39,10 @@ export interface LaunchpadConfig {
   rpcUrl: string;
   networkName: string;
   currencySymbol: string;
+  /** Hostname of the current explorer (for legacy logo URL rewriting) */
+  explorerHost: string;
+  /** Hostnames of decommissioned explorer domains (config.explorer.legacyUrls) */
+  legacyExplorerHosts: string[];
 }
 
 interface ConfigResponse {
@@ -73,6 +77,10 @@ interface ConfigResponse {
     symbol?: string;
     name?: string;
   };
+  explorer?: {
+    url?: string;
+    legacyUrls?: string[];
+  };
 }
 
 // Default config values (generic fallbacks)
@@ -86,6 +94,8 @@ const defaultConfig: LaunchpadConfig = {
   rpcUrl: 'http://localhost:8545',
   networkName: 'Network',
   currencySymbol: 'NATIVE',
+  explorerHost: '',
+  legacyExplorerHosts: [],
 };
 
 // Cache the config
@@ -136,6 +146,16 @@ async function fetchConfig(): Promise<LaunchpadConfig> {
         note: f.note,
       }));
 
+    // Derive hostnames for legacy logo URL rewriting (config-driven, never hardcoded)
+    const toHost = (u?: string): string => {
+      if (!u) return '';
+      try {
+        return new URL(u).hostname;
+      } catch {
+        return '';
+      }
+    };
+
     return {
       enabled: data.launchpad?.enabled ?? defaultConfig.enabled,
       factoryAddress: data.launchpad?.factoryAddress ?? defaultConfig.factoryAddress,
@@ -146,6 +166,8 @@ async function fetchConfig(): Promise<LaunchpadConfig> {
       rpcUrl: data.network?.rpcUrl ?? defaultConfig.rpcUrl,
       networkName: data.network?.name ?? data.currency?.name ?? defaultConfig.networkName,
       currencySymbol: data.currency?.symbol ?? defaultConfig.currencySymbol,
+      explorerHost: toHost(data.explorer?.url),
+      legacyExplorerHosts: (data.explorer?.legacyUrls || []).map(toHost).filter(Boolean),
     };
   } catch (error) {
     console.error('[useLaunchpadConfig] Failed to fetch config:', error);

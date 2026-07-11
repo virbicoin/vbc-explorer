@@ -36,7 +36,7 @@
 
 ---
 
-A modern, real-time blockchain explorer for any EVM-compatible network built with Next.js 15 App Router, TypeScript, and MongoDB. Features advanced NFT support, contract verification, comprehensive token analytics, built-in DEX, a cross-chain bridge, and Token Launchpad.
+A modern, real-time blockchain explorer for any EVM-compatible network built with Next.js 16 App Router, TypeScript, and MongoDB. Features advanced NFT support, contract verification, comprehensive token analytics, built-in DEX, a cross-chain bridge, and Token Launchpad.
 
 **This project is a fork of [ETC Explorer](https://github.com/ethereumclassic/explorer), enhanced with modern technologies and additional features.**
 
@@ -135,6 +135,7 @@ The explorer includes a Token Launchpad feature for creating and managing custom
 - **No-Code Token Creation** - Create ERC-20 tokens without writing code
 - **Custom Metadata** - Set logo URL, description, and website
 - **External Image Support** - Use any HTTPS image URL for token logo
+- **Draft Persistence** - Form inputs survive tab switches, so filled-in metadata is never silently lost
 - **Configurable Supply** - Define total supply and decimals
 - **Creation Fee** - Configurable fee per token creation
 
@@ -149,7 +150,7 @@ The explorer includes a Token Launchpad feature for creating and managing custom
 - **✅ Approve** - Set allowances for DEX and smart contracts (with unlimited option)
 - **🔥 Burn** - Permanently burn tokens to reduce supply
 - **⏸️ Pause/Unpause** - Pause token transfers (owner only)
-- **📝 Edit Metadata** - Update logo, description, and website
+- **📝 Edit Metadata** - Update logo, description, and website after creation in a single transaction (owner only); tokens without a logo show a "No Logo" badge pointing here
 - **🦊 MetaMask Integration** - One-click add tokens to MetaMask wallet
 
 ### Token Details Page

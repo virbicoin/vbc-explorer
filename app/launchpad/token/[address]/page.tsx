@@ -8,6 +8,7 @@ import { ethers } from 'ethers';
 import { TokenFactoryV2ABI, LaunchpadTokenV2ABI } from '@/abi/TokenFactoryV2ABI';
 import { TokenFactoryABI, ERC20ABI } from '@/abi/TokenFactoryABI';
 import { useLaunchpadConfig, type LegacyFactory } from '@/hooks/useLaunchpadConfig';
+import { normalizeLegacyLogoUrl } from '@/lib/utils';
 import { Web3Provider } from '@/lib/dex/providers';
 import Link from 'next/link';
 import ListOnDexModal from './components/ListOnDexModal';
@@ -226,6 +227,16 @@ function TokenDetailContent() {
     query: { enabled: !!tokenAddress },
   });
 
+  // Full metadata (logo, description, website, twitter, telegram, discord).
+  // Only V2 tokens with setAllMetadata() support expose this; used to update
+  // all fields in a single transaction while preserving the social links.
+  const { data: fullMetadata } = useReadContract({
+    address: tokenAddress as Address,
+    abi: LaunchpadTokenV2ABI,
+    functionName: 'getMetadata',
+    query: { enabled: !!tokenAddress },
+  });
+
   const { data: isPaused, refetch: refetchPaused } = useReadContract({
     address: tokenAddress as Address,
     abi: LaunchpadTokenV2ABI,
@@ -403,6 +414,38 @@ function TokenDetailContent() {
 
   const handleUpdateMetadata = () => {
     if (!isOwner || !token) return;
+
+    // Preferred path: one setAllMetadata() transaction updating every field at
+    // once (multiple sequential writeContract calls only track the last hash,
+    // so multi-field edits were unreliable). Social links are passed through
+    // unchanged from getMetadata().
+    if (fullMetadata) {
+      const [, , , twitter, telegram, discord] = fullMetadata as [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+      ];
+      writeMetadata({
+        address: tokenAddress as Address,
+        abi: LaunchpadTokenV2ABI,
+        functionName: 'setAllMetadata',
+        args: [
+          editForm.logoUrl.trim(),
+          editForm.description.trim(),
+          editForm.website.trim(),
+          twitter,
+          telegram,
+          discord,
+        ],
+      });
+      return;
+    }
+
+    // Fallback for tokens without getMetadata(): update the single changed
+    // field (older tokens; only one write can be tracked per confirmation).
     if (editForm.logoUrl !== token.logoUrl)
       writeMetadata({
         address: tokenAddress as Address,
@@ -410,14 +453,14 @@ function TokenDetailContent() {
         functionName: 'setLogoUrl',
         args: [editForm.logoUrl],
       });
-    if (editForm.description !== token.description)
+    else if (editForm.description !== token.description)
       writeMetadata({
         address: tokenAddress as Address,
         abi: LaunchpadTokenV2ABI,
         functionName: 'setDescription',
         args: [editForm.description],
       });
-    if (editForm.website !== token.website)
+    else if (editForm.website !== token.website)
       writeMetadata({
         address: tokenAddress as Address,
         abi: LaunchpadTokenV2ABI,
@@ -435,6 +478,15 @@ function TokenDetailContent() {
       });
     setShowEditModal(true);
   };
+
+  // Display variant of the logo: legacy explorer domains rewritten to the
+  // current host (the edit form keeps the raw on-chain value).
+  const displayLogoUrl =
+    normalizeLegacyLogoUrl(
+      token?.logoUrl,
+      config?.explorerHost || '',
+      config?.legacyExplorerHosts || []
+    ) || '';
 
   // Token action handlers
   const closeActionModal = () => {
@@ -540,7 +592,7 @@ function TokenDetailContent() {
             address: tokenAddress,
             symbol: token.symbol.slice(0, 11),
             decimals: token.decimals,
-            image: token.logoUrl || undefined,
+            image: displayLogoUrl || undefined,
           },
         },
       });
@@ -640,10 +692,10 @@ function TokenDetailContent() {
         <div className="bg-gradient-to-b from-gray-800/90 to-gray-900/90 backdrop-blur-xl rounded-3xl p-8 shadow-xl border border-gray-700/50">
           {/* Header */}
           <div className="flex items-start gap-6 mb-8">
-            {token.logoUrl ? (
+            {displayLogoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={token.logoUrl}
+                src={displayLogoUrl}
                 alt={token.name}
                 className="w-24 h-24 rounded-full object-cover border-4 border-gray-700"
                 onError={(e) => {
@@ -654,7 +706,7 @@ function TokenDetailContent() {
               />
             ) : null}
             <div
-              className={`w-24 h-24 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-3xl border-4 border-gray-700 ${token.logoUrl ? 'hidden' : ''}`}
+              className={`w-24 h-24 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white font-bold text-3xl border-4 border-gray-700 ${displayLogoUrl ? 'hidden' : ''}`}
             >
               {token.symbol.charAt(0)}
             </div>

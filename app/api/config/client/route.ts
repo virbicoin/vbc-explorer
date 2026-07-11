@@ -74,6 +74,9 @@ export async function GET() {
       explorer: {
         name: config.explorer?.name || 'Blockchain Explorer',
         description: config.explorer?.description || 'Real-time blockchain explorer',
+        url: config.explorer?.url || '',
+        // Decommissioned explorer domains; clients rewrite legacy logo URLs to the current host
+        legacyUrls: config.explorer?.legacyUrls || [],
       },
       miners: config.miners || {},
       // Network configuration for DEX and other client-side features

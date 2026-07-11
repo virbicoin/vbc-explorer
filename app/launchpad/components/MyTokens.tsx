@@ -7,6 +7,7 @@ import { useReadContract, useReadContracts } from 'wagmi';
 import { TokenFactoryV2ABI, LaunchpadTokenV2ABI } from '@/abi/TokenFactoryV2ABI';
 import { ERC20ABI } from '@/abi/TokenFactoryABI';
 import { useLaunchpadConfig } from '@/hooks/useLaunchpadConfig';
+import { normalizeLegacyLogoUrl } from '@/lib/utils';
 import { ConnectWalletButton } from './ConnectWalletButton';
 import Link from 'next/link';
 
@@ -304,7 +305,19 @@ export function MyTokens() {
         ) : (
           <div className="space-y-3">
             {tokens.map((token) => (
-              <MyTokenCard key={token.address} token={token} />
+              <MyTokenCard
+                key={token.address}
+                token={{
+                  ...token,
+                  // Rewrite logos hosted on decommissioned explorer domains to the current host
+                  logoUrl:
+                    normalizeLegacyLogoUrl(
+                      token.logoUrl,
+                      config?.explorerHost || '',
+                      config?.legacyExplorerHosts || []
+                    ) || undefined,
+                }}
+              />
             ))}
           </div>
         )}
@@ -397,6 +410,14 @@ function MyTokenCard({ token }: { token: TokenInfo }) {
               {token.isPaused && (
                 <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 text-xs font-semibold rounded-lg">
                   Paused
+                </span>
+              )}
+              {!token.logoUrl && (
+                <span
+                  className="px-2 py-0.5 bg-amber-500/20 text-amber-400 text-xs font-semibold rounded-lg"
+                  title="No logo set on-chain. Open Manage → Edit Metadata to add one."
+                >
+                  No Logo
                 </span>
               )}
             </div>

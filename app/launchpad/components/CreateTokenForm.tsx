@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   useAccount,
   useChainId,
@@ -17,6 +17,9 @@ import { ConnectWalletButton } from './ConnectWalletButton';
 import { getCurrencySymbol, initializeCurrencyConfig } from '@/lib/client-config';
 
 type PaymentMethod = 'native' | 'alternative';
+
+// sessionStorage key for the create-form draft (survives tab switches)
+const DRAFT_KEY = 'launchpad-create-token-draft';
 
 export function CreateTokenForm() {
   const { address, isConnected } = useAccount();
@@ -191,6 +194,52 @@ export function CreateTokenForm() {
       setNativeCurrencySymbol(getCurrencySymbol());
     });
   }, []);
+
+  // Restore a draft saved before a tab switch. The create tab unmounts when
+  // switching tabs, which used to silently drop filled-in metadata.
+  // (Runs post-hydration; restoring in useState initializers would mismatch SSR.)
+  const isDraftLoaded = useRef(false);
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const draft = JSON.parse(raw) as Partial<Record<string, string>>;
+        if (draft.tokenName) setTokenName(draft.tokenName);
+        if (draft.tokenSymbol) setTokenSymbol(draft.tokenSymbol);
+        if (draft.decimals) setDecimals(draft.decimals);
+        if (draft.totalSupply) setTotalSupply(draft.totalSupply);
+        if (draft.logoUrl) setLogoUrl(draft.logoUrl);
+        if (draft.description) setDescription(draft.description);
+        if (draft.website) setWebsite(draft.website);
+        // Reopen the metadata section so restored values stay visible
+        if (draft.logoUrl || draft.description || draft.website) setShowAdvanced(true);
+      }
+    } catch {
+      // Corrupt/unavailable storage - start with a clean form
+    }
+    isDraftLoaded.current = true;
+  }, []);
+
+  // Save the draft on every change (after the initial restore has run)
+  useEffect(() => {
+    if (!isDraftLoaded.current) return;
+    try {
+      sessionStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          tokenName,
+          tokenSymbol,
+          decimals,
+          totalSupply,
+          logoUrl,
+          description,
+          website,
+        })
+      );
+    } catch {
+      // Storage unavailable (private mode etc.) - drafts just won't persist
+    }
+  }, [tokenName, tokenSymbol, decimals, totalSupply, logoUrl, description, website]);
 
   // Handle transaction confirmation
   useEffect(() => {
@@ -489,6 +538,11 @@ export function CreateTokenForm() {
 
   // Reset form
   const handleReset = () => {
+    try {
+      sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // Storage unavailable - nothing to clear
+    }
     setTokenName('');
     setTokenSymbol('');
     setDecimals('18');
@@ -1131,6 +1185,11 @@ export function CreateTokenForm() {
                 `Create Token${hasMetadata ? ' with Metadata' : ''}`
               )}
             </button>
+          )}
+          {!isMetadataValid && (
+            <p className="mt-2 text-sm text-red-400 text-center">
+              Invalid metadata: Logo URL and Website must be valid URLs (or left empty).
+            </p>
           )}
         </div>
 
