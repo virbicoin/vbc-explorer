@@ -7,6 +7,24 @@ interface TokenIconEntry {
   color?: string;
 }
 
+// Type for bridge config (native chain <-> remote chain via lock/mint)
+interface BridgeRemote {
+  chainId: number;
+  name: string;
+  nativeSymbol: string;
+  rpcUrl: string;
+  explorer: string;
+  bridge: string;
+  wrappedToken: string;
+  wrappedSymbol: string;
+}
+interface BridgeCfg {
+  enabled?: boolean;
+  relayEtaSeconds?: number;
+  vault?: string;
+  remote?: BridgeRemote;
+}
+
 export async function GET() {
   try {
     const config = loadConfig();
@@ -117,6 +135,15 @@ export async function GET() {
               : null,
           }
         : null,
+      // Bridge configuration (native chain <-> remote chain via lock/mint)
+      bridge: (config as { bridge?: BridgeCfg }).bridge
+        ? {
+            enabled: (config as { bridge?: BridgeCfg }).bridge!.enabled ?? false,
+            relayEtaSeconds: (config as { bridge?: BridgeCfg }).bridge!.relayEtaSeconds ?? 90,
+            vault: (config as { bridge?: BridgeCfg }).bridge!.vault ?? '',
+            remote: (config as { bridge?: BridgeCfg }).bridge!.remote ?? null,
+          }
+        : null,
       // Blacklist configuration (tokens and LP pairs to hide)
       blacklist: {
         tokens: (
@@ -153,6 +180,7 @@ export async function GET() {
         network: null,
         dex: null,
         launchpad: null,
+        bridge: null,
         blacklist: { tokens: [], lpPairs: [] },
         social: null,
       },

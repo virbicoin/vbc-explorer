@@ -10,6 +10,7 @@ import {
   DocumentTextIcon,
   ChartBarIcon,
   GlobeAltIcon,
+  ArrowsRightLeftIcon,
 } from '@heroicons/react/24/outline';
 import { loadConfig } from '@/lib/config';
 
@@ -19,6 +20,7 @@ export default function Header() {
   const currencySymbol = config.currency?.symbol || 'ETH';
   const dexEnabled = config.dex?.enabled ?? false;
   const launchpadEnabled = config.launchpad?.enabled ?? false;
+  const bridgeEnabled = (config as { bridge?: { enabled?: boolean } }).bridge?.enabled ?? false;
 
   return (
     <header className="bg-gray-900 border-b border-gray-800">
@@ -95,6 +97,14 @@ export default function Header() {
                   <path d="M3 21l7-7" />
                 </svg>
                 <span className="hidden sm:inline">DEX</span>
+              </Link>
+            </li>
+          )}
+          {bridgeEnabled && (
+            <li>
+              <Link href="/bridge" className="nav-link text-gray-200 flex items-center gap-1">
+                <ArrowsRightLeftIcon className="w-5 h-5" />
+                <span className="hidden sm:inline">Bridge</span>
               </Link>
             </li>
           )}

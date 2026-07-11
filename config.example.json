@@ -221,6 +221,22 @@
     ],
     "_comment": "Set enabled: true and configure contract addresses to enable DEX features"
   },
+  "bridge": {
+    "enabled": false,
+    "relayEtaSeconds": 90,
+    "vault": "0x0000000000000000000000000000000000000000",
+    "remote": {
+      "chainId": 56,
+      "name": "BNB Smart Chain",
+      "nativeSymbol": "BNB",
+      "rpcUrl": "https://bsc-dataseed.binance.org",
+      "explorer": "https://bscscan.com",
+      "bridge": "0x0000000000000000000000000000000000000000",
+      "wrappedToken": "0x0000000000000000000000000000000000000000",
+      "wrappedSymbol": "wTOKEN"
+    },
+    "_comment": "Cross-chain bridge: lock the native coin in 'vault' on this chain to mint 'wrappedToken' on the remote chain. Set enabled: true and configure addresses."
+  },
   "launchpad": {
     "enabled": true,
     "factoryAddress": "0x0000000000000000000000000000000000000000",
