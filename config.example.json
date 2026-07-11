@@ -69,6 +69,10 @@
     "0x0000000000000000000000000000000000000001": "Example Pool 1",
     "0x0000000000000000000000000000000000000002": "Example Pool 2"
   },
+  "addressTags": {
+    "_comment": "Public name tags shown next to addresses (Etherscan-style). DEX/Launchpad/Bridge/miners addresses are tagged automatically from their own config sections; entries here add to or override those.",
+    "0x0000000000000000000000000000000000000003": "Team Treasury"
+  },
   "features": {
     "nft": {
       "enabled": true,

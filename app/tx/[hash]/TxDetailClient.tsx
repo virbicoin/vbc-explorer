@@ -18,6 +18,7 @@ import {
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
 import { initializeCurrency, formatGasUnit } from '../../../lib/bigint-utils';
 import { useTokenConfig } from '../../../hooks/useTokenConfig';
+import { useAddressTags } from '../../../hooks/useAddressTags';
 
 interface Config {
   miners: Record<string, string>;
@@ -98,6 +99,7 @@ interface Transaction {
 
 export default function TxPage({ params }: { params: Promise<{ hash: string }> }) {
   const resolvedParams = use(params);
+  const { getTag } = useAddressTags();
   const [transaction, setTransaction] = useState<Transaction | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -444,12 +446,19 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
             {transaction.from === '0x0000000000000000000000000000000000000000' ? (
               <span className="text-gray-400 font-mono text-sm">System</span>
             ) : (
-              <Link
-                href={`/address/${transaction.from}`}
-                className="text-blue-400 hover:underline font-mono break-all text-sm"
-              >
-                {transaction.from}
-              </Link>
+              <>
+                <Link
+                  href={`/address/${transaction.from}`}
+                  className="text-blue-400 hover:underline font-mono break-all text-sm"
+                >
+                  {transaction.from}
+                </Link>
+                {getTag(transaction.from) && (
+                  <span className="ml-2 px-1.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded">
+                    {getTag(transaction.from)}
+                  </span>
+                )}
+              </>
             )}
           </div>
         ),
@@ -486,6 +495,11 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
             >
               {transaction.to}
             </Link>
+            {getTag(transaction.to) && (
+              <span className="ml-2 px-1.5 py-0.5 bg-purple-500/20 text-purple-300 text-xs font-semibold rounded">
+                {getTag(transaction.to)}
+              </span>
+            )}
           </div>
         ),
       },

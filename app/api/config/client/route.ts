@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { loadConfig } from '../../../../lib/config';
+import { buildAddressTags, type AddressTagSources } from '../../../../lib/address-tags';
 
 // Type for tokenIcons config
 interface TokenIconEntry {
@@ -90,6 +91,9 @@ export async function GET() {
       },
       // Centralized token icons configuration
       tokenIcons,
+      // Public name tags for known addresses (Etherscan-style), derived from
+      // infrastructure config plus the manual `addressTags` section
+      addressTags: buildAddressTags(config as unknown as AddressTagSources),
       // DEX configuration with full token info
       dex: config.dex
         ? {

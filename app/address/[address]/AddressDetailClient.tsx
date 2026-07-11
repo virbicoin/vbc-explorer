@@ -11,6 +11,7 @@ import {
   CurrencyDollarIcon,
   CubeIcon,
   ArrowPathIcon,
+  ArrowDownTrayIcon,
   ClipboardDocumentIcon,
   CheckCircleIcon,
   CodeBracketIcon,
@@ -19,6 +20,7 @@ import {
 } from '@heroicons/react/24/outline';
 import SummaryCard from '../../components/SummaryCard';
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
+import { useAddressTags } from '../../../hooks/useAddressTags';
 import { initializeCurrency } from '../../../lib/bigint-utils';
 import { useTokenConfig } from '../../../hooks/useTokenConfig';
 import {
@@ -89,6 +91,8 @@ interface TokenHolding {
 export default function AddressPage({ params }: { params: Promise<{ address: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
+  const { getTag } = useAddressTags();
+  const addressTag = getTag(resolvedParams.address);
   const [account, setAccount] = useState<Account | null>(null);
   const [contract, setContract] = useState<Contract | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -359,6 +363,11 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
             <div className="flex items-center gap-3 mb-2">
               <CodeBracketIcon className="w-8 h-8 text-purple-400" />
               <h1 className="text-3xl font-bold text-gray-100">Contract Details</h1>
+              {addressTag && (
+                <span className="px-2.5 py-1 bg-blue-500/20 text-blue-300 text-sm font-semibold rounded-lg">
+                  {addressTag}
+                </span>
+              )}
             </div>
             <p className="text-gray-400">
               {contract?.name || 'Smart Contract'} {contract?.symbol ? `(${contract.symbol})` : ''}{' '}
@@ -572,6 +581,27 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
               {/* Transactions Tab */}
               {activeTab === 'transactions' && (
                 <div className="space-y-4">
+                  {/* Etherscan-compatible CSV export (tax/accounting tools) */}
+                  <div className="flex justify-end gap-2">
+                    <a
+                      href={`/api/address/${resolvedParams.address}/export?type=txs`}
+                      download
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-gray-700/50 hover:bg-gray-600/50 rounded-lg transition-colors"
+                      title="Download transactions as Etherscan-compatible CSV (max 5000 rows)"
+                    >
+                      <ArrowDownTrayIcon className="w-4 h-4" />
+                      CSV (Transactions)
+                    </a>
+                    <a
+                      href={`/api/address/${resolvedParams.address}/export?type=tokentxs`}
+                      download
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-gray-700/50 hover:bg-gray-600/50 rounded-lg transition-colors"
+                      title="Download token transfers as Etherscan-compatible CSV (max 5000 rows)"
+                    >
+                      <ArrowDownTrayIcon className="w-4 h-4" />
+                      CSV (Token Transfers)
+                    </a>
+                  </div>
                   {regularTransactions.length === 0 ? (
                     <p className="text-gray-400 text-center py-8">
                       No transactions found for this contract.
@@ -912,6 +942,11 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
               <h1 className="text-2xl font-bold text-gray-100 inline">
                 {formatAddress(resolvedParams.address)}
               </h1>
+              {addressTag && (
+                <span className="ml-2 px-2 py-0.5 rounded text-xs font-semibold bg-purple-500/20 text-purple-300 align-middle">
+                  {addressTag}
+                </span>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 mt-3">

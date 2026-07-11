@@ -53,6 +53,8 @@ A modern, real-time blockchain explorer for any EVM-compatible network built wit
 - **⏳ Pending Transactions** - View pending transactions in mempool
 - **💰 Token Management** - Comprehensive ERC-20, ERC-721, and ERC-1155 token tracking with holder analytics
 - **📈 Rich List** - Real-time account balance tracking and wealth distribution analysis
+- **📥 CSV Export** - Etherscan/BscScan-compatible transaction & token-transfer CSV downloads per address (tax-tool friendly)
+- **🏷️ Address Name Tags** - Public labels for known addresses (DEX, Launchpad, Bridge, pools) with config-driven overrides
 - **💸 Price Tracking** - Live price updates with priority fallback (CoinGecko → CoinMarketCap → Coinpaprika → WikaEx → DEX)
 - **⚡ Real-time Sync** - Live blockchain synchronization with WebSocket support
 - **📱 Responsive Design** - Mobile-first design optimized for all devices
