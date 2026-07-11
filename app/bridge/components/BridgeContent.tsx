@@ -291,15 +291,10 @@ export function BridgeContent() {
         )}
       </div>
 
-      <div className="mt-4 text-xs text-gray-500 leading-relaxed">
-        <p>
-          {remote.wrappedSymbol} is backed 1:1 by locked {source.nativeSymbol}. Bridging is approved
-          by 2-of-2 validators.
-        </p>
-        <p>
-          Arrival takes tens of seconds to a few minutes via the relayer. Start with a small amount.
-        </p>
-      </div>
+      <p className="mt-4 text-xs text-gray-500 leading-relaxed">
+        Arrival on {destChain.name} typically takes ~{relayEtaSeconds}s via the relayer. Try a small
+        amount first.
+      </p>
     </div>
   );
 }

@@ -1,12 +1,12 @@
 'use client';
 
 import { BridgeProvider } from './BridgeProvider';
-import { BridgeContent } from './BridgeContent';
+import { BridgeShell } from './BridgeShell';
 
 export function BridgeApp() {
   return (
     <BridgeProvider>
-      <BridgeContent />
+      <BridgeShell />
     </BridgeProvider>
   );
 }

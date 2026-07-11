@@ -18,7 +18,11 @@ export function useBridgeConfig(): BridgeConfig {
 type Status = 'loading' | 'ready' | 'disabled' | 'error';
 
 function Centered({ children }: { children: ReactNode }) {
-  return <div className="flex items-center justify-center p-10 text-gray-400">{children}</div>;
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-900 p-10 text-gray-400">
+      {children}
+    </div>
+  );
 }
 
 export function BridgeProvider({ children }: { children: ReactNode }) {
