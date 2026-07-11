@@ -330,9 +330,33 @@ async function processVerification(guid: string) {
       return;
     }
 
+    // Mask immutable variable positions before comparing. The compiler emits
+    // zeros at these positions in deployedBytecode; the constructor writes the
+    // actual values on deployment, so the on-chain code differs exactly there.
+    // solc reports the positions in evm.deployedBytecode.immutableReferences.
+    let onchainForCompare = onchainBytecode.replace(/^0x/, '');
+    let compiledForCompare = compiledBytecode.replace(/^0x/, '');
+    const immutableReferences = compiledContract.evm?.deployedBytecode?.immutableReferences as
+      | Record<string, { start: number; length: number }[]>
+      | undefined;
+    if (immutableReferences) {
+      const maskRange = (hex: string, start: number, length: number) => {
+        const from = start * 2;
+        const to = (start + length) * 2;
+        if (to > hex.length) return hex;
+        return hex.slice(0, from) + '0'.repeat(to - from) + hex.slice(to);
+      };
+      for (const refs of Object.values(immutableReferences)) {
+        for (const { start, length } of refs) {
+          onchainForCompare = maskRange(onchainForCompare, start, length);
+          compiledForCompare = maskRange(compiledForCompare, start, length);
+        }
+      }
+    }
+
     // Normalize and compare bytecodes
-    const cleanOnchainBytecode = removeMetadata(onchainBytecode).replace(/0+$/, '');
-    const cleanCompiledBytecode = removeMetadata(compiledBytecode).replace(/0+$/, '');
+    const cleanOnchainBytecode = removeMetadata(onchainForCompare).replace(/0+$/, '');
+    const cleanCompiledBytecode = removeMetadata(compiledForCompare).replace(/0+$/, '');
 
     // Calculate similarity
     const minLen = Math.min(cleanOnchainBytecode.length, cleanCompiledBytecode.length);
