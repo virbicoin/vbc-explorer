@@ -8,7 +8,7 @@ import {
   ArrowUpRightIcon,
 } from '@heroicons/react/24/outline';
 import type { ComponentType } from 'react';
-import { useBridgeConfig } from './BridgeProvider';
+import { useBridge } from './BridgeProvider';
 
 function shortenAddress(addr: string): string {
   if (!addr || addr.length < 12) return addr;
@@ -48,13 +48,14 @@ interface Step {
 }
 
 export function BridgeInfo() {
-  const { source, remote } = useBridgeConfig();
+  const { source, route } = useBridge();
+  const { asset, vault, remote } = route;
 
   const depositSteps: Step[] = [
     {
       Icon: LockClosedIcon,
-      title: `Lock ${source.nativeSymbol}`,
-      body: `Your ${source.nativeSymbol} is locked in the vault contract on ${source.name}.`,
+      title: `Lock ${asset.symbol}`,
+      body: `Your ${asset.symbol} is locked in the vault contract on ${source.name}.`,
     },
     {
       Icon: CheckBadgeIcon,
@@ -81,8 +82,8 @@ export function BridgeInfo() {
     },
     {
       Icon: SparklesIcon,
-      title: `Release ${source.nativeSymbol}`,
-      body: `The vault releases your ${source.nativeSymbol} back on ${source.name}.`,
+      title: `Release ${asset.symbol}`,
+      body: `The vault releases your ${asset.symbol} back on ${source.name}.`,
     },
   ];
 
@@ -92,14 +93,14 @@ export function BridgeInfo() {
       <div className="bg-gray-800/70 rounded-3xl border border-gray-700/50 p-6">
         <h2 className="text-lg font-bold text-white mb-1">How it works</h2>
         <p className="text-sm text-gray-400 mb-5">
-          A lock-and-mint bridge. {remote.wrappedSymbol} is always backed 1:1 by{' '}
-          {source.nativeSymbol} locked in the vault.
+          A lock-and-mint bridge. {remote.wrappedSymbol} is always backed 1:1 by {asset.symbol}{' '}
+          locked in the vault.
         </p>
 
         <div className="space-y-5">
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-purple-300 mb-3">
-              {source.nativeSymbol} → {remote.wrappedSymbol}
+              {asset.symbol} → {remote.wrappedSymbol}
             </div>
             <ol className="space-y-3">
               {depositSteps.map((s, i) => (
@@ -125,7 +126,7 @@ export function BridgeInfo() {
 
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide text-blue-300 mb-3">
-              {remote.wrappedSymbol} → {source.nativeSymbol}
+              {remote.wrappedSymbol} → {asset.symbol}
             </div>
             <ol className="space-y-3">
               {withdrawSteps.map((s, i) => (
@@ -160,7 +161,10 @@ export function BridgeInfo() {
               <span className="text-sm font-semibold text-gray-100">{source.name}</span>
               <span className="text-xs text-gray-500">chain {source.chainId}</span>
             </div>
-            <AddressRow label="Vault" address={source.vault} explorer={source.explorer} />
+            {asset.kind === 'erc20' && asset.token && (
+              <AddressRow label={asset.symbol} address={asset.token} explorer={source.explorer} />
+            )}
+            <AddressRow label="Vault" address={vault} explorer={source.explorer} />
           </div>
           <div>
             <div className="flex items-center gap-2 mb-2">

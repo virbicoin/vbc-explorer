@@ -1,7 +1,7 @@
 'use client';
 
 import { useBalance, useReadContract } from 'wagmi';
-import { formatUnits } from 'viem';
+import { formatUnits, zeroAddress } from 'viem';
 import {
   LockClosedIcon,
   CircleStackIcon,
@@ -9,8 +9,8 @@ import {
   BoltIcon,
 } from '@heroicons/react/24/outline';
 import type { ComponentType } from 'react';
-import { WRAPPED_ABI } from '../lib/config';
-import { useBridgeConfig } from './BridgeProvider';
+import { ERC20_ABI } from '../lib/config';
+import { useBridge } from './BridgeProvider';
 
 function formatAmount(n: number | null): string {
   if (n === null) return '—';
@@ -27,36 +27,48 @@ interface StatCard {
 }
 
 export function BridgeStats() {
-  const { source, remote, relayEtaSeconds } = useBridgeConfig();
+  const { source, route, relayEtaSeconds } = useBridge();
+  const { asset, vault, remote } = route;
+  const decimals = asset.decimals;
 
-  // TVL = native coin locked in the vault on the source chain.
-  const { data: locked } = useBalance({
-    address: source.vault,
+  // TVL = native coin (or token) locked in the vault on the source chain.
+  const { data: nativeLocked } = useBalance({
+    address: vault,
     chainId: source.chainId,
-    query: { refetchInterval: 15000 },
+    query: { enabled: asset.kind === 'native', refetchInterval: 15000 },
+  });
+  const { data: tokenLocked } = useReadContract({
+    address: asset.token ?? zeroAddress,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: [vault],
+    chainId: source.chainId,
+    query: { enabled: asset.kind === 'erc20', refetchInterval: 15000 },
   });
 
   // Circulating wrapped supply on the remote chain (should match the locked amount).
   const { data: supply } = useReadContract({
     address: remote.wrappedToken,
-    abi: WRAPPED_ABI,
+    abi: ERC20_ABI,
     functionName: 'totalSupply',
     chainId: remote.chainId,
     query: { refetchInterval: 15000 },
   });
 
-  const lockedNum = locked ? Number(formatUnits(locked.value, 18)) : null;
-  const supplyNum = supply != null ? Number(formatUnits(supply as bigint, 18)) : null;
+  const lockedRaw =
+    asset.kind === 'native' ? nativeLocked?.value : (tokenLocked as bigint | undefined);
+  const lockedNum = lockedRaw != null ? Number(formatUnits(lockedRaw, decimals)) : null;
+  const supplyNum = supply != null ? Number(formatUnits(supply as bigint, decimals)) : null;
 
-  // Collateralization: locked native vs. minted wrapped. >= 100% means fully backed.
-  let backing: string = '—';
+  // Collateralization: locked vs. minted. >= 100% means fully backed.
+  let backing = '—';
   if (lockedNum !== null && supplyNum !== null) {
     backing = supplyNum > 0 ? `${Math.round((lockedNum / supplyNum) * 100)}%` : '100%';
   }
 
   const cards: StatCard[] = [
     {
-      label: `${source.nativeSymbol} Locked`,
+      label: `${asset.symbol} Locked`,
       value: formatAmount(lockedNum),
       sub: `Total value locked on ${source.name}`,
       Icon: LockClosedIcon,

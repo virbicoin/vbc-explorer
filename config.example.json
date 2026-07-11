@@ -224,18 +224,27 @@
   "bridge": {
     "enabled": false,
     "relayEtaSeconds": 90,
-    "vault": "0x0000000000000000000000000000000000000000",
-    "remote": {
-      "chainId": 56,
-      "name": "BNB Smart Chain",
-      "nativeSymbol": "BNB",
-      "rpcUrl": "https://bsc-dataseed.binance.org",
-      "explorer": "https://bscscan.com",
-      "bridge": "0x0000000000000000000000000000000000000000",
-      "wrappedToken": "0x0000000000000000000000000000000000000000",
-      "wrappedSymbol": "wTOKEN"
-    },
-    "_comment": "Cross-chain bridge: lock the native coin in 'vault' on this chain to mint 'wrappedToken' on the remote chain. Set enabled: true and configure addresses."
+    "routes": [
+      {
+        "id": "native-bsc",
+        "label": "TOKEN → wTOKEN (BNB Smart Chain)",
+        "asset": { "kind": "native", "symbol": "TOKEN", "decimals": 18 },
+        "vault": "0x0000000000000000000000000000000000000000",
+        "remote": {
+          "chainId": 56,
+          "name": "BNB Smart Chain",
+          "nativeSymbol": "BNB",
+          "rpcUrl": "https://bsc-dataseed.binance.org",
+          "explorer": "https://bscscan.com",
+          "bridge": "0x0000000000000000000000000000000000000000",
+          "wrappedToken": "0x0000000000000000000000000000000000000000",
+          "wrappedSymbol": "wTOKEN",
+          "dexName": "PancakeSwap",
+          "swapUrl": "https://pancakeswap.finance/swap?outputCurrency=0x0000000000000000000000000000000000000000"
+        }
+      }
+    ],
+    "_comment": "Cross-chain lock-and-mint bridge. 'routes' is a list, so more assets/destinations can be added over time. Per route: 'asset' is what leaves this chain (kind 'native', or 'erc20' with a 'token' address and 'decimals'); it is locked in 'vault' and minted as 'wrappedToken' on the remote chain. Optional 'dexName'/'swapUrl' link the wrapped token to an external DEX. The legacy single 'vault'+'remote' shape (without 'routes') is still supported."
   },
   "launchpad": {
     "enabled": true,

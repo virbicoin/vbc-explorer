@@ -17,10 +17,21 @@ interface BridgeRemote {
   bridge: string;
   wrappedToken: string;
   wrappedSymbol: string;
+  dexName?: string;
+  swapUrl?: string;
+}
+interface BridgeRoute {
+  id?: string;
+  label?: string;
+  asset?: { kind?: string; symbol?: string; token?: string; decimals?: number };
+  vault?: string;
+  remote?: BridgeRemote;
 }
 interface BridgeCfg {
   enabled?: boolean;
   relayEtaSeconds?: number;
+  // Multi-route shape (preferred); legacy single vault/remote is still supported.
+  routes?: BridgeRoute[];
   vault?: string;
   remote?: BridgeRemote;
 }
@@ -135,11 +146,13 @@ export async function GET() {
               : null,
           }
         : null,
-      // Bridge configuration (native chain <-> remote chain via lock/mint)
+      // Bridge configuration. Prefers the multi-route `routes[]` shape; the
+      // legacy single vault/remote is still passed through for back-compat.
       bridge: (config as { bridge?: BridgeCfg }).bridge
         ? {
             enabled: (config as { bridge?: BridgeCfg }).bridge!.enabled ?? false,
             relayEtaSeconds: (config as { bridge?: BridgeCfg }).bridge!.relayEtaSeconds ?? 90,
+            routes: (config as { bridge?: BridgeCfg }).bridge!.routes ?? null,
             vault: (config as { bridge?: BridgeCfg }).bridge!.vault ?? '',
             remote: (config as { bridge?: BridgeCfg }).bridge!.remote ?? null,
           }
