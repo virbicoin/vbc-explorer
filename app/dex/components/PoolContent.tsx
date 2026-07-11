@@ -344,8 +344,7 @@ export function PoolContent({
       .map((pool, index) => {
         const walletBalance = (lpBalances?.[index]?.result as bigint | undefined) || 0n;
         const stakedResult = stakedAmounts?.[index]?.result as
-          | readonly [bigint, bigint]
-          | undefined;
+          readonly [bigint, bigint] | undefined;
         const stakedBalance = stakedResult?.[0] || 0n;
         return {
           ...pool,

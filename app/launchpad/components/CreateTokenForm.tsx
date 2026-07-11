@@ -370,8 +370,7 @@ export function CreateTokenForm() {
           address: activeFactoryAddress as Address,
           abi: TokenFactoryV2ABI,
           functionName: createTokenWithMetadataFunc as
-            | 'createTokenWithVBCGAndMetadata'
-            | 'createTokenWithAlternativeAndMetadata',
+            'createTokenWithVBCGAndMetadata' | 'createTokenWithAlternativeAndMetadata',
           args: [
             tokenName,
             tokenSymbol.toUpperCase(),

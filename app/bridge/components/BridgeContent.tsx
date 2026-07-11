@@ -181,7 +181,7 @@ export function BridgeContent() {
       setAction(null);
     }
     // run once per successful tx; deps intentionally limited to [isSuccess, hash]
-    // eslint-disable-next-line react-hooks/exhaustive-deps, @eslint-react/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuccess, hash]);
 
   const fromSymbol = direction === 'deposit' ? asset.symbol : remote.wrappedSymbol;

@@ -1,18 +1,63 @@
+import js from '@eslint/js';
+import babelParser from '@babel/eslint-parser';
 import nextPlugin from '@next/eslint-plugin-next';
-import eslintReact from '@eslint-react/eslint-plugin';
 import reactHooks from 'eslint-plugin-react-hooks';
-import tseslint from 'typescript-eslint';
 import eslintConfigPrettier from 'eslint-config-prettier';
 
+// typescript-eslint / @eslint-react は TypeScript 7（ネイティブ版）が JS コンパイラ API を
+// 同梱しなくなったため動作せず撤去。TS/TSX の構文解析は @babel/eslint-parser
+// （@babel/preset-typescript、型情報なし）で行い、型に依存する検査は tsc（TS7）が担う。
+// TSX かどうかは Babel 8 が拡張子から自動判定する。
+
 /** @type {import('eslint').Linter.Config[]} */
-export default tseslint.config(
+export default [
   {
     ignores: ['node_modules/', '.next/', 'out/', 'dist/', 'public/'],
   },
-  ...tseslint.configs.recommended,
+  {
+    files: ['**/*.ts'],
+    languageOptions: {
+      parser: babelParser,
+      sourceType: 'module',
+      parserOptions: {
+        requireConfigFile: false,
+        babelOptions: {
+          presets: ['@babel/preset-typescript'],
+        },
+      },
+    },
+  },
+  {
+    // .tsx の JSX 構文は Babel 8 では自動有効にならないため明示する
+    files: ['**/*.tsx'],
+    languageOptions: {
+      parser: babelParser,
+      sourceType: 'module',
+      parserOptions: {
+        requireConfigFile: false,
+        babelOptions: {
+          presets: ['@babel/preset-typescript'],
+          plugins: ['@babel/plugin-syntax-jsx'],
+        },
+      },
+    },
+  },
   {
     files: ['**/*.{ts,tsx}'],
-    ...eslintReact.configs['recommended-typescript'],
+    rules: {
+      ...js.configs.recommended.rules,
+      // TypeScript(tsc) 側で検査されるルール、および TS 構文へ誤検知するルールは無効化
+      'no-undef': 'off',
+      'no-unused-vars': 'off',
+      'no-redeclare': 'off',
+      'no-dupe-class-members': 'off',
+      // 既存コードに残る指摘は warn で計上し、漸進的に解消する（旧構成では未検査だったルール）
+      'no-useless-assignment': 'warn',
+      'preserve-caught-error': 'warn',
+      'no-useless-escape': 'warn',
+      'no-empty': 'warn',
+      'no-control-regex': 'warn',
+    },
   },
   {
     files: ['**/*.{ts,tsx}'],
@@ -31,41 +76,14 @@ export default tseslint.config(
   },
   {
     files: ['**/*.{ts,tsx}'],
-    languageOptions: {
-      parserOptions: {
-        ecmaFeatures: {
-          jsx: true,
-        },
-      },
-    },
     plugins: {
       '@next/next': nextPlugin,
     },
     rules: {
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs['core-web-vitals'].rules,
-      '@typescript-eslint/no-unused-vars': [
-        'warn',
-        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
-      ],
-      // Surface remaining `any` usages as warnings to drive incremental typing.
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-require-imports': 'off',
-      // Allow `/// <reference>` for ambient type declarations (e.g. tools/)
-      '@typescript-eslint/triple-slash-reference': 'off',
       'no-case-declarations': 'off',
-      // Relax @eslint-react rules for the existing codebase
-      '@eslint-react/set-state-in-effect': 'off',
-      '@eslint-react/static-components': 'off',
-      '@eslint-react/unsupported-syntax': 'off',
-      '@eslint-react/purity': 'off',
-      '@eslint-react/no-nested-component-definitions': 'off',
-      '@eslint-react/no-array-index-key': 'warn',
-      '@eslint-react/naming-convention-ref-name': 'warn',
-      '@eslint-react/web-api-no-leaked-timeout': 'warn',
-      '@eslint-react/no-clone-element': 'warn',
-      '@eslint-react/use-state': 'warn',
     },
   },
-  eslintConfigPrettier
-);
+  eslintConfigPrettier,
+];

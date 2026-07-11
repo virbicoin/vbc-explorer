@@ -97,13 +97,7 @@ export enum ERCType {
 // ============================================================================
 
 export type TokenType =
-  | 'VRC-20'
-  | 'VRC-721'
-  | 'VRC-1155'
-  | 'ERC20'
-  | 'ERC721'
-  | 'ERC1155'
-  | 'Native';
+  'VRC-20' | 'VRC-721' | 'VRC-1155' | 'ERC20' | 'ERC721' | 'ERC1155' | 'Native';
 
 export interface Token {
   address: string;

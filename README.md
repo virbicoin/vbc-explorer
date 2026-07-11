@@ -25,7 +25,7 @@
     <img src="https://img.shields.io/github/actions/workflow/status/virbicoin/vbc-explorer/lint.yml?style=flat-square&label=CI" alt="CI">
   </a>
   <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" alt="Next.js">
-  <img src="https://img.shields.io/badge/TypeScript-6-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
+  <img src="https://img.shields.io/badge/TypeScript-7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
   <img src="https://img.shields.io/badge/Mongoose-9-47A248?style=flat-square&logo=mongodb&logoColor=white" alt="Mongoose">
   <img src="https://img.shields.io/badge/Node.js-≥20-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js">
   <img src="https://img.shields.io/badge/EIP--3091-Supported-brightgreen?style=flat-square" alt="EIP-3091">
@@ -296,23 +296,23 @@ Edit `config.json` for your blockchain:
 ### Frontend
 - **Next.js 16+** - App Router with React Server Components
 - **React 19+** - Latest React with Concurrent Features  
-- **TypeScript 6+** - Full type safety and enhanced DX
+- **TypeScript 7+** - Native (Go-based) compiler with full type safety
 - **Tailwind CSS v4+** - Utility-first styling with custom design system
 - **Heroicons** - Beautiful SVG icon library
 
 ### Backend & API
 - **Next.js API Routes** - Serverless API endpoints
-- **Node.js 18+** - Runtime environment
+- **Node.js 20+** - Runtime environment
 - **Web3.js v4+** - Ethereum blockchain interaction
 - **MongoDB 8+** - Document database for scalable data storage
-- **Mongoose 8+** - ODM for MongoDB with schema validation
+- **Mongoose 9+** - ODM for MongoDB with schema validation
 
 ### Development & Tooling
 - **TypeScript** - Static type checking and IntelliSense
 - **ESLint** - Code linting with custom rules
 - **Prettier** - Automated code formatting  
 - **Vitest** - Unit testing for pure logic (`npm run test`)
-- **ts-node** - TypeScript execution for tools and scripts
+- **tsx** - TypeScript execution for tools and scripts (ts-node replacement for TypeScript 7)
 
 ### Deployment & Production
 - **Docker** - Containerized deployment
@@ -961,23 +961,23 @@ npm run type-check
 
 ```bash
 # Blockchain synchronization
-npx ts-node --project tsconfig.tools.json tools/sync.ts sync
+npx tsx --tsconfig tsconfig.tools.json tools/sync.ts sync
 
 # Statistics calculation
-npx ts-node --project tsconfig.tools.json tools/sync.ts stats
+npx tsx --tsconfig tsconfig.tools.json tools/sync.ts stats
 
 # Richlist calculation
-npx ts-node --project tsconfig.tools.json tools/sync.ts richlist
+npx tsx --tsconfig tsconfig.tools.json tools/sync.ts richlist
 
 # Token tracking
-npx ts-node --project tsconfig.tools.json tools/sync.ts tokens
+npx tsx --tsconfig tsconfig.tools.json tools/sync.ts tokens
 
 # Price tracking
-npx ts-node --project tsconfig.tools.json tools/sync.ts price
+npx tsx --tsconfig tsconfig.tools.json tools/sync.ts price
 
 # Environment variable configuration
-RESCAN=100:10000 npx ts-node --project tsconfig.tools.json tools/sync.ts stats  # Statistics rescan
-SYNCALL=true npx ts-node --project tsconfig.tools.json tools/sync.ts sync       # Full block sync
+RESCAN=100:10000 npx tsx --tsconfig tsconfig.tools.json tools/sync.ts stats  # Statistics rescan
+SYNCALL=true npx tsx --tsconfig tsconfig.tools.json tools/sync.ts sync       # Full block sync
 ```
 
 ## Configuration

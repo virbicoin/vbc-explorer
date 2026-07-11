@@ -16,15 +16,35 @@ VBC Explorer は、VirBiCoin 向けのモダンなブロックチェーンエク
 ## 技術スタック
 
 - **フレームワーク**: Next.js 16+（App Router）
-- **言語**: TypeScript 6+
+- **言語**: TypeScript 7+（Go ネイティブ版 tsc。JS コンパイラ API は同梱されない）
 - **データベース**: MongoDB（Mongoose 9）
 - **スタイリング**: Tailwind CSS 4
 - **Web3**: ethers.js 6, web3.js 4, viem 2, wagmi 3
 - **状態管理**: @tanstack/react-query 5
 - **テスト**: Vitest 4
-- **Lint/型**: ESLint 10（flat config: @eslint-react + @next/eslint-plugin-next + typescript-eslint 8）
+- **Lint/型**: ESLint 10（flat config: @babel/eslint-parser + @next/eslint-plugin-next + react-hooks）。型検査は tsc（TS7）が担当
+- **CLI ツールランナー**: tsx（esbuild ベース。ts-node は TS7 非対応のため置き換え）
 - **プロセスマネージャー**: PM2
 - **プロキシ**: proxy.ts（非推奨の middleware.ts を置き換え）
+
+### TypeScript 7（ネイティブ版）移行メモ（2026-07）
+
+TypeScript 7 は Go 実装のネイティブコンパイラで、`typescript` パッケージは JS コンパイラ API
+（`ts.createProgram` / `ts.transpileModule` など）を同梱しなくなった。これに伴う構成変更:
+
+- **typecheck**: `tsc --noEmit`（tsgo）が全体を数秒で検査。`npm run typecheck:tools` が
+  `tsconfig.tools.json`（`module`/`moduleResolution: nodenext`。旧 `node10` は TS7 で削除）で
+  tools/ を検査し、`npm run check` に組み込み済み
+- **lint**: typescript-eslint / @eslint-react は JS API 依存のため撤去（canary も TS7 未対応）。
+  TS/TSX の構文解析は `@babel/eslint-parser`＋`@babel/preset-typescript`（Babel 8、型情報なし）。
+  `.tsx` は `@babel/plugin-syntax-jsx` を明示（Babel 8 は自動で JSX を有効化しない）。
+  `no-undef` など tsc が担保するルールは off。`@typescript-eslint/no-explicit-any` 等の
+  型依存ルールは失われた（typescript-eslint が TS7 対応したら復帰を検討）
+- **CLI ツール**: ts-node は JS API 依存のため tsx へ移行（`tsx --tsconfig tsconfig.tools.json`）。
+  tsx は実行時に型検査しないため、型担保は `typecheck:tools` が代替
+- **Next.js ビルド**: `@typescript/native-preview` を devDependencies に入れることで、Next 16.2 が
+  tsgo 利用を検出しビルド内型チェックを安全にスキップする（型検査は `npm run check` 側で実施）。
+  これを外すと `next build` が「TypeScript 未インストール」誤検出でクラッシュするので注意
 
 ## プロジェクト構造
 

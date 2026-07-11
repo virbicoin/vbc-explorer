@@ -337,8 +337,7 @@ async function processVerification(guid: string) {
     let onchainForCompare = onchainBytecode.replace(/^0x/, '');
     let compiledForCompare = compiledBytecode.replace(/^0x/, '');
     const immutableReferences = compiledContract.evm?.deployedBytecode?.immutableReferences as
-      | Record<string, { start: number; length: number }[]>
-      | undefined;
+      Record<string, { start: number; length: number }[]> | undefined;
     if (immutableReferences) {
       const maskRange = (hex: string, start: number, length: number) => {
         const from = start * 2;
