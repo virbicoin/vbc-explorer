@@ -315,6 +315,13 @@
   },
   "blacklist": {
     "symbols": ["TEST", "FIX", "FIX2"],
+    "contracts": [
+      {
+        "address": "0x0000000000000000000000000000000000000000",
+        "name": "Example Deprecated Contract",
+        "reason": "Broken/superseded deployment; hidden from the contracts list (address page stays reachable)"
+      }
+    ],
     "tokens": [
       {
         "address": "0x0000000000000000000000000000000000000000",

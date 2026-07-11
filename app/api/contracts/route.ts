@@ -47,6 +47,24 @@ function getKnownTokens(): Record<string, KnownToken> {
   }
 }
 
+// Contracts blacklisted in config.json (blacklist.contracts) are hidden from
+// the listing — e.g. deprecated or broken deployments users must not interact
+// with. Their address pages stay reachable directly (on-chain data is public).
+let blacklistedContractsCache: string[] | null = null;
+function getBlacklistedContracts(): string[] {
+  if (blacklistedContractsCache) return blacklistedContractsCache;
+  try {
+    const config = readConfig();
+    const list = ((config as any).blacklist?.contracts as { address?: string }[] | undefined) || [];
+    blacklistedContractsCache = list
+      .map((c) => (c.address || '').toLowerCase())
+      .filter((a) => /^0x[0-9a-f]{40}$/.test(a));
+    return blacklistedContractsCache;
+  } catch {
+    return [];
+  }
+}
+
 interface ContractDocument {
   address: string;
   contractName?: string;
@@ -185,6 +203,12 @@ export async function GET(request: NextRequest) {
     // Build query - Contract collection contains all contracts
     // No need for isContract filter as all documents in Contract collection are contracts
     const query: Record<string, unknown> = {};
+
+    // Hide blacklisted contracts (deprecated/broken deployments) from the list
+    const blacklistedContracts = getBlacklistedContracts();
+    if (blacklistedContracts.length > 0) {
+      query.address = { $nin: blacklistedContracts };
+    }
 
     if (verified === 'true') {
       query.verified = true;
