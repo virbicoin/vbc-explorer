@@ -55,6 +55,8 @@ A modern, real-time blockchain explorer for any EVM-compatible network built wit
 - **📈 Rich List** - Real-time account balance tracking and wealth distribution analysis
 - **📥 CSV Export** - Etherscan/BscScan-compatible transaction & token-transfer CSV downloads per address (tax-tool friendly)
 - **🏷️ Address Name Tags** - Public labels for known addresses (DEX, Launchpad, Bridge, pools) with config-driven overrides
+- **🔍 Decoded Input Data** - Transaction calldata decoded against verified contract ABIs (function signature + arguments)
+- **🛂 Token Approval Checker** - Review and revoke ERC-20 allowances at `/approvals` (BscScan-style, wallet-connected revoke)
 - **💸 Price Tracking** - Live price updates with priority fallback (CoinGecko → CoinMarketCap → Coinpaprika → WikaEx → DEX)
 - **⚡ Real-time Sync** - Live blockchain synchronization with WebSocket support
 - **📱 Responsive Design** - Mobile-first design optimized for all devices

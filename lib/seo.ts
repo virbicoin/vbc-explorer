@@ -256,7 +256,8 @@ export function buildTokenMetadata(address: string, token?: TokenIdentity): Meta
 
 // ---- Static hub / listing pages -------------------------------------------
 
-export type HubKey = 'blocks' | 'transactions' | 'tokens' | 'contracts' | 'richlist' | 'stats';
+export type HubKey =
+  'blocks' | 'transactions' | 'tokens' | 'contracts' | 'richlist' | 'stats' | 'approvals';
 
 const HUBS: Record<HubKey, { title: string; path: string; describe: (network: string) => string }> =
   {
@@ -293,6 +294,12 @@ const HUBS: Record<HubKey, { title: string; path: string; describe: (network: st
       path: '/stats',
       describe: (n) =>
         `Live statistics and network status for the ${n} blockchain — node health, hashrate, difficulty, gas price, block time and daily activity.`,
+    },
+    approvals: {
+      title: 'Token Approvals',
+      path: '/approvals',
+      describe: (n) =>
+        `Review and revoke ERC-20 token allowances your wallet has granted on the ${n} blockchain.`,
     },
   };
 

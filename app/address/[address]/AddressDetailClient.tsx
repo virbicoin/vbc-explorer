@@ -961,6 +961,13 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
             {copiedItem === resolvedParams.address && (
               <span className="text-green-400 text-xs">Copied!</span>
             )}
+            <Link
+              href={`/approvals?address=${resolvedParams.address}`}
+              className="ml-2 text-xs text-emerald-400 hover:underline"
+              title="Check and revoke ERC-20 token approvals for this address"
+            >
+              Token Approvals →
+            </Link>
           </div>
         </div>
       </div>

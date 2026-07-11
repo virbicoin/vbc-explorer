@@ -59,6 +59,11 @@ interface Transaction {
   timestamp: number;
   isContractCreation: boolean;
   inputData?: string;
+  decodedInput?: {
+    methodName: string;
+    signature: string | null;
+    params: { name: string; type: string; value: string }[] | null;
+  } | null;
   logs: Array<{
     address: string;
     topics: string[];
@@ -769,6 +774,53 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
                 <DocumentTextIcon className="w-6 h-6 text-purple-400" />
                 <h2 className="text-xl font-semibold text-gray-100">Input Data</h2>
               </div>
+              {/* Decoded view (verified contract ABI, or known selector name) */}
+              {transaction.decodedInput && (
+                <div className="bg-gray-700 rounded p-4 mb-4">
+                  <div className="text-gray-400 text-sm mb-1">Function</div>
+                  <code className="text-emerald-300 text-sm font-mono break-all">
+                    {transaction.decodedInput.signature || transaction.decodedInput.methodName}
+                  </code>
+                  {transaction.decodedInput.params &&
+                    transaction.decodedInput.params.length > 0 && (
+                      <div className="overflow-x-auto mt-3">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-gray-600 text-gray-400">
+                              <th className="text-left py-1.5 pr-4 font-medium">#</th>
+                              <th className="text-left py-1.5 pr-4 font-medium">Name</th>
+                              <th className="text-left py-1.5 pr-4 font-medium">Type</th>
+                              <th className="text-left py-1.5 font-medium">Data</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-600/50">
+                            {transaction.decodedInput.params.map((param, i) => (
+                              <tr key={i}>
+                                <td className="py-1.5 pr-4 text-gray-500">{i}</td>
+                                <td className="py-1.5 pr-4 text-gray-300">{param.name}</td>
+                                <td className="py-1.5 pr-4 text-purple-300 font-mono">
+                                  {param.type}
+                                </td>
+                                <td className="py-1.5 font-mono text-gray-200 break-all">
+                                  {/^0x[0-9a-fA-F]{40}$/.test(param.value) ? (
+                                    <Link
+                                      href={`/address/${param.value}`}
+                                      className="text-blue-400 hover:underline"
+                                    >
+                                      {param.value}
+                                    </Link>
+                                  ) : (
+                                    param.value
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                </div>
+              )}
               <div className="bg-gray-700 rounded p-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-gray-400 text-sm">Transaction Input</span>

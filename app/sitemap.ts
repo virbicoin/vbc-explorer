@@ -21,6 +21,7 @@ const HUB_ROUTES: HubRoute[] = [
   { path: '/contracts', priority: 0.7, changeFrequency: 'daily' },
   { path: '/stats', priority: 0.7, changeFrequency: 'hourly' },
   { path: '/richlist', priority: 0.6, changeFrequency: 'daily' },
+  { path: '/approvals', priority: 0.5, changeFrequency: 'weekly' },
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {

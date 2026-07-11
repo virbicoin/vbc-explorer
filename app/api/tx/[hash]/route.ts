@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { ethers } from 'ethers';
 import { Transaction, Block, connectDB } from '../../../../models/index';
-import { getTransactionTypeGlobal } from '../../../../lib/transaction-utils';
+import { getTransactionTypeGlobal, METHOD_IDS } from '../../../../lib/transaction-utils';
 import { tryGetDb } from '../../../../lib/db/get-db';
 import {
   sanitizeHash,
@@ -15,6 +16,65 @@ import { getWeb3 } from '../../../../lib/web3';
 // Load configuration
 const config = loadConfig();
 const web3 = getWeb3();
+
+/** Render a decoded calldata argument as a display string (bigints, arrays, tuples). */
+function stringifyDecodedValue(value: unknown): string {
+  if (typeof value === 'bigint') return value.toString();
+  if (Array.isArray(value)) return `[${value.map(stringifyDecodedValue).join(', ')}]`;
+  return String(value);
+}
+
+interface DecodedInput {
+  methodName: string;
+  signature: string | null;
+  params: { name: string; type: string; value: string }[] | null;
+}
+
+/**
+ * Decode transaction calldata Etherscan-style: against the verified contract
+ * ABI when available, otherwise fall back to the shared selector map (method
+ * name only).
+ */
+async function decodeInputData(
+  input: string | undefined,
+  to: string | undefined
+): Promise<DecodedInput | null> {
+  if (!input || input.length < 10) return null;
+
+  if (to) {
+    try {
+      const db = tryGetDb();
+      const verified = db
+        ? await db
+            .collection('Contract')
+            .findOne(
+              { address: to.toLowerCase(), abi: { $type: 'string', $ne: '' } },
+              { projection: { abi: 1 } }
+            )
+        : null;
+      if (verified?.abi) {
+        const iface = new ethers.Interface(JSON.parse(verified.abi as string));
+        const parsed = iface.parseTransaction({ data: input });
+        if (parsed) {
+          return {
+            methodName: parsed.name,
+            signature: parsed.signature,
+            params: parsed.fragment.inputs.map((param, i) => ({
+              name: param.name || `arg${i}`,
+              type: param.type,
+              value: stringifyDecodedValue(parsed.args[i]),
+            })),
+          };
+        }
+      }
+    } catch {
+      // Unparseable ABI or calldata - fall through to the selector map
+    }
+  }
+
+  const known = METHOD_IDS[input.slice(0, 10).toLowerCase()];
+  return known ? { methodName: known.action, signature: null, params: null } : null;
+}
 
 // TokenFactoryV2 ABI for fetching Launchpad token info
 const TOKEN_FACTORY_V2_ABI = [
@@ -295,6 +355,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
+    // Decode calldata against the verified contract ABI (Etherscan-style)
+    const decodedInput = await decodeInputData(actualTransaction.input, actualTransaction.to);
+
     // Transform the transaction data for frontend
     const transformedTransaction = {
       ...actualTransaction,
@@ -304,6 +367,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       gasLimit: actualTransaction.gas || 'N/A',
       isContractCreation: !actualTransaction.to,
       inputData: actualTransaction.input || '0x',
+      decodedInput,
       logs: [], // Empty array for now, can be populated later if needed
       internalTransactions: [], // Empty array for now, can be populated later if needed
       // MetaMask compliant type info
