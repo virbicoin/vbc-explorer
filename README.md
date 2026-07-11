@@ -36,7 +36,7 @@
 
 ---
 
-A modern, real-time blockchain explorer for any EVM-compatible network built with Next.js 15 App Router, TypeScript, and MongoDB. Features advanced NFT support, contract verification, comprehensive token analytics, built-in DEX, and Token Launchpad.
+A modern, real-time blockchain explorer for any EVM-compatible network built with Next.js 15 App Router, TypeScript, and MongoDB. Features advanced NFT support, contract verification, comprehensive token analytics, built-in DEX, a cross-chain bridge, and Token Launchpad.
 
 **This project is a fork of [ETC Explorer](https://github.com/ethereumclassic/explorer), enhanced with modern technologies and additional features.**
 
@@ -60,6 +60,7 @@ A modern, real-time blockchain explorer for any EVM-compatible network built wit
 - **🔄 DEX (Swap)** - Decentralized token exchange with Uniswap V2 style AMM
 - **💧 Liquidity Pools** - Provide liquidity and earn trading fees
 - **🌾 Yield Farming** - Stake LP tokens to earn rewards
+- **🌉 Cross-Chain Bridge** - Lock-and-mint bridge that moves the native coin 1:1 to a wrapped token on a remote chain
 - **🎨 Token Launchpad V2** - No-code token creation with metadata, transfer, approve, burn, and pause features
 - **⚙️ Dynamic Configuration** - All settings configurable via config.json for multi-chain support
 
@@ -166,6 +167,34 @@ Deploy a TokenFactory contract and configure the address in `config.json` under 
 - On-chain metadata (logo URL, description, website)
 - Ownable with ownership transfer support
 - Full ERC-20 compatibility
+
+## 🌉 Cross-Chain Bridge
+
+The explorer includes an optional lock-and-mint bridge that moves the native coin between this chain and a remote EVM chain at a 1:1 ratio.
+
+### How It Works
+
+- **Deposit (native → wrapped)** - Lock the native coin in the vault contract on this chain; the relayer mints an equal amount of the wrapped token on the remote chain.
+- **Withdraw (wrapped → native)** - Approve and burn the wrapped token on the remote chain; the relayer releases the locked native coin back on this chain.
+- **Recipient override** - Send the bridged amount to any address, not just the connected wallet.
+- The wrapped token is always backed 1:1 by the coins locked in the vault.
+
+### Security
+
+- Cross-chain mints and releases require **M-of-N validator signatures** (EIP-712), each validator independently re-verifying the source-chain event before signing.
+- The off-chain relayer only relays; it cannot mint or release without a valid quorum of signatures.
+
+### Contract Requirements
+
+To enable the bridge, deploy and configure:
+
+| Contract | Chain | Description |
+|----------|-------|-------------|
+| Vault | This chain | Locks/releases the native coin |
+| Wrapped Token | Remote chain | BEP-20/ERC-20 minted against locked coins |
+| Bridge | Remote chain | Mints on deposit, burns on withdraw, verifies signatures |
+
+Set `bridge.enabled: true` and configure the vault, remote chain, and contract addresses in `config.json` under the `bridge` section. The Bridge navigation link and page appear only when the bridge is enabled.
 
 ## 🚀 Multi-Chain Compatibility
 
