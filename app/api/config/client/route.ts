@@ -19,6 +19,12 @@ interface BridgeRemote {
   wrappedSymbol: string;
   dexName?: string;
   swapUrl?: string;
+  // Optional in-page swap (V2 router) converting the wrapped token on the remote chain.
+  swap?: {
+    router: string;
+    wrappedNative: string;
+    outputs: { symbol: string; kind?: string; address?: string; decimals?: number }[];
+  };
 }
 interface BridgeRoute {
   id?: string;
@@ -26,6 +32,8 @@ interface BridgeRoute {
   asset?: { kind?: string; symbol?: string; token?: string; decimals?: number };
   vault?: string;
   remote?: BridgeRemote;
+  // Optional single-tx auto-conversion entry contract on this chain.
+  autoSwap?: { lockAndSwap?: string };
 }
 interface BridgeCfg {
   enabled?: boolean;

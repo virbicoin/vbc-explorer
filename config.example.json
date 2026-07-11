@@ -230,6 +230,10 @@
         "label": "TOKEN → wTOKEN (BNB Smart Chain)",
         "asset": { "kind": "native", "symbol": "TOKEN", "decimals": 18 },
         "vault": "0x0000000000000000000000000000000000000000",
+        "autoSwap": {
+          "lockAndSwap": "0x0000000000000000000000000000000000000000",
+          "_comment": "Optional: lock-and-swap entry contract on this chain. When set (and 'swap' below is configured), the deposit form offers receiving remote assets (e.g. BNB/USDT) directly in one transaction."
+        },
         "remote": {
           "chainId": 56,
           "name": "BNB Smart Chain",
@@ -240,11 +244,25 @@
           "wrappedToken": "0x0000000000000000000000000000000000000000",
           "wrappedSymbol": "wTOKEN",
           "dexName": "PancakeSwap",
-          "swapUrl": "https://pancakeswap.finance/swap?outputCurrency=0x0000000000000000000000000000000000000000"
+          "swapUrl": "https://pancakeswap.finance/swap?outputCurrency=0x0000000000000000000000000000000000000000",
+          "swap": {
+            "router": "0x0000000000000000000000000000000000000000",
+            "wrappedNative": "0x0000000000000000000000000000000000000000",
+            "outputs": [
+              { "symbol": "BNB", "kind": "native", "decimals": 18 },
+              {
+                "symbol": "USDT",
+                "kind": "erc20",
+                "address": "0x0000000000000000000000000000000000000000",
+                "decimals": 18
+              }
+            ],
+            "_comment": "Optional in-page swap: 'router' is a Uniswap V2-style router on the remote chain, 'wrappedNative' its wrapped native token (routing hop), 'outputs' the assets the wrapped token can be converted into (kind 'native', or 'erc20' with address/decimals)."
+          }
         }
       }
     ],
-    "_comment": "Cross-chain lock-and-mint bridge. 'routes' is a list, so more assets/destinations can be added over time. Per route: 'asset' is what leaves this chain (kind 'native', or 'erc20' with a 'token' address and 'decimals'); it is locked in 'vault' and minted as 'wrappedToken' on the remote chain. Optional 'dexName'/'swapUrl' link the wrapped token to an external DEX. The legacy single 'vault'+'remote' shape (without 'routes') is still supported."
+    "_comment": "Cross-chain lock-and-mint bridge. 'routes' is a list, so more assets/destinations can be added over time. Per route: 'asset' is what leaves this chain (kind 'native', or 'erc20' with a 'token' address and 'decimals'); it is locked in 'vault' and minted as 'wrappedToken' on the remote chain. Optional 'dexName'/'swapUrl' link the wrapped token to an external DEX; optional 'swap' enables the in-page conversion widget. The legacy single 'vault'+'remote' shape (without 'routes') is still supported."
   },
   "launchpad": {
     "enabled": true,

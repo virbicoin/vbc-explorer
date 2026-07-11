@@ -11,14 +11,18 @@ import {
   useWriteContract,
 } from 'wagmi';
 import { formatUnits, isAddress, parseUnits, zeroAddress, type Address } from 'viem';
-import { BRIDGE_ABI, ERC20_ABI, VAULT_ABI } from '../lib/config';
+import { BRIDGE_ABI, ERC20_ABI, LOCKSWAP_ABI, ROUTER_ABI, VAULT_ABI } from '../lib/config';
 import { useBridge } from './BridgeProvider';
 
 type Direction = 'deposit' | 'withdraw'; // deposit: source->remote, withdraw: remote->source
 
+// Auto-convert quotes execute ~relayEtaSeconds later, so guarantee a wider
+// minimum than an interactive swap would.
+const AUTO_SWAP_TOLERANCE_BPS = 500; // 5%
+
 export function BridgeContent() {
   const { source, route, relayEtaSeconds, routes, routeId, setRouteId } = useBridge();
-  const { asset, vault, remote } = route;
+  const { asset, vault, remote, autoSwap } = route;
   const decimals = asset.decimals; // wrapped mints 1:1, so both sides share the asset's decimals
 
   const { address, isConnected, chainId } = useAccount();
@@ -31,11 +35,23 @@ export function BridgeContent() {
   const [recipient, setRecipient] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [action, setAction] = useState<'lock' | 'approve' | 'burn' | null>(null);
+  // 'wrapped' = receive the wrapped token; otherwise a remote.swap output symbol
+  // to auto-convert into (single tx via the lock-and-swap contract).
+  const [receiveAs, setReceiveAs] = useState('wrapped');
   const [relaying, setRelaying] = useState<{
     txHash: string;
     destName: string;
     toRemote: boolean;
+    receiveSymbol: string;
   } | null>(null);
+
+  // Auto-conversion is available for native deposits when both the on-chain
+  // entry (autoSwap.lockAndSwap) and the remote swap settings are configured.
+  const autoOutputs = autoSwap && asset.kind === 'native' && remote.swap ? remote.swap.outputs : [];
+  const autoOutput =
+    direction === 'deposit' && receiveAs !== 'wrapped'
+      ? autoOutputs.find((o) => o.symbol === receiveAs)
+      : undefined;
 
   // Chain the user must be on to send the source-side transaction of this direction.
   const activeChainId = direction === 'deposit' ? source.chainId : remote.chainId;
@@ -101,6 +117,35 @@ export function BridgeContent() {
     }
   }, [amount, decimals]);
 
+  // ---- Auto-conversion quote (deposit with receiveAs != wrapped) -----------
+  const autoPath = useMemo<Address[]>(() => {
+    if (!autoOutput || !remote.swap) return [];
+    if (
+      autoOutput.kind === 'native' ||
+      !autoOutput.address ||
+      autoOutput.address === remote.swap.wrappedNative
+    ) {
+      return [remote.wrappedToken, remote.swap.wrappedNative];
+    }
+    return [remote.wrappedToken, remote.swap.wrappedNative, autoOutput.address];
+  }, [autoOutput, remote.wrappedToken, remote.swap]);
+  const { data: autoAmountsOut, isError: autoQuoteError } = useReadContract({
+    address: remote.swap?.router ?? zeroAddress,
+    abi: ROUTER_ABI,
+    functionName: 'getAmountsOut',
+    args: [amountWei, autoPath],
+    chainId: remote.chainId,
+    query: {
+      enabled: !!autoOutput && amountWei > 0n && autoPath.length > 1,
+      refetchInterval: 10000,
+    },
+  });
+  const autoQuote = autoAmountsOut
+    ? (autoAmountsOut as bigint[])[(autoAmountsOut as bigint[]).length - 1]
+    : null;
+  const autoMinOut =
+    autoQuote !== null ? (autoQuote * BigInt(10000 - AUTO_SWAP_TOLERANCE_BPS)) / 10000n : null;
+
   const balance =
     direction === 'deposit'
       ? asset.kind === 'native'
@@ -124,7 +169,13 @@ export function BridgeContent() {
       reset();
       setAction(null);
     } else if (action === 'lock' || action === 'burn') {
-      setRelaying({ txHash: hash, destName: destChainName, toRemote: action === 'lock' });
+      setRelaying({
+        txHash: hash,
+        destName: destChainName,
+        toRemote: action === 'lock',
+        receiveSymbol:
+          action === 'lock' ? (autoOutput?.symbol ?? remote.wrappedSymbol) : asset.symbol,
+      });
       setAmount('');
       reset();
       setAction(null);
@@ -134,7 +185,8 @@ export function BridgeContent() {
   }, [isSuccess, hash]);
 
   const fromSymbol = direction === 'deposit' ? asset.symbol : remote.wrappedSymbol;
-  const toSymbol = direction === 'deposit' ? remote.wrappedSymbol : asset.symbol;
+  const toSymbol =
+    direction === 'deposit' ? (autoOutput?.symbol ?? remote.wrappedSymbol) : asset.symbol;
   const balanceText = `${Number(formatUnits(balance, decimals)).toLocaleString(undefined, {
     maximumFractionDigits: 4,
   })} ${fromSymbol}`;
@@ -171,6 +223,27 @@ export function BridgeContent() {
     if (!recipientValid) return;
     setRelaying(null);
     setAction('lock');
+    // Single-tx auto-conversion: lock through the lock-and-swap contract, which
+    // records the desired output + guaranteed minimum on-chain for the validators.
+    if (autoOutput && autoSwap) {
+      if (autoMinOut === null) {
+        setAction(null);
+        return;
+      }
+      writeContract({
+        address: autoSwap.lockAndSwap,
+        abi: LOCKSWAP_ABI,
+        functionName: 'lockAndSwap',
+        args: [
+          effectiveRecipient as Address,
+          autoOutput.kind === 'native' ? zeroAddress : (autoOutput.address as Address),
+          autoMinOut,
+        ],
+        value: amountWei,
+        chainId: source.chainId,
+      });
+      return;
+    }
     if (asset.kind === 'native') {
       writeContract({
         address: vault,
@@ -216,6 +289,7 @@ export function BridgeContent() {
               onChange={(e) => {
                 setRouteId(e.target.value);
                 setDirection('deposit');
+                setReceiveAs('wrapped');
                 resetForm();
                 reset();
               }}
@@ -252,6 +326,38 @@ export function BridgeContent() {
           ))}
         </div>
 
+        {/* Receive-as selector: wrapped token, or single-tx auto-conversion */}
+        {direction === 'deposit' && autoOutputs.length > 0 && (
+          <div className="mb-4">
+            <label className="block text-xs text-gray-400 mb-2">Receive as</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setReceiveAs('wrapped')}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                  receiveAs === 'wrapped'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-700/60 text-gray-400 hover:text-white'
+                }`}
+              >
+                {remote.wrappedSymbol}
+              </button>
+              {autoOutputs.map((o) => (
+                <button
+                  key={o.symbol}
+                  onClick={() => setReceiveAs(o.symbol)}
+                  className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                    receiveAs === o.symbol
+                      ? 'bg-amber-500 text-gray-900'
+                      : 'bg-gray-700/60 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {o.symbol}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* From */}
         <div className="bg-gradient-to-br from-gray-800 to-gray-850 rounded-2xl p-5 border border-gray-700">
           <div className="flex justify-between text-sm text-gray-400 mb-2">
@@ -284,8 +390,34 @@ export function BridgeContent() {
           <div className="text-sm text-gray-400 mb-2">
             To: {toSymbol} on {destChainName}
           </div>
-          <div className="text-3xl font-bold text-gray-300">{amount || '0.0'}</div>
-          <div className="text-xs text-gray-500 mt-1">1:1 (gas only)</div>
+          {autoOutput ? (
+            <>
+              <div className="text-3xl font-bold text-gray-300 truncate">
+                {amountWei > 0n && autoQuote !== null
+                  ? `≈ ${Number(formatUnits(autoQuote, autoOutput.decimals)).toLocaleString(undefined, { maximumFractionDigits: 6 })}`
+                  : '0.0'}
+              </div>
+              {autoMinOut !== null && amountWei > 0n && (
+                <div className="text-xs text-gray-500 mt-1">
+                  Guaranteed min:{' '}
+                  {Number(formatUnits(autoMinOut, autoOutput.decimals)).toLocaleString(undefined, {
+                    maximumFractionDigits: 6,
+                  })}{' '}
+                  {autoOutput.symbol} — below that you receive {remote.wrappedSymbol} instead
+                </div>
+              )}
+              {autoQuoteError && amountWei > 0n && (
+                <div className="text-xs text-red-400 mt-1">
+                  No quote — the pool may have insufficient liquidity.
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="text-3xl font-bold text-gray-300">{amount || '0.0'}</div>
+              <div className="text-xs text-gray-500 mt-1">1:1 (gas only)</div>
+            </>
+          )}
         </div>
 
         {/* Recipient (optional) */}
@@ -342,7 +474,13 @@ export function BridgeContent() {
           ) : (
             <button
               onClick={direction === 'deposit' ? doDeposit : doWithdraw}
-              disabled={busy || amountWei === 0n || insufficient || !recipientValid}
+              disabled={
+                busy ||
+                amountWei === 0n ||
+                insufficient ||
+                !recipientValid ||
+                (!!autoOutput && autoMinOut === null)
+              }
               className="w-full py-4 bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700 text-white font-bold rounded-2xl disabled:bg-gray-700 disabled:opacity-60"
             >
               {insufficient
@@ -351,7 +489,9 @@ export function BridgeContent() {
                   ? isSigning
                     ? 'Confirm in wallet…'
                     : 'Processing…'
-                  : `Bridge to ${destChainName}`}
+                  : autoOutput
+                    ? `Bridge & receive ${autoOutput.symbol}`
+                    : `Bridge to ${destChainName}`}
             </button>
           )}
         </div>
@@ -361,9 +501,15 @@ export function BridgeContent() {
           <div className="mt-4 bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-sm">
             <p className="text-green-300 font-semibold">✅ Submitted. Bridging in progress.</p>
             <p className="text-gray-300 mt-1">
-              Your tokens will arrive on {relaying.destName} in ~{relayEtaSeconds}s (handled
-              automatically by the relayer).
+              Your {relaying.receiveSymbol} will arrive on {relaying.destName} in ~{relayEtaSeconds}
+              s (handled automatically by the relayer).
             </p>
+            {relaying.toRemote && relaying.receiveSymbol !== remote.wrappedSymbol && (
+              <p className="text-gray-400 mt-1 text-xs">
+                Auto-converting via the on-chain executor. If the market moves beyond your
+                guaranteed minimum, you receive {remote.wrappedSymbol} instead.
+              </p>
+            )}
             <a
               href={`${activeExplorer}/tx/${relaying.txHash}`}
               target="_blank"

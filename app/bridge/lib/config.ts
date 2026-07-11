@@ -16,6 +16,12 @@ export const BRIDGE_ABI = parseAbi([
   'function burnNonce() view returns (uint256)',
 ]);
 
+// Lock-and-swap entry on the source chain: one tx locks the native coin and
+// declares the auto-conversion (output token + min amount) executed remotely.
+export const LOCKSWAP_ABI = parseAbi([
+  'function lockAndSwap(address finalRecipient, address outputToken, uint256 minOut) payable',
+]);
+
 // Generic ERC-20 ABI, used both for the wrapped token on the remote chain and
 // for ERC-20 source assets on token routes.
 export const ERC20_ABI = parseAbi([
@@ -28,6 +34,14 @@ export const ERC20_ABI = parseAbi([
 
 // Backwards-compatible alias (the wrapped token is just an ERC-20).
 export const WRAPPED_ABI = ERC20_ABI;
+
+// Uniswap V2-style router (PancakeSwap etc.), used by the in-page swap that
+// converts the wrapped token into other remote-chain assets.
+export const ROUTER_ABI = parseAbi([
+  'function getAmountsOut(uint256 amountIn, address[] path) view returns (uint256[] amounts)',
+  'function swapExactTokensForETH(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline) returns (uint256[] amounts)',
+  'function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline) returns (uint256[] amounts)',
+]);
 
 // ---- Resolved, config-driven types ---------------------------------------
 
@@ -49,6 +63,24 @@ export interface BridgeAsset {
   decimals: number;
 }
 
+/** An asset the wrapped token can be converted into via the in-page swap. */
+export interface SwapOutput {
+  symbol: string;
+  kind: 'native' | 'erc20';
+  /** Token address on the remote chain (only for kind === 'erc20'). */
+  address?: `0x${string}`;
+  decimals: number;
+}
+
+/** V2-router swap settings for converting the wrapped token on the remote chain. */
+export interface RemoteSwap {
+  /** Uniswap V2-style router (e.g. PancakeSwap Router). */
+  router: `0x${string}`;
+  /** Wrapped native token of the remote chain (e.g. WBNB) — used as the routing hop. */
+  wrappedNative: `0x${string}`;
+  outputs: SwapOutput[];
+}
+
 /** The remote chain + wrapped token a route bridges to. */
 export interface BridgeRemote {
   chainId: number;
@@ -62,6 +94,8 @@ export interface BridgeRemote {
   /** Optional external DEX where the wrapped token can be traded (e.g. PancakeSwap). */
   dexName?: string;
   swapUrl?: string;
+  /** Optional in-page swap via a V2 router on the remote chain. */
+  swap?: RemoteSwap;
 }
 
 /** One bridgeable asset -> remote-chain pairing. */
@@ -71,6 +105,8 @@ export interface BridgeRoute {
   asset: BridgeAsset;
   vault: `0x${string}`;
   remote: BridgeRemote;
+  /** Optional single-tx auto-conversion (lock here, receive swap.outputs remotely). */
+  autoSwap?: { lockAndSwap: `0x${string}` };
 }
 
 export interface BridgeConfig {
@@ -81,6 +117,17 @@ export interface BridgeConfig {
 
 // ---- Normalization (supports both the routes[] and the legacy shape) -------
 
+interface RawSwapOutput {
+  symbol?: string;
+  kind?: string;
+  address?: string;
+  decimals?: number;
+}
+interface RawSwap {
+  router?: string;
+  wrappedNative?: string;
+  outputs?: RawSwapOutput[];
+}
 interface RawRemote {
   chainId: number;
   name: string;
@@ -92,6 +139,7 @@ interface RawRemote {
   wrappedSymbol: string;
   dexName?: string;
   swapUrl?: string;
+  swap?: RawSwap;
 }
 interface RawRoute {
   id?: string;
@@ -99,6 +147,26 @@ interface RawRoute {
   asset?: { kind?: string; symbol?: string; token?: string; decimals?: number };
   vault?: string;
   remote?: RawRemote;
+  autoSwap?: { lockAndSwap?: string };
+}
+
+function normalizeSwap(r?: RawSwap): RemoteSwap | undefined {
+  if (!r?.router || !r.wrappedNative || !Array.isArray(r.outputs)) return undefined;
+  const outputs: SwapOutput[] = r.outputs
+    .filter((o): o is RawSwapOutput & { symbol: string } => !!o?.symbol)
+    .map((o) => ({
+      symbol: o.symbol,
+      kind: o.address && o.kind !== 'native' ? ('erc20' as const) : ('native' as const),
+      address: o.address as `0x${string}` | undefined,
+      decimals: typeof o.decimals === 'number' ? o.decimals : 18,
+    }))
+    .filter((o) => o.kind === 'native' || !!o.address);
+  if (outputs.length === 0) return undefined;
+  return {
+    router: r.router as `0x${string}`,
+    wrappedNative: r.wrappedNative as `0x${string}`,
+    outputs,
+  };
 }
 
 function normalizeRemote(r: RawRemote): BridgeRemote {
@@ -113,6 +181,7 @@ function normalizeRemote(r: RawRemote): BridgeRemote {
     wrappedSymbol: r.wrappedSymbol,
     dexName: r.dexName,
     swapUrl: r.swapUrl,
+    swap: normalizeSwap(r.swap),
   };
 }
 
@@ -132,6 +201,9 @@ function normalizeRoute(r: RawRoute, source: BridgeSource, index: number): Bridg
     },
     vault: r.vault as `0x${string}`,
     remote,
+    autoSwap: r.autoSwap?.lockAndSwap
+      ? { lockAndSwap: r.autoSwap.lockAndSwap as `0x${string}` }
+      : undefined,
   };
 }
 

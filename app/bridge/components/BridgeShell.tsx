@@ -5,6 +5,7 @@ import { useBridge } from './BridgeProvider';
 import { BridgeContent } from './BridgeContent';
 import { BridgeStats } from './BridgeStats';
 import { BridgeInfo } from './BridgeInfo';
+import { BridgeSwap } from './BridgeSwap';
 import { BridgeTradeCta } from './BridgeTradeCta';
 
 function Badge({ children }: { children: ReactNode }) {
@@ -61,7 +62,10 @@ export function BridgeShell() {
         <BridgeStats />
         <BridgeTradeCta />
         <div className="grid lg:grid-cols-2 gap-8 items-start">
-          <BridgeContent />
+          <div className="space-y-8">
+            <BridgeContent />
+            <BridgeSwap />
+          </div>
           <BridgeInfo />
         </div>
       </div>
