@@ -180,6 +180,13 @@ The explorer includes an optional lock-and-mint bridge that moves the native coi
 - **Recipient override** - Send the bridged amount to any address, not just the connected wallet.
 - The wrapped token is always backed 1:1 by the coins locked in the vault.
 
+### Convert to Other Assets
+
+When configured, the bridge can also deliver remote-chain assets (e.g. BNB or USDT) instead of just the wrapped token — both via a config-driven Uniswap-V2 router:
+
+- **In-page Convert widget** - Swap already-bridged wrapped tokens into the configured outputs with live quotes, slippage presets and multi-hop routing (`route.remote.swap`).
+- **One-transaction auto-convert** - A "Receive as" selector on the deposit form. The deposit goes through a lock-and-swap contract that records the desired output and a guaranteed minimum on-chain; the remote executor converts on arrival, falling back to the wrapped token if the minimum can't be met (`route.autoSwap.lockAndSwap`).
+
 ### Security
 
 - Cross-chain mints and releases require **M-of-N validator signatures** (EIP-712), each validator independently re-verifying the source-chain event before signing.
@@ -195,7 +202,36 @@ To enable the bridge, deploy and configure:
 | Wrapped Token | Remote chain | BEP-20/ERC-20 minted against locked coins |
 | Bridge | Remote chain | Mints on deposit, burns on withdraw, verifies signatures |
 
-Set `bridge.enabled: true` and configure the vault, remote chain, and contract addresses in `config.json` under the `bridge` section. The Bridge navigation link and page appear only when the bridge is enabled.
+Set `bridge.enabled: true` and configure the `bridge` section in `config.json`. The Bridge navigation link and page appear only when the bridge is enabled. The bridge is defined as a list of routes so more assets/destinations can be added over time:
+
+```jsonc
+"bridge": {
+  "enabled": true,
+  "relayEtaSeconds": 180,
+  "routes": [
+    {
+      "id": "native-bsc",
+      "asset": { "kind": "native", "symbol": "TOKEN", "decimals": 18 },
+      "vault": "0x…",                                  // lock vault on this chain
+      "autoSwap": { "lockAndSwap": "0x…" },            // optional: one-tx auto-convert entry
+      "remote": {
+        "chainId": 56, "name": "BNB Smart Chain", "nativeSymbol": "BNB",
+        "rpcUrl": "…", "explorer": "…",
+        "bridge": "0x…", "wrappedToken": "0x…", "wrappedSymbol": "wTOKEN",
+        "dexName": "PancakeSwap", "swapUrl": "…",       // optional: external DEX link
+        "swap": {                                        // optional: in-page Convert widget
+          "router": "0x…", "wrappedNative": "0x…",
+          "outputs": [ { "symbol": "BNB", "kind": "native", "decimals": 18 } ]
+        }
+      }
+    }
+  ]
+}
+```
+
+`asset.kind` is `native` or `erc20` (with a `token` address). The legacy single `vault` + `remote` shape (without `routes`) is still supported. See `config.example.json` for the full annotated template.
+
+Deprecated or broken contracts can be hidden from the contracts list via `blacklist.contracts` (an array of `{ address, name, reason }`); their address pages remain reachable.
 
 ## 🚀 Multi-Chain Compatibility
 
