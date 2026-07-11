@@ -1156,6 +1156,27 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
           <div className="p-6">
             {activeTab === 'transactions' ? (
               <>
+                {/* Etherscan-compatible CSV export (tax/accounting tools) */}
+                <div className="flex justify-end gap-2 mb-4">
+                  <a
+                    href={`/api/address/${resolvedParams.address}/export?type=txs`}
+                    download
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-gray-700/50 hover:bg-gray-600/50 rounded-lg transition-colors"
+                    title="Download transactions as Etherscan-compatible CSV (max 5000 rows)"
+                  >
+                    <ArrowDownTrayIcon className="w-4 h-4" />
+                    CSV (Transactions)
+                  </a>
+                  <a
+                    href={`/api/address/${resolvedParams.address}/export?type=tokentxs`}
+                    download
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-gray-700/50 hover:bg-gray-600/50 rounded-lg transition-colors"
+                    title="Download token transfers as Etherscan-compatible CSV (max 5000 rows)"
+                  >
+                    <ArrowDownTrayIcon className="w-4 h-4" />
+                    CSV (Token Transfers)
+                  </a>
+                </div>
                 {regularTransactions.length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-400">No transactions for this address.</p>
@@ -1400,6 +1421,17 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
               </>
             ) : activeTab === 'transfers' ? (
               <>
+                <div className="flex justify-end mb-4">
+                  <a
+                    href={`/api/address/${resolvedParams.address}/export?type=tokentxs`}
+                    download
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-300 bg-gray-700/50 hover:bg-gray-600/50 rounded-lg transition-colors"
+                    title="Download token transfers as Etherscan-compatible CSV (max 5000 rows)"
+                  >
+                    <ArrowDownTrayIcon className="w-4 h-4" />
+                    CSV (Token Transfers)
+                  </a>
+                </div>
                 {tokenTransfers.length === 0 ? (
                   <div className="text-center py-8">
                     <p className="text-gray-400">No token transfers for this address.</p>
