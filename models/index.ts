@@ -1,9 +1,33 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { logger } from '../lib/logger';
+import {
+  ensureModelIndexes,
+  findMissingIndexes,
+  emptyEnsureIndexesResult,
+  type AnyModel,
+  type EnsureIndexesOptions,
+  type EnsureIndexesResult,
+  type IndexSpec,
+} from '../lib/db/indexes';
 
 // 環境変数の設定
 if (!process.env.MONGODB_URI) {
   process.env.MONGODB_URI = 'mongodb://localhost/explorerDB';
 }
+
+/*
+ * Model and index policy
+ * ----------------------
+ * - Every Mongoose model lives in this file. Do not define models inline
+ *   (`mongoose.models.X || mongoose.model('X', schema)`) anywhere else;
+ *   import them from here instead.
+ * - Every collection name is set explicitly via `{ collection }` and matches
+ *   the production database.
+ * - Indexes are declared on the schemas below and nowhere else. They are
+ *   created explicitly by `ensureIndexes()` (called by the data-writing CLI
+ *   tools on startup and by `npm run optimize-indexes`), never by `autoIndex`
+ *   and never from the Next.js app. Existing indexes are never dropped.
+ */
 
 // Interfaces for TypeScript
 export interface IBlock extends Document {
@@ -144,7 +168,7 @@ export interface IVerificationJob extends Document {
 const BlockSchema = new Schema(
   {
     number: { type: Number, index: { unique: true } },
-    hash: String,
+    hash: { type: String, lowercase: true, index: { unique: true } },
     parentHash: String,
     nonce: String,
     sha3Uncles: String,
@@ -219,9 +243,6 @@ const TransactionSchema = new Schema(
   },
   { collection: 'Transaction' }
 );
-
-// Note: Compound indexes will be created programmatically via create-indexes script
-// to avoid duplicate index warnings. Individual field indexes are handled above.
 
 const TokenTransferSchema = new Schema(
   {
@@ -313,7 +334,7 @@ DexSwapSchema.index({ hash: 1, pair: 1 }, { unique: true });
 // Create indices
 // Optimized transaction indexes for homepage queries
 TransactionSchema.index({ blockNumber: -1 });
-TransactionSchema.index({ blockNumber: -1, transactionIndex: -1 }, { background: true });
+TransactionSchema.index({ blockNumber: -1, transactionIndex: -1 });
 TransactionSchema.index({ from: 1, blockNumber: -1 });
 TransactionSchema.index({ to: 1, blockNumber: -1 });
 TransactionSchema.index({ creates: 1, blockNumber: -1 });
@@ -321,7 +342,7 @@ AccountSchema.index({ balance: -1 });
 AccountSchema.index({ balance: -1, blockNumber: -1 });
 AccountSchema.index({ type: -1, balance: -1 });
 BlockSchema.index({ miner: 1 });
-BlockSchema.index({ miner: 1, blockNumber: -1 });
+BlockSchema.index({ miner: 1, number: -1 });
 BlockSchema.index({ hash: 1, number: -1 });
 MarketSchema.index({ timestamp: -1 });
 TokenTransferSchema.index({ blockNumber: -1 });
@@ -397,7 +418,7 @@ export const connectDB = async (): Promise<void> => {
           retryWrites: true,
           retryReads: true,
           bufferCommands: true, // Queue commands during reconnection
-          autoIndex: false, // Disable auto indexing in production
+          autoIndex: false, // Indexes are created explicitly by ensureIndexes(), never automatically
           autoCreate: false, // Disable auto creation in production
           heartbeatFrequencyMS: 30000, // 30 seconds to reduce overhead
           maxIdleTimeMS: 120000, // 2 minutes to keep connections alive
@@ -461,9 +482,83 @@ export const VerificationJob =
   mongoose.models.VerificationJob ||
   mongoose.model<IVerificationJob>('VerificationJob', VerificationJobSchema);
 
+/** Every model defined in this file (the set `ensureIndexes()` operates on). */
+export const ALL_MODELS: readonly AnyModel[] = [
+  Block,
+  Transaction,
+  Account,
+  Contract,
+  BlockStat,
+  Market,
+  DexSwap,
+  VerificationJob,
+  TokenTransfer,
+];
+
+/** Model name → real collection name (e.g. `Block` → `Block`). */
+export const MODEL_COLLECTIONS: Readonly<Record<string, string>> = Object.freeze(
+  Object.fromEntries(ALL_MODELS.map((model) => [model.modelName, model.collection.name]))
+);
+
+/** True when `SKIP_INDEX_SYNC` asks to skip index creation (`1`, `true`, `yes`). */
+export function isIndexSyncSkipped(env: Record<string, string | undefined> = process.env): boolean {
+  const value = (env.SKIP_INDEX_SYNC || '').trim().toLowerCase();
+  return value === '1' || value === 'true' || value === 'yes';
+}
+
+/**
+ * Create every index declared on the schemas above that is missing from the
+ * database. Existing indexes are never dropped, unique indexes are skipped
+ * (and reported) when duplicate keys exist, and nothing is thrown: callers
+ * keep running and read the result. Set `SKIP_INDEX_SYNC=1` to do nothing.
+ *
+ * Call this from data-writing tools right after `connectDB()`; the Next.js
+ * app must not call it.
+ */
+export async function ensureIndexes(
+  options: EnsureIndexesOptions = {}
+): Promise<EnsureIndexesResult> {
+  if (isIndexSyncSkipped()) {
+    logger.info('Index sync skipped (SKIP_INDEX_SYNC is set)');
+    return emptyEnsureIndexesResult();
+  }
+  return ensureModelIndexes([...ALL_MODELS], options);
+}
+
+/** Schema-declared indexes that are missing from the database (read-only). */
+export async function checkIndexes(): Promise<IndexSpec[]> {
+  return findMissingIndexes([...ALL_MODELS]);
+}
+
+/**
+ * `ensureIndexes()` for tool startup: logs a summary and never throws, so a
+ * sync tool keeps running even when index creation fails.
+ */
+export async function ensureIndexesOnStartup(tool: string): Promise<EnsureIndexesResult> {
+  try {
+    const result = await ensureIndexes();
+    logger.info('Index sync summary', {
+      tool,
+      created: result.created,
+      existing: result.existing.length,
+      skipped: result.skipped.map((s) => `${s.collection}.${s.index} (${s.reason})`),
+      failed: result.failed.map((f) => `${f.collection}.${f.index} (${f.error})`),
+    });
+    return result;
+  } catch (error) {
+    logger.warn('Index sync failed; continuing without it', {
+      tool,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return emptyEnsureIndexesResult();
+  }
+}
+
 // Default export for convenience
 const models = {
   connectDB,
+  ensureIndexes,
+  checkIndexes,
   Block,
   Account,
   Contract,
