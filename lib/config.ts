@@ -218,6 +218,13 @@ export interface SupplyConfig {
   cacheDuration?: number;
 }
 
+export interface ImagesConfig {
+  /** Gateway used to rewrite `ipfs://` URIs before fetching (default https://ipfs.io/ipfs/). */
+  ipfsGateway?: string;
+  /** Extra hostnames next/image may optimize; the explorer host and the gateway are always allowed. */
+  allowedHosts?: string[];
+}
+
 export interface AppConfig {
   nodeAddr: string;
   port: number;
@@ -243,6 +250,7 @@ export interface AppConfig {
   launchpad?: LaunchpadConfig;
   supply?: SupplyConfig;
   social?: SocialConfig;
+  images?: ImagesConfig;
   [key: string]: unknown;
 }
 

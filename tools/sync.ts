@@ -13,6 +13,12 @@ import { main as statsMain } from './stats';
 import { makeRichList } from './richlist';
 import { main as tokensMain } from './tokens';
 import { readConfig as loadConfig, getWeb3ProviderURL } from '../lib/config';
+import {
+  ERC721_INTERFACE_ID,
+  ERC1155_INTERFACE_ID,
+  ercCodeForTokenType,
+  type DetectedTokenType,
+} from '../lib/contract/erc';
 
 // Use unified config loader
 
@@ -114,14 +120,10 @@ const registerContract = async (
     }
 
     // Token detection results
-    let tokenType: 'ERC20' | 'ERC721' | 'ERC1155' | 'Contract' = 'Contract';
+    let tokenType: DetectedTokenType = 'Contract';
     let tokenName = '';
     let tokenSymbol = '';
     let tokenDecimals = 0;
-
-    // ERC-165 interface IDs
-    const ERC721_INTERFACE_ID = '0x80ac58cd';
-    const ERC1155_INTERFACE_ID = '0xd9b67a26';
 
     // Try to detect token type
     try {
@@ -217,9 +219,8 @@ const registerContract = async (
       // Not an ERC20 token or method call failed
     }
 
-    // Convert tokenType to ERC number
-    const ercNumber =
-      tokenType === 'ERC20' ? 2 : tokenType === 'ERC721' ? 721 : tokenType === 'ERC1155' ? 1155 : 0;
+    // Convert tokenType to the ERC code stored in Contract.ERC
+    const ercNumber = ercCodeForTokenType(tokenType);
 
     // Create contract entry
     await Contract.create({

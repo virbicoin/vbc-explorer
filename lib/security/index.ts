@@ -20,3 +20,11 @@ export {
   isValidImageUrl,
   sanitizeImageUrl,
 } from './validation';
+
+export {
+  DEFAULT_IPFS_GATEWAY,
+  isIpLiteral,
+  isPrivateIp,
+  parseSafeHttpsUrl,
+  resolveIpfsUrl,
+} from './url';

@@ -164,6 +164,10 @@
     "github": "https://github.com/virbicoin/vbc-explorer",
     "legacyUrls": []
   },
+  "images": {
+    "ipfsGateway": "https://ipfs.io/ipfs/",
+    "allowedHosts": []
+  },
   "network": {
     "chainId": 1,
     "name": "Ethereum Mainnet",
