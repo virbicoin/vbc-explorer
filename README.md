@@ -27,7 +27,7 @@
   <img src="https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js" alt="Next.js">
   <img src="https://img.shields.io/badge/TypeScript-7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript">
   <img src="https://img.shields.io/badge/Mongoose-9-47A248?style=flat-square&logo=mongodb&logoColor=white" alt="Mongoose">
-  <img src="https://img.shields.io/badge/Node.js-≥20-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js">
+  <img src="https://img.shields.io/badge/Node.js-22.18%2B%20%7C%2024.11%2B-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js">
   <img src="https://img.shields.io/badge/EIP--3091-Supported-brightgreen?style=flat-square" alt="EIP-3091">
   <a href="https://opensource.org/licenses/MIT">
     <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="License: MIT">
@@ -343,7 +343,7 @@ Edit `config.json` for your blockchain:
 
 ### Backend & API
 - **Next.js API Routes** - Serverless API endpoints
-- **Node.js 20+** - Runtime environment
+- **Node.js 22.18+ / 24.11+** - Runtime environment (Node 24 LTS recommended, see `.nvmrc`; Node 20 reached end-of-life on 2026-04-30)
 - **Web3.js v4+** - Ethereum blockchain interaction
 - **MongoDB 8+** - Document database for scalable data storage
 - **Mongoose 9+** - ODM for MongoDB with schema validation
@@ -795,7 +795,7 @@ For detailed security information, see [SECURITY.md](SECURITY.md).
 
 ### Prerequisites
 
-- **Node.js 18+** and npm
+- **Node.js 22.18+ or 24.11+** (Node 24 LTS recommended, see `.nvmrc`) and npm 10+
 - **MongoDB 6.0+** (8.0 recommended) running on localhost:27017
 - **EVM Node** running with RPC enabled (e.g., localhost:8545)
 - **PM2** installed globally: `npm install -g pm2`
@@ -889,7 +889,7 @@ pm2 restart explorer-stats
 
 ### Prerequisites
 
-- **Node.js 18+** and npm
+- **Node.js 22.18+ or 24.11+** (Node 24 LTS recommended, see `.nvmrc`) and npm 10+
 - **MongoDB 6.0+** with authentication enabled
 - **EVM Node** running with RPC enabled (e.g., localhost:8545)
 - **Minimum 4GB RAM** and **20GB storage** for full blockchain data
@@ -1991,7 +1991,7 @@ interface MetadataProvider {
 
 ### Docker Support
 ```dockerfile
-FROM node:18-alpine
+FROM node:24-alpine
 WORKDIR /app
 COPY package*.json ./
 RUN npm install

@@ -8,7 +8,7 @@ Practical instructions for AI coding agents working in this repository.
 - Do not duplicate long docs here; follow links in the Reference section.
 
 ## Quick Start
-- Requirements: Node.js >= 20, npm >= 8.
+- Requirements: Node.js 22.18+ or 24.11+ (Node 24 LTS per `.nvmrc`; Node 20 is end-of-life since 2026-04-30 and no longer satisfies Vitest 5 / Babel 8), npm >= 10.
 - Install: `npm install`
 - Dev server: `npm run dev`
 - Quality gate: `npm run check`
