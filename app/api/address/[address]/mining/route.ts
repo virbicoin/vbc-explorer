@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import Web3 from 'web3';
-import { connectDB } from '../../../../../models/index';
+import { connectDB, Block } from '../../../../../models/index';
 import fs from 'fs';
 import path from 'path';
 
@@ -26,22 +25,6 @@ const readConfig = () => {
     port: 8329,
   };
 };
-
-// Block schema
-const blockSchema = new mongoose.Schema(
-  {
-    number: Number,
-    hash: String,
-    miner: String,
-    timestamp: Date,
-    transactions: Number,
-    gasUsed: Number,
-    gasLimit: Number,
-  },
-  { collection: 'blocks' }
-);
-
-const Block = mongoose.models.Block || mongoose.model('Block', blockSchema);
 
 const config = readConfig();
 const web3 = new Web3(new Web3.providers.HttpProvider(`http://${config.nodeAddr}:${config.port}`));

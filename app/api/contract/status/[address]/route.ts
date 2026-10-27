@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, Contract } from '../../../../../models/index';
+import { connectDB, Contract, Transaction } from '../../../../../models/index';
 import Web3 from 'web3';
-import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
 
@@ -25,21 +24,6 @@ const readConfig = () => {
     port: 8329,
   };
 };
-
-// Transaction schema for querying creation tx
-const transactionSchema = new mongoose.Schema(
-  {
-    hash: String,
-    from: String,
-    to: String,
-    creates: String,
-    blockNumber: Number,
-    timestamp: Number,
-  },
-  { collection: 'Transaction' }
-);
-
-const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', transactionSchema);
 
 const config = readConfig();
 const web3 = new Web3(new Web3.providers.HttpProvider(`http://${config.nodeAddr}:${config.port}`));

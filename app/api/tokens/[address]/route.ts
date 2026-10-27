@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import { getChainStats } from '../../../../lib/stats';
-import { connectDB } from '../../../../models/index';
+import { connectDB, Token, TokenTransfer } from '../../../../models/index';
 import { requireDb } from '../../../../lib/db/get-db';
 import {
   getNftOwnershipFromDb,
@@ -265,41 +264,6 @@ const formatTokenAmount = (amount: string, decimals: number = 18, isNFT: boolean
     return numValue.toLocaleString();
   }
 };
-
-// Token schema - use existing schema from tools/addTestTokens.js
-const tokenSchema = new mongoose.Schema(
-  {
-    symbol: String,
-    name: String,
-    address: String,
-    holders: Number,
-    supply: String,
-    type: String,
-    decimals: { type: Number, default: 18 },
-    createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now },
-  },
-  { collection: 'tokens' }
-);
-
-// Token transfer schema
-const tokenTransferSchema = new mongoose.Schema(
-  {
-    transactionHash: String,
-    blockNumber: Number,
-    from: String,
-    to: String,
-    value: String,
-    tokenAddress: String,
-    timestamp: Date,
-    tokenId: Number, // Add tokenId field for NFT tokens
-  },
-  { collection: 'tokentransfers' }
-);
-
-const Token = mongoose.models.Token || mongoose.model('Token', tokenSchema);
-const TokenTransfer =
-  mongoose.models.TokenTransfer || mongoose.model('TokenTransfer', tokenTransferSchema);
 
 // Define a strict type for our token data to be used in this API route
 interface ApiToken {

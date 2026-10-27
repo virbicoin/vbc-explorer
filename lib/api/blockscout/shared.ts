@@ -7,10 +7,10 @@
  */
 
 import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import { createPublicClient, http } from 'viem';
 import { loadConfig } from '@/lib/config';
 import { getSecurityHeaders } from '@/lib/security';
+import { Token } from '@/models/index';
 
 /** Config shape with the supply section used by the stats/block handlers. */
 export interface ConfigWithSupply {
@@ -27,24 +27,8 @@ export interface ConfigWithSupply {
 
 export const configJson = loadConfig() as ConfigWithSupply;
 
-// Token schema defined here since it's not exported from models/index.
-const tokenSchema = new mongoose.Schema(
-  {
-    address: String,
-    name: String,
-    symbol: String,
-    decimals: { type: Number, default: 18 },
-    totalSupply: String,
-    holders: { type: Number, default: 0 },
-    type: String,
-    supply: String,
-    verified: { type: Boolean, default: false },
-    logoUrl: { type: String, default: null },
-  },
-  { collection: 'tokens' }
-);
-
-export const Token = mongoose.models.Token || mongoose.model('Token', tokenSchema);
+// Token model (collection `tokens`) shared by the blockscout handlers.
+export { Token };
 
 // RPC Client
 const RPC_URL =

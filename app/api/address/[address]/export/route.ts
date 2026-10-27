@@ -43,15 +43,24 @@ interface TxDoc {
   input?: string;
 }
 
+// Shape of the `tokentransfers` documents written by tools/tokens.ts
 interface TokenTransferDoc {
-  hash?: string;
+  transactionHash?: string;
   blockNumber?: number;
-  timestamp?: number;
+  timestamp?: Date | string | number;
   from?: string;
   to?: string;
-  contract?: string;
+  tokenAddress?: string;
   value?: string;
-  method?: string;
+  tokenId?: number;
+}
+
+/** tokentransfers.timestamp is a Date; the CSV wants Unix seconds. */
+function toUnixSeconds(value: Date | string | number | undefined): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'number') return value > 1e12 ? Math.floor(value / 1000) : value;
+  const ms = new Date(value).getTime();
+  return Number.isNaN(ms) ? undefined : Math.floor(ms / 1000);
 }
 
 function methodLabel(input: string | undefined, creates: string | undefined): string {
@@ -166,14 +175,14 @@ export async function GET(
       );
     } else {
       const docs = (await db
-        .collection('TokenTransfer')
+        .collection('tokentransfers')
         .find(query)
-        .sort({ blockNumber: 1 })
+        .sort({ timestamp: 1 })
         .limit(MAX_ROWS)
         .toArray()) as TokenTransferDoc[];
 
       // Resolve token name/symbol/decimals for every contract in one query
-      const contracts = [...new Set(docs.map((d) => (d.contract || '').toLowerCase()))].filter(
+      const contracts = [...new Set(docs.map((d) => (d.tokenAddress || '').toLowerCase()))].filter(
         Boolean
       );
       const tokenInfo = new Map<string, { name: string; symbol: string; decimals: number }>();
@@ -195,16 +204,17 @@ export async function GET(
       }
 
       const rows = docs.map((tr) => {
-        const info = tokenInfo.get((tr.contract || '').toLowerCase());
+        const info = tokenInfo.get((tr.tokenAddress || '').toLowerCase());
+        const unix = toUnixSeconds(tr.timestamp);
         return [
-          tr.hash || '',
+          tr.transactionHash || '',
           tr.blockNumber ?? '',
-          tr.timestamp ?? '',
-          formatCsvDateTime(tr.timestamp),
+          unix ?? '',
+          formatCsvDateTime(unix),
           tr.from || '',
           tr.to || '',
           formatUnitsExact(tr.value, info?.decimals ?? 18),
-          tr.contract || '',
+          tr.tokenAddress || '',
           info?.name || 'Unknown Token',
           info?.symbol || '???',
         ];

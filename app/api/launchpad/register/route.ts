@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import Web3 from 'web3';
-import { connectDB } from '../../../../models/index';
+import { connectDB, Token, TokenHolder } from '../../../../models/index';
 import { loadConfig } from '../../../../lib/config';
 
 // Load configuration
@@ -40,41 +39,6 @@ const ERC20_ABI = [
     type: 'function',
   },
 ] as const;
-
-// Define Token schema
-const tokenSchema = new mongoose.Schema(
-  {
-    address: String,
-    name: String,
-    symbol: String,
-    decimals: { type: Number, default: 18 },
-    totalSupply: String,
-    holders: { type: Number, default: 0 },
-    type: String,
-    supply: String,
-    verified: { type: Boolean, default: false },
-    createdAt: { type: Date, default: Date.now },
-    createdBy: String, // Creator address
-    source: String, // 'launchpad' or 'scan'
-  },
-  { collection: 'tokens' }
-);
-
-const Token = mongoose.models.Token || mongoose.model('Token', tokenSchema);
-
-// TokenHolder schema for initial holder registration
-const tokenHolderSchema = new mongoose.Schema(
-  {
-    tokenAddress: String,
-    holderAddress: String,
-    balance: String,
-    rank: { type: Number, default: 1 },
-    percentage: { type: Number, default: 100 },
-  },
-  { collection: 'tokenholders' }
-);
-
-const TokenHolder = mongoose.models.TokenHolder || mongoose.model('TokenHolder', tokenHolderSchema);
 
 export async function POST(request: NextRequest) {
   try {

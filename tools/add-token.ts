@@ -17,26 +17,8 @@ The tool will:
 
 import Web3 from 'web3';
 import mongoose from 'mongoose';
-import { connectDB, ensureIndexesOnStartup, Contract } from '../models/index';
+import { connectDB, ensureIndexesOnStartup, Contract, Token } from '../models/index';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
-
-// Define Token schema
-const tokenSchema = new mongoose.Schema(
-  {
-    address: String,
-    name: String,
-    symbol: String,
-    decimals: { type: Number, default: 18 },
-    totalSupply: String,
-    holders: { type: Number, default: 0 },
-    type: String,
-    supply: String,
-    verified: { type: Boolean, default: false },
-  },
-  { collection: 'tokens' }
-);
-
-const Token = mongoose.models.Token || mongoose.model('Token', tokenSchema);
 
 // ERC20 ABI
 const ERC20_ABI = [

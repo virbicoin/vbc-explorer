@@ -22,7 +22,9 @@ if (!process.env.MONGODB_URI) {
  *   (`mongoose.models.X || mongoose.model('X', schema)`) anywhere else;
  *   import them from here instead.
  * - Every collection name is set explicitly via `{ collection }` and matches
- *   the production database.
+ *   the production database (Block, Transaction, Account, Contract, BlockStat,
+ *   Market, DexSwap, VerificationJob, tokens, tokentransfers, tokenholders,
+ *   scan_progress).
  * - Indexes are declared on the schemas below and nowhere else. They are
  *   created explicitly by `ensureIndexes()` (called by the data-writing CLI
  *   tools on startup and by `npm run optimize-indexes`), never by `autoIndex`
@@ -106,17 +108,62 @@ export interface IContract extends Document {
   sourceCode: string;
   abi: string;
   byteCode: string;
+  verified: boolean;
+  verifiedAt?: Date;
 }
 
+/** Token metadata (collection `tokens`, written by tools/tokens.ts and the Launchpad APIs). */
+export interface IToken extends Document {
+  address: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  totalSupply: string;
+  holders: number;
+  type: string;
+  supply: string;
+  verified: boolean;
+  logoUrl: string | null;
+  metadata?: {
+    logoUrl?: string;
+    description?: string;
+    website?: string;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy?: string;
+  source?: string;
+}
+
+/** Token balance per holder (collection `tokenholders`). */
+export interface ITokenHolder extends Document {
+  tokenAddress: string;
+  holderAddress: string;
+  balance: string;
+  percentage: number;
+  rank: number;
+}
+
+/**
+ * ERC-20 / NFT Transfer event (collection `tokentransfers`, written by tools/tokens.ts).
+ * `tokenId` is only set for NFT transfers; `timestamp` is a Date.
+ */
 export interface ITokenTransfer extends Document {
-  hash: string;
-  blockNumber: number;
-  method: string;
+  tokenAddress: string;
+  transactionHash: string;
   from: string;
   to: string;
-  contract: string;
   value: string;
-  timestamp: number;
+  tokenId?: number;
+  blockNumber: number;
+  timestamp: Date;
+}
+
+/** Token scan progress of tools/tokens.ts (collection `scan_progress`). */
+export interface IScanProgress extends Document {
+  scanType: string;
+  lastScannedBlock: number;
+  lastUpdateTime: Date;
 }
 
 export interface IMarket extends Document {
@@ -244,18 +291,67 @@ const TransactionSchema = new Schema(
   { collection: 'Transaction' }
 );
 
+// Token Schema (collection `tokens`; superset of the fields every writer uses)
+const TokenSchema = new Schema(
+  {
+    address: { type: String, lowercase: true, index: { unique: true } },
+    name: String,
+    symbol: String,
+    decimals: { type: Number, default: 18 },
+    totalSupply: String,
+    holders: { type: Number, default: 0 },
+    type: String,
+    supply: String,
+    verified: { type: Boolean, default: false },
+    logoUrl: { type: String, default: null },
+    metadata: {
+      logoUrl: String,
+      description: String,
+      website: String,
+    },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+    createdBy: String, // Creator address (Launchpad)
+    source: String, // 'launchpad' or 'scan'
+  },
+  { collection: 'tokens' }
+);
+
+// Token Holder Schema (collection `tokenholders`)
+const TokenHolderSchema = new Schema(
+  {
+    tokenAddress: { type: String, lowercase: true },
+    holderAddress: { type: String, lowercase: true },
+    balance: String,
+    percentage: { type: Number, default: 100 },
+    rank: { type: Number, default: 1 },
+  },
+  { collection: 'tokenholders' }
+);
+
+// Token Transfer Schema (collection `tokentransfers`; written by tools/tokens.ts)
 const TokenTransferSchema = new Schema(
   {
-    hash: { type: String, index: { unique: true }, lowercase: true },
-    blockNumber: Number,
-    method: String,
+    tokenAddress: { type: String, lowercase: true },
+    transactionHash: { type: String, lowercase: true },
     from: { type: String, lowercase: true },
     to: { type: String, lowercase: true },
-    contract: { type: String, lowercase: true },
     value: String,
-    timestamp: Number,
+    tokenId: Number, // NFT only
+    blockNumber: Number,
+    timestamp: Date,
   },
-  { collection: 'TokenTransfer' }
+  { collection: 'tokentransfers' }
+);
+
+// Scan Progress Schema (collection `scan_progress`; tools/tokens.ts)
+const ScanProgressSchema = new Schema(
+  {
+    scanType: { type: String, index: { unique: true } }, // 'tokens' or 'vrc721'
+    lastScannedBlock: { type: Number, default: 0 },
+    lastUpdateTime: { type: Date, default: Date.now },
+  },
+  { collection: 'scan_progress' }
 );
 
 const BlockStatSchema = new Schema(
@@ -345,10 +441,21 @@ BlockSchema.index({ miner: 1 });
 BlockSchema.index({ miner: 1, number: -1 });
 BlockSchema.index({ hash: 1, number: -1 });
 MarketSchema.index({ timestamp: -1 });
-TokenTransferSchema.index({ blockNumber: -1 });
-TokenTransferSchema.index({ from: 1, blockNumber: -1 });
-TokenTransferSchema.index({ to: 1, blockNumber: -1 });
-TokenTransferSchema.index({ contract: 1, blockNumber: -1 });
+
+// tokentransfers: per-token history/first transfer (token API, NFT ownership),
+// per-address history (address API, CSV export), transfers of a transaction (tx API),
+// NFT sync upsert key (tools/tokens.ts: tokenAddress + tokenId + blockNumber + to).
+TokenTransferSchema.index({ tokenAddress: 1, timestamp: -1 });
+TokenTransferSchema.index({ from: 1, timestamp: -1 });
+TokenTransferSchema.index({ to: 1, timestamp: -1 });
+TokenTransferSchema.index({ transactionHash: 1 });
+TokenTransferSchema.index({ tokenAddress: 1, tokenId: 1, blockNumber: 1, to: 1 });
+
+// tokenholders: holder upsert key (tools/tokens.ts, Launchpad), holder ranking of a token
+// (token API sorts by `rank`), tokens held by an address (address API `tokens`).
+TokenHolderSchema.index({ tokenAddress: 1, holderAddress: 1 }, { unique: true });
+TokenHolderSchema.index({ tokenAddress: 1, rank: 1 });
+TokenHolderSchema.index({ holderAddress: 1 });
 
 // Database connection
 let connectionPromise: Promise<void> | null = null;
@@ -481,6 +588,11 @@ export const DexSwap =
 export const VerificationJob =
   mongoose.models.VerificationJob ||
   mongoose.model<IVerificationJob>('VerificationJob', VerificationJobSchema);
+export const Token = mongoose.models.Token || mongoose.model<IToken>('Token', TokenSchema);
+export const TokenHolder =
+  mongoose.models.TokenHolder || mongoose.model<ITokenHolder>('TokenHolder', TokenHolderSchema);
+export const ScanProgress =
+  mongoose.models.ScanProgress || mongoose.model<IScanProgress>('ScanProgress', ScanProgressSchema);
 
 /** Every model defined in this file (the set `ensureIndexes()` operates on). */
 export const ALL_MODELS: readonly AnyModel[] = [
@@ -492,10 +604,13 @@ export const ALL_MODELS: readonly AnyModel[] = [
   Market,
   DexSwap,
   VerificationJob,
+  Token,
+  TokenHolder,
   TokenTransfer,
+  ScanProgress,
 ];
 
-/** Model name → real collection name (e.g. `Block` → `Block`). */
+/** Model name → real collection name (e.g. `TokenTransfer` → `tokentransfers`). */
 export const MODEL_COLLECTIONS: Readonly<Record<string, string>> = Object.freeze(
   Object.fromEntries(ALL_MODELS.map((model) => [model.modelName, model.collection.name]))
 );
@@ -578,6 +693,9 @@ const models = {
   Market,
   DexSwap,
   VerificationJob,
+  Token,
+  TokenHolder,
+  ScanProgress,
 };
 
 export default models;

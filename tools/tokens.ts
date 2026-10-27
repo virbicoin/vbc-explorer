@@ -22,40 +22,6 @@ import {
   TokenTransfer,
 } from '../lib/services/nft.service';
 
-// Import additional models for token transfers and holders
-import '../models/index'; // Ensure all models are loaded
-
-// Define Token schema inline since it's not exported from models/index
-const tokenSchema = new mongoose.Schema(
-  {
-    address: String,
-    name: String,
-    symbol: String,
-    decimals: { type: Number, default: 18 },
-    totalSupply: String,
-    holders: { type: Number, default: 0 },
-    type: String,
-    supply: String,
-    verified: { type: Boolean, default: false },
-  },
-  { collection: 'tokens' }
-);
-
-const Token = mongoose.models.Token || mongoose.model('Token', tokenSchema);
-
-// Schema for tracking scan progress
-const scanProgressSchema = new mongoose.Schema(
-  {
-    scanType: { type: String, unique: true }, // 'tokens' or 'vrc721'
-    lastScannedBlock: { type: Number, default: 0 },
-    lastUpdateTime: { type: Date, default: Date.now },
-  },
-  { collection: 'scan_progress' }
-);
-
-const ScanProgress =
-  mongoose.models.ScanProgress || mongoose.model('ScanProgress', scanProgressSchema);
-
 // Basic VRC-721 (ERC721 Compatible) ABI for tokenURI and name
 const minimalErc721Abi = [
   {
@@ -88,7 +54,7 @@ const minimalErc721Abi = [
   },
 ];
 
-import { connectDB, ensureIndexesOnStartup, Contract } from '../models/index';
+import { connectDB, ensureIndexesOnStartup, Contract, Token, ScanProgress } from '../models/index';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
 
 // LP Token configuration - loaded from environment or fetched from factory

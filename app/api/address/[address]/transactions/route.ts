@@ -1,27 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
-import { connectDB } from '../../../../../models/index';
+import { connectDB, Transaction } from '../../../../../models/index';
 import { tryGetDb } from '../../../../../lib/db/get-db';
-
-// Transaction schema - use the correct collection name
-const transactionSchema = new mongoose.Schema(
-  {
-    hash: String,
-    from: String,
-    to: String,
-    value: String,
-    timestamp: Number,
-    blockNumber: Number,
-    input: String,
-    gasUsed: Number,
-    gasPrice: String,
-    status: Number,
-    nonce: Number,
-  },
-  { collection: 'Transaction' }
-);
-
-const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', transactionSchema);
 
 // Determine MetaMask-compliant transaction type
 const METHOD_IDS: Record<string, { type: string; action: string }> = {
