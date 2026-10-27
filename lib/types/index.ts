@@ -85,11 +85,12 @@ export interface Contract {
   verifiedAt?: Date;
 }
 
+/** `Contract.ERC` codes written by tools/sync.ts (see lib/contract/erc.ts). */
 export enum ERCType {
   Normal = 0,
   ERC20 = 2,
-  ERC721 = 3,
-  ERC1155 = 4,
+  ERC721 = 721,
+  ERC1155 = 1155,
 }
 
 // ============================================================================

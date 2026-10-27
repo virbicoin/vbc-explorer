@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getWeb3 } from '@/lib/web3/provider';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -15,7 +16,10 @@ interface PendingTransaction {
   input: string;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     const web3 = getWeb3();
 

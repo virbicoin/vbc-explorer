@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { loadConfig } from '../../../../lib/config';
 import { buildAddressTags, type AddressTagSources } from '../../../../lib/address-tags';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Type for tokenIcons config
 interface TokenIconEntry {
@@ -45,7 +46,10 @@ interface BridgeCfg {
   remote?: BridgeRemote;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     const config = loadConfig();
 

@@ -16,6 +16,7 @@ import {
   ShieldExclamationIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import DisplayName, { displayNameText } from '@/components/DisplayName';
 import { initializeCurrencyConfig, getCurrencySymbol } from '../../../lib/client-config';
 
 interface ContractData {
@@ -44,6 +45,8 @@ interface ContractData {
   tokenTotalSupply?: string;
   tokenHolders?: number;
   tokenType?: string;
+  /** Name flagged as spam (URL / control characters): a badge is shown instead of the name */
+  hidden?: boolean;
 }
 
 interface Transaction {
@@ -156,6 +159,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
       setContract({
         address: address,
         name: statusData.contractName || addressData.contract?.name || 'Unverified Contract',
+        hidden: addressData.contract?.hidden === true,
         verified: statusData.verified || false,
         compilerVersion: statusData.compilerVersion || null,
         optimization: statusData.optimization,
@@ -583,7 +587,19 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                     href={`/token/${address}`}
                     className="text-lg font-semibold text-purple-400 hover:text-purple-300 transition-colors"
                   >
-                    {contract.tokenType}: {contract.tokenName} ({contract.tokenSymbol})
+                    {contract.tokenType}:{' '}
+                    <DisplayName
+                      value={contract.tokenName}
+                      hidden={contract.hidden}
+                      address={address}
+                    />
+                    {!contract.hidden && (
+                      <>
+                        {' '}
+                        (
+                        <DisplayName value={contract.tokenSymbol} variant="symbol" fallback="" />)
+                      </>
+                    )}
                   </Link>
                 </div>
               </div>
@@ -733,7 +749,18 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       <span className="bg-purple-500/20 px-2 py-0.5 rounded text-xs">
                         {contract.tokenType}
                       </span>
-                      {contract.tokenName} ({contract.tokenSymbol})
+                      <DisplayName
+                        value={contract.tokenName}
+                        hidden={contract.hidden}
+                        address={address}
+                      />
+                      {!contract.hidden && (
+                        <>
+                          {' '}
+                          (
+                          <DisplayName value={contract.tokenSymbol} variant="symbol" fallback="" />)
+                        </>
+                      )}
                     </Link>
                   </div>
                 )}
@@ -859,7 +886,12 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                         <div className="bg-gray-800 rounded p-3">
                           <div className="text-gray-400 text-sm">Contract Name</div>
                           <div className="text-gray-200 font-medium">
-                            {contract.name || 'Unknown'}
+                            <DisplayName
+                              value={contract.name}
+                              hidden={contract.hidden}
+                              address={address}
+                              fallback="Unknown"
+                            />
                           </div>
                         </div>
                         <div className="bg-gray-800 rounded p-3">

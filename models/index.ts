@@ -110,6 +110,9 @@ export interface IContract extends Document {
   byteCode: string;
   verified: boolean;
   verifiedAt?: Date;
+  /** Hidden from lists (name/symbol looks like a URL, control chars, HTML, too long, or manual). */
+  hidden?: boolean;
+  hiddenReason?: string | null;
 }
 
 /** Token metadata (collection `tokens`, written by tools/tokens.ts and the Launchpad APIs). */
@@ -133,6 +136,9 @@ export interface IToken extends Document {
   updatedAt: Date;
   createdBy?: string;
   source?: string;
+  /** Hidden from lists (see lib/security/display-name.ts). */
+  hidden?: boolean;
+  hiddenReason?: string | null;
 }
 
 /** Token balance per holder (collection `tokenholders`). */
@@ -159,11 +165,16 @@ export interface ITokenTransfer extends Document {
   timestamp: Date;
 }
 
-/** Token scan progress of tools/tokens.ts (collection `scan_progress`). */
+/**
+ * Progress markers (collection `scan_progress`): `tokens` (tools/tokens.ts),
+ * `sync` (live listener position), `reorg-pending` (reorg deeper than
+ * maxReorgDepth, with the range in `meta`), `repair` (tools/repair-chain.ts).
+ */
 export interface IScanProgress extends Document {
   scanType: string;
   lastScannedBlock: number;
   lastUpdateTime: Date;
+  meta?: Record<string, unknown> | null;
 }
 
 export interface IMarket extends Document {
@@ -266,6 +277,8 @@ const ContractSchema = new Schema(
     byteCode: String,
     verified: { type: Boolean, default: false },
     verifiedAt: { type: Date },
+    hidden: { type: Boolean, default: false },
+    hiddenReason: { type: String, default: null },
   },
   { collection: 'Contract' }
 );
@@ -313,6 +326,8 @@ const TokenSchema = new Schema(
     updatedAt: { type: Date, default: Date.now },
     createdBy: String, // Creator address (Launchpad)
     source: String, // 'launchpad' or 'scan'
+    hidden: { type: Boolean, default: false },
+    hiddenReason: { type: String, default: null },
   },
   { collection: 'tokens' }
 );
@@ -347,9 +362,10 @@ const TokenTransferSchema = new Schema(
 // Scan Progress Schema (collection `scan_progress`; tools/tokens.ts)
 const ScanProgressSchema = new Schema(
   {
-    scanType: { type: String, index: { unique: true } }, // 'tokens' or 'vrc721'
+    scanType: { type: String, index: { unique: true } }, // 'tokens' | 'sync' | 'reorg-pending' | 'repair'
     lastScannedBlock: { type: Number, default: 0 },
     lastUpdateTime: { type: Date, default: Date.now },
+    meta: { type: Schema.Types.Mixed, default: null },
   },
   { collection: 'scan_progress' }
 );
@@ -449,6 +465,10 @@ TransactionSchema.index({ timestamp: -1 });
 
 // Account: richlist `$match: { balance: { $gt: '0' } }`.
 AccountSchema.index({ balance: -1 });
+
+// Contract / tokens: list APIs filter `hidden: { $ne: true }` (spam-name flag).
+ContractSchema.index({ hidden: 1 });
+TokenSchema.index({ hidden: 1 });
 
 // Market: latest price lookups (`findOne().sort({ timestamp: -1 })`).
 MarketSchema.index({ timestamp: -1 });

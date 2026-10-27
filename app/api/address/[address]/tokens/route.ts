@@ -7,6 +7,7 @@ import {
   getClientIp,
   getSecurityHeaders,
 } from '../../../../../lib/security';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Get shared Web3 instance
 const web3 = getWeb3();
@@ -39,18 +40,8 @@ export async function GET(
   { params }: { params: Promise<{ address: string }> }
 ) {
   try {
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`address-tokens:${clientIp}`, 60, 30);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        {
-          status: 429,
-          headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) },
-        }
-      );
-    }
+    const limited = enforceRateLimit(request, 'api');
+    if (limited) return limited;
 
     const { address: rawAddress } = await params;
 
@@ -72,22 +63,28 @@ export async function GET(
     }).lean();
 
     // Filter out zero balances
-    const nonZeroHoldings = holdings.filter((h) => {
+    const positiveHoldings = holdings.filter((h) => {
       const balance = BigInt(h.balance || '0');
       return balance > 0n;
     });
 
     // Get token info for each holding
-    const tokenAddresses = nonZeroHoldings.map((h) => h.tokenAddress);
+    const tokenAddresses = positiveHoldings.map((h) => h.tokenAddress);
     const tokens = await Token.find({
       address: { $in: tokenAddresses.map((a) => a.toLowerCase()) },
     }).lean();
 
-    // Create token info map
+    // Create token info map; tokens flagged hidden (spam names) are dropped from the holdings
     const tokenMap = new Map<string, (typeof tokens)[0]>();
+    const hiddenTokens = new Set<string>();
     for (const token of tokens) {
-      tokenMap.set(token.address.toLowerCase(), token);
+      const addr = token.address.toLowerCase();
+      if (token.hidden) hiddenTokens.add(addr);
+      else tokenMap.set(addr, token);
     }
+    const nonZeroHoldings = positiveHoldings.filter(
+      (h) => !hiddenTokens.has(h.tokenAddress.toLowerCase())
+    );
 
     // Build response with token details (fetch logoUrl from onchain if not in DB)
     const tokenHoldings = await Promise.all(

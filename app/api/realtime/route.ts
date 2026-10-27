@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Block, Transaction } from '../../../models/index';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 /**
  * Lightweight API endpoint for real-time updates
@@ -108,7 +109,10 @@ async function updateCacheInBackground() {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   const now = Date.now();
 
   try {

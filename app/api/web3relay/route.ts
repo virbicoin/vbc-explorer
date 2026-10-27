@@ -5,6 +5,7 @@ import { connectToDatabase } from '@/lib/db';
 import { toEther, toGwei } from '@/lib/etherUnits';
 import fs from 'fs';
 import path from 'path';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Function to read config
 const readConfig = () => {
@@ -39,6 +40,9 @@ const web3 = new Web3(
 );
 
 export async function POST(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'relay');
+  if (limited) return limited;
+
   try {
     await connectToDatabase();
 

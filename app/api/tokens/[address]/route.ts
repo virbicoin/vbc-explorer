@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getChainStats } from '../../../../lib/stats';
-import { connectDB, Token, TokenTransfer } from '../../../../models/index';
+import { connectDB, Contract, Token, TokenTransfer } from '../../../../models/index';
+import { fetchNftMetadata, type NftMetadata } from '../../../../lib/services/nft-metadata.service';
+import {
+  ERC721_INTERFACE_ID,
+  ERC1155_INTERFACE_ID,
+  isFungibleErcCode,
+  isFungibleTokenType,
+  isNftErcCode,
+  isNftTokenType,
+} from '../../../../lib/contract/erc';
 import { requireDb } from '../../../../lib/db/get-db';
 import {
   getNftOwnershipFromDb,
@@ -19,6 +28,7 @@ import {
   getClientIp,
   getSecurityHeaders,
 } from '../../../../lib/security';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Get shared Web3 instance
 const web3 = getWeb3();
@@ -133,92 +143,102 @@ async function fetchERC20Info(tokenAddress: string): Promise<{
   }
 }
 
-// Function to fetch NFT metadata from tokenURI
+// ERC-165 `supportsInterface` (on-chain NFT detection when the DB has no classification)
+const ERC165_ABI = [
+  {
+    inputs: [{ name: 'interfaceId', type: 'bytes4' }],
+    name: 'supportsInterface',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+/**
+ * Is the contract an NFT (ERC-721 / ERC-1155)? The DB classification written
+ * by tools/sync.ts wins; only an unclassified contract is asked on-chain via
+ * ERC-165. Fungible tokens never reach tokenURI.
+ */
+async function isNftContract(address: string): Promise<boolean> {
+  const contract = (await Contract.findOne({ address }).select('ERC type').lean()) as {
+    ERC?: unknown;
+    type?: unknown;
+  } | null;
+  if (contract) {
+    if (isNftErcCode(contract.ERC) || isNftTokenType(contract.type)) return true;
+    if (isFungibleErcCode(contract.ERC) || isFungibleTokenType(contract.type)) return false;
+  }
+  const token = (await Token.findOne({ address }).select('type').lean()) as {
+    type?: unknown;
+  } | null;
+  if (token) {
+    if (isNftTokenType(token.type)) return true;
+    if (isFungibleTokenType(token.type)) return false;
+  }
+
+  try {
+    const erc165 = new web3.eth.Contract(ERC165_ABI, address);
+    for (const interfaceId of [ERC721_INTERFACE_ID, ERC1155_INTERFACE_ID]) {
+      try {
+        const supported = await withTimeout(
+          erc165.methods.supportsInterface(interfaceId).call(),
+          5000
+        );
+        if (supported === true) return true;
+      } catch {
+        // not ERC-165 compliant or the call failed: keep checking
+      }
+    }
+  } catch {
+    // contract instantiation failed
+  }
+  return false;
+}
+
+/** `tokenURI(tokenId)` via eth_call; null when the contract has no tokenURI. */
+async function readTokenUri(address: string, tokenId: number): Promise<string | null> {
+  if (!web3 || !web3.eth) return null;
+  try {
+    const contract = new web3.eth.Contract(ERC721_ABI, address);
+    const uri = await withTimeout(contract.methods.tokenURI(tokenId).call(), 5000);
+    return typeof uri === 'string' && uri !== '' ? uri : null;
+  } catch (uriError) {
+    console.error('Error calling tokenURI:', uriError);
+    return null;
+  }
+}
+
+/**
+ * NFT metadata for a tokenId. tokenURI is read only for NFT contracts and the
+ * document is fetched only through safeFetchJson (https, public addresses,
+ * no redirects, size/content-type limits) and reduced to the known fields.
+ */
 async function fetchNFTMetadata(
   tokenAddress: string,
   tokenId: number
-): Promise<{ metadata: any; tokenURI: string | null }> {
-  try {
-    // Check if web3 is properly initialized
-    if (!web3 || !web3.eth) {
-      console.error('Web3 not properly initialized');
-      return { metadata: null, tokenURI: null };
-    }
-
-    // First try to get tokenURI from blockchain
-    const contract = new web3.eth.Contract(ERC721_ABI, tokenAddress);
-    let tokenURI: string | null = null;
-    try {
-      tokenURI = await contract.methods.tokenURI(tokenId).call();
-    } catch (uriError) {
-      console.error('Error calling tokenURI:', uriError);
-    }
-
-    if (tokenURI && tokenURI !== '') {
-      // If it's an HTTP URL, fetch the metadata
-      if (tokenURI.startsWith('http://') || tokenURI.startsWith('https://')) {
-        try {
-          const response = await fetch(tokenURI, {
-            headers: {
-              'User-Agent': 'VBC-Explorer/1.0',
-            },
-            // Add timeout to prevent hanging requests
-            signal: AbortSignal.timeout(5000), // 5 second timeout
-          });
-
-          if (response.ok) {
-            const metadata = await response.json();
-            return { metadata, tokenURI };
-          } else {
-            // If the original URI fails, try fallback with tokenId
-            // e.g., https://example.com/metadata/test.json -> https://example.com/metadata/{tokenId}.json
-            const fallbackURI = tokenURI.replace(/\/[^\/]+\.json$/, `/${tokenId}.json`);
-            if (fallbackURI !== tokenURI) {
-              console.log(`Trying fallback URI: ${fallbackURI}`);
-              try {
-                const fallbackResponse = await fetch(fallbackURI, {
-                  headers: { 'User-Agent': 'VBC-Explorer/1.0' },
-                  signal: AbortSignal.timeout(5000),
-                });
-                if (fallbackResponse.ok) {
-                  const metadata = await fallbackResponse.json();
-                  return { metadata, tokenURI: fallbackURI };
-                }
-              } catch (fallbackError) {
-                console.error('Fallback fetch also failed:', fallbackError);
-              }
-            }
-          }
-        } catch (fetchError) {
-          console.error('Error fetching metadata from URL:', fetchError);
-          // Try fallback URL
-          const fallbackURI = tokenURI.replace(/\/[^\/]+\.json$/, `/${tokenId}.json`);
-          if (fallbackURI !== tokenURI) {
-            console.log(`Trying fallback URI after error: ${fallbackURI}`);
-            try {
-              const fallbackResponse = await fetch(fallbackURI, {
-                headers: { 'User-Agent': 'VBC-Explorer/1.0' },
-                signal: AbortSignal.timeout(5000),
-              });
-              if (fallbackResponse.ok) {
-                const metadata = await fallbackResponse.json();
-                return { metadata, tokenURI: fallbackURI };
-              }
-            } catch (fallbackError) {
-              console.error('Fallback fetch also failed:', fallbackError);
-            }
-          }
-        }
-      }
-      // Return tokenURI even if it's not an HTTP URL or fetch failed
-      return { metadata: null, tokenURI };
-    }
-
-    return { metadata: null, tokenURI };
-  } catch (error) {
-    console.error('Error fetching NFT metadata:', error);
-    return { metadata: null, tokenURI: null };
-  }
+): Promise<{ metadata: NftMetadata | null; tokenURI: string | null }> {
+  const { metadata, tokenURI } = await fetchNftMetadata(tokenAddress, tokenId, {
+    isNftContract,
+    readTokenUri,
+    ipfsGateway: config.images?.ipfsGateway,
+  });
+  return { metadata, tokenURI };
 }
 
 // Format token amount with proper decimal handling
@@ -286,18 +306,12 @@ export async function GET(
 ) {
   // ZERO_ADDR and DEAD_ADDR are imported from nft.service
   try {
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`tokens:${clientIp}`, 60, 10);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        {
-          status: 429,
-          headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) },
-        }
-      );
-    }
+    // tokenId requests read tokenURI and fetch external metadata: stricter bucket
+    const limited = enforceRateLimit(
+      request,
+      new URL(request.url).searchParams.get('tokenId') ? 'tokenMetadata' : 'api'
+    );
+    if (limited) return limited;
 
     await connectDB();
     const { address: rawAddress } = await params;
@@ -1232,6 +1246,9 @@ export async function GET(
           address: token.address,
           name: token.name,
           symbol: token.symbol,
+          hidden: (token as Record<string, unknown>).hidden === true,
+          hiddenReason:
+            ((token as Record<string, unknown>).hiddenReason as string | undefined) || null,
           type: token.type,
           decimals: Number(token.decimals ?? 0),
           totalSupply: actualNftSupply,
@@ -1331,6 +1348,9 @@ export async function GET(
         address: token.address,
         name: token.name,
         symbol: token.symbol,
+        hidden: (token as Record<string, unknown>).hidden === true,
+        hiddenReason:
+          ((token as Record<string, unknown>).hiddenReason as string | undefined) || null,
         type: token.type,
         isNFT: isNFT,
         decimals: Number(token.decimals ?? (isNFT ? 0 : 18)),

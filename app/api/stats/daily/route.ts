@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '../../../../lib/db';
 import { tryGetDb } from '../../../../lib/db/get-db';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,9 @@ const lastFetchTime: { [key: string]: number } = {};
 const CACHE_DURATION = 300000; // 5 minutes
 
 export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const period = searchParams.get('period') || '7d';

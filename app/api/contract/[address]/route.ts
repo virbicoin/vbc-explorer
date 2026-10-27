@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Contract } from '@/lib/models';
 import { connectToDatabase } from '@/lib/db';
 import { isValidAddress, checkRateLimit, getClientIp } from '@/lib/security/validation';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 export async function GET(
   request: NextRequest,
@@ -36,15 +37,8 @@ export async function GET(
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate limiting - 10 requests per minute
-    const clientIp = getClientIp(request);
-    const rateLimitResult = checkRateLimit(`contract:post:${clientIp}`, 10, 0.17);
-    if (!rateLimitResult.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: rateLimitResult.resetIn },
-        { status: 429 }
-      );
-    }
+    const limited = enforceRateLimit(request, 'contractWrite');
+    if (limited) return limited;
 
     await connectToDatabase();
 

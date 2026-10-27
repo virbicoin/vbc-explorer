@@ -3,6 +3,7 @@ import { weiToVBC } from '../../../lib/bigint-utils';
 import { connectDB } from '../../../models/index';
 import { getTransactionTypeGlobal, TransactionTypeResult } from '../../../lib/transaction-utils';
 import { tryGetDb } from '../../../lib/db/get-db';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Transaction cache
 interface CacheEntry {
@@ -144,6 +145,9 @@ async function updateCacheInBackground(
 }
 
 export async function GET(request: Request) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   const startTime = Date.now();
 
   try {

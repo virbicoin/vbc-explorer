@@ -1,6 +1,41 @@
 import type { NextConfig } from 'next';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+/**
+ * Hostnames next/image is allowed to optimize (fetch server-side): the
+ * explorer's own host, the IPFS gateway and `images.allowedHosts` from
+ * config.json. Chain-derived logo / metadata images are rendered with
+ * `unoptimized`, so the optimizer never fetches an arbitrary host.
+ */
+function imageRemotePatterns(): Array<{ protocol: 'https'; hostname: string }> {
+  const hosts = new Set<string>();
+  const add = (value: unknown) => {
+    if (typeof value !== 'string' || !value) return;
+    try {
+      hosts.add(new URL(value.includes('://') ? value : `https://${value}`).hostname);
+    } catch {
+      // ignore malformed entries
+    }
+  };
+  for (const file of ['config.json', 'config.example.json']) {
+    const configPath = path.join(process.cwd(), file);
+    if (!fs.existsSync(configPath)) continue;
+    try {
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      add(cfg?.explorer?.url);
+      add(cfg?.images?.ipfsGateway ?? 'https://ipfs.io/ipfs/');
+      for (const host of cfg?.images?.allowedHosts ?? []) add(host);
+    } catch {
+      // ignore malformed config
+    }
+    break;
+  }
+  if (hosts.size === 0) add('https://ipfs.io/ipfs/');
+  return [...hosts].map((hostname) => ({ protocol: 'https', hostname }));
+}
 
 const nextConfig: NextConfig = {
   // Next.js 16でTurbopackがデフォルトのため、空のturbopack設定を追加
@@ -97,14 +132,9 @@ const nextConfig: NextConfig = {
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
-    // Allow any https domain for Launchpad token images
-    // Security is enforced via URL validation in lib/security/validation.ts
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**',
-      },
-    ],
+    // Only the explorer host, the IPFS gateway and config `images.allowedHosts`
+    // may be optimized; chain-derived images use `unoptimized` (see imageRemotePatterns)
+    remotePatterns: imageRemotePatterns(),
   },
   /* config options here */
 };

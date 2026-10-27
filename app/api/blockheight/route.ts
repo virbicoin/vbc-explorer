@@ -1,8 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getWeb3 } from '../../../lib/web3';
 import { apiCache, CACHE_TTL } from '../../../lib/cache';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     // Cache block height for 5 seconds
     const blockNumber = await apiCache.getOrSet(

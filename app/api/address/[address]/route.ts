@@ -11,6 +11,7 @@ import {
   getClientIp,
   getSecurityHeaders,
 } from '../../../../lib/security';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Load config for known contract names
 const config = loadConfig();
@@ -132,18 +133,8 @@ export async function GET(
   { params }: { params: Promise<{ address: string }> }
 ) {
   try {
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`address:${clientIp}`, 60, 10);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        {
-          status: 429,
-          headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) },
-        }
-      );
-    }
+    const limited = enforceRateLimit(request, 'api');
+    if (limited) return limited;
 
     await connectDB();
   } catch (dbError) {
@@ -499,7 +490,7 @@ export async function GET(
   ].filter(Boolean);
   const tokenInfoMap = new Map<
     string,
-    { name: string; symbol: string; decimals: number; type: string }
+    { name: string; symbol: string; decimals: number; type: string; hidden: boolean }
   >();
 
   if (db && tokenAddresses.length > 0) {
@@ -521,6 +512,7 @@ export async function GET(
           // Use nullish coalescing to handle decimals=0 correctly
           decimals: (t.decimals as number) ?? 18,
           type: (t.type as string) || 'VRC-20',
+          hidden: t.hidden === true,
         });
       }
     }
@@ -598,6 +590,7 @@ export async function GET(
     gasPrice?: string;
     input?: string;
     tokenInfo?: {
+      hidden?: boolean;
       address: string;
       name: string;
       symbol: string;
@@ -686,6 +679,7 @@ export async function GET(
       const tokenInfo = tokenInfoMap.get(tokenAddr);
 
       formatted.tokenInfo = {
+        hidden: tokenInfo?.hidden ?? false,
         address: tt.tokenAddress as string,
         name: tokenInfo?.name || 'Unknown Token',
         symbol: tokenInfo?.symbol || '???',
@@ -776,6 +770,7 @@ export async function GET(
       direction,
       status: 'success',
       tokenInfo: {
+        hidden: tokenInfo?.hidden ?? false,
         address: t.tokenAddress as string,
         name: tokenInfo?.name || 'Unknown Token',
         symbol: tokenInfo?.symbol || '???',
@@ -837,6 +832,8 @@ export async function GET(
       address: contractObj.address,
       name: contractObj.contractName || contractObj.tokenName || 'Unknown Contract',
       symbol: contractObj.symbol || '',
+      hidden: contractObj.hidden === true,
+      hiddenReason: contractObj.hiddenReason || null,
       type: contractObj.ERC === 2 ? 'ERC20' : contractObj.ERC === 3 ? 'ERC223' : 'Contract',
       decimals: contractObj.decimals || 0,
       totalSupply: contractObj.totalSupply || 0,

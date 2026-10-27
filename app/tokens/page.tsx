@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import Image from 'next/image';
+import DisplayName, { displayNameText } from '@/components/DisplayName';
 import { CubeTransparentIcon, CheckCircleIcon, PhotoIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState } from 'react';
 import {
@@ -23,6 +24,7 @@ type Token = {
   verified?: boolean;
   decimals?: number;
   logoUrl?: string;
+  hidden?: boolean;
 };
 
 // Check if token is an NFT (ERC721/ERC1155)
@@ -338,7 +340,7 @@ export default function TokensPage() {
                               {iconUrl ? (
                                 <Image
                                   src={iconUrl}
-                                  alt={token.symbol}
+                                  alt={displayNameText(token.symbol, { variant: 'symbol' })}
                                   width={28}
                                   height={28}
                                   className="object-contain"
@@ -351,8 +353,19 @@ export default function TokensPage() {
                               )}
                             </div>
                             <div>
-                              <div className="font-bold text-gray-200">{token.symbol}</div>
-                              <div className="text-sm text-gray-400">{token.name}</div>
+                              <div className="font-bold text-gray-200">
+                                <DisplayName
+                                  value={token.symbol}
+                                  variant="symbol"
+                                  hidden={token.hidden}
+                                  address={token.address}
+                                />
+                              </div>
+                              {!token.hidden && (
+                                <div className="text-sm text-gray-400">
+                                  <DisplayName value={token.name} />
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>

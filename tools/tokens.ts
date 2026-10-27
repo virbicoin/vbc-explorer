@@ -56,6 +56,7 @@ const minimalErc721Abi = [
 
 import { connectDB, ensureIndexesOnStartup, Contract, Token, ScanProgress } from '../models/index';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
+import { hiddenFields } from '../lib/security/display-name';
 
 // LP Token configuration - loaded from environment or fetched from factory
 const LP_TOKEN_TYPES = ['LP', 'SLP', 'SLP-V2', 'UNI-V2', 'CAKE-LP'] as const;
@@ -919,6 +920,7 @@ async function scanForTokens() {
                       type: 'VRC-20',
                       holders: 0,
                       supply: totalSupply.toString(),
+                      ...hiddenFields({ name, symbol }),
                     });
                     await newToken.save();
 
@@ -933,6 +935,7 @@ async function scanForTokens() {
                           contractName: name,
                           tokenName: name,
                           symbol: symbol,
+                          ...hiddenFields({ name, symbol }),
                           decimals: Number(decimals),
                           totalSupply: Number(totalSupply),
                           ERC: 2, // ERC20 = 2
@@ -994,6 +997,7 @@ async function scanForTokens() {
                         type: 'VRC-721',
                         holders: 0,
                         supply: totalSupply.toString(),
+                        ...hiddenFields({ name: String(name ?? ''), symbol: String(symbol ?? '') }),
                       });
                       await newToken.save();
 
@@ -1008,6 +1012,10 @@ async function scanForTokens() {
                             contractName: name,
                             tokenName: name,
                             symbol: symbol,
+                            ...hiddenFields({
+                              name: String(name ?? ''),
+                              symbol: String(symbol ?? ''),
+                            }),
                             decimals: 0,
                             totalSupply: 0,
                             ERC: 3, // VRC-721 = 3 (similar to ERC721)
@@ -1354,6 +1362,7 @@ async function syncLPTokensFromFactory() {
           type: 'LP',
           holders: 0,
           verified: true,
+          ...hiddenFields({ name: pairInfo.name, symbol: pairInfo.symbol }),
         };
 
         await db

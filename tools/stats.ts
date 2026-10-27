@@ -103,8 +103,8 @@ interface BlockStatData {
 // Configuration
 const config = loadConfig();
 
-// Initialize database connection after config is loaded
-initDB();
+// The database connection is opened by main() (standalone) or by tools/sync.ts (stats mode);
+// connecting at import time made sync.ts run the stats initializer for every mode.
 
 console.log(`🔌 Connecting to VirBiCoin node ${getWeb3ProviderURL()}...`);
 

@@ -4,6 +4,7 @@ import Web3 from 'web3';
 import fs from 'fs';
 import path from 'path';
 import { checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Function to read config
 const readConfig = () => {
@@ -38,15 +39,8 @@ const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
 // Blockscout API v2 - Get stats
 export async function GET(request: NextRequest) {
   try {
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`stats:${clientIp}`, 100, 60);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { message: 'Rate limit exceeded' },
-        { status: 429, headers: getSecurityHeaders() }
-      );
-    }
+    const limited = enforceRateLimit(request, 'api', { format: 'v2' });
+    if (limited) return limited;
 
     await connectDB();
 
@@ -61,7 +55,10 @@ export async function GET(request: NextRequest) {
     const totalAddresses = await Account.countDocuments({});
 
     // Get verified contracts count
-    const verifiedContracts = await Contract.countDocuments({ verified: true });
+    const verifiedContracts = await Contract.countDocuments({
+      verified: true,
+      hidden: { $ne: true },
+    });
 
     // Calculate total supply
     const blockReward = config.supply?.blockReward || 8;

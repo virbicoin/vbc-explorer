@@ -4,6 +4,7 @@ import { use } from 'react';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import DisplayName, { displayNameText } from '@/components/DisplayName';
 import Image from 'next/image';
 import {
   UserIcon,
@@ -51,6 +52,7 @@ interface Contract {
   address: string;
   name: string;
   symbol: string;
+  hidden?: boolean;
   type: string;
   decimals: number;
   totalSupply: string;
@@ -86,6 +88,7 @@ interface TokenHolding {
   percentage?: number;
   rank?: number;
   logoUrl?: string | null;
+  hidden?: boolean;
 }
 
 export default function AddressPage({ params }: { params: Promise<{ address: string }> }) {
@@ -278,12 +281,15 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
 
   const getAddressName = () => {
     // Contract case
+    if (contract?.hidden) {
+      return displayNameText(contract.name, { hidden: true, address: resolvedParams.address });
+    }
     if (
       contract?.name &&
       contract.name !== 'Unknown Contract' &&
       contract.name !== 'Unverified Contract'
     ) {
-      return contract.name;
+      return displayNameText(contract.name);
     }
 
     // Pool address case
@@ -370,7 +376,19 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
               )}
             </div>
             <p className="text-gray-400">
-              {contract?.name || 'Smart Contract'} {contract?.symbol ? `(${contract.symbol})` : ''}{' '}
+              <DisplayName
+                value={contract?.name}
+                hidden={contract?.hidden}
+                address={resolvedParams.address}
+                fallback="Smart Contract"
+              />{' '}
+              {contract?.symbol && !contract?.hidden ? (
+                <>
+                  (<DisplayName value={contract.symbol} variant="symbol" fallback="" />)
+                </>
+              ) : (
+                ''
+              )}{' '}
               - {formatAddress(resolvedParams.address)}
             </p>
           </div>
@@ -762,7 +780,13 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                       <div className="grid grid-cols-3 gap-4 mb-4">
                         <div className="bg-gray-700/50 rounded p-3">
                           <div className="text-gray-400 text-sm">Contract Name</div>
-                          <div className="text-gray-200 font-medium">{contract.name}</div>
+                          <div className="text-gray-200 font-medium">
+                            <DisplayName
+                              value={contract.name}
+                              hidden={contract.hidden}
+                              address={resolvedParams.address}
+                            />
+                          </div>
                         </div>
                         <div className="bg-gray-700/50 rounded p-3">
                           <div className="text-gray-400 text-sm">Compiler</div>
@@ -1373,8 +1397,18 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                                       )}
                                     </div>
                                     <div>
-                                      <div className="font-medium">{token.name}</div>
-                                      <div className="text-xs text-gray-400">{token.symbol}</div>
+                                      <div className="font-medium">
+                                        <DisplayName
+                                          value={token.name}
+                                          hidden={token.hidden}
+                                          address={token.address}
+                                        />
+                                      </div>
+                                      {!token.hidden && (
+                                        <div className="text-xs text-gray-400">
+                                          <DisplayName value={token.symbol} variant="symbol" />
+                                        </div>
+                                      )}
                                     </div>
                                   </Link>
                                 </td>
@@ -1487,7 +1521,13 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                                     href={`/token/${tx.tokenInfo.address}`}
                                     className="text-purple-400 hover:text-purple-300 text-sm transition-colors"
                                   >
-                                    {tx.tokenInfo.symbol || tx.tokenInfo.name || 'Unknown'}
+                                    <DisplayName
+                                      value={tx.tokenInfo.symbol || tx.tokenInfo.name}
+                                      variant="symbol"
+                                      hidden={(tx.tokenInfo as { hidden?: boolean }).hidden}
+                                      address={tx.tokenInfo.address}
+                                      fallback="Unknown"
+                                    />
                                   </Link>
                                 ) : (
                                   <span className="text-gray-400">-</span>

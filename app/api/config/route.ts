@@ -1,7 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { loadConfig } from '../../../lib/config';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     const config = loadConfig();
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Block, Transaction } from '@/models/index';
 import { checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Blockscout API v2 - Get block by number or hash
 export async function GET(
@@ -10,15 +11,8 @@ export async function GET(
   try {
     const { numberOrHash } = await params;
 
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`block:${clientIp}`, 100, 60);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { message: 'Rate limit exceeded' },
-        { status: 429, headers: getSecurityHeaders() }
-      );
-    }
+    const limited = enforceRateLimit(request, 'api', { format: 'v2' });
+    if (limited) return limited;
 
     await connectDB();
 

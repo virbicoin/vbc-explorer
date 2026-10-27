@@ -66,21 +66,15 @@ import {
   proxyEthEstimateGas,
 } from '@/lib/api/blockscout/proxy';
 import { verifySourceCode, checkVerifyStatus } from '@/lib/api/blockscout/verification';
+import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
 
 // ============================================
 // Main Handler
 // ============================================
 
 export async function GET(request: NextRequest) {
-  // Rate limiting
-  const clientIp = getClientIp(request);
-  const rateLimit = checkRateLimit(`blockscout-api:${clientIp}`, 100, 20);
-  if (!rateLimit.allowed) {
-    return NextResponse.json(
-      { status: '0', message: 'Rate limit exceeded', result: null },
-      { status: 429, headers: getSecurityHeaders() }
-    );
-  }
+  const limited = enforceRateLimit(request, 'api', { format: 'etherscan' });
+  if (limited) return limited;
 
   const { searchParams } = new URL(request.url);
   const apiModule = searchParams.get('module')?.toLowerCase();
@@ -376,80 +370,74 @@ export async function GET(request: NextRequest) {
 }
 
 // POST Handler for contract verification (Etherscan/Hardhat compatible)
-export async function POST(request: NextRequest) {
-  // Rate limiting - stricter for verification
-  const clientIp = getClientIp(request);
-  const rateLimit = checkRateLimit(`verify-api:${clientIp}`, 10, 60); // 10 requests per minute
-  if (!rateLimit.allowed) {
-    return NextResponse.json(
-      { status: '0', message: 'Rate limit exceeded', result: null },
-      { status: 429, headers: getSecurityHeaders() }
-    );
-  }
+export const POST = withRateLimit(
+  'verify',
+  async (request: NextRequest) => {
+    try {
+      const contentType = request.headers.get('content-type') || '';
+      let params: Record<string, string> = {};
 
-  try {
-    const contentType = request.headers.get('content-type') || '';
-    let params: Record<string, string> = {};
+      // Get module and action from URL query params first
+      const { searchParams } = new URL(request.url);
+      const queryModule = searchParams.get('module')?.toLowerCase() || '';
+      const queryAction = searchParams.get('action')?.toLowerCase() || '';
 
-    // Get module and action from URL query params first
-    const { searchParams } = new URL(request.url);
-    const queryModule = searchParams.get('module')?.toLowerCase() || '';
-    const queryAction = searchParams.get('action')?.toLowerCase() || '';
-
-    // Handle both JSON and form-data (Etherscan uses form-data)
-    if (contentType.includes('application/json')) {
-      params = await request.json();
-    } else if (
-      contentType.includes('application/x-www-form-urlencoded') ||
-      contentType.includes('multipart/form-data')
-    ) {
-      const formData = await request.formData();
-      formData.forEach((value, key) => {
-        params[key] = value.toString();
-      });
-    } else {
-      // Try to parse as JSON anyway
-      try {
+      // Handle both JSON and form-data (Etherscan uses form-data)
+      if (contentType.includes('application/json')) {
         params = await request.json();
-      } catch {
-        return errorResponse('Invalid content type. Expected application/json or form-data');
+      } else if (
+        contentType.includes('application/x-www-form-urlencoded') ||
+        contentType.includes('multipart/form-data')
+      ) {
+        const formData = await request.formData();
+        formData.forEach((value, key) => {
+          params[key] = value.toString();
+        });
+      } else {
+        // Try to parse as JSON anyway
+        try {
+          params = await request.json();
+        } catch {
+          return errorResponse('Invalid content type. Expected application/json or form-data');
+        }
       }
+
+      // Module and action can come from URL query params OR body params
+      // URL query params take precedence (for /api?module=contract&action=verifysourcecode style)
+      const apiModule = queryModule || (params.module || '').toLowerCase();
+      const action = queryAction || (params.action || '').toLowerCase();
+
+      // Contract verification
+      if (apiModule === 'contract' && action === 'verifysourcecode') {
+        return verifySourceCode({
+          contractaddress: params.contractaddress || params.address || '',
+          sourceCode: params.sourceCode || params.sourcecode || '',
+          codeformat: params.codeformat || 'solidity-single-file',
+          contractname: params.contractname || '',
+          compilerversion: params.compilerversion || '',
+          optimizationUsed: params.optimizationUsed || params.optimizationused || '0',
+          runs: params.runs || '200',
+          constructorArguements: params.constructorArguements || params.constructorarguments || '',
+          evmversion: params.evmversion || 'paris',
+          licenseType: params.licenseType || params.licensetype || '',
+          libraryname1: params.libraryname1 || '',
+          libraryaddress1: params.libraryaddress1 || '',
+        });
+      }
+
+      // Verify proxy contract (placeholder for future implementation)
+      if (apiModule === 'contract' && action === 'verifyproxycontract') {
+        return errorResponse('Proxy contract verification not yet implemented');
+      }
+
+      return errorResponse(`Unknown POST module/action: ${apiModule}/${action}`);
+    } catch (error) {
+      console.error('[Blockscout API POST] Error:', error);
+      return errorResponse('Internal server error');
     }
-
-    // Module and action can come from URL query params OR body params
-    // URL query params take precedence (for /api?module=contract&action=verifysourcecode style)
-    const apiModule = queryModule || (params.module || '').toLowerCase();
-    const action = queryAction || (params.action || '').toLowerCase();
-
-    // Contract verification
-    if (apiModule === 'contract' && action === 'verifysourcecode') {
-      return verifySourceCode({
-        contractaddress: params.contractaddress || params.address || '',
-        sourceCode: params.sourceCode || params.sourcecode || '',
-        codeformat: params.codeformat || 'solidity-single-file',
-        contractname: params.contractname || '',
-        compilerversion: params.compilerversion || '',
-        optimizationUsed: params.optimizationUsed || params.optimizationused || '0',
-        runs: params.runs || '200',
-        constructorArguements: params.constructorArguements || params.constructorarguments || '',
-        evmversion: params.evmversion || 'paris',
-        licenseType: params.licenseType || params.licensetype || '',
-        libraryname1: params.libraryname1 || '',
-        libraryaddress1: params.libraryaddress1 || '',
-      });
-    }
-
-    // Verify proxy contract (placeholder for future implementation)
-    if (apiModule === 'contract' && action === 'verifyproxycontract') {
-      return errorResponse('Proxy contract verification not yet implemented');
-    }
-
-    return errorResponse(`Unknown POST module/action: ${apiModule}/${action}`);
-  } catch (error) {
-    console.error('[Blockscout API POST] Error:', error);
-    return errorResponse('Internal server error');
-  }
-}
+  },
+  { format: 'etherscan' }
+);
 
 // Handle OPTIONS for CORS
 export async function OPTIONS() {

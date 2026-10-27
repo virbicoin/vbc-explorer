@@ -8,6 +8,7 @@ import { paginatedResponse, ContractTypes } from '../../../lib/api-response';
 import { logger } from '../../../lib/logger';
 import { normalizeLegacyLogoUrl } from '../../../lib/utils';
 import { TokenFactoryV2ABI } from '../../../abi/TokenFactoryV2ABI';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Get shared Web3 instance
 const web3 = getWeb3();
@@ -125,6 +126,9 @@ const TokenTypes = {
 };
 
 export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50')));
@@ -138,7 +142,8 @@ export async function GET(request: NextRequest) {
   const nativeTokenSymbol = config.currency?.symbol || 'ETH';
 
   // Get all contracts (for verification status and ERC20 discovery)
-  const contracts = await Contract.find({}).lean();
+  // Contracts / tokens flagged hidden (spam names) never reach the list
+  const contracts = await Contract.find({ hidden: { $ne: true } }).lean();
   const verificationMap = new Map();
   const contractMap = new Map();
   contracts.forEach((contract) => {
@@ -150,7 +155,10 @@ export async function GET(request: NextRequest) {
   });
 
   // Fetch all tokens from the database
-  const dbTokens = (await Token.find({}).lean()) as Record<string, unknown>[];
+  const dbTokens = (await Token.find({ hidden: { $ne: true } }).lean()) as Record<
+    string,
+    unknown
+  >[];
 
   // Get addresses already in tokens collection
   const existingTokenAddresses = new Set(
