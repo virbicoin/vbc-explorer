@@ -32,17 +32,21 @@ server {
 
     # ssl_certificate / ssl_certificate_key ...
 
-    location /api/compile {
+    location ^~ /api/compile {
         limit_req zone=explorer_api burst=20 nodelay;
         include /etc/nginx/snippets/explorer-proxy.conf;
     }
 
-    location /api/contract/verify {
+    location ^~ /api/contract/verify {
         limit_req zone=explorer_api burst=20 nodelay;
         include /etc/nginx/snippets/explorer-proxy.conf;
     }
 
-    location /api/tokens/ {
+    # Prefix match WITHOUT a trailing slash: a prefix location that ends with "/"
+    # makes nginx answer the exact URI "/api/tokens" with a 301 to "/api/tokens/",
+    # which Next.js redirects back (308) — an endless loop that empties the
+    # /tokens page. "^~ /api/tokens" matches /api/tokens and /api/tokens/<address>.
+    location ^~ /api/tokens {
         limit_req zone=explorer_api burst=20 nodelay;
         include /etc/nginx/snippets/explorer-proxy.conf;
     }

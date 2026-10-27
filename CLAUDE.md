@@ -514,6 +514,7 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 
 ### 本番反映時の注意
 - nginx の explorer vhost に `proxy_set_header X-Client-IP $http_cf_connecting_ip;` と `X-Forwarded-For` / `X-Real-IP` の上書きを入れる（`docs/nginx-explorer.conf.example`）。入れないと全リクエストが `unknown` バケット（上限 1/10）になる
+- nginx の `location` は **末尾スラッシュなしの prefix（`location ^~ /api/tokens`）** で書く。`location /api/tokens/ {` と書くと nginx が `/api/tokens` に 301（`/api/tokens/` へ）を返し、Next.js の 308 と無限リダイレクトになって `/tokens` ページが空になる（2026-10-28 に本番で発生）
 - 反映後に `npm run flag-spam-tokens -- --dry-run` で対象（本番 19 件）を確認してから本実行、`npm run repair-chain -- --check` → `--fix --dry-run` → `--fix` → `--check` が 0、`--sample 1000` が 0 を確認。実行前に Block / Transaction / BlockStat を mongodump する
 - `/api/tokens/<addr>?tokenId=1` を 19 件のいずれかに実行しても metadata は null（ERC-20 判定なので tokenURI は呼ばれない）
 
