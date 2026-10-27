@@ -1,4 +1,4 @@
-import type { Db } from 'mongodb';
+import type { Db } from './db/get-db';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import type { AddressSummary, BlockSummary, TokenIdentity, TxSummary } from '@/lib/seo';
 

@@ -15,9 +15,15 @@
  *                 handle; convenient for new code.
  */
 
-import type { Db } from 'mongodb';
 import mongoose from 'mongoose';
 import dbConnect from '../db';
+
+/**
+ * Native `Db` type of the driver bundled with mongoose. Import it from here
+ * (not from the `mongodb` package) so the type always matches
+ * `mongoose.connection.db`, even when another copy of the driver is installed.
+ */
+export type Db = mongoose.mongo.Db;
 
 const NO_DB_MESSAGE = 'Database connection not established';
 
