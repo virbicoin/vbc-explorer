@@ -9,6 +9,7 @@ import {
   getSecurityHeaders,
   isValidContentType,
 } from '../../../../lib/security';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Allowed methods for security (read-only methods only)
 const ALLOWED_METHODS = new Set([
@@ -42,15 +43,8 @@ const ALLOWED_METHODS = new Set([
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`contract-interact:${clientIp}`, 30, 5);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        { status: 429, headers: getSecurityHeaders() }
-      );
-    }
+    const limited = enforceRateLimit(request, 'interact');
+    if (limited) return limited;
 
     // Validate content type
     if (!isValidContentType(request)) {
@@ -149,15 +143,8 @@ export async function POST(request: NextRequest) {
 // GET endpoint to get contract ABI and available methods
 export async function GET(request: NextRequest) {
   try {
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`contract-info:${clientIp}`, 60, 20);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        { status: 429, headers: getSecurityHeaders() }
-      );
-    }
+    const limited = enforceRateLimit(request, 'api');
+    if (limited) return limited;
 
     const config = loadConfig();
     const web3 = new Web3(config.web3Provider.url);

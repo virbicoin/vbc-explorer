@@ -3,6 +3,7 @@ import { getChainStats } from '../../../lib/stats';
 import { connectDB, Block } from '../../../models/index';
 
 import { getGasUnitServer } from '../../../lib/config';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Stats data cache
 interface StatsCacheData {
@@ -108,6 +109,9 @@ async function updateCacheInBackground() {
 }
 
 export async function GET(request: Request) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   const startTime = Date.now();
   const { searchParams } = new URL(request.url);
   const enhanced = searchParams.get('enhanced') === 'true';

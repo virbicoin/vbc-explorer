@@ -11,6 +11,7 @@ import {
   getClientIp,
   getSecurityHeaders,
 } from '../../../../lib/security';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Load config for known contract names
 const config = loadConfig();
@@ -132,18 +133,8 @@ export async function GET(
   { params }: { params: Promise<{ address: string }> }
 ) {
   try {
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`address:${clientIp}`, 60, 10);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        {
-          status: 429,
-          headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) },
-        }
-      );
-    }
+    const limited = enforceRateLimit(request, 'api');
+    if (limited) return limited;
 
     await connectDB();
   } catch (dbError) {

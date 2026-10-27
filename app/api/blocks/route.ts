@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Block } from '../../../models/index';
 import { apiCache, CACHE_TTL } from '../../../lib/cache';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 interface BlockData {
   number: string;
@@ -136,6 +137,9 @@ async function updateCacheInBackground(cacheKey: string, page: number, limit: nu
 }
 
 export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   const startTime = Date.now();
 
   try {

@@ -5,7 +5,7 @@
  * Browser-safe: no Node-only imports (client components use isValidImageUrl).
  */
 
-import { parseSafeHttpsUrl } from './url';
+import { parseIpv4, parseIpv6, parseSafeHttpsUrl } from './url';
 
 /**
  * Validate Ethereum address format
@@ -172,17 +172,42 @@ export function cleanupRateLimits(maxAge: number = 3600000): void {
   }
 }
 
+/** Header that carries the real client IP; nginx sets it from Cloudflare's CF-Connecting-IP. */
+export const DEFAULT_TRUSTED_IP_HEADER = 'x-client-ip';
+
+/** Name of the trusted client-IP header (`TRUSTED_IP_HEADER`, default `x-client-ip`). */
+export function getTrustedIpHeaderName(
+  env: Record<string, string | undefined> = process.env
+): string {
+  return (env.TRUSTED_IP_HEADER || DEFAULT_TRUSTED_IP_HEADER).trim().toLowerCase();
+}
+
+/** Canonical form of an IP address string, or null when it is not a valid IPv4/IPv6 address. */
+export function normalizeIp(value: string | null | undefined): string | null {
+  if (!value || typeof value !== 'string') return null;
+  let text = value.trim();
+  if (text.startsWith('[') && text.endsWith(']')) text = text.slice(1, -1);
+  if (parseIpv4(text)) return text;
+  if (parseIpv6(text)) return text.toLowerCase();
+  return null;
+}
+
 /**
- * Get client IP from request (considering proxies)
+ * Client IP for rate limiting. Reads ONLY the trusted header that the reverse
+ * proxy overwrites on every request (`TRUSTED_IP_HEADER`, default
+ * `x-client-ip`); X-Forwarded-For and X-Real-IP are never consulted because a
+ * client can set them. A missing or malformed value yields 'unknown', which
+ * shares one bucket with a tenth of the normal limit. In development (no
+ * proxy) a missing header counts as the loopback address.
  */
-export function getClientIp(request: Request): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) {
-    return forwarded.split(',')[0].trim();
-  }
-  const realIp = request.headers.get('x-real-ip');
-  if (realIp) {
-    return realIp;
+export function getClientIp(
+  request: Request,
+  env: Record<string, string | undefined> = process.env
+): string {
+  const ip = normalizeIp(request.headers.get(getTrustedIpHeaderName(env)));
+  if (ip) return ip;
+  if (env.NODE_ENV === 'development' && !request.headers.has(getTrustedIpHeaderName(env))) {
+    return '127.0.0.1';
   }
   return 'unknown';
 }

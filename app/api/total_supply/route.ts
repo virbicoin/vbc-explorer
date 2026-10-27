@@ -10,12 +10,16 @@
 
 import { NextResponse, type NextRequest } from 'next/server';
 import { calculateTotalSupply, getSupplyDetails } from '@/lib/supply';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Cache headers for CDN optimization
 const CACHE_MAX_AGE = 60; // 1 minute
 const STALE_WHILE_REVALIDATE = 120; // 2 minutes
 
 export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     // Check for debug mode (returns JSON with details)
     const { searchParams } = new URL(request.url);

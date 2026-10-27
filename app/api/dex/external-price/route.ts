@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { loadConfig } from '@/lib/config';
 import { getNativePrice } from '@/lib/price-service';
 import { connectDB } from '@/models/index';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Cache for external price data (5 minute TTL)
 let cachedData: {
@@ -35,7 +36,10 @@ async function fetchDefiLlamaTvl(): Promise<number> {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     // Connect to database for price service
     await connectDB();

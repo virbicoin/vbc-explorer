@@ -28,6 +28,7 @@ import {
   getClientIp,
   getSecurityHeaders,
 } from '../../../../lib/security';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Get shared Web3 instance
 const web3 = getWeb3();
@@ -305,18 +306,12 @@ export async function GET(
 ) {
   // ZERO_ADDR and DEAD_ADDR are imported from nft.service
   try {
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`tokens:${clientIp}`, 60, 10);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        {
-          status: 429,
-          headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) },
-        }
-      );
-    }
+    // tokenId requests read tokenURI and fetch external metadata: stricter bucket
+    const limited = enforceRateLimit(
+      request,
+      new URL(request.url).searchParams.get('tokenId') ? 'tokenMetadata' : 'api'
+    );
+    if (limited) return limited;
 
     await connectDB();
     const { address: rawAddress } = await params;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Transaction } from '../../../../../models/index';
 import { tryGetDb } from '../../../../../lib/db/get-db';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Determine MetaMask-compliant transaction type
 const METHOD_IDS: Record<string, { type: string; action: string }> = {
@@ -99,6 +100,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ address: string }> }
 ) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     await connectDB();
   } catch (dbError) {

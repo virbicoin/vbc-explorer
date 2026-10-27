@@ -3,6 +3,7 @@ import Web3 from 'web3';
 import { connectDB, Block } from '../../../../../models/index';
 import fs from 'fs';
 import path from 'path';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Function to read config
 const readConfig = () => {
@@ -33,6 +34,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ address: string }> }
 ) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     await connectDB();
   } catch (dbError) {

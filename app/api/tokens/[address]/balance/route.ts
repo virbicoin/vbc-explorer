@@ -8,6 +8,7 @@ import {
   getClientIp,
   getSecurityHeaders,
 } from '../../../../../lib/security';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Format token amount with proper decimal handling
 const formatTokenAmount = (amount: string, decimals: number = 18, isNFT: boolean = false) => {
@@ -39,15 +40,8 @@ export async function GET(
   { params }: { params: Promise<{ address: string }> }
 ) {
   try {
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`token-balance:${clientIp}`, 60, 30);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        { status: 429, headers: getSecurityHeaders() }
-      );
-    }
+    const limited = enforceRateLimit(request, 'api');
+    if (limited) return limited;
 
     await connectDB();
     const { address } = await params;

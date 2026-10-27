@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Web3 from 'web3';
 import { connectDB, Token, TokenHolder } from '../../../../models/index';
 import { loadConfig } from '../../../../lib/config';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Load configuration
 const config = loadConfig();
@@ -67,6 +68,9 @@ const ERC20_ABI = [
 
 // GET - Sync all tokens from TokenFactory to database
 export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'launchpad');
+  if (limited) return limited;
+
   try {
     const launchpadConfig = config.launchpad;
     const factoryAddress = launchpadConfig?.factoryAddress;

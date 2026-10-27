@@ -15,6 +15,7 @@ import {
   type ContractType,
 } from '../../../lib/api-response';
 import { readConfig } from '../../../lib/config';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 export const dynamic = 'force-dynamic';
 
@@ -178,12 +179,8 @@ function getContractType(doc: ContractDocument): string {
 
 export async function GET(request: NextRequest) {
   try {
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimitResult = checkRateLimit(`contracts:${clientIp}`, 60, 1);
-    if (!rateLimitResult.allowed) {
-      return rateLimitResponse(rateLimitResult.resetIn);
-    }
+    const limited = enforceRateLimit(request, 'api');
+    if (limited) return limited;
 
     const searchParams = request.nextUrl.searchParams;
     // Validate and limit page number to prevent excessive skip operations

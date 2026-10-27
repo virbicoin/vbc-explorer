@@ -13,6 +13,7 @@ import {
   getSecurityHeaders,
 } from '../../../../../lib/security';
 import { logger } from '../../../../../lib/logger';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // BscScan-style token approval checker: scans ERC-20 Approval events for an
 // owner address and reports the spenders that still hold a non-zero
@@ -167,15 +168,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ address: string }> }
 ) {
-  const clientIp = getClientIp(request);
   // Each scan walks the full log index - keep the limit strict
-  const rateLimit = checkRateLimit(`approvals:${clientIp}`, 60, 6);
-  if (!rateLimit.allowed) {
-    return NextResponse.json(
-      { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-      { status: 429, headers: getSecurityHeaders() }
-    );
-  }
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
 
   const { address } = await params;
   if (!isValidAddress(address)) {

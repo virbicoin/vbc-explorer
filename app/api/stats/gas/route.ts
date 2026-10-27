@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getWeb3 } from '../../../../lib/web3';
 import dbConnect from '../../../../lib/db';
 import { tryGetDb } from '../../../../lib/db/get-db';
 import { getGasUnitServer } from '../../../../lib/config';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,10 @@ let gasStatsCache: GasStats | null = null;
 let lastFetchTime = 0;
 const CACHE_DURATION = 15000; // 15 seconds
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     const now = Date.now();
 

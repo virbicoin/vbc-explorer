@@ -8,6 +8,7 @@ import {
   getClientIp,
   getSecurityHeaders,
 } from '../../../../lib/security';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Utility: recursively converts BigInt values inside unknown structures to string while preserving shape
 function convertBigIntToString(obj: unknown): unknown {
@@ -51,15 +52,8 @@ export async function GET(
   { params }: { params: Promise<{ number: string }> }
 ) {
   try {
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`block:${clientIp}`, 60, 30);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        { status: 429, headers: getSecurityHeaders() }
-      );
-    }
+    const limited = enforceRateLimit(request, 'api');
+    if (limited) return limited;
 
     const web3 = getWeb3();
 

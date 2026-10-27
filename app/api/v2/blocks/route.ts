@@ -6,21 +6,15 @@ import {
   getSecurityHeaders,
   validatePagination,
 } from '@/lib/security';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Blockscout API v2 - Get blocks list
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
 
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`blocks:${clientIp}`, 100, 60);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { message: 'Rate limit exceeded' },
-        { status: 429, headers: getSecurityHeaders() }
-      );
-    }
+    const limited = enforceRateLimit(request, 'api', { format: 'v2' });
+    if (limited) return limited;
 
     await connectDB();
 

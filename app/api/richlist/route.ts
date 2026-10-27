@@ -4,8 +4,12 @@ import { Account, Contract } from '@/lib/models';
 import { connectToDatabase } from '@/lib/db';
 import { loadConfig } from '@/lib/config';
 import { calculateTotalSupply } from '@/lib/supply';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     await connectToDatabase();
 
@@ -152,6 +156,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     await connectToDatabase();
 

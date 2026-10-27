@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import getDb from '@/lib/db';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 // Lightweight API to check address type (contract, token, or wallet)
 export async function GET(request: Request, { params }: { params: Promise<{ address: string }> }) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     const { address } = await params;
 

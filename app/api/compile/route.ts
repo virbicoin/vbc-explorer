@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Contract } from '../../../models/index';
+import { withRateLimit } from '@/lib/security/rate-limits';
 
-export async function POST(request: NextRequest) {
+export const POST = withRateLimit('verify', async (request: NextRequest) => {
   try {
     await connectDB();
 
@@ -86,4 +87,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

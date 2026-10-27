@@ -12,6 +12,7 @@ import {
   isValidContentType,
 } from '../../../../lib/security';
 import { normalizeCompilerVersion, SOLC_RELEASES } from '../../../../lib/contract/solc-utils';
+import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
 
 // Function to read config
 const readConfig = () => {
@@ -221,24 +222,8 @@ function findBestCompilerVersion(requestedVersion: string): string {
   return '0.8.30';
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withRateLimit('verify', async (request: NextRequest) => {
   try {
-    // Rate limiting - stricter for contract verification
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`verify:${clientIp}`, 10, 1); // 10 requests per 10 seconds
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        {
-          error: 'Rate limit exceeded. Contract verification is limited to prevent abuse.',
-          retryAfter: rateLimit.resetIn,
-        },
-        {
-          status: 429,
-          headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) },
-        }
-      );
-    }
-
     // Validate content type
     if (!isValidContentType(request)) {
       return NextResponse.json(
@@ -995,4 +980,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

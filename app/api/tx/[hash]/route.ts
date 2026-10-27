@@ -12,6 +12,7 @@ import {
 } from '../../../../lib/security';
 import { loadConfig } from '../../../../lib/config';
 import { getWeb3 } from '../../../../lib/web3';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Load configuration
 const config = loadConfig();
@@ -123,15 +124,8 @@ interface BlockDocument {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ hash: string }> }) {
   try {
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`tx:${clientIp}`, 60, 30);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        { status: 429, headers: getSecurityHeaders() }
-      );
-    }
+    const limited = enforceRateLimit(request, 'api');
+    if (limited) return limited;
 
     const { hash: rawHash } = await params;
     if (!rawHash) {

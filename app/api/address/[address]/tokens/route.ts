@@ -7,6 +7,7 @@ import {
   getClientIp,
   getSecurityHeaders,
 } from '../../../../../lib/security';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Get shared Web3 instance
 const web3 = getWeb3();
@@ -39,18 +40,8 @@ export async function GET(
   { params }: { params: Promise<{ address: string }> }
 ) {
   try {
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`address-tokens:${clientIp}`, 60, 30);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded', retryAfter: rateLimit.resetIn },
-        {
-          status: 429,
-          headers: { ...getSecurityHeaders(), 'Retry-After': String(rateLimit.resetIn) },
-        }
-      );
-    }
+    const limited = enforceRateLimit(request, 'api');
+    if (limited) return limited;
 
     const { address: rawAddress } = await params;
 

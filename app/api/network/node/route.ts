@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import Web3 from 'web3';
 import { getProviderUrl } from '@/lib/web3/provider';
 import { loadConfig } from '@/lib/config';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -19,7 +20,10 @@ interface NodeInfo {
   isSyncing: boolean;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   try {
     const config = loadConfig();
     // Display the configured public RPC URL and query that same node so the

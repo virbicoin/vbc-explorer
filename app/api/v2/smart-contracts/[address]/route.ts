@@ -4,6 +4,7 @@ import Web3 from 'web3';
 import fs from 'fs';
 import path from 'path';
 import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Function to read config
 const readConfig = () => {
@@ -39,15 +40,8 @@ export async function GET(
   try {
     const { address } = await params;
 
-    // Rate limiting
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(`contract-info:${clientIp}`, 100, 60);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { message: 'Rate limit exceeded' },
-        { status: 429, headers: getSecurityHeaders() }
-      );
-    }
+    const limited = enforceRateLimit(request, 'api', { format: 'v2' });
+    if (limited) return limited;
 
     // Validate address
     const sanitizedAddress = sanitizeAddress(address);

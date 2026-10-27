@@ -8,6 +8,7 @@ import { paginatedResponse, ContractTypes } from '../../../lib/api-response';
 import { logger } from '../../../lib/logger';
 import { normalizeLegacyLogoUrl } from '../../../lib/utils';
 import { TokenFactoryV2ABI } from '../../../abi/TokenFactoryV2ABI';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Get shared Web3 instance
 const web3 = getWeb3();
@@ -125,6 +126,9 @@ const TokenTypes = {
 };
 
 export async function GET(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'api');
+  if (limited) return limited;
+
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
   const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50')));

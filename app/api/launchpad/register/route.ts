@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Web3 from 'web3';
 import { connectDB, Token, TokenHolder } from '../../../../models/index';
 import { loadConfig } from '../../../../lib/config';
+import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Load configuration
 const config = loadConfig();
@@ -41,6 +42,9 @@ const ERC20_ABI = [
 ] as const;
 
 export async function POST(request: NextRequest) {
+  const limited = enforceRateLimit(request, 'launchpad');
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { tokenAddress, creator } = body;
