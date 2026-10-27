@@ -5,7 +5,7 @@
  * used by both API routes and CLI tools.
  */
 
-import type { Db } from 'mongodb';
+import type { Db } from '../db/get-db';
 
 export const ZERO_ADDR = '0x0000000000000000000000000000000000000000';
 export const DEAD_ADDR = '0x000000000000000000000000000000000000dead';
@@ -115,7 +115,7 @@ export async function getNftOwnershipFromDb(
   const transfers = await db
     .collection('tokentransfers')
     .find({
-      tokenAddress: { $regex: new RegExp(`^${tokenAddress}$`, 'i') },
+      tokenAddress: tokenAddress.toLowerCase(),
       tokenId: { $exists: true, $ne: null },
     })
     .sort({ timestamp: 1 })

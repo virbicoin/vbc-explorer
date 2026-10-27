@@ -21,7 +21,7 @@ VBC Explorer は、VirBiCoin 向けのモダンなブロックチェーンエク
 - **スタイリング**: Tailwind CSS 4
 - **Web3**: ethers.js 6, web3.js 4, viem 2, wagmi 3
 - **状態管理**: @tanstack/react-query 5
-- **テスト**: Vitest 4
+- **テスト**: Vitest 5（DB テストは mongodb-memory-server / MongoDB 8.0）
 - **Lint/型**: ESLint 10（flat config: @babel/eslint-parser + @next/eslint-plugin-next + react-hooks）。型検査は tsc（TS7）が担当
 - **CLI ツールランナー**: tsx（esbuild ベース。ts-node は TS7 非対応のため置き換え）
 - **プロセスマネージャー**: PM2
@@ -106,7 +106,7 @@ hooks/                  # カスタム React フック
   
 lib/                    # ユーティリティライブラリ
   cache/                # インメモリキャッシュ
-  db/                   # データベース抽象化レイヤー
+  db/                   # データベース抽象化レイヤー（get-db.ts, indexes.ts）
   dex/                  # DEX 固有ユーティリティ & キャッシュサービス
   security/             # 入力検証 & レート制限
   services/             # ビジネスロジックサービス
@@ -127,7 +127,7 @@ lib/                    # ユーティリティライブラリ
   supply.ts             # 供給量計算
   transaction-utils.ts  # トランザクションユーティリティ
   
-models/                 # Mongoose モデル
+models/                 # Mongoose モデル（index.ts が唯一の定義場所。インデックス定義もここ）
 tools/                  # ブロックチェーン同期用 CLI ツール
   sync.ts               # ブロックチェーン同期
   tokens.ts             # トークンデータ同期（NFT/ERC20）
@@ -135,7 +135,7 @@ tools/                  # ブロックチェーン同期用 CLI ツール
   richlist.ts           # リッチリスト生成
   price.ts              # 価格 + DEX スワップ同期
   register-contracts.ts # コントラクト登録
-  optimize-indexes.ts   # データベースインデックス最適化
+  optimize-indexes.ts   # スキーマ定義インデックスの作成/確認（--dry-run / --check）
   add-token.ts          # 手動トークン追加
   
 types/                  # TypeScript 型定義
@@ -197,9 +197,10 @@ const vbcPrice = await getCachedVBCPrice();
 - `compress: true` - Gzip 圧縮を有効化
 
 ### データベースインデックス（`npm run optimize-indexes`）
-- 一般的なクエリパターン向けの複合インデックス
-- バックグラウンドでのインデックス作成（ノンブロッキング）
-- 最良のパフォーマンスのため初期セットアップ後に実行
+- インデックスは `models/index.ts` のスキーマ定義が唯一の真実。`autoIndex: false` のまま、書き込みツールが起動時に `ensureIndexes()` で明示的に作成する（Web は触らない）
+- `npm run optimize-indexes` は同じ関数を呼ぶラッパー。`-- --dry-run` で作成予定、`-- --check` で不足検査（不足があれば exit 1）
+- 既存インデックスは削除しない（`syncIndexes()` は使わない）。unique は重複チェック後に張り、重複があればそのインデックスだけ見送って報告する
+- 詳細は「新機能（2026-10）: DB インデックス管理とモデル一本化」を参照
 
 ## よく使うコマンド
 
@@ -230,8 +231,9 @@ npm run richlist        # リッチリストを生成
 npm run price           # 価格 + DEX スワップデータを更新（WikaEx + オンチェーン）
 
 # データベース管理
-npm run optimize-indexes # DB インデックスを作成/最適化
-npm run create-indexes   # データベースインデックスを作成
+npm run optimize-indexes              # スキーマ定義のインデックスを作成（不足分のみ、削除なし）
+npm run optimize-indexes -- --dry-run # 作成予定を表示（変更なし）
+npm run optimize-indexes -- --check   # 不足があれば一覧を出して exit 1
 
 # PM2 プロセス管理
 pm2 restart explorer    # explorer を再起動
@@ -396,12 +398,16 @@ NFT の所有者は次のように計算されます:
 - `blocks` - ブロックデータ
 - `transactions` - トランザクションデータ
 - `contracts` - 検証済みコントラクト（ERC フィールド: 0=コントラクト, 2=ERC20, 721=VRC-721, 1155=VRC-1155）
-- `tokens` - トークンメタデータ
-- `tokentransfers` - トークン転送イベント
-- `tokenholders` - トークン保有者残高
-- `accounts` - アカウント残高
-- `markets` - 複数ソースからの価格データ（price.ts が更新）
-- `dexswaps` - DEX スワップイベント（price.ts が更新）
+- `tokens` - トークンメタデータ（モデル `Token`）
+- `tokentransfers` - トークン転送イベント（モデル `TokenTransfer`。フィールドは tokenAddress / transactionHash / from / to / value / tokenId / blockNumber / timestamp(Date)）
+- `tokenholders` - トークン保有者残高（モデル `TokenHolder`）
+- `scan_progress` - tools/tokens.ts のスキャン進捗（モデル `ScanProgress`）
+- `Account` - アカウント残高
+- `Market` - 複数ソースからの価格データ（price.ts が更新）
+- `DexSwap` - DEX スワップイベント（price.ts が更新）
+- `VerificationJob` - Etherscan 互換検証 API のジョブ
+
+コレクション名はすべて `models/index.ts` の `{ collection }` で明示し、本番の実在名と一致させる（`tests/db/model-collections.test.ts` が allowlist で検証）。
 
 ### コントラクトタイプ判定（`app/api/contracts/route.ts`）
 API は、次の複数の手がかりからトークンの種類を推定します。
@@ -479,6 +485,30 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 ### 耐障害性・汎用化
 - `proxy.ts` の `/address` タイプ判定 fetch に AbortController（2s）を追加 → DB 停止時も `/address` がハングしない（従来 ~15s）。
 - DEX サブシステム（`geckoterminal/info`・`pool`、`dex` ページ、`useFarming` のウォレット追加 `nativeCurrency`）の真のハードコード固有名を config 由来に。クライアントは `lib/client-config`（`getNetworkName`/`getCurrencyConfig`）または `useDexConfig`（`currency` フィールド追加）から取得。設定済みの本番では出力は不変。
+
+## 新機能（2026-10）: DB インデックス管理とモデル一本化（v0.8.5）
+
+本番 explorerDB にインデックスが 1 本もなく（`_id` のみ）、Block.number 検索が 325 万件の全件走査になっていた問題の恒久対策。スキーマにはインデックス定義があったが、それを DB に反映する経路が存在しなかった（`autoIndex: false` かつ `createIndexes()` 呼び出しなし、旧 optimize-indexes は存在しない `blocks` コレクションを対象にしていた）。
+
+### 設計ルール（必ず守る）
+- **モデルは `models/index.ts` のみ**。API ルートやツールに inline の `mongoose.models.X || mongoose.model('X', schema)` を書かない（`grep -rn "mongoose.model("` が models/index.ts 以外で 0 件であること）。`lib/models.ts` は re-export のみ
+- **コレクション名は `{ collection }` で明示**し、本番実在名（Block, Transaction, Account, Contract, BlockStat, Market, DexSwap, VerificationJob, tokens, tokentransfers, tokenholders, scan_progress）に合わせる。`tests/db/model-collections.test.ts` の allowlist を更新しない限り新しい名前は使えない
+- **インデックスはスキーマで定義**し、実クエリ（`find` / `findOne` / `aggregate` / `sort` のキー）に根拠があるものだけ持つ。根拠は `models/index.ts` のコメントと README「Database Indexes」に記載
+- **`autoIndex` は false のまま**。作成は `ensureIndexes()`（models/index.ts）が行い、呼び出すのは DB に書くツールだけ（tools/sync.ts の全モード、stats、richlist、tokens、price、rescan-contracts、register-contracts、add-token）。Next.js（app/）からは呼ばない
+- **`Model.syncIndexes()` は使わない**（スキーマにないインデックスを削除する）。`background: true` も渡さない（MongoDB 4.2 以降無視）
+- **アドレス/ハッシュの検索は小文字の等価比較**。`$regex: new RegExp(`^${addr}$`, 'i')` はインデックスが効かないので書かない（書き込み側はすべて小文字で保存し、スキーマも `lowercase: true`）
+
+### 実装
+- `lib/db/indexes.ts`: 汎用ヘルパー。`schemaIndexSpecs()` でスキーマのインデックスを列挙し、`ensureModelIndexes()` が不足分を 1 本ずつ作成。unique は事前に `$group`（`allowDiskUse` + `maxTimeMS`）で重複を数え、あればそのインデックスだけ `skipped` に積んで続行。E11000 / IndexOptionsConflict(85) / IndexKeySpecsConflict(86) は warn、それ以外は error で続行し `{ created, existing, planned, skipped, failed }` を返す（throw しない）
+- `models/index.ts`: `ensureIndexes()`（`SKIP_INDEX_SYNC=1` で no-op）、`checkIndexes()`（不足一覧・読み取り専用）、`ensureIndexesOnStartup(tool)`（プロセスごとに 1 回だけ実行し summary をログ）、`ALL_MODELS` / `MODEL_COLLECTIONS`
+- `tools/optimize-indexes.ts`: ラッパー CLI。引数なしで作成（失敗または unique 見送りがあれば exit 1）、`--dry-run` で作成予定（不足 unique の重複チェックも実施）、`--check` で不足検査（不足があれば exit 1）。スキーマに表せないインデックスは同ファイルの `extraIndexes`（現在は空）に理由付きで列挙する
+- 主な修正: `BlockSchema.index({ miner: 1, blockNumber: -1 })` → `{ miner: 1, number: -1 }`（Block に blockNumber は存在しない）、Block.hash を unique に、TokenTransfer を実在の `tokentransfers`（tokenAddress / transactionHash 形）へ、CSV エクスポートの `tokentxs` も実在コレクションを読むように修正。マイナー別ブロック一覧の sort を timestamp → number、アドレス別トランザクション一覧の sort を timestamp → blockNumber/transactionIndex に変更（順序は同じ。インデックスで並ぶ）
+- テスト: `tests/db/indexes.test.ts`（作成・冪等性・重複スキップ・dry-run・SKIP）、`tests/db/model-collections.test.ts`（allowlist）、`tests/tools/optimize-indexes.test.ts`（CLI を子プロセスで起動し exit code を検証）。mongodb-memory-server は初回に MongoDB 8.0.12 のバイナリをダウンロードする（`MONGOMS_SYSTEM_BINARY=/usr/bin/mongod` でローカルのバイナリを使える）
+
+### 本番反映時の注意
+- 反映前に `npm run optimize-indexes -- --dry-run` で作成予定を確認し、Transaction.hash の重複（本番で 3 件）を除去してから `npm run optimize-indexes` を実行する。unique 対象に重複が残っていればそのインデックスだけ見送られ exit 1 になる
+- 旧コードで保存された checksum 混在アドレス（miner / from / to）が残っている場合、小文字等価比較では一致しない。その場合は一度小文字へ正規化する（本リポジトリの書き込み経路はすべて小文字）
+- `app/api/address/[address]/type/route.ts` の `contracts`（小文字）など、本番に存在しないコレクションを読む native アクセスが一部に残っている（今回の対象外）
 
 ## 新機能（2026-07）: Etherscan/BscScan ライク機能
 
@@ -747,7 +777,7 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 1. **コードの重複**
    - ~~トークン所有者の計算ロジックが API とツールの両方に存在~~ → ✅ `lib/services/nft.service.ts` に集約済み
    - ~~Solidity コンパイラ補助関数が複数の検証ルートで重複~~ → ✅ `lib/contract/solc-utils.ts` に集約済み
-   - `models/index.ts` と `lib/models.ts` にインターフェースの重複（残）
+   - ~~`models/index.ts` と `lib/models.ts` にインターフェースの重複~~ → ✅ `lib/models.ts` は re-export に統一し、app/api・tools の inline 定義も撤去（2026-10）
 
 2. **大きなファイル**
    - ~~`app/api/route.ts`（約 2040 行）~~ → ✅ 465 行へ分割（`lib/api/blockscout/` に account/handlers/proxy/verification/shared を分離）
@@ -759,7 +789,7 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
    - ~~複数の接続関数が並存~~ → ✅ `lib/db.ts` の `dbConnect` を `models/index.ts` の `connectDB` へ委譲し一本化
 
 4. **テスト不足**
-   - ~~自動テストが存在しない~~ → ✅ Vitest を導入し純粋ロジックを中心に 151 テストを整備
+   - ~~自動テストが存在しない~~ → ✅ Vitest を導入し 235 テストを整備（純粋ロジック中心＋mongodb-memory-server による DB/CLI テスト）
    - CI（`.github/workflows/lint.yml`）で `npm run check` の後に `npm run test` を実行
 
 5. **型の不整合**
@@ -767,7 +797,7 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 
 ### テスト基盤（`tests/`）
 
-- **ランナー**: Vitest（`vitest.config.ts`、`vite-tsconfig-paths` で `@/` エイリアス解決）
+- **ランナー**: Vitest 5（`vitest.config.ts`、`resolve.tsconfigPaths: true` で `@/` エイリアス解決）
 - **対象**: 副作用のない純粋関数を中心にテスト
   - `lib/security/validation.ts`（アドレス/ハッシュ検証、ページネーション、画像 URL）
   - `lib/services/nft.service.ts`（NFT 所有者計算）
@@ -777,7 +807,9 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
   - `lib/db/get-db.ts`（DB ハンドルガード）
   - `lib/contract/solc-utils.ts`（コンパイラバージョン/メタデータ処理）
   - `lib/address/format.ts` / `lib/address/transfer-classification.ts`（表示整形・mint/burn 判定）
-- **方針**: DB や RPC に依存する処理はサービス/ハンドラに寄せ、純粋ロジックを切り出してテスト可能にする
+  - `lib/db/indexes.ts` / `models/index.ts`（インデックス作成・重複検出・allowlist。`tests/db/`、mongodb-memory-server 使用）
+  - `tools/optimize-indexes.ts`（`tests/tools/`。子プロセスで CLI を起動し exit code を検証）
+- **方針**: DB や RPC に依存する処理はサービス/ハンドラに寄せ、純粋ロジックを切り出してテスト可能にする。DB が必要なテストは mongodb-memory-server を使い、本番 DB には向けない
 
 ### 構造化ロギング（`lib/logger.ts`）
 
@@ -886,7 +918,8 @@ import { formatTokenBalance, timeAgo, shortenAddress } from '@/lib/utils';
 4. ✅ **フェーズ 4**: Token API をサービス利用にリファクタリング
 5. ✅ **フェーズ 5**: テスト基盤（Vitest）・構造化ロギング・DB ハンドル集約を整備
 6. ✅ **フェーズ 6**: Etherscan 互換 API（`app/api/route.ts`）をドメイン別モジュールへ分割
-7. 🔄 **フェーズ 7**: リポジトリパターンと残る大型ファイルの分割（進行中）
+7. ✅ **フェーズ 7**: モデル定義の一本化とスキーマ駆動のインデックス管理（2026-10, v0.8.5）
+8. 🔄 **フェーズ 8**: リポジトリパターンと残る大型ファイルの分割（進行中）
 
 ### 利点
 

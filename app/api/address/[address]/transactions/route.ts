@@ -1,27 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
-import { connectDB } from '../../../../../models/index';
+import { connectDB, Transaction } from '../../../../../models/index';
 import { tryGetDb } from '../../../../../lib/db/get-db';
-
-// Transaction schema - use the correct collection name
-const transactionSchema = new mongoose.Schema(
-  {
-    hash: String,
-    from: String,
-    to: String,
-    value: String,
-    timestamp: Number,
-    blockNumber: Number,
-    input: String,
-    gasUsed: Number,
-    gasPrice: String,
-    status: Number,
-    nonce: Number,
-  },
-  { collection: 'Transaction' }
-);
-
-const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', transactionSchema);
 
 // Determine MetaMask-compliant transaction type
 const METHOD_IDS: Record<string, { type: string; action: string }> = {
@@ -138,21 +117,15 @@ export async function GET(
 
     // Get regular transactions
     const transactions = await Transaction.find({
-      $or: [
-        { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-        { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-      ],
+      $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
     })
-      .sort({ timestamp: -1 })
+      .sort({ blockNumber: -1, transactionIndex: -1 })
       .skip(skip)
       .limit(limit);
 
     // Get total count
     const totalTransactions = await Transaction.countDocuments({
-      $or: [
-        { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-        { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-      ],
+      $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
     });
 
     // Get token transfers
@@ -160,10 +133,7 @@ export async function GET(
       ? await db
           .collection('tokentransfers')
           .find({
-            $or: [
-              { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-              { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-            ],
+            $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
           })
           .toArray()
       : [];
@@ -187,7 +157,7 @@ export async function GET(
       const tokens = await db
         .collection('tokens')
         .find({
-          address: { $in: tokenAddresses.map((a) => new RegExp(`^${a}$`, 'i')) },
+          address: { $in: tokenAddresses.map((a) => a.toLowerCase()) },
         })
         .toArray();
 

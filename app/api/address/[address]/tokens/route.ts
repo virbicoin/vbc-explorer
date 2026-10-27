@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
-import { connectDB } from '../../../../../models/index';
+import { connectDB, Token, TokenHolder } from '../../../../../models/index';
 import { getWeb3 } from '../../../../../lib/web3';
 import {
   sanitizeAddress,
@@ -35,42 +34,6 @@ async function fetchLaunchpadLogoUrl(tokenAddress: string): Promise<string | nul
   }
 }
 
-// Token holder schema
-const tokenHolderSchema = new mongoose.Schema(
-  {
-    tokenAddress: String,
-    holderAddress: String,
-    balance: String,
-    percentage: Number,
-    rank: Number,
-  },
-  { collection: 'tokenholders' }
-);
-
-const TokenHolder = mongoose.models.TokenHolder || mongoose.model('TokenHolder', tokenHolderSchema);
-
-// Token schema
-const tokenSchema = new mongoose.Schema(
-  {
-    address: String,
-    name: String,
-    symbol: String,
-    decimals: Number,
-    totalSupply: String,
-    holders: Number,
-    type: String,
-    logoUrl: String,
-    metadata: {
-      logoUrl: String,
-      description: String,
-      website: String,
-    },
-  },
-  { collection: 'tokens' }
-);
-
-const Token = mongoose.models.Token || mongoose.model('Token', tokenSchema);
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ address: string }> }
@@ -104,7 +67,7 @@ export async function GET(
 
     // Find all token holdings for this address
     const holdings = await TokenHolder.find({
-      holderAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+      holderAddress: address.toLowerCase(),
       balance: { $ne: '0', $exists: true },
     }).lean();
 
@@ -117,7 +80,7 @@ export async function GET(
     // Get token info for each holding
     const tokenAddresses = nonZeroHoldings.map((h) => h.tokenAddress);
     const tokens = await Token.find({
-      address: { $in: tokenAddresses.map((a) => new RegExp(`^${a}$`, 'i')) },
+      address: { $in: tokenAddresses.map((a) => a.toLowerCase()) },
     }).lean();
 
     // Create token info map

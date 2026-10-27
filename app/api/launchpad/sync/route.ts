@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import Web3 from 'web3';
-import { connectDB } from '../../../../models/index';
+import { connectDB, Token, TokenHolder } from '../../../../models/index';
 import { loadConfig } from '../../../../lib/config';
 
 // Load configuration
@@ -66,41 +65,6 @@ const ERC20_ABI = [
   },
 ] as const;
 
-// Define Token schema
-const tokenSchema = new mongoose.Schema(
-  {
-    address: String,
-    name: String,
-    symbol: String,
-    decimals: { type: Number, default: 18 },
-    totalSupply: String,
-    holders: { type: Number, default: 0 },
-    type: String,
-    supply: String,
-    verified: { type: Boolean, default: false },
-    createdAt: { type: Date, default: Date.now },
-    createdBy: String,
-    source: String,
-  },
-  { collection: 'tokens' }
-);
-
-const Token = mongoose.models.Token || mongoose.model('Token', tokenSchema);
-
-// TokenHolder schema
-const tokenHolderSchema = new mongoose.Schema(
-  {
-    tokenAddress: String,
-    holderAddress: String,
-    balance: String,
-    rank: { type: Number, default: 1 },
-    percentage: { type: Number, default: 100 },
-  },
-  { collection: 'tokenholders' }
-);
-
-const TokenHolder = mongoose.models.TokenHolder || mongoose.model('TokenHolder', tokenHolderSchema);
-
 // GET - Sync all tokens from TokenFactory to database
 export async function GET(request: NextRequest) {
   try {
@@ -137,7 +101,7 @@ export async function GET(request: NextRequest) {
       try {
         // Check if already registered
         const existing = await Token.findOne({
-          address: { $regex: new RegExp(`^${tokenAddress}$`, 'i') },
+          address: tokenAddress.toLowerCase(),
         });
 
         if (existing) {

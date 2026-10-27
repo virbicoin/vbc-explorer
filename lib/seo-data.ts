@@ -1,4 +1,4 @@
-import type { Db } from 'mongodb';
+import type { Db } from './db/get-db';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import type { AddressSummary, BlockSummary, TokenIdentity, TxSummary } from '@/lib/seo';
 
@@ -42,7 +42,7 @@ async function cachedDbLookup<T>(
 export async function getTokenSummary(address: string): Promise<TokenIdentity | null> {
   if (!ADDR_RE.test(address)) return null;
   return cachedDbLookup(`seo:token:${address.toLowerCase()}`, CACHE_TTL.VERY_LONG, async (db) => {
-    const byAddress = { address: { $regex: new RegExp(`^${address}$`, 'i') } };
+    const byAddress = { address: address.toLowerCase() };
 
     const token = await db
       .collection('tokens')

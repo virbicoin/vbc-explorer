@@ -1,9 +1,35 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { logger } from '../lib/logger';
+import {
+  ensureModelIndexes,
+  findMissingIndexes,
+  emptyEnsureIndexesResult,
+  type AnyModel,
+  type EnsureIndexesOptions,
+  type EnsureIndexesResult,
+  type IndexSpec,
+} from '../lib/db/indexes';
 
 // 環境変数の設定
 if (!process.env.MONGODB_URI) {
   process.env.MONGODB_URI = 'mongodb://localhost/explorerDB';
 }
+
+/*
+ * Model and index policy
+ * ----------------------
+ * - Every Mongoose model lives in this file. Do not define models inline
+ *   (`mongoose.models.X || mongoose.model('X', schema)`) anywhere else;
+ *   import them from here instead.
+ * - Every collection name is set explicitly via `{ collection }` and matches
+ *   the production database (Block, Transaction, Account, Contract, BlockStat,
+ *   Market, DexSwap, VerificationJob, tokens, tokentransfers, tokenholders,
+ *   scan_progress).
+ * - Indexes are declared on the schemas below and nowhere else. They are
+ *   created explicitly by `ensureIndexes()` (called by the data-writing CLI
+ *   tools on startup and by `npm run optimize-indexes`), never by `autoIndex`
+ *   and never from the Next.js app. Existing indexes are never dropped.
+ */
 
 // Interfaces for TypeScript
 export interface IBlock extends Document {
@@ -82,17 +108,62 @@ export interface IContract extends Document {
   sourceCode: string;
   abi: string;
   byteCode: string;
+  verified: boolean;
+  verifiedAt?: Date;
 }
 
+/** Token metadata (collection `tokens`, written by tools/tokens.ts and the Launchpad APIs). */
+export interface IToken extends Document {
+  address: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  totalSupply: string;
+  holders: number;
+  type: string;
+  supply: string;
+  verified: boolean;
+  logoUrl: string | null;
+  metadata?: {
+    logoUrl?: string;
+    description?: string;
+    website?: string;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy?: string;
+  source?: string;
+}
+
+/** Token balance per holder (collection `tokenholders`). */
+export interface ITokenHolder extends Document {
+  tokenAddress: string;
+  holderAddress: string;
+  balance: string;
+  percentage: number;
+  rank: number;
+}
+
+/**
+ * ERC-20 / NFT Transfer event (collection `tokentransfers`, written by tools/tokens.ts).
+ * `tokenId` is only set for NFT transfers; `timestamp` is a Date.
+ */
 export interface ITokenTransfer extends Document {
-  hash: string;
-  blockNumber: number;
-  method: string;
+  tokenAddress: string;
+  transactionHash: string;
   from: string;
   to: string;
-  contract: string;
   value: string;
-  timestamp: number;
+  tokenId?: number;
+  blockNumber: number;
+  timestamp: Date;
+}
+
+/** Token scan progress of tools/tokens.ts (collection `scan_progress`). */
+export interface IScanProgress extends Document {
+  scanType: string;
+  lastScannedBlock: number;
+  lastUpdateTime: Date;
 }
 
 export interface IMarket extends Document {
@@ -144,7 +215,7 @@ export interface IVerificationJob extends Document {
 const BlockSchema = new Schema(
   {
     number: { type: Number, index: { unique: true } },
-    hash: String,
+    hash: { type: String, lowercase: true, index: { unique: true } },
     parentHash: String,
     nonce: String,
     sha3Uncles: String,
@@ -168,7 +239,7 @@ const BlockSchema = new Schema(
 
 const AccountSchema = new Schema(
   {
-    address: { type: String, index: { unique: true } },
+    address: { type: String, lowercase: true, index: { unique: true } },
     balance: String, // Changed from Number to String to avoid scientific notation
     blockNumber: Number,
     type: { type: Number, default: 0 }, // address: 0x0, contract: 0x1
@@ -178,9 +249,9 @@ const AccountSchema = new Schema(
 
 const ContractSchema = new Schema(
   {
-    address: { type: String, index: { unique: true } },
+    address: { type: String, lowercase: true, index: { unique: true } },
     blockNumber: Number,
-    ERC: { type: Number, index: true }, //0:normal contract, 2:ERC20, 3:ERC223
+    ERC: Number, //0:normal contract, 2:ERC20, 3:ERC223
     creationTransaction: String,
     contractName: String,
     tokenName: String,
@@ -220,21 +291,67 @@ const TransactionSchema = new Schema(
   { collection: 'Transaction' }
 );
 
-// Note: Compound indexes will be created programmatically via create-indexes script
-// to avoid duplicate index warnings. Individual field indexes are handled above.
+// Token Schema (collection `tokens`; superset of the fields every writer uses)
+const TokenSchema = new Schema(
+  {
+    address: { type: String, lowercase: true, index: { unique: true } },
+    name: String,
+    symbol: String,
+    decimals: { type: Number, default: 18 },
+    totalSupply: String,
+    holders: { type: Number, default: 0 },
+    type: String,
+    supply: String,
+    verified: { type: Boolean, default: false },
+    logoUrl: { type: String, default: null },
+    metadata: {
+      logoUrl: String,
+      description: String,
+      website: String,
+    },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+    createdBy: String, // Creator address (Launchpad)
+    source: String, // 'launchpad' or 'scan'
+  },
+  { collection: 'tokens' }
+);
 
+// Token Holder Schema (collection `tokenholders`)
+const TokenHolderSchema = new Schema(
+  {
+    tokenAddress: { type: String, lowercase: true },
+    holderAddress: { type: String, lowercase: true },
+    balance: String,
+    percentage: { type: Number, default: 100 },
+    rank: { type: Number, default: 1 },
+  },
+  { collection: 'tokenholders' }
+);
+
+// Token Transfer Schema (collection `tokentransfers`; written by tools/tokens.ts)
 const TokenTransferSchema = new Schema(
   {
-    hash: { type: String, index: { unique: true }, lowercase: true },
-    blockNumber: Number,
-    method: String,
+    tokenAddress: { type: String, lowercase: true },
+    transactionHash: { type: String, lowercase: true },
     from: { type: String, lowercase: true },
     to: { type: String, lowercase: true },
-    contract: { type: String, lowercase: true },
     value: String,
-    timestamp: Number,
+    tokenId: Number, // NFT only
+    blockNumber: Number,
+    timestamp: Date,
   },
-  { collection: 'TokenTransfer' }
+  { collection: 'tokentransfers' }
+);
+
+// Scan Progress Schema (collection `scan_progress`; tools/tokens.ts)
+const ScanProgressSchema = new Schema(
+  {
+    scanType: { type: String, index: { unique: true } }, // 'tokens' or 'vrc721'
+    lastScannedBlock: { type: Number, default: 0 },
+    lastUpdateTime: { type: Date, default: Date.now },
+  },
+  { collection: 'scan_progress' }
 );
 
 const BlockStatSchema = new Schema(
@@ -266,10 +383,10 @@ const MarketSchema = new Schema(
 // DEX Swap Event Schema
 const DexSwapSchema = new Schema(
   {
-    hash: { type: String, index: true, lowercase: true },
-    blockNumber: { type: Number, index: true },
-    timestamp: { type: Number, index: true },
-    pair: { type: String, index: true, lowercase: true },
+    hash: { type: String, lowercase: true },
+    blockNumber: Number,
+    timestamp: Number,
+    pair: { type: String, lowercase: true },
     sender: { type: String, lowercase: true },
     to: { type: String, lowercase: true },
     amount0In: String,
@@ -288,7 +405,7 @@ const DexSwapSchema = new Schema(
 const VerificationJobSchema = new Schema(
   {
     guid: { type: String, index: { unique: true } },
-    address: { type: String, lowercase: true, index: true },
+    address: { type: String, lowercase: true },
     status: { type: String, enum: ['pending', 'pass', 'fail'], default: 'pending' },
     message: { type: String, default: '' },
     sourceCode: String,
@@ -305,29 +422,58 @@ const VerificationJobSchema = new Schema(
   { collection: 'VerificationJob', timestamps: true }
 );
 
-// DEX Swap indexes
+/*
+ * Indexes
+ * -------
+ * Every index below is backed by a real query (the README "Database indexes"
+ * section lists the evidence). Unique single-field indexes are declared on
+ * the paths above: Block.number, Block.hash, Transaction.hash,
+ * Account.address, Contract.address, BlockStat.number, VerificationJob.guid,
+ * tokens.address, scan_progress.scanType.
+ */
+
+// Block: mined-block lists by miner (address API `mining`, blockscout `getminedblocks`,
+// search/blocks-by-miner) and per-day block counts (stats/daily, blockscout getblocknobytime).
+BlockSchema.index({ miner: 1, number: -1 });
+BlockSchema.index({ timestamp: -1 });
+
+// Transaction: latest-transaction lists and per-block lookups (transactions, v2, realtime),
+// per-address history (address API, v2 addresses, blockscout account, CSV export),
+// contract-creation lookups (contract/status, blockscout getcontractcreation),
+// per-day / 24h counts (stats/daily, v2/stats).
+TransactionSchema.index({ blockNumber: -1, transactionIndex: -1 });
+TransactionSchema.index({ from: 1, blockNumber: -1, transactionIndex: -1 });
+TransactionSchema.index({ to: 1, blockNumber: -1, transactionIndex: -1 });
+TransactionSchema.index({ creates: 1, blockNumber: -1 }, { sparse: true });
+TransactionSchema.index({ timestamp: -1 });
+
+// Account: richlist `$match: { balance: { $gt: '0' } }`.
+AccountSchema.index({ balance: -1 });
+
+// Market: latest price lookups (`findOne().sort({ timestamp: -1 })`).
+MarketSchema.index({ timestamp: -1 });
+
+// DexSwap: swap sync upsert key (tools/price.ts), per-pool OHLCV / trades / 24h stats,
+// 24h trader and volume aggregations by timestamp.
+DexSwapSchema.index({ hash: 1, pair: 1 }, { unique: true });
 DexSwapSchema.index({ pair: 1, timestamp: -1 });
 DexSwapSchema.index({ pair: 1, blockNumber: -1 });
-DexSwapSchema.index({ hash: 1, pair: 1 }, { unique: true });
+DexSwapSchema.index({ timestamp: -1 });
 
-// Create indices
-// Optimized transaction indexes for homepage queries
-TransactionSchema.index({ blockNumber: -1 });
-TransactionSchema.index({ blockNumber: -1, transactionIndex: -1 }, { background: true });
-TransactionSchema.index({ from: 1, blockNumber: -1 });
-TransactionSchema.index({ to: 1, blockNumber: -1 });
-TransactionSchema.index({ creates: 1, blockNumber: -1 });
-AccountSchema.index({ balance: -1 });
-AccountSchema.index({ balance: -1, blockNumber: -1 });
-AccountSchema.index({ type: -1, balance: -1 });
-BlockSchema.index({ miner: 1 });
-BlockSchema.index({ miner: 1, blockNumber: -1 });
-BlockSchema.index({ hash: 1, number: -1 });
-MarketSchema.index({ timestamp: -1 });
-TokenTransferSchema.index({ blockNumber: -1 });
-TokenTransferSchema.index({ from: 1, blockNumber: -1 });
-TokenTransferSchema.index({ to: 1, blockNumber: -1 });
-TokenTransferSchema.index({ contract: 1, blockNumber: -1 });
+// tokentransfers: per-token history/first transfer (token API, NFT ownership),
+// per-address history (address API, CSV export), transfers of a transaction (tx API),
+// NFT sync upsert key (tools/tokens.ts: tokenAddress + tokenId + blockNumber + to).
+TokenTransferSchema.index({ tokenAddress: 1, timestamp: -1 });
+TokenTransferSchema.index({ from: 1, timestamp: -1 });
+TokenTransferSchema.index({ to: 1, timestamp: -1 });
+TokenTransferSchema.index({ transactionHash: 1 });
+TokenTransferSchema.index({ tokenAddress: 1, tokenId: 1, blockNumber: 1, to: 1 });
+
+// tokenholders: holder upsert key (tools/tokens.ts, Launchpad), holder ranking of a token
+// (token API sorts by `rank`), tokens held by an address (address API `tokens`).
+TokenHolderSchema.index({ tokenAddress: 1, holderAddress: 1 }, { unique: true });
+TokenHolderSchema.index({ tokenAddress: 1, rank: 1 });
+TokenHolderSchema.index({ holderAddress: 1 });
 
 // Database connection
 let connectionPromise: Promise<void> | null = null;
@@ -397,7 +543,7 @@ export const connectDB = async (): Promise<void> => {
           retryWrites: true,
           retryReads: true,
           bufferCommands: true, // Queue commands during reconnection
-          autoIndex: false, // Disable auto indexing in production
+          autoIndex: false, // Indexes are created explicitly by ensureIndexes(), never automatically
           autoCreate: false, // Disable auto creation in production
           heartbeatFrequencyMS: 30000, // 30 seconds to reduce overhead
           maxIdleTimeMS: 120000, // 2 minutes to keep connections alive
@@ -460,10 +606,102 @@ export const DexSwap =
 export const VerificationJob =
   mongoose.models.VerificationJob ||
   mongoose.model<IVerificationJob>('VerificationJob', VerificationJobSchema);
+export const Token = mongoose.models.Token || mongoose.model<IToken>('Token', TokenSchema);
+export const TokenHolder =
+  mongoose.models.TokenHolder || mongoose.model<ITokenHolder>('TokenHolder', TokenHolderSchema);
+export const ScanProgress =
+  mongoose.models.ScanProgress || mongoose.model<IScanProgress>('ScanProgress', ScanProgressSchema);
+
+/** Every model defined in this file (the set `ensureIndexes()` operates on). */
+export const ALL_MODELS: readonly AnyModel[] = [
+  Block,
+  Transaction,
+  Account,
+  Contract,
+  BlockStat,
+  Market,
+  DexSwap,
+  VerificationJob,
+  Token,
+  TokenHolder,
+  TokenTransfer,
+  ScanProgress,
+];
+
+/** Model name → real collection name (e.g. `TokenTransfer` → `tokentransfers`). */
+export const MODEL_COLLECTIONS: Readonly<Record<string, string>> = Object.freeze(
+  Object.fromEntries(ALL_MODELS.map((model) => [model.modelName, model.collection.name]))
+);
+
+/** True when `SKIP_INDEX_SYNC` asks to skip index creation (`1`, `true`, `yes`). */
+export function isIndexSyncSkipped(env: Record<string, string | undefined> = process.env): boolean {
+  const value = (env.SKIP_INDEX_SYNC || '').trim().toLowerCase();
+  return value === '1' || value === 'true' || value === 'yes';
+}
+
+/**
+ * Create every index declared on the schemas above that is missing from the
+ * database. Existing indexes are never dropped, unique indexes are skipped
+ * (and reported) when duplicate keys exist, and nothing is thrown: callers
+ * keep running and read the result. Set `SKIP_INDEX_SYNC=1` to do nothing.
+ *
+ * Call this from data-writing tools right after `connectDB()`; the Next.js
+ * app must not call it.
+ */
+export async function ensureIndexes(
+  options: EnsureIndexesOptions = {}
+): Promise<EnsureIndexesResult> {
+  if (isIndexSyncSkipped()) {
+    logger.info('Index sync skipped (SKIP_INDEX_SYNC is set)');
+    return emptyEnsureIndexesResult();
+  }
+  return ensureModelIndexes([...ALL_MODELS], options);
+}
+
+/** Schema-declared indexes that are missing from the database (read-only). */
+export async function checkIndexes(): Promise<IndexSpec[]> {
+  return findMissingIndexes([...ALL_MODELS]);
+}
+
+let startupIndexSync: Promise<EnsureIndexesResult> | null = null;
+
+/**
+ * `ensureIndexes()` for tool startup: logs a summary and never throws, so a
+ * sync tool keeps running even when index creation fails. Runs at most once
+ * per process; concurrent or repeated calls share the first run.
+ */
+export function ensureIndexesOnStartup(tool: string): Promise<EnsureIndexesResult> {
+  if (!startupIndexSync) {
+    startupIndexSync = runStartupIndexSync(tool);
+  }
+  return startupIndexSync;
+}
+
+async function runStartupIndexSync(tool: string): Promise<EnsureIndexesResult> {
+  try {
+    const result = await ensureIndexes();
+    logger.info('Index sync summary', {
+      tool,
+      created: result.created,
+      existing: result.existing.length,
+      skipped: result.skipped.map((s) => `${s.collection}.${s.index} (${s.reason})`),
+      failed: result.failed.map((f) => `${f.collection}.${f.index} (${f.error})`),
+    });
+    return result;
+  } catch (error) {
+    logger.warn('Index sync failed; continuing without it', {
+      tool,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return emptyEnsureIndexesResult();
+  }
+}
 
 // Default export for convenience
 const models = {
   connectDB,
+  ensureIndexes,
+  checkIndexes,
   Block,
   Account,
   Contract,
@@ -473,6 +711,9 @@ const models = {
   Market,
   DexSwap,
   VerificationJob,
+  Token,
+  TokenHolder,
+  ScanProgress,
 };
 
 export default models;

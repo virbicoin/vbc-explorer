@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Db } from 'mongodb';
-import { assertDb } from '@/lib/db/get-db';
+import { assertDb, type Db } from '@/lib/db/get-db';
 
 describe('assertDb', () => {
   it('returns the handle when it is present', () => {

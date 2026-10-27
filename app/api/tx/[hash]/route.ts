@@ -277,7 +277,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           const tokens = await db
             .collection('tokens')
             .find({
-              address: { $in: tokenAddresses.map((a) => new RegExp(`^${a}$`, 'i')) },
+              address: { $in: tokenAddresses.map((a) => a.toLowerCase()) },
             })
             .toArray();
 

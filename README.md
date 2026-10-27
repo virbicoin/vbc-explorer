@@ -352,7 +352,7 @@ Edit `config.json` for your blockchain:
 - **TypeScript** - Static type checking and IntelliSense
 - **ESLint** - Code linting with custom rules
 - **Prettier** - Automated code formatting  
-- **Vitest** - Unit testing for pure logic (`npm run test`)
+- **Vitest** - Unit tests for pure logic plus MongoDB tests via mongodb-memory-server (`npm run test`)
 - **tsx** - TypeScript execution for tools and scripts (ts-node replacement for TypeScript 7)
 
 ### Deployment & Production
@@ -576,7 +576,7 @@ sequenceDiagram
 |    |-- tokens.ts            # Token data sync (NFT/ERC20)
 |    |-- richlist.ts          # Rich list generation
 |    |-- register-contracts.ts  # Contract registration
-|    |-- optimize-indexes.ts  # Database index optimization
+|    |-- optimize-indexes.ts  # Create/check schema indexes (--dry-run, --check)
 |    |-- add-token.ts         # Manual token addition
 |-- types/
 |    |-- global.d.ts          # Global type declarations
@@ -602,6 +602,8 @@ sequenceDiagram
 ```
 
 ## Database Models
+
+All models are defined once in `models/index.ts` (`lib/models.ts` only re-exports it). Collection names are explicit and match the production database: `Block`, `Transaction`, `Account`, `Contract`, `BlockStat`, `Market`, `DexSwap`, `VerificationJob`, `tokens`, `tokentransfers`, `tokenholders`, `scan_progress`.
 
 ### Block
 Stores block information (real-time sync via tools/sync.ts):
@@ -695,6 +697,42 @@ Stores native currency price data (updated via tools/price.ts):
 - `source`: Price data source (e.g., "coingecko", "coinmarketcap")
 - `currency`: Price currency (typically "USD")
 
+### Database Indexes
+
+Indexes are declared on the Mongoose schemas in `models/index.ts` and created **explicitly**: `autoIndex` stays disabled, the Next.js app never touches indexes, and every data-writing tool (`sync` in all modes, `stats`, `richlist`, `tokens`, `price`, `rescan-contracts`, `register-contracts`, `add-token`) calls `ensureIndexes()` right after connecting. Existing indexes are never dropped, a unique index is skipped (and reported with the key and counts) when the collection holds duplicate keys, and a failure never stops the tool. Set `SKIP_INDEX_SYNC=1` to disable the startup check.
+
+```bash
+npm run optimize-indexes              # create every missing schema index (manual run)
+npm run optimize-indexes -- --dry-run # show what would be created, change nothing
+npm run optimize-indexes -- --check   # exit 1 when any schema index is missing
+```
+
+Every index is backed by a real query:
+
+| Collection | Index | Used by |
+|-----------|-------|---------|
+| Block | `{ number: 1 }` unique | sync upsert and range sync, block pages, latest-block lookups |
+| Block | `{ hash: 1 }` unique | block lookup by hash (v2 blocks API, transaction details) |
+| Block | `{ miner: 1, number: -1 }` | mined blocks per address (address API, blockscout `getminedblocks`, search) |
+| Block | `{ timestamp: -1 }` | daily block counts (`/api/stats/daily`), blockscout `getblocknobytime` |
+| Transaction | `{ hash: 1 }` unique | transaction lookups; sync relies on the duplicate-key error for de-duplication |
+| Transaction | `{ blockNumber: -1, transactionIndex: -1 }` | latest transactions, transactions of a block |
+| Transaction | `{ from: 1, blockNumber: -1, transactionIndex: -1 }`, `{ to: 1, blockNumber: -1, transactionIndex: -1 }` | address transaction history (address API, v2, blockscout, CSV export) |
+| Transaction | `{ creates: 1, blockNumber: -1 }` sparse | contract creation lookup (`/api/contract/status`, blockscout `getcontractcreation`) |
+| Transaction | `{ timestamp: -1 }` | daily / 24h transaction counts (`/api/stats/daily`, v2 stats) |
+| Account | `{ address: 1 }` unique, `{ balance: -1 }` | address pages, richlist |
+| Contract | `{ address: 1 }` unique | contract pages, verification |
+| BlockStat | `{ number: 1 }` unique | statistics upsert |
+| Market | `{ timestamp: -1 }` | latest price |
+| DexSwap | `{ hash: 1, pair: 1 }` unique, `{ pair: 1, timestamp: -1 }`, `{ pair: 1, blockNumber: -1 }`, `{ timestamp: -1 }` | swap sync, OHLCV / trades / 24h DEX stats |
+| VerificationJob | `{ guid: 1 }` unique | verification status polling |
+| tokens | `{ address: 1 }` unique | token pages, token sync upsert |
+| tokentransfers | `{ tokenAddress: 1, timestamp: -1 }`, `{ from: 1, timestamp: -1 }`, `{ to: 1, timestamp: -1 }`, `{ transactionHash: 1 }`, `{ tokenAddress: 1, tokenId: 1, blockNumber: 1, to: 1 }` | token transfer history, address token transfers, transaction details, NFT sync upsert key |
+| tokenholders | `{ tokenAddress: 1, holderAddress: 1 }` unique, `{ tokenAddress: 1, rank: 1 }`, `{ holderAddress: 1 }` | holder ranking, tokens held by an address, holder upsert |
+| scan_progress | `{ scanType: 1 }` unique | token scan progress |
+
+Rules for contributors: define models only in `models/index.ts` (no inline `mongoose.model()`), set `collection` explicitly to the real collection name, declare indexes in the schema, keep `autoIndex: false`, query addresses and hashes with lowercase equality instead of `$regex`, and never call `syncIndexes()` (it drops indexes that are not in the schema).
+
 ## 🔒 Security
 
 ### Environment Variables
@@ -758,7 +796,7 @@ For detailed security information, see [SECURITY.md](SECURITY.md).
 ### Prerequisites
 
 - **Node.js 18+** and npm
-- **MongoDB 6.0+** running on localhost:27017
+- **MongoDB 6.0+** (8.0 recommended) running on localhost:27017
 - **EVM Node** running with RPC enabled (e.g., localhost:8545)
 - **PM2** installed globally: `npm install -g pm2`
 
@@ -788,6 +826,13 @@ pm2 status
 
 # View logs
 pm2 logs
+```
+
+Indexes are created automatically the first time the sync tools start (`Block.number` and `Block.hash` take a few minutes on a large chain). To create or verify them by hand:
+
+```bash
+npm run optimize-indexes            # create missing indexes
+npm run optimize-indexes -- --check # exit 0 when every index exists
 ```
 
 4. **Access the explorer**
@@ -882,7 +927,11 @@ cp config.example.json config.json
 # Edit config.json for your blockchain node settings
 ```
 
-
+5. **Create database indexes** (optional: the sync tools do this on startup)
+```bash
+npm run optimize-indexes            # create the indexes defined in models/index.ts
+npm run optimize-indexes -- --check # verify (exit 1 if any index is missing)
+```
 
 6. **Start EVM node** (ensure RPC is enabled)
 ```bash
@@ -982,6 +1031,11 @@ npm run richlist     # Rich list calculation
 npm run tokens       # Token and NFT tracking
 npm run price        # Price monitoring
 
+# Database indexes (defined in models/index.ts, created automatically by the tools above)
+npm run optimize-indexes              # Create missing indexes
+npm run optimize-indexes -- --dry-run # Show what would be created
+npm run optimize-indexes -- --check   # Exit 1 if any index is missing
+
 # PM2 management
 npm run pm2:start
 npm run pm2:stop
@@ -1014,7 +1068,10 @@ npx tsx --tsconfig tsconfig.tools.json tools/sync.ts richlist
 npx tsx --tsconfig tsconfig.tools.json tools/sync.ts tokens
 
 # Price tracking
-npx tsx --tsconfig tsconfig.tools.json tools/sync.ts price
+npx tsx --tsconfig tsconfig.tools.json tools/price.ts
+
+# Database indexes
+npx tsx --tsconfig tsconfig.tools.json tools/optimize-indexes.ts --check
 
 # Environment variable configuration
 RESCAN=100:10000 npx tsx --tsconfig tsconfig.tools.json tools/sync.ts stats  # Statistics rescan
@@ -1804,16 +1861,28 @@ curl -X POST -H "Content-Type: application/json" \
 ```
 
 
-7. **Performance Issues**
+7. **Performance Issues (slow queries, high mongod CPU)**
 ```bash
-# Check MongoDB indexes
-mongosh explorerDB
-db.Block.getIndexes()
-db.Transaction.getIndexes()
+# Verify that every schema index exists (exit 1 lists the missing ones)
+npm run optimize-indexes -- --check
+
+# Create the missing ones (safe to re-run; never drops an index)
+npm run optimize-indexes
+
+# Confirm a block lookup uses the index: the plan must contain IXSCAN
+# (or EXPRESS_IXSCAN on MongoDB 8) and totalDocsExamined must be 1
+mongosh explorerDB --quiet --eval '
+  const s = db.Block.find({ number: 1 }).explain("executionStats");
+  printjson(s.queryPlanner.winningPlan);
+  print("totalDocsExamined:", s.executionStats.totalDocsExamined);'
+
+# Slow-query log lines stop increasing once the indexes exist
+grep -a -c "Slow query" /var/log/mongodb/mongod.log
 
 # Monitor memory usage
 pm2 monit
 htop
+```
 
 8. **Data Synchronization Issues**
 ```bash
@@ -1851,7 +1920,7 @@ pm2 monit
 ```
 
 4. **Adjust bulkSize**: Increase bulkSize for large data processing
-5. **Indexes**: Create appropriate indexes in MongoDB
+5. **Indexes**: Created automatically from the schemas by the sync tools; verify with `npm run optimize-indexes -- --check` (see [Database Indexes](#database-indexes))
 6. **Memory**: Ensure sufficient memory for large blockchains
 7. **Network**: Ensure high-speed connection to EVM node
 8. **Caching**: Implement Redis caching for frequently accessed data

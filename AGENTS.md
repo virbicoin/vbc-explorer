@@ -12,7 +12,7 @@ Practical instructions for AI coding agents working in this repository.
 - Install: `npm install`
 - Dev server: `npm run dev`
 - Quality gate: `npm run check`
-- Tests: `npm run test` (Vitest; `test:watch` / `test:coverage` も利用可)
+- Tests: `npm run test` (Vitest; `test:watch` / `test:coverage` も利用可). DB tests use mongodb-memory-server, which downloads a MongoDB 8.0 binary on first run (`MONGOMS_SYSTEM_BINARY=/usr/bin/mongod` uses a local binary instead).
 - Individual checks:
   - `npm run lint`
   - `npm run typecheck`
@@ -25,7 +25,7 @@ Practical instructions for AI coding agents working in this repository.
 - Shared components: `components/`
 - Business logic and utilities: `lib/`
 - Pure helpers with unit tests: `lib/security/`, `lib/services/`, `lib/contract/`, `lib/address/`, `lib/db/get-db.ts`, `lib/logger.ts`
-- Database models: `models/`
+- Database models and indexes: `models/index.ts` (the only place models are defined; `lib/models.ts` re-exports it; index helpers in `lib/db/indexes.ts`)
 - Sync and maintenance tools: `tools/`
 - Unit tests (Vitest): `tests/`
 - Runtime configuration: `config.json` via `lib/config.ts`
@@ -49,6 +49,14 @@ For new or modified API handlers in `app/api/**`:
 ## Data and Sync Notes
 - Tools in `tools/` are production-relevant and use memory-limited scripts in `package.json`.
 - NFT transfer sync logic must preserve multi-event correctness; avoid simplistic dedupe by tx hash only.
+
+## Database Models and Indexes
+- Define Mongoose models only in `models/index.ts`. Never write inline `mongoose.models.X || mongoose.model('X', schema)` in routes or tools; import the model instead (`grep "mongoose.model("` must only match `models/index.ts`).
+- Set `collection` explicitly to the real production collection name (`Block`, `Transaction`, `Account`, `Contract`, `BlockStat`, `Market`, `DexSwap`, `VerificationJob`, `tokens`, `tokentransfers`, `tokenholders`, `scan_progress`); `tests/db/model-collections.test.ts` enforces the allowlist.
+- Declare indexes on the schema and nowhere else, and only when a real query (`find` / `findOne` / `aggregate` / `sort` keys) needs them.
+- Keep `autoIndex: false`. Indexes are created by `ensureIndexes()` from `models/index.ts`, called by the data-writing tools on startup and by `npm run optimize-indexes` (`--dry-run`, `--check`). Never call `syncIndexes()` (it drops indexes) and never create indexes from the Next.js app.
+- Query addresses and hashes with lowercase equality, not `$regex`/`RegExp`: writers store them lowercase and the schemas use `lowercase: true`; regex matching bypasses the indexes.
+- DB tests run against mongodb-memory-server (`tests/db/`, `tests/tools/`); never point tests at a real database.
 
 ## Known Pitfalls
 - Secrets must not be committed. Use `.env.local` and `${ENV_VAR}` references in `config.json`.

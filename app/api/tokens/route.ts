@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import { getChainStats } from '../../../lib/stats';
-import { Contract, connectDB } from '../../../models/index';
+import { Contract, Token, TokenHolder, TokenTransfer, connectDB } from '../../../models/index';
 import { loadConfig } from '../../../lib/config';
 import { getWeb3 } from '../../../lib/web3';
 import { apiCache, CACHE_TTL } from '../../../lib/cache';
@@ -102,25 +101,6 @@ async function fetchLaunchpadLogoUrl(tokenAddress: string): Promise<string | nul
     return null;
   }
 }
-
-// Define Token schema inline since it's not exported from models/index
-const tokenSchema = new mongoose.Schema(
-  {
-    address: String,
-    name: String,
-    symbol: String,
-    decimals: { type: Number, default: 18 },
-    totalSupply: String,
-    holders: { type: Number, default: 0 },
-    type: String,
-    supply: String,
-    verified: { type: Boolean, default: false },
-    logoUrl: { type: String, default: null },
-  },
-  { collection: 'tokens' }
-);
-
-const Token = mongoose.models.Token || mongoose.model('Token', tokenSchema);
 
 // Define the structure of a token, including the optional fields
 interface IToken {
@@ -479,22 +459,8 @@ export async function GET(request: NextRequest) {
 
           // Get actual holder count from tokenholders collection (exclude zero and dead addresses)
           try {
-            const TokenHolder =
-              mongoose.models.TokenHolder ||
-              mongoose.model(
-                'TokenHolder',
-                new mongoose.Schema(
-                  {
-                    tokenAddress: String,
-                    holderAddress: String,
-                    balance: String,
-                  },
-                  { collection: 'tokenholders' }
-                )
-              );
-
             actualHolders = await TokenHolder.countDocuments({
-              tokenAddress: { $regex: new RegExp(`^${token.address}$`, 'i') },
+              tokenAddress: String(token.address).toLowerCase(),
               holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] },
             });
 
@@ -515,45 +481,17 @@ export async function GET(request: NextRequest) {
         // For VRC-721 token, get actual statistics
         if (type === 'VRC-721') {
           // Get holder count from tokenholders collection (exclude zero address)
-          const TokenHolder =
-            mongoose.models.TokenHolder ||
-            mongoose.model(
-              'TokenHolder',
-              new mongoose.Schema(
-                {
-                  tokenAddress: String,
-                  holderAddress: String,
-                  balance: String,
-                },
-                { collection: 'tokenholders' }
-              )
-            );
-
           actualHolders = await TokenHolder.countDocuments({
-            tokenAddress: { $regex: new RegExp(`^${token.address}$`, 'i') },
+            tokenAddress: String(token.address).toLowerCase(),
             holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] },
           });
 
           // Use database totalSupply if available, otherwise calculate from transfers
           if (!token.totalSupply || token.totalSupply === '0') {
             // For NFTs, total supply is the total number of minted tokens
-            const TokenTransfer =
-              mongoose.models.TokenTransfer ||
-              mongoose.model(
-                'TokenTransfer',
-                new mongoose.Schema(
-                  {
-                    tokenAddress: String,
-                    from: String,
-                    to: String,
-                  },
-                  { collection: 'tokentransfers' }
-                )
-              );
-
             // Count minting transactions (from address 0x0000...)
             const mintCount = await TokenTransfer.countDocuments({
-              tokenAddress: { $regex: new RegExp(`^${token.address}$`, 'i') },
+              tokenAddress: String(token.address).toLowerCase(),
               from: '0x0000000000000000000000000000000000000000',
             });
 

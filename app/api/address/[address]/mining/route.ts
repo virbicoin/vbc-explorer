@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mongoose from 'mongoose';
 import Web3 from 'web3';
-import { connectDB } from '../../../../../models/index';
+import { connectDB, Block } from '../../../../../models/index';
 import fs from 'fs';
 import path from 'path';
 
@@ -27,22 +26,6 @@ const readConfig = () => {
   };
 };
 
-// Block schema
-const blockSchema = new mongoose.Schema(
-  {
-    number: Number,
-    hash: String,
-    miner: String,
-    timestamp: Date,
-    transactions: Number,
-    gasUsed: Number,
-    gasLimit: Number,
-  },
-  { collection: 'blocks' }
-);
-
-const Block = mongoose.models.Block || mongoose.model('Block', blockSchema);
-
 const config = readConfig();
 const web3 = new Web3(new Web3.providers.HttpProvider(`http://${config.nodeAddr}:${config.port}`));
 
@@ -66,15 +49,15 @@ export async function GET(
   try {
     // Get blocks with mining rewards
     const minedBlocks = await Block.find({
-      miner: { $regex: new RegExp(`^${address}$`, 'i') },
+      miner: address.toLowerCase(),
     })
-      .sort({ timestamp: -1 })
+      .sort({ number: -1 })
       .skip(skip)
       .limit(limit);
 
     // Get total count
     const totalBlocks = await Block.countDocuments({
-      miner: { $regex: new RegExp(`^${address}$`, 'i') },
+      miner: address.toLowerCase(),
     });
 
     const totalPages = Math.ceil(totalBlocks / limit);

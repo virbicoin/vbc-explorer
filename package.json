@@ -1,6 +1,6 @@
 {
   "name": "vbc-explorer",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "description": "A modern blockchain explorer for VirBiCoin network with NFT support, contract verification, and real-time statistics",
   "keywords": [
     "blockchain",
@@ -55,61 +55,60 @@
     "price": "cross-env MEMORY_LIMIT_MB=256 NODE_OPTIONS='--max-old-space-size=384' tsx --tsconfig tsconfig.tools.json tools/price.ts",
     "cleanup-accounts": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/cleanup-accounts.ts",
     "sync-tokens": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/sync-tokens-to-contracts.ts",
-    "create-indexes": "cross-env NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/create-indexes.ts",
     "optimize-indexes": "cross-env NODE_OPTIONS='--max-old-space-size=512' tsx --tsconfig tsconfig.tools.json tools/optimize-indexes.ts",
     "fix-tx-timestamps": "cross-env NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/fix-transaction-timestamps.ts",
     "all": "cross-env MEMORY_LIMIT_MB=1024 NODE_OPTIONS='--max-old-space-size=1200' tsx --tsconfig tsconfig.tools.json tools/sync.ts all"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
-    "@tanstack/react-query": "^5.101.2",
+    "@tanstack/react-query": "^5.105.0",
     "ethers": "^6.17.0",
     "human-standard-token-abi": "^2.0.0",
-    "lightweight-charts": "^5.2.0",
-    "mongoose": "^9.7.4",
-    "next": "^16.2.10",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "lightweight-charts": "^5.2.1",
+    "mongoose": "^9.11.4",
+    "next": "^16.4.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "react-icons": "^5.7.0",
     "rlp": "^3.0.0",
-    "solc": "^0.8.36",
-    "viem": "^2.55.0",
-    "wagmi": "^3.7.1",
+    "solc": "^0.8.38",
+    "viem": "^2.57.12",
+    "wagmi": "^3.7.9",
     "web3": "^4.16.0"
   },
   "devDependencies": {
-    "@babel/core": "^8.0.1",
-    "@babel/eslint-parser": "^8.0.1",
+    "@babel/core": "^8.0.9",
+    "@babel/eslint-parser": "^8.0.7",
     "@babel/plugin-syntax-jsx": "^8.0.1",
-    "@babel/preset-typescript": "^8.0.1",
-    "@eslint/eslintrc": "^3.3.6",
+    "@babel/preset-typescript": "^8.0.7",
+    "@eslint/eslintrc": "^3.3.7",
     "@eslint/js": "^10.0.1",
-    "@next/eslint-plugin-next": "^16.2.10",
-    "@tailwindcss/postcss": "^4.3.2",
+    "@next/eslint-plugin-next": "^16.4.3",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/express": "^5.0.6",
-    "@types/node": "^26.1.1",
-    "@types/react": "19.2.17",
-    "@types/react-dom": "19.2.3",
+    "@types/node": "^26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "@typescript/native-preview": "^7.0.0-dev.20260707.2",
-    "@vitest/coverage-v8": "^4.1.8",
-    "autoprefixer": "^10.5.2",
+    "@vitest/coverage-v8": "^5.0.5",
+    "autoprefixer": "^10.6.2",
     "cross-env": "^10.1.0",
-    "eslint": "^10.7.0",
+    "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "postcss": "^8.5.17",
+    "mongodb-memory-server": "^11.3.0",
+    "postcss": "^8.5.32",
     "postcss-load-config": "^6.0.1",
     "postinstall": "^0.11.2",
-    "prettier": "^3.9.5",
-    "tailwindcss": "^4.1.18",
-    "tsx": "^4.23.0",
+    "prettier": "^3.9.10",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "7.0.2",
-    "vite-tsconfig-paths": "^6.1.1",
-    "vitest": "^4.1.8"
+    "vitest": "^5.0.5"
   },
   "peerDependencies": {
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "overrides": {
     "solc": {
@@ -130,7 +129,7 @@
   },
   "config": {
     "mongodbMemoryServer": {
-      "version": "6.0.0"
+      "version": "8.0.12"
     }
   }
 }
