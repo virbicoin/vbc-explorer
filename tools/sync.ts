@@ -20,8 +20,44 @@ import {
   type DetectedTokenType,
 } from '../lib/contract/erc';
 import { hiddenFields } from '../lib/security/display-name';
+import {
+  createWeb3Node,
+  dbHeadNumber,
+  loadSyncState,
+  normalizeBlock,
+  normalizeTransaction,
+  processNewBlock,
+  resolveSyncSettings,
+  saveSyncState,
+  upsertBlocks,
+  upsertTransactions,
+  verifyConfirmationWindow,
+  type BlockDoc,
+  type ContractCreation,
+  type TransactionDoc,
+} from '../lib/sync';
 
 // Use unified config loader
+
+/**
+ * Apply `database.uri` from a config file to MONGODB_URI unless the variable is
+ * already set (environment wins, as in models/index.ts). `${VAR}` placeholders
+ * are resolved; an unresolved placeholder is ignored.
+ */
+const applyConfigMongoUri = (uri: unknown, source: string): void => {
+  if (typeof uri !== 'string' || !uri) return;
+  if (process.env.MONGODB_URI) {
+    console.log(`📄 MONGODB_URI already set; ignoring database.uri from ${source}`);
+    return;
+  }
+  const resolved = uri.replace(/\$\{([^}]+)\}/g, (_, name: string) => process.env[name] || '');
+  if (!resolved || resolved.includes('${')) {
+    console.log(`📄 database.uri in ${source} has unresolved placeholders; using defaults`);
+    return;
+  }
+  process.env.MONGODB_URI = resolved;
+  console.log(`📄 MongoDB URI set from ${source}`);
+};
 
 // Initialize database connection
 const initDB = async () => {
@@ -85,13 +121,6 @@ const toString = (value: any): string => {
   if (typeof value === 'bigint') return value.toString();
   if (value instanceof Uint8Array) return Web3.utils.bytesToHex(value);
   return String(value);
-};
-
-const toBoolean = (value: any): boolean | null => {
-  if (value === null || value === undefined) return null;
-  if (typeof value === 'bigint') return value > 0n;
-  if (typeof value === 'string') return value === '1' || value.toLowerCase() === 'true';
-  return Boolean(value);
 };
 
 /**
@@ -395,45 +424,6 @@ interface Config {
   endBlock: number | null;
 }
 
-interface NormalizedTransaction {
-  blockHash: string | null;
-  blockNumber: number | null;
-  from: string | null;
-  hash: string;
-  value: string;
-  nonce: number;
-  gas: number;
-  gasUsed: number;
-  gasPrice: string;
-  input: string;
-  transactionIndex: number | null;
-  timestamp: number;
-  status: boolean | null;
-  to?: string;
-}
-
-interface BlockDocument {
-  number: number;
-  hash: string;
-  parentHash: string;
-  nonce: string;
-  sha3Uncles: string;
-  logsBloom: string;
-  transactionsRoot: string;
-  stateRoot: string;
-  receiptsRoot: string;
-  miner: string | null;
-  difficulty: string;
-  totalDifficulty: string;
-  extraData: string;
-  size: number;
-  gasLimit: number;
-  gasUsed: number;
-  timestamp: number;
-  transactions: string[];
-  uncles: string[];
-}
-
 // Generic Configuration
 const config = loadConfig();
 
@@ -493,42 +483,11 @@ console.log(`🔌 Connecting to VirBiCoin node at ${providerUrl}...`);
 const web3 = new Web3(new Web3.providers.HttpProvider(providerUrl));
 
 /**
- * Normalize transaction data
- */
-const normalizeTX = async (
-  txData: any, // Using any due to web3 v4 type complexity
-  receipt: any | null,
-  blockData: any
-): Promise<NormalizedTransaction> => {
-  const tx: NormalizedTransaction = {
-    blockHash: toString(txData.blockHash || blockData.hash),
-    blockNumber: toNumber(txData.blockNumber || blockData.number),
-    from: txData.from ? toString(txData.from).toLowerCase() : null,
-    hash: toString(txData.hash).toLowerCase(),
-    value: toString(txData.value || '0'),
-    nonce: toNumber(txData.nonce),
-    gas: toNumber(txData.gas),
-    gasUsed: receipt ? toNumber(receipt.gasUsed) : 0,
-    gasPrice: toString(txData.gasPrice || '0'),
-    input: toString(txData.input || txData.data || '0x'),
-    transactionIndex: toNumber(txData.transactionIndex),
-    timestamp: toNumber(blockData.timestamp),
-    status: receipt ? toBoolean(receipt.status) : null,
-  };
-
-  if (txData.to) {
-    tx.to = toString(txData.to).toLowerCase();
-  }
-
-  return tx;
-};
-
-/**
  * Write block to database with improved performance
  */
 interface WriteBlockToDB {
   (blockData: any | null, flush?: boolean): Promise<void>;
-  bulkOps?: BlockDocument[];
+  bulkOps?: BlockDoc[];
 }
 
 const writeBlockToDB: WriteBlockToDB = async function (
@@ -541,30 +500,7 @@ const writeBlockToDB: WriteBlockToDB = async function (
   }
 
   if (blockData && toNumber(blockData.number) >= 0) {
-    const blockDoc: BlockDocument = {
-      number: toNumber(blockData.number),
-      hash: toString(blockData.hash),
-      parentHash: toString(blockData.parentHash),
-      nonce: toString(blockData.nonce),
-      sha3Uncles: toString(blockData.sha3Uncles),
-      logsBloom: toString(blockData.logsBloom),
-      transactionsRoot: toString(blockData.transactionsRoot),
-      stateRoot: toString(blockData.stateRoot),
-      receiptsRoot: toString(blockData.receiptsRoot),
-      miner: blockData.miner ? toString(blockData.miner).toLowerCase() : null,
-      difficulty: toString(blockData.difficulty),
-      totalDifficulty: toString(blockData.totalDifficulty),
-      extraData: toString(blockData.extraData),
-      size: toNumber(blockData.size),
-      gasLimit: toNumber(blockData.gasLimit),
-      gasUsed: toNumber(blockData.gasUsed),
-      timestamp: toNumber(blockData.timestamp),
-      transactions: blockData.transactions.map((tx: any) =>
-        typeof tx === 'string' ? tx : toString(tx.hash)
-      ),
-      uncles: blockData.uncles || [],
-    };
-
+    const blockDoc = normalizeBlock(blockData);
     self.bulkOps.push(blockDoc);
 
     if (!config.quiet) {
@@ -578,16 +514,14 @@ const writeBlockToDB: WriteBlockToDB = async function (
 
     if (bulk.length === 0) return;
 
-    // Use upsert to avoid duplicates
-    for (const block of bulk) {
-      try {
-        await Block.updateOne({ number: block.number }, { $set: block }, { upsert: true });
-      } catch (err) {
-        console.log(`Error: Failed to upsert block #${block.number}: ${err}`);
+    // Upsert by block number (a replaced block overwrites the orphan at the same height)
+    try {
+      await upsertBlocks(bulk);
+      if (!config.quiet) {
+        console.log(`✅ ${bulk.length} blocks upserted.`);
       }
-    }
-    if (!config.quiet) {
-      console.log(`✅ ${bulk.length} blocks upserted.`);
+    } catch (err) {
+      console.log(`Error: Failed to upsert ${bulk.length} blocks: ${err}`);
     }
   }
 };
@@ -597,7 +531,7 @@ const writeBlockToDB: WriteBlockToDB = async function (
  */
 interface WriteTransactionsToDB {
   (blockData: any | null, flush?: boolean): Promise<void>;
-  bulkOps?: NormalizedTransaction[];
+  bulkOps?: TransactionDoc[];
   blocks?: number;
 }
 
@@ -617,7 +551,7 @@ const writeTransactionsToDB: WriteTransactionsToDB = async function (
 
       try {
         const receipt = await web3.eth.getTransactionReceipt(toString(txData.hash));
-        const tx = await normalizeTX(txData, receipt, blockData);
+        const tx = normalizeTransaction(txData, receipt, blockData);
         self.bulkOps.push(tx);
 
         // Detect contract creation and auto-register
@@ -654,34 +588,50 @@ const writeTransactionsToDB: WriteTransactionsToDB = async function (
 
     if (bulk.length === 0) return;
 
-    // Insert transactions
+    // Upsert by hash: a transaction re-included in another block is moved, never dropped
     try {
-      const docs = await Transaction.insertMany(bulk, { ordered: false });
+      await upsertTransactions(bulk);
       if (!config.quiet) {
-        console.log(`✅ ${docs.length} transactions successfully recorded.`);
+        console.log(`✅ ${bulk.length} transactions successfully recorded.`);
       }
-    } catch (err: any) {
-      if (err.code === 11000) {
-        if (!config.quiet) {
-          console.log('Skip: Duplicate transaction keys detected');
-        }
-      } else {
-        console.log(`❌ Error: Failed to insert transactions: ${err}`);
-        process.exit(9);
-      }
+    } catch (err) {
+      console.log(`❌ Error: Failed to upsert transactions: ${err}`);
+      process.exit(9);
     }
   }
 };
 
 /**
- * Listen for new blocks (real-time sync) with improved performance
+ * Listen for new blocks (real-time sync) with reorg handling.
+ *
+ * Every poll: ingest the new heights (a block whose parentHash does not match
+ * the DB block below triggers a reorg: walk back to the common ancestor and
+ * replace the orphaned heights), then re-verify the last CONFIRMATIONS heights
+ * against the node and replace any mismatch. The last processed height is
+ * persisted in scan_progress (scanType 'sync') and restored on restart.
  */
 const listenBlocks = function (): void {
   console.log('🚀 Starting real-time block listener...');
 
-  const pollInterval = 5000; // Poll every 5 seconds (extended from 3s to 5s)
+  const pollInterval = 5000; // Poll every 5 seconds
+  const MAX_BLOCKS_PER_POLL = 20;
+  const RESUME_WINDOW = 1000; // resume from the saved position only when it is this close to the head
+  const node = createWeb3Node(web3);
+  const settings = resolveSyncSettings((config as { sync?: Record<string, unknown> }).sync);
+  const deps = {
+    quiet: config.quiet,
+    onContractCreated: (creation: ContractCreation) =>
+      registerContract(
+        creation.address,
+        creation.creator,
+        creation.transactionHash,
+        creation.blockNumber,
+        web3
+      ).catch(() => {}),
+  };
   let lastProcessedBlock = 0;
   let isProcessing = false; // Flag to prevent duplicate processing
+  let reorgCount = 0;
 
   const poll = async (): Promise<void> => {
     if (isProcessing) {
@@ -690,50 +640,63 @@ const listenBlocks = function (): void {
 
     try {
       isProcessing = true;
-      const currentBlockBigInt = await web3.eth.getBlockNumber();
-      const currentBlock = toNumber(currentBlockBigInt);
+      const head = await node.getBlockNumber();
 
-      if (currentBlock > lastProcessedBlock) {
-        console.log(`🔍 New block detected: ${currentBlock} (last: ${lastProcessedBlock})`);
+      if (head > lastProcessedBlock) {
+        console.log(`🔍 New block detected: ${head} (last: ${lastProcessedBlock})`);
+        const target = Math.min(head, lastProcessedBlock + MAX_BLOCKS_PER_POLL);
 
-        // Process new blocks in batches
-        const blocksToProcess = Math.min(currentBlock - lastProcessedBlock, 5); // Reduced from 10 to 5
-
-        for (let i = 0; i < blocksToProcess; i++) {
-          const blockNum = lastProcessedBlock + 1 + i;
-
+        for (let height = lastProcessedBlock + 1; height <= target; height++) {
           try {
-            const blockData = await web3.eth.getBlock(blockNum, true);
-
-            if (blockData) {
-              // Check if block already exists to avoid duplicates with extended timeout
-              const existingBlock = await Block.findOne({ number: blockNum })
-                .lean()
-                .maxTimeMS(60000);
-
-              if (!existingBlock) {
-                await writeBlockToDB(blockData, true);
-                await writeTransactionsToDB(blockData, true);
+            const result = await processNewBlock(node, height, settings, deps);
+            if (result.status === 'missing') {
+              console.log(`⏳ Block ${height} not available from the node yet, will retry`);
+              break;
+            }
+            if (result.reorg) {
+              reorgCount++;
+              if (result.reorg.resolved) {
                 console.log(
-                  `📦 Processed new block: ${blockNum} (${blockData.transactions.length} transactions)`
+                  `🔁 Reorg #${reorgCount} at ${height}: ancestor ${result.reorg.ancestor}, depth ${height - 1 - (result.reorg.ancestor ?? 0)}, replaced ${result.reorg.replaced.length} block(s)`
                 );
               } else {
-                console.log(`⏭️ Block ${blockNum} already exists, skipping`);
+                console.log(
+                  `❌ Reorg #${reorgCount} at ${height} deeper than maxReorgDepth=${settings.maxReorgDepth}; recorded as reorg-pending (run repair-chain)`
+                );
               }
             }
+            if (result.status === 'replaced') {
+              console.log(`♻️ Block ${height} replaced (${result.transactions} transactions)`);
+            } else if (result.status === 'inserted') {
+              console.log(
+                `📦 Processed new block: ${height} (${result.transactions} transactions)`
+              );
+            } else {
+              console.log(`⏭️ Block ${height} already up to date`);
+            }
+            lastProcessedBlock = height;
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            // If timeout error, wait and continue - don't fail
             if (errorMessage.includes('time limit') || errorMessage.includes('timeout')) {
-              console.log(`⏳ Block ${blockNum} query timeout, will retry later`);
+              console.log(`⏳ Block ${height} query timeout, will retry later`);
               await new Promise((resolve) => setTimeout(resolve, 5000));
             } else {
-              console.log(`❌ Error processing block ${blockNum}: ${errorMessage}`);
+              console.log(`❌ Error processing block ${height}: ${errorMessage}`);
             }
+            break;
           }
         }
 
-        lastProcessedBlock = currentBlock;
+        await saveSyncState(lastProcessedBlock);
+      }
+
+      // Confirmation window: catch reorgs that happened between polls
+      const replaced = await verifyConfirmationWindow(node, head, settings.confirmations, deps);
+      if (replaced.length > 0) {
+        reorgCount++;
+        console.log(
+          `🔁 Reorg #${reorgCount}: confirmation window replaced block(s) ${replaced.join(', ')}`
+        );
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -743,20 +706,22 @@ const listenBlocks = function (): void {
     }
   };
 
-  // Get initial block number
-  web3.eth
-    .getBlockNumber()
-    .then((blockNumberBigInt) => {
-      lastProcessedBlock = toNumber(blockNumberBigInt);
-      console.log(`🔍 Real-time listener starting from block: ${lastProcessedBlock}`);
-
-      // Start polling
-      setInterval(poll, pollInterval);
-    })
-    .catch((err) => {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      console.log(`Error getting initial block number: ${errorMessage}`);
-    });
+  // Restore the listener position: saved state or DB head when close to the node head,
+  // otherwise start at the head (prepareSync backfills the gap)
+  (async () => {
+    const head = await node.getBlockNumber();
+    const saved = await loadSyncState();
+    const dbHead = await dbHeadNumber();
+    const candidate = Math.max(saved ?? 0, dbHead ?? 0);
+    lastProcessedBlock = candidate > 0 && head - candidate <= RESUME_WINDOW ? candidate : head;
+    console.log(
+      `🔍 Real-time listener starting from block ${lastProcessedBlock} (head ${head}, saved ${saved ?? '-'}, db ${dbHead ?? '-'}; confirmations=${settings.confirmations}, maxReorgDepth=${settings.maxReorgDepth})`
+    );
+    setInterval(poll, pollInterval);
+  })().catch((err) => {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.log(`Error starting block listener: ${errorMessage}`);
+  });
 };
 
 /**
@@ -847,52 +812,12 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
       }
 
       // Batch write to database
-      const blocksToInsert = [];
-      const transactionsToInsert = [];
+      const blocksToInsert: BlockDoc[] = [];
+      const transactionsToInsert: TransactionDoc[] = [];
 
       for (const { blockNum, blockData } of allBlocksData) {
         if (blockData) {
-          // Prepare block data for insertion
-          const blockDoc = {
-            number: toNumber(blockData.number),
-            hash: toString(blockData.hash),
-            parentHash: toString(blockData.parentHash),
-            nonce: toString(blockData.nonce),
-            sha3Uncles: toString(blockData.sha3Uncles),
-            logsBloom: toString(blockData.logsBloom),
-            transactionsRoot: toString(blockData.transactionsRoot),
-            stateRoot: toString(blockData.stateRoot),
-            receiptsRoot: toString(blockData.receiptsRoot),
-            miner: toString(blockData.miner),
-            difficulty: toString(blockData.difficulty),
-            totalDifficulty: toString(blockData.totalDifficulty),
-            extraData: toString(blockData.extraData),
-            size: toNumber(blockData.size),
-            gasLimit: toNumber(blockData.gasLimit),
-            gasUsed: toNumber(blockData.gasUsed),
-            timestamp: toNumber(blockData.timestamp),
-            transactions: blockData.transactions
-              ? blockData.transactions.map((tx: any) => toString(tx.hash || tx))
-              : [],
-            uncles: blockData.uncles || [],
-            baseFeePerGas: blockData.baseFeePerGas ? toString(blockData.baseFeePerGas) : undefined,
-            mixHash: blockData.mixHash ? toString(blockData.mixHash) : undefined,
-            withdrawals: (blockData as any).withdrawals || [],
-            withdrawalsRoot: (blockData as any).withdrawalsRoot
-              ? toString((blockData as any).withdrawalsRoot)
-              : undefined,
-            blobGasUsed: (blockData as any).blobGasUsed
-              ? toNumber((blockData as any).blobGasUsed)
-              : undefined,
-            excessBlobGas: (blockData as any).excessBlobGas
-              ? toNumber((blockData as any).excessBlobGas)
-              : undefined,
-            parentBeaconBlockRoot: (blockData as any).parentBeaconBlockRoot
-              ? toString((blockData as any).parentBeaconBlockRoot)
-              : undefined,
-          };
-
-          blocksToInsert.push(blockDoc);
+          blocksToInsert.push(normalizeBlock(blockData));
 
           // Process transactions if they exist and are detailed
           if (blockData.transactions && Array.isArray(blockData.transactions)) {
@@ -914,42 +839,7 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
             const txReceiptPairs = await Promise.all(receiptPromises);
 
             for (const { tx, receipt } of txReceiptPairs) {
-              const txDoc = {
-                hash: toString(tx.hash),
-                nonce: toNumber(tx.nonce),
-                blockHash: toString(tx.blockHash),
-                blockNumber: toNumber(tx.blockNumber),
-                transactionIndex: toNumber(tx.transactionIndex),
-                from: toString(tx.from),
-                to: tx.to ? toString(tx.to) : null,
-                value: toString(tx.value),
-                gasPrice: tx.gasPrice ? toString(tx.gasPrice) : null,
-                gas: toNumber(tx.gas),
-                gasUsed: receipt ? toNumber(receipt.gasUsed) : 0, // Add gasUsed from receipt
-                status: receipt ? (receipt.status ? 1 : 0) : null, // Add status from receipt
-                input: toString(tx.input),
-                timestamp: toNumber(blockData.timestamp), // Add block timestamp to transaction
-                creates: (tx as any).creates ? toString((tx as any).creates) : null,
-                raw: (tx as any).raw ? toString((tx as any).raw) : null,
-                publicKey: (tx as any).publicKey ? toString((tx as any).publicKey) : null,
-                r: tx.r ? toString(tx.r) : null,
-                s: tx.s ? toString(tx.s) : null,
-                v: tx.v ? toString(tx.v) : null,
-                standardV: (tx as any).standardV ? toString((tx as any).standardV) : null,
-                type: tx.type !== undefined ? toNumber(tx.type) : null,
-                accessList: tx.accessList || [],
-                chainId: tx.chainId ? toNumber(tx.chainId) : null,
-                maxFeePerGas: tx.maxFeePerGas ? toString(tx.maxFeePerGas) : null,
-                maxPriorityFeePerGas: tx.maxPriorityFeePerGas
-                  ? toString(tx.maxPriorityFeePerGas)
-                  : null,
-                maxFeePerBlobGas: (tx as any).maxFeePerBlobGas
-                  ? toString((tx as any).maxFeePerBlobGas)
-                  : null,
-                blobVersionedHashes: (tx as any).blobVersionedHashes || [],
-                yParity: (tx as any).yParity ? toString((tx as any).yParity) : null,
-              };
-              transactionsToInsert.push(txDoc);
+              transactionsToInsert.push(normalizeTransaction(tx, receipt, blockData));
 
               // Detect contract creation and auto-register
               if (receipt && receipt.contractAddress) {
@@ -967,20 +857,13 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
         }
       }
 
-      // Bulk insert blocks and transactions
+      // Upsert blocks (by number) and transactions (by hash)
       try {
-        if (blocksToInsert.length > 0) {
-          await Block.insertMany(blocksToInsert, { ordered: false });
-        }
-        if (transactionsToInsert.length > 0) {
-          await Transaction.insertMany(transactionsToInsert, { ordered: false });
-        }
+        await upsertBlocks(blocksToInsert);
+        await upsertTransactions(transactionsToInsert);
       } catch (error) {
-        // Handle duplicate key errors gracefully
         const errorMessage = error instanceof Error ? error.message : String(error);
-        if (!errorMessage.includes('duplicate key') && !errorMessage.includes('E11000')) {
-          console.log(`❌ Database error: ${errorMessage}`);
-        }
+        console.log(`❌ Database error: ${errorMessage}`);
       }
 
       // Memory check and GC
@@ -1075,10 +958,7 @@ const main = async (): Promise<void> => {
         const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         Object.assign(config, configData);
         console.log('📄 config.json found.');
-        if (configData.database && configData.database.uri) {
-          process.env.MONGODB_URI = configData.database.uri;
-          console.log('📄 MongoDB URI set from config.json');
-        }
+        applyConfigMongoUri(configData.database?.uri, 'config.json');
       } else {
         // Fallback to config.example.json
         const exampleConfigPath = path.join(__dirname, '..', 'config.example.json');
@@ -1086,10 +966,7 @@ const main = async (): Promise<void> => {
           const configData = JSON.parse(fs.readFileSync(exampleConfigPath, 'utf8'));
           Object.assign(config, configData);
           console.log('📄 config.example.json found (fallback).');
-          if (configData.database && configData.database.uri) {
-            process.env.MONGODB_URI = configData.database.uri;
-            console.log('📄 MongoDB URI set from config.example.json');
-          }
+          applyConfigMongoUri(configData.database?.uri, 'config.example.json');
         } else {
           console.log('📄 No config files found. Using default configuration...');
         }

@@ -165,11 +165,16 @@ export interface ITokenTransfer extends Document {
   timestamp: Date;
 }
 
-/** Token scan progress of tools/tokens.ts (collection `scan_progress`). */
+/**
+ * Progress markers (collection `scan_progress`): `tokens` (tools/tokens.ts),
+ * `sync` (live listener position), `reorg-pending` (reorg deeper than
+ * maxReorgDepth, with the range in `meta`), `repair` (tools/repair-chain.ts).
+ */
 export interface IScanProgress extends Document {
   scanType: string;
   lastScannedBlock: number;
   lastUpdateTime: Date;
+  meta?: Record<string, unknown> | null;
 }
 
 export interface IMarket extends Document {
@@ -357,9 +362,10 @@ const TokenTransferSchema = new Schema(
 // Scan Progress Schema (collection `scan_progress`; tools/tokens.ts)
 const ScanProgressSchema = new Schema(
   {
-    scanType: { type: String, index: { unique: true } }, // 'tokens' or 'vrc721'
+    scanType: { type: String, index: { unique: true } }, // 'tokens' | 'sync' | 'reorg-pending' | 'repair'
     lastScannedBlock: { type: Number, default: 0 },
     lastUpdateTime: { type: Date, default: Date.now },
+    meta: { type: Schema.Types.Mixed, default: null },
   },
   { collection: 'scan_progress' }
 );

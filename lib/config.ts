@@ -218,6 +218,13 @@ export interface SupplyConfig {
   cacheDuration?: number;
 }
 
+export interface SyncConfig {
+  /** Heights below the head re-verified against the node on every poll (default 12). */
+  confirmations?: number;
+  /** How far back a common ancestor is searched during a reorg (default 64). */
+  maxReorgDepth?: number;
+}
+
 export interface ImagesConfig {
   /** Gateway used to rewrite `ipfs://` URIs before fetching (default https://ipfs.io/ipfs/). */
   ipfsGateway?: string;
@@ -251,6 +258,7 @@ export interface AppConfig {
   supply?: SupplyConfig;
   social?: SocialConfig;
   images?: ImagesConfig;
+  sync?: SyncConfig;
   [key: string]: unknown;
 }
 

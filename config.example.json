@@ -168,6 +168,10 @@
     "ipfsGateway": "https://ipfs.io/ipfs/",
     "allowedHosts": []
   },
+  "sync": {
+    "confirmations": 12,
+    "maxReorgDepth": 64
+  },
   "network": {
     "chainId": 1,
     "name": "Ethereum Mainnet",
