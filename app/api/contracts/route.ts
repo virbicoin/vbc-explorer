@@ -199,7 +199,8 @@ export async function GET(request: NextRequest) {
 
     // Build query - Contract collection contains all contracts
     // No need for isContract filter as all documents in Contract collection are contracts
-    const query: Record<string, unknown> = {};
+    // Contracts flagged hidden (URL-like / control-character names) never reach the list
+    const query: Record<string, unknown> = { hidden: { $ne: true } };
 
     // Hide blacklisted contracts (deprecated/broken deployments) from the list
     const blacklistedContracts = getBlacklistedContracts();

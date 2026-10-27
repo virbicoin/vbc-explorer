@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import DisplayName, { displayNameText } from '@/components/DisplayName';
 import {
   CodeBracketIcon,
   CheckCircleIcon,
@@ -15,6 +16,7 @@ interface Contract {
   address: string;
   name: string;
   symbol?: string;
+  hidden?: boolean;
   type: string;
   verified: boolean;
   createdAt?: string;
@@ -257,10 +259,17 @@ export default function ContractsPage() {
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
                             <span className="text-gray-200 font-medium">
-                              {contract.name || 'Unknown'}
+                              <DisplayName
+                                value={contract.name}
+                                hidden={contract.hidden}
+                                address={contract.address}
+                                fallback="Unknown"
+                              />
                             </span>
-                            {contract.symbol && (
-                              <span className="text-gray-400 text-sm">({contract.symbol})</span>
+                            {contract.symbol && !contract.hidden && (
+                              <span className="text-gray-400 text-sm">
+                                (<DisplayName value={contract.symbol} variant="symbol" />)
+                              </span>
                             )}
                           </div>
                         </td>

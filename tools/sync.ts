@@ -19,6 +19,7 @@ import {
   ercCodeForTokenType,
   type DetectedTokenType,
 } from '../lib/contract/erc';
+import { hiddenFields } from '../lib/security/display-name';
 
 // Use unified config loader
 
@@ -222,11 +223,12 @@ const registerContract = async (
     // Convert tokenType to the ERC code stored in Contract.ERC
     const ercNumber = ercCodeForTokenType(tokenType);
 
-    // Create contract entry
+    // Create contract entry (names that look like URLs / contain control chars are flagged hidden)
     await Contract.create({
       address: normalizedAddress,
       blockNumber: blockNumber,
       ERC: ercNumber,
+      ...hiddenFields({ name: tokenName, symbol: tokenSymbol }),
       type: tokenType === 'Contract' ? null : `VRC-${tokenType.replace('ERC', '')}`,
       creationTransaction: creationTxHash,
       contractName:

@@ -46,13 +46,16 @@ export async function getTokenSummary(address: string): Promise<TokenIdentity | 
 
     const token = await db
       .collection('tokens')
-      .findOne(byAddress, { projection: { name: 1, symbol: 1, type: 1 } });
+      .findOne(byAddress, { projection: { name: 1, symbol: 1, type: 1, hidden: 1 } });
+    // Hidden (spam-name) tokens never contribute their name to page metadata
+    if (token?.hidden) return null;
     const fromToken = pickTokenIdentity(token?.name, token?.symbol, token?.type);
     if (fromToken) return fromToken;
 
     const contract = await db
       .collection('Contract')
-      .findOne(byAddress, { projection: { tokenName: 1, symbol: 1 } });
+      .findOne(byAddress, { projection: { tokenName: 1, symbol: 1, hidden: 1 } });
+    if (contract?.hidden) return null;
     return pickTokenIdentity(contract?.tokenName, contract?.symbol);
   });
 }

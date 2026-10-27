@@ -264,7 +264,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         );
         const tokenInfoMap = new Map<
           string,
-          { name: string; symbol: string; decimals: number; type: string; logoUrl?: string }
+          {
+            name: string;
+            symbol: string;
+            decimals: number;
+            type: string;
+            logoUrl?: string;
+            hidden?: boolean;
+          }
         >();
 
         if (tokenAddresses.length > 0) {
@@ -285,6 +292,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 decimals: (token.decimals as number) ?? 18,
                 type: (token.type as string) || 'VRC-20',
                 logoUrl: (token.logoUrl as string) || undefined,
+                hidden: token.hidden === true,
               });
             }
           }

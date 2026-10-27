@@ -142,7 +142,8 @@ export async function GET(request: NextRequest) {
   const nativeTokenSymbol = config.currency?.symbol || 'ETH';
 
   // Get all contracts (for verification status and ERC20 discovery)
-  const contracts = await Contract.find({}).lean();
+  // Contracts / tokens flagged hidden (spam names) never reach the list
+  const contracts = await Contract.find({ hidden: { $ne: true } }).lean();
   const verificationMap = new Map();
   const contractMap = new Map();
   contracts.forEach((contract) => {
@@ -154,7 +155,10 @@ export async function GET(request: NextRequest) {
   });
 
   // Fetch all tokens from the database
-  const dbTokens = (await Token.find({}).lean()) as Record<string, unknown>[];
+  const dbTokens = (await Token.find({ hidden: { $ne: true } }).lean()) as Record<
+    string,
+    unknown
+  >[];
 
   // Get addresses already in tokens collection
   const existingTokenAddresses = new Set(

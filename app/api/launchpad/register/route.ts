@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Web3 from 'web3';
 import { connectDB, Token, TokenHolder } from '../../../../models/index';
 import { loadConfig } from '../../../../lib/config';
+import { hiddenFields } from '../../../../lib/security/display-name';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Load configuration
@@ -119,6 +120,7 @@ export async function POST(request: NextRequest) {
       createdAt: new Date(),
       createdBy: creator?.toLowerCase() || null,
       source: 'launchpad',
+      ...hiddenFields({ name, symbol }),
     });
 
     await newToken.save();

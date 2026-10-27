@@ -55,7 +55,10 @@ export async function GET(request: NextRequest) {
     const totalAddresses = await Account.countDocuments({});
 
     // Get verified contracts count
-    const verifiedContracts = await Contract.countDocuments({ verified: true });
+    const verifiedContracts = await Contract.countDocuments({
+      verified: true,
+      hidden: { $ne: true },
+    });
 
     // Calculate total supply
     const blockReward = config.supply?.blockReward || 8;

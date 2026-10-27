@@ -1246,6 +1246,9 @@ export async function GET(
           address: token.address,
           name: token.name,
           symbol: token.symbol,
+          hidden: (token as Record<string, unknown>).hidden === true,
+          hiddenReason:
+            ((token as Record<string, unknown>).hiddenReason as string | undefined) || null,
           type: token.type,
           decimals: Number(token.decimals ?? 0),
           totalSupply: actualNftSupply,
@@ -1345,6 +1348,9 @@ export async function GET(
         address: token.address,
         name: token.name,
         symbol: token.symbol,
+        hidden: (token as Record<string, unknown>).hidden === true,
+        hiddenReason:
+          ((token as Record<string, unknown>).hiddenReason as string | undefined) || null,
         type: token.type,
         isNFT: isNFT,
         decimals: Number(token.decimals ?? (isNFT ? 0 : 18)),

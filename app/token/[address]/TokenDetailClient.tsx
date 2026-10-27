@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import DisplayName, { displayNameText } from '@/components/DisplayName';
 import {
   CheckCircleIcon,
   ClipboardDocumentIcon,
@@ -21,6 +22,8 @@ interface TokenData {
     address: string;
     name: string;
     symbol: string;
+    hidden?: boolean;
+    hiddenReason?: string | null;
     type: string;
     isNFT: boolean;
     decimals: number;
@@ -1132,7 +1135,18 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                   {tokenData?.token?.type || 'Token'}
                 </span>
                 <h1 className="text-2xl font-bold text-gray-100">
-                  {tokenData?.token?.name || 'Token'} ({tokenData?.token?.symbol || ''})
+                  {tokenData?.token?.hidden ? (
+                    <DisplayName
+                      value={tokenData.token.name}
+                      hidden
+                      address={tokenData.token.address}
+                    />
+                  ) : (
+                    <>
+                      <DisplayName value={tokenData?.token?.name} fallback="Token" /> (
+                      <DisplayName value={tokenData?.token?.symbol} variant="symbol" fallback="" />)
+                    </>
+                  )}
                 </h1>
               </div>
             </div>
