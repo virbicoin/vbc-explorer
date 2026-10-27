@@ -55,7 +55,6 @@
     "price": "cross-env MEMORY_LIMIT_MB=256 NODE_OPTIONS='--max-old-space-size=384' tsx --tsconfig tsconfig.tools.json tools/price.ts",
     "cleanup-accounts": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/cleanup-accounts.ts",
     "sync-tokens": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/sync-tokens-to-contracts.ts",
-    "create-indexes": "cross-env NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/create-indexes.ts",
     "optimize-indexes": "cross-env NODE_OPTIONS='--max-old-space-size=512' tsx --tsconfig tsconfig.tools.json tools/optimize-indexes.ts",
     "fix-tx-timestamps": "cross-env NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/fix-transaction-timestamps.ts",
     "all": "cross-env MEMORY_LIMIT_MB=1024 NODE_OPTIONS='--max-old-space-size=1200' tsx --tsconfig tsconfig.tools.json tools/sync.ts all"

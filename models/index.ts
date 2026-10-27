@@ -530,11 +530,21 @@ export async function checkIndexes(): Promise<IndexSpec[]> {
   return findMissingIndexes([...ALL_MODELS]);
 }
 
+let startupIndexSync: Promise<EnsureIndexesResult> | null = null;
+
 /**
  * `ensureIndexes()` for tool startup: logs a summary and never throws, so a
- * sync tool keeps running even when index creation fails.
+ * sync tool keeps running even when index creation fails. Runs at most once
+ * per process; concurrent or repeated calls share the first run.
  */
-export async function ensureIndexesOnStartup(tool: string): Promise<EnsureIndexesResult> {
+export function ensureIndexesOnStartup(tool: string): Promise<EnsureIndexesResult> {
+  if (!startupIndexSync) {
+    startupIndexSync = runStartupIndexSync(tool);
+  }
+  return startupIndexSync;
+}
+
+async function runStartupIndexSync(tool: string): Promise<EnsureIndexesResult> {
   try {
     const result = await ensureIndexes();
     logger.info('Index sync summary', {

@@ -1,160 +1,223 @@
 /**
- * Database Index Optimization Script
+ * Database index tool
  *
- * Creates and optimizes indexes for better query performance.
- * Run this script after initial setup or when adding new indexes.
+ * Thin CLI wrapper around `ensureIndexes()` from models/index.ts. The Mongoose
+ * schemas are the single source of truth for every index; this file keeps no
+ * index table of its own and never drops anything.
  *
- * Usage: npx ts-node --project tsconfig.tools.json tools/optimize-indexes.ts
+ * Usage:
+ *   npm run optimize-indexes              # create every schema index that is missing
+ *   npm run optimize-indexes -- --dry-run # list what would be created, change nothing
+ *   npm run optimize-indexes -- --check   # exit 1 when any schema index is missing
+ *
+ * Exit code 0 means every schema index exists (or was created). Exit code 1
+ * means the DB is unreachable, an index is missing (--check), or an index was
+ * not created: a creation failed, or a unique index was skipped because the
+ * collection holds duplicate keys (reported with the key and counts).
+ * `--dry-run` runs the duplicate check for missing unique indexes (a `$group`
+ * over the collection, ~10s on 3M blocks) so problems show up before any write.
+ * `SKIP_INDEX_SYNC=1` turns the create and dry-run modes into no-ops.
+ *
+ * Direct execution: npx tsx --tsconfig tsconfig.tools.json tools/optimize-indexes.ts
  */
 
 import mongoose from 'mongoose';
-import fs from 'fs';
-import path from 'path';
+import { connectDB, ensureIndexes, checkIndexes, isIndexSyncSkipped } from '../models/index';
+import { indexNameFor, type EnsureIndexesResult, type IndexSpec } from '../lib/db/indexes';
 import { requireDb } from '../lib/db/get-db';
 
-// Load config
-const configPath = path.join(process.cwd(), 'config.json');
-const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-const MONGODB_URI =
-  config.database?.uri || process.env.MONGODB_URI || 'mongodb://localhost:27017/explorerDB';
-
-interface IndexDefinition {
+/**
+ * Indexes that cannot be expressed as a Mongoose schema index (none today).
+ * Keep this list empty unless there is a concrete reason; every entry must
+ * state why it cannot live in models/index.ts.
+ */
+interface ExtraIndex {
   collection: string;
-  indexes: Array<{
-    keys: Record<string, 1 | -1 | 'text'>;
-    options?: {
-      unique?: boolean;
-      sparse?: boolean;
-      expireAfterSeconds?: number;
-    };
-  }>;
+  keys: Record<string, 1 | -1>;
+  options?: { unique?: boolean; sparse?: boolean; name?: string };
+  reason: string;
+}
+const extraIndexes: ExtraIndex[] = [];
+
+type Mode = 'create' | 'dry-run' | 'check' | 'help';
+
+export function parseMode(argv: string[]): Mode {
+  if (argv.includes('--help') || argv.includes('-h')) return 'help';
+  if (argv.includes('--check')) return 'check';
+  if (argv.includes('--dry-run')) return 'dry-run';
+  return 'create';
 }
 
-// Index definitions for all collections
-const INDEX_DEFINITIONS: IndexDefinition[] = [
-  {
-    collection: 'blocks',
-    indexes: [
-      { keys: { number: -1 } },
-      { keys: { hash: 1 }, options: { unique: true } },
-      { keys: { miner: 1 } },
-      { keys: { timestamp: -1 } },
-      { keys: { miner: 1, number: -1 } }, // For mined blocks query
-    ],
-  },
-  {
-    collection: 'Transaction',
-    indexes: [
-      { keys: { hash: 1 }, options: { unique: true } },
-      { keys: { blockNumber: -1 } },
-      { keys: { from: 1, blockNumber: -1 } },
-      { keys: { to: 1, blockNumber: -1 } },
-      { keys: { timestamp: -1 } },
-      { keys: { from: 1, timestamp: -1 } }, // For address transactions
-      { keys: { to: 1, timestamp: -1 } }, // For address transactions
-    ],
-  },
-  {
-    collection: 'Account',
-    indexes: [
-      { keys: { address: 1 }, options: { unique: true } },
-      { keys: { balance: -1 } }, // For richlist
-      { keys: { type: 1, balance: -1 } }, // For contract list
-    ],
-  },
-  {
-    collection: 'Contract',
-    indexes: [
-      { keys: { address: 1 }, options: { unique: true } },
-      { keys: { ERC: 1 } },
-      { keys: { verified: 1 } },
-      { keys: { tokenName: 1 } },
-      { keys: { symbol: 1 } },
-      { keys: { blockNumber: -1 } },
-    ],
-  },
-  {
-    collection: 'tokentransfers',
-    indexes: [
-      { keys: { tokenAddress: 1, timestamp: -1 } },
-      { keys: { tokenAddress: 1, blockNumber: -1 } },
-      { keys: { from: 1, timestamp: -1 } },
-      { keys: { to: 1, timestamp: -1 } },
-      { keys: { transactionHash: 1 } },
-      { keys: { tokenAddress: 1, tokenId: 1, blockNumber: 1, to: 1 } }, // For NFT sync
-      // Compound index for NFT ownership calculation
-      { keys: { tokenAddress: 1, tokenId: 1, timestamp: 1 } },
-    ],
-  },
-  {
-    collection: 'tokenholders',
-    indexes: [
-      { keys: { tokenAddress: 1, balance: -1 } },
-      { keys: { holderAddress: 1 } },
-      { keys: { tokenAddress: 1, holderAddress: 1 }, options: { unique: true } },
-    ],
-  },
-  {
-    collection: 'BlockStat',
-    indexes: [{ keys: { timestamp: -1 } }, { keys: { number: -1 }, options: { unique: true } }],
-  },
-];
+function usage(): void {
+  console.log(`
+🗂️  Database index tool (indexes are defined by the schemas in models/index.ts)
 
-async function createIndexes(): Promise<void> {
-  console.log('🔗 Connecting to MongoDB...');
-  await mongoose.connect(MONGODB_URI);
-  console.log('✅ Connected\n');
+Usage:
+  npm run optimize-indexes              Create every schema index that is missing
+  npm run optimize-indexes -- --dry-run Show what would be created (no changes)
+  npm run optimize-indexes -- --check   Exit 1 when any schema index is missing
+  npm run optimize-indexes -- --help    Show this help
 
+Environment:
+  MONGODB_URI        Connection string (falls back to config.json, then localhost)
+  SKIP_INDEX_SYNC=1  Disable index creation (create / dry-run become no-ops)
+`);
+}
+
+function formatSpec(spec: IndexSpec): string {
+  const flags = [spec.unique ? 'unique' : '', spec.options.sparse ? 'sparse' : '']
+    .filter(Boolean)
+    .join(', ');
+  return `${spec.collection}.${spec.name}  ${JSON.stringify(spec.keys)}${flags ? `  (${flags})` : ''}`;
+}
+
+function extraName(extra: ExtraIndex): string {
+  return extra.options?.name ?? indexNameFor(extra.keys);
+}
+
+async function missingExtraIndexes(): Promise<ExtraIndex[]> {
+  if (extraIndexes.length === 0) return [];
   const db = requireDb();
-
-  for (const def of INDEX_DEFINITIONS) {
-    console.log(`📦 Collection: ${def.collection}`);
-
+  const missing: ExtraIndex[] = [];
+  for (const extra of extraIndexes) {
+    let names: string[];
     try {
-      const collection = db.collection(def.collection);
-
-      for (const index of def.indexes) {
-        const indexName = Object.entries(index.keys)
-          .map(([k, v]) => `${k}_${v}`)
-          .join('_');
-
-        try {
-          await collection.createIndex(index.keys, {
-            ...index.options,
-            background: true, // Non-blocking
-          });
-          console.log(`  ✅ Created: ${indexName}`);
-        } catch (err) {
-          const error = err as Error;
-          if (error.message.includes('already exists')) {
-            console.log(`  ⏭️  Exists: ${indexName}`);
-          } else {
-            console.log(`  ❌ Failed: ${indexName} - ${error.message}`);
-          }
-        }
-      }
-    } catch (err) {
-      console.log(`  ⚠️  Collection may not exist yet: ${def.collection}`);
-    }
-
-    console.log('');
-  }
-
-  // Show index statistics
-  console.log('📊 Index Statistics:');
-  for (const def of INDEX_DEFINITIONS) {
-    try {
-      const collection = db.collection(def.collection);
-      const indexes = await collection.indexes();
-      console.log(`  ${def.collection}: ${indexes.length} indexes`);
+      names = (await db.collection(extra.collection).indexes()).map((index) => String(index.name));
     } catch {
-      // Collection doesn't exist
+      names = []; // collection does not exist yet
     }
+    if (!names.includes(extraName(extra))) missing.push(extra);
   }
-
-  await mongoose.disconnect();
-  console.log('\n✅ Done!');
+  return missing;
 }
 
-// Run
-createIndexes().catch(console.error);
+async function createExtraIndexes(): Promise<{ created: string[]; failed: string[] }> {
+  const created: string[] = [];
+  const failed: string[] = [];
+  const db = requireDb();
+  for (const extra of await missingExtraIndexes()) {
+    const label = `${extra.collection}.${extraName(extra)}`;
+    try {
+      await db
+        .collection(extra.collection)
+        .createIndex(extra.keys, { ...extra.options, name: extraName(extra) });
+      created.push(label);
+      console.log(`  ✅ Created: ${label} (${extra.reason})`);
+    } catch (error) {
+      failed.push(label);
+      console.log(`  ❌ Failed: ${label} - ${error instanceof Error ? error.message : error}`);
+    }
+  }
+  return { created, failed };
+}
+
+function printResult(result: EnsureIndexesResult): void {
+  for (const label of result.created) console.log(`  ✅ Created: ${label}`);
+  for (const skipped of result.skipped) {
+    console.log(`  ⏭️  Skipped: ${skipped.collection}.${skipped.index} - ${skipped.reason}`);
+  }
+  for (const failed of result.failed) {
+    console.log(`  ❌ Failed: ${failed.collection}.${failed.index} - ${failed.error}`);
+  }
+  console.log(
+    `\n📊 Summary: ${result.created.length} created, ${result.existing.length} already existed, ` +
+      `${result.skipped.length} skipped, ${result.failed.length} failed`
+  );
+}
+
+/** Run the tool with the given CLI arguments and return the process exit code. */
+export async function run(argv: string[]): Promise<number> {
+  const mode = parseMode(argv);
+  if (mode === 'help') {
+    usage();
+    return 0;
+  }
+
+  console.log('🔗 Connecting to MongoDB...');
+  await connectDB();
+  if (mongoose.connection.readyState !== 1) {
+    console.error('❌ MongoDB connection failed');
+    return 1;
+  }
+  console.log(`✅ Connected (database: ${mongoose.connection.db?.databaseName ?? 'unknown'})\n`);
+
+  if (mode === 'check') {
+    const missing = await checkIndexes();
+    const missingExtra = await missingExtraIndexes();
+    if (missing.length === 0 && missingExtra.length === 0) {
+      console.log('✅ All schema indexes exist');
+      return 0;
+    }
+    console.log(`❌ ${missing.length + missingExtra.length} index(es) missing:`);
+    for (const spec of missing) console.log(`  - ${formatSpec(spec)}`);
+    for (const extra of missingExtra) {
+      console.log(
+        `  - ${extra.collection}.${extraName(extra)}  ${JSON.stringify(extra.keys)}  (extra: ${extra.reason})`
+      );
+    }
+    return 1;
+  }
+
+  if (isIndexSyncSkipped()) {
+    console.log('⏭️  SKIP_INDEX_SYNC is set; index sync is disabled. Nothing to do.');
+    return 0;
+  }
+
+  if (mode === 'dry-run') {
+    const missing = await checkIndexes();
+    const missingExtra = await missingExtraIndexes();
+    if (missing.length === 0 && missingExtra.length === 0) {
+      console.log('✅ All schema indexes exist; nothing would be created');
+      return 0;
+    }
+    // Runs the duplicate-key check for missing unique indexes without creating anything
+    const result = await ensureIndexes({ dryRun: true });
+    const blocked = new Map(result.skipped.map((s) => [`${s.collection}.${s.index}`, s.reason]));
+    console.log(`📝 ${missing.length + missingExtra.length} index(es) would be created:`);
+    for (const spec of missing) {
+      const reason = blocked.get(`${spec.collection}.${spec.name}`);
+      console.log(
+        `  - ${formatSpec(spec)}${reason ? `\n      ⚠️  would be skipped: ${reason}` : ''}`
+      );
+    }
+    for (const extra of missingExtra) {
+      console.log(
+        `  - ${extra.collection}.${extraName(extra)}  ${JSON.stringify(extra.keys)}  (extra: ${extra.reason})`
+      );
+    }
+    for (const failed of result.failed) {
+      console.log(`  ❌ ${failed.collection}.${failed.index} - ${failed.error}`);
+    }
+    console.log('\n(dry run: no changes were made)');
+    return 0;
+  }
+
+  console.log('🛠️  Creating missing schema indexes...');
+  const result = await ensureIndexes();
+  const extra = await createExtraIndexes();
+  printResult(result);
+  const ok = result.failed.length === 0 && result.skipped.length === 0 && extra.failed.length === 0;
+  console.log(ok ? '\n✅ Done' : '\n⚠️  Finished with problems (see above)');
+  return ok ? 0 : 1;
+}
+
+async function main(): Promise<void> {
+  let code = 1;
+  try {
+    code = await run(process.argv.slice(2));
+  } catch (error) {
+    console.error('❌ Unexpected error:', error instanceof Error ? error.message : error);
+  } finally {
+    try {
+      await mongoose.disconnect();
+    } catch {
+      // nothing to clean up
+    }
+  }
+  process.exit(code);
+}
+
+// `require` is undefined when this module is imported from an ESM test runner
+if (typeof require !== 'undefined' && require.main === module) {
+  void main();
+}
