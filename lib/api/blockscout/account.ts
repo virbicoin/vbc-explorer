@@ -50,10 +50,7 @@ export async function getTxList(address: string, page = 1, offset = 10, sort = '
     const sortOrder = sort === 'asc' ? 1 : -1;
 
     const txs = await Transaction.find({
-      $or: [
-        { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-        { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-      ],
+      $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
     })
       .sort({ blockNumber: sortOrder })
       .skip(skip)
@@ -94,19 +91,16 @@ export async function getTokenTx(address: string, contractaddress?: string, page
 
     // Build query
     interface TokenTxQuery {
-      $or: Array<{ from: { $regex: RegExp } } | { to: { $regex: RegExp } }>;
-      contractAddress?: { $regex: RegExp };
+      $or: Array<{ from: string } | { to: string }>;
+      contractAddress?: string;
     }
 
     const query: TokenTxQuery = {
-      $or: [
-        { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-        { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-      ],
+      $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
     };
 
     if (contractaddress) {
-      query.contractAddress = { $regex: new RegExp(`^${contractaddress}$`, 'i') };
+      query.contractAddress = contractaddress.toLowerCase();
     }
 
     // Get token transfers from TokenTransfer collection or Transaction with token data
@@ -181,7 +175,7 @@ export async function getMinedBlocks(address: string, page = 1, offset = 10) {
     const skip = (page - 1) * offset;
 
     const blocks = await Block.find({
-      miner: { $regex: new RegExp(`^${address}$`, 'i') },
+      miner: address.toLowerCase(),
     })
       .sort({ number: -1 })
       .skip(skip)
@@ -209,19 +203,16 @@ export async function getTxListInternal(address?: string, txhash?: string, page 
     interface InternalTxQuery {
       input?: { $ne: string };
       creates?: { $exists: boolean; $ne: null };
-      $or?: Array<{ from: { $regex: RegExp } } | { to: { $regex: RegExp } }>;
-      hash?: { $regex: RegExp };
+      $or?: Array<{ from: string } | { to: string }>;
+      hash?: string;
     }
 
     const query: InternalTxQuery = {};
 
     if (txhash) {
-      query.hash = { $regex: new RegExp(`^${txhash}$`, 'i') };
+      query.hash = txhash.toLowerCase();
     } else if (address) {
-      query.$or = [
-        { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-        { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-      ];
+      query.$or = [{ from: address.toLowerCase() }, { to: address.toLowerCase() }];
       query.input = { $ne: '0x' };
     }
 

@@ -167,12 +167,12 @@ export async function GET(
 
   // Get account from DB (use lowercase comparison instead of regex)
   const account = await Account.findOne({
-    address: { $regex: new RegExp(`^${address}$`, 'i') },
+    address: address.toLowerCase(),
   }).lean();
 
   // Get contract info
   const contract = await Contract.findOne({
-    address: { $regex: new RegExp(`^${address}$`, 'i') },
+    address: address.toLowerCase(),
   }).lean();
 
   // Get known contract name from config.json
@@ -263,12 +263,9 @@ export async function GET(
 
   // Get transaction info (fetch more transactions to classify them)
   const allTransactions = await Transaction.find({
-    $or: [
-      { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-      { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-    ],
+    $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
   })
-    .sort({ timestamp: -1 })
+    .sort({ blockNumber: -1, transactionIndex: -1 })
     .limit(50); // fetch more transactions
 
   // Classify regular transactions and mining rewards
@@ -283,10 +280,7 @@ export async function GET(
 
   // Get the regular transaction count (excluding system addresses)
   const regularTransactionCount = await Transaction.countDocuments({
-    $or: [
-      { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-      { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-    ],
+    $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
     $and: [
       { from: { $ne: '0x0000000000000000000000000000000000000000' } },
       { to: { $ne: '0x0000000000000000000000000000000000000000' } },
@@ -295,15 +289,12 @@ export async function GET(
 
   // Get the total transaction count
   const transactionCount = await Transaction.countDocuments({
-    $or: [
-      { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-      { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-    ],
+    $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
   });
 
   // Get the number of mined blocks
   const blocksMined = await Block.countDocuments({
-    miner: { $regex: new RegExp(`^${address}$`, 'i') },
+    miner: address.toLowerCase(),
   });
 
   // Time formatting function (supports Unix timestamps)
@@ -354,9 +345,9 @@ export async function GET(
 
   // Calculate mining rewards (block reward + gas fees)
   const minedBlocks = await Block.find({
-    miner: { $regex: new RegExp(`^${address}$`, 'i') },
+    miner: address.toLowerCase(),
   })
-    .sort({ timestamp: -1 })
+    .sort({ number: -1 })
     .limit(10);
 
   // Generate mining reward transactions
@@ -450,27 +441,21 @@ export async function GET(
 
   // Get the first and last transactions (regular transactions)
   const firstTx = await Transaction.findOne({
-    $or: [
-      { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-      { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-    ],
-  }).sort({ timestamp: 1 });
+    $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
+  }).sort({ blockNumber: 1, transactionIndex: 1 });
 
   const lastTx = await Transaction.findOne({
-    $or: [
-      { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-      { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-    ],
-  }).sort({ timestamp: -1 });
+    $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
+  }).sort({ blockNumber: -1, transactionIndex: -1 });
 
   // Get the first and last mining rewards
   const firstMiningBlock = await Block.findOne({
-    miner: { $regex: new RegExp(`^${address}$`, 'i') },
-  }).sort({ timestamp: 1 });
+    miner: address.toLowerCase(),
+  }).sort({ number: 1 });
 
   const lastMiningBlock = await Block.findOne({
-    miner: { $regex: new RegExp(`^${address}$`, 'i') },
-  }).sort({ timestamp: -1 });
+    miner: address.toLowerCase(),
+  }).sort({ number: -1 });
 
   // Determine the first activity time (the earlier of regular transactions and mining)
   let firstActivity = firstTx?.timestamp;
@@ -494,10 +479,7 @@ export async function GET(
     ? await db
         .collection('tokentransfers')
         .find({
-          $or: [
-            { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-            { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-          ],
+          $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
         })
         .sort({ timestamp: -1 })
         .limit(50)
@@ -507,10 +489,7 @@ export async function GET(
   // Get the token transfer count
   const tokenTransferCount = db
     ? await db.collection('tokentransfers').countDocuments({
-        $or: [
-          { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-          { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-        ],
+        $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
       })
     : 0;
 
@@ -528,7 +507,7 @@ export async function GET(
     const tokens = await db
       .collection('tokens')
       .find({
-        address: { $in: tokenAddresses.map((a) => new RegExp(`^${a}$`, 'i')) },
+        address: { $in: tokenAddresses.map((a) => a.toLowerCase()) },
       })
       .toArray();
 

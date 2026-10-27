@@ -117,21 +117,15 @@ export async function GET(
 
     // Get regular transactions
     const transactions = await Transaction.find({
-      $or: [
-        { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-        { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-      ],
+      $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
     })
-      .sort({ timestamp: -1 })
+      .sort({ blockNumber: -1, transactionIndex: -1 })
       .skip(skip)
       .limit(limit);
 
     // Get total count
     const totalTransactions = await Transaction.countDocuments({
-      $or: [
-        { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-        { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-      ],
+      $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
     });
 
     // Get token transfers
@@ -139,10 +133,7 @@ export async function GET(
       ? await db
           .collection('tokentransfers')
           .find({
-            $or: [
-              { from: { $regex: new RegExp(`^${address}$`, 'i') } },
-              { to: { $regex: new RegExp(`^${address}$`, 'i') } },
-            ],
+            $or: [{ from: address.toLowerCase() }, { to: address.toLowerCase() }],
           })
           .toArray()
       : [];
@@ -166,7 +157,7 @@ export async function GET(
       const tokens = await db
         .collection('tokens')
         .find({
-          address: { $in: tokenAddresses.map((a) => new RegExp(`^${a}$`, 'i')) },
+          address: { $in: tokenAddresses.map((a) => a.toLowerCase()) },
         })
         .toArray();
 

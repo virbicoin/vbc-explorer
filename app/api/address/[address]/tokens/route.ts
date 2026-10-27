@@ -67,7 +67,7 @@ export async function GET(
 
     // Find all token holdings for this address
     const holdings = await TokenHolder.find({
-      holderAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+      holderAddress: address.toLowerCase(),
       balance: { $ne: '0', $exists: true },
     }).lean();
 
@@ -80,7 +80,7 @@ export async function GET(
     // Get token info for each holding
     const tokenAddresses = nonZeroHoldings.map((h) => h.tokenAddress);
     const tokens = await Token.find({
-      address: { $in: tokenAddresses.map((a) => new RegExp(`^${a}$`, 'i')) },
+      address: { $in: tokenAddresses.map((a) => a.toLowerCase()) },
     }).lean();
 
     // Create token info map

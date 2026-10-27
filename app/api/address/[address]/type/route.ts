@@ -19,10 +19,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     // Check if it's a registered token first (fastest check)
     const token = await db
       .collection('tokens')
-      .findOne(
-        { address: { $regex: new RegExp(`^${normalizedAddress}$`, 'i') } },
-        { projection: { type: 1 } }
-      );
+      .findOne({ address: normalizedAddress }, { projection: { type: 1 } });
 
     if (token) {
       const tokenType = token.type || 'VRC-20';
@@ -41,10 +38,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     // Check if it's a contract
     const contract = await db
       .collection('contracts')
-      .findOne(
-        { address: { $regex: new RegExp(`^${normalizedAddress}$`, 'i') } },
-        { projection: { isContract: 1, type: 1 } }
-      );
+      .findOne({ address: normalizedAddress }, { projection: { isContract: 1, type: 1 } });
 
     if (contract?.isContract) {
       return NextResponse.json(

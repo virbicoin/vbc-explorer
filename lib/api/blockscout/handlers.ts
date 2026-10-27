@@ -77,7 +77,7 @@ export async function getTxInfo(txhash: string) {
   try {
     await connectDB();
     const tx = (await Transaction.findOne({
-      hash: { $regex: new RegExp(`^${txhash}$`, 'i') },
+      hash: txhash.toLowerCase(),
     }).lean()) as Record<string, unknown> | null;
 
     if (!tx) {
@@ -115,7 +115,7 @@ export async function getTxReceiptStatus(txhash: string) {
   try {
     await connectDB();
     const tx = (await Transaction.findOne({
-      hash: { $regex: new RegExp(`^${txhash}$`, 'i') },
+      hash: txhash.toLowerCase(),
     }).lean()) as Record<string, unknown> | null;
 
     if (!tx) {
@@ -138,7 +138,7 @@ export async function getTokenInfo(contractaddress: string) {
   try {
     await connectDB();
     const token = (await Token.findOne({
-      address: { $regex: new RegExp(`^${contractaddress}$`, 'i') },
+      address: contractaddress.toLowerCase(),
     }).lean()) as Record<string, unknown> | null;
 
     if (!token) {
@@ -164,7 +164,7 @@ export async function getTokenHolders(contractaddress: string, page = 1, offset 
   try {
     await connectDB();
     const token = (await Token.findOne({
-      address: { $regex: new RegExp(`^${contractaddress}$`, 'i') },
+      address: contractaddress.toLowerCase(),
     }).lean()) as Record<string, unknown> | null;
 
     if (!token) {
@@ -212,7 +212,7 @@ export async function getTokenSupply(contractaddress: string) {
   try {
     await connectDB();
     const token = (await Token.findOne({
-      address: { $regex: new RegExp(`^${contractaddress}$`, 'i') },
+      address: contractaddress.toLowerCase(),
     }).lean()) as Record<string, unknown> | null;
 
     if (!token) {
@@ -344,7 +344,7 @@ export async function getContractCreation(addresses: string) {
     const results = await Promise.all(
       addressList.map(async (addr) => {
         const tx = (await Transaction.findOne({
-          creates: { $regex: new RegExp(`^${addr.trim()}$`, 'i') },
+          creates: addr.trim().toLowerCase(),
         }).lean()) as Record<string, unknown> | null;
 
         if (tx) {
@@ -453,7 +453,7 @@ export async function getAbi(address: string) {
   try {
     await connectDB();
     const contract = (await Contract.findOne({
-      address: { $regex: new RegExp(`^${address}$`, 'i') },
+      address: address.toLowerCase(),
       verified: true,
     }).lean()) as Record<string, unknown> | null;
 
@@ -475,7 +475,7 @@ export async function getSourceCode(address: string) {
   try {
     await connectDB();
     const contract = (await Contract.findOne({
-      address: { $regex: new RegExp(`^${address}$`, 'i') },
+      address: address.toLowerCase(),
       verified: true,
     }).lean()) as Record<string, unknown> | null;
 

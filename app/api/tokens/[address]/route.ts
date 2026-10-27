@@ -375,7 +375,7 @@ export async function GET(
         const db = requireDb();
         const contractCreateTx = await db.collection('tokentransfers').findOne(
           {
-            to: { $regex: new RegExp(`^${address}$`, 'i') },
+            to: address.toLowerCase(),
             value: { $in: [0, '0', '0x0', '0x00'] },
             $or: [{ tokenId: { $exists: false } }, { tokenId: null }, { tokenId: '' }],
           },
@@ -386,7 +386,7 @@ export async function GET(
         const tokenTransfers = await db
           .collection('tokentransfers')
           .find({
-            tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+            tokenAddress: address.toLowerCase(),
             tokenId: tokenIdNum,
           })
           .sort({ timestamp: 1 })
@@ -524,7 +524,7 @@ export async function GET(
           // Get byteCode from the Contract collection
           const contractDoc = await db
             .collection('Contract')
-            .findOne({ address: { $regex: new RegExp(`^${address}$`, 'i') } });
+            .findOne({ address: address.toLowerCase() });
           if (contractDoc && contractDoc.byteCode) {
             // Get transactions with to:null
             const txs = await db
@@ -561,7 +561,7 @@ export async function GET(
           for (const col of colNames2) {
             const firstNonZeroTx = await db.collection(col).findOne(
               {
-                to: { $regex: new RegExp(`^${address}$`, 'i') },
+                to: address.toLowerCase(),
                 from: { $ne: ZERO_ADDR },
               },
               { sort: { blockNumber: 1 } }
@@ -593,7 +593,7 @@ export async function GET(
 
         // Also fetch token info
         const foundTokenArr = await Token.find({
-          address: { $regex: new RegExp(`^${address}$`, 'i') },
+          address: address.toLowerCase(),
         }).lean();
         const foundToken =
           Array.isArray(foundTokenArr) && foundTokenArr.length > 0 ? foundTokenArr[0] : null;
@@ -601,7 +601,7 @@ export async function GET(
         // Get contract verification status
         let isVerified = false;
         const contractDoc = await db.collection('Contract').findOne({
-          address: { $regex: new RegExp(`^${address}$`, 'i') },
+          address: address.toLowerCase(),
         });
         if (contractDoc) {
           isVerified = contractDoc.verified || false;
@@ -678,7 +678,7 @@ export async function GET(
     } else {
       // Get token info from DB for other tokens
       const foundToken = (await Token.findOne({
-        address: { $regex: new RegExp(`^${address}$`, 'i') },
+        address: address.toLowerCase(),
       }).lean()) as Record<string, unknown> | null;
 
       if (foundToken) {
@@ -728,12 +728,12 @@ export async function GET(
     ) {
       // Try to find the earliest transfer or mint transaction
       const firstTransfer = await TokenTransfer.findOne({
-        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+        tokenAddress: address.toLowerCase(),
       }).sort({ timestamp: 1 });
 
       // Also try to find mint transactions (from zero address)
       const firstMint = await TokenTransfer.findOne({
-        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+        tokenAddress: address.toLowerCase(),
         from: '0x0000000000000000000000000000000000000000',
       }).sort({ timestamp: 1 });
 
@@ -772,14 +772,14 @@ export async function GET(
 
     // Get total holders count for pagination (exclude zero address and dead address)
     const totalHolders = await db.collection('tokenholders').countDocuments({
-      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+      tokenAddress: address.toLowerCase(),
       holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] },
     });
 
     const holders = await db
       .collection('tokenholders')
       .find({
-        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+        tokenAddress: address.toLowerCase(),
         holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] },
       })
       .sort({ rank: 1 })
@@ -800,13 +800,13 @@ export async function GET(
     // Get recent transfers - use case-insensitive match with alternative field names
     // First get total count for pagination
     const totalTransfers = await db.collection('tokentransfers').countDocuments({
-      tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+      tokenAddress: address.toLowerCase(),
     });
 
     let transfers = await db
       .collection('tokentransfers')
       .find({
-        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+        tokenAddress: address.toLowerCase(),
       })
       .sort({ timestamp: -1 })
       .skip((transfersPage - 1) * transfersLimit)
@@ -818,10 +818,7 @@ export async function GET(
       transfers = await db
         .collection('tokentransfers')
         .find({
-          $or: [
-            { token: { $regex: new RegExp(`^${address}$`, 'i') } },
-            { contractAddress: { $regex: new RegExp(`^${address}$`, 'i') } },
-          ],
+          $or: [{ token: address.toLowerCase() }, { contractAddress: address.toLowerCase() }],
         })
         .sort({ timestamp: -1 })
         .skip((transfersPage - 1) * transfersLimit)
@@ -836,10 +833,10 @@ export async function GET(
         .collection('tokentransfers')
         .find({
           $or: [
-            { tokenAddress: { $regex: new RegExp(address, 'i') } },
-            { token: { $regex: new RegExp(address, 'i') } },
-            { contractAddress: { $regex: new RegExp(address, 'i') } },
-            { address: { $regex: new RegExp(address, 'i') } },
+            { tokenAddress: address.toLowerCase() },
+            { token: address.toLowerCase() },
+            { contractAddress: address.toLowerCase() },
+            { address: address.toLowerCase() },
           ],
         })
         .sort({ timestamp: -1 })
@@ -857,16 +854,16 @@ export async function GET(
     if (token.type !== 'Native') {
       // Get actual holder count (exclude zero address and dead address)
       realHolders = await db.collection('tokenholders').countDocuments({
-        tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+        tokenAddress: address.toLowerCase(),
         holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] },
       });
       // Get actual transfer count with alternative field names
       realTransfers = await db.collection('tokentransfers').countDocuments({
         $or: [
-          { tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') } },
-          { token: { $regex: new RegExp(`^${address}$`, 'i') } },
-          { contractAddress: { $regex: new RegExp(`^${address}$`, 'i') } },
-          { address: { $regex: new RegExp(`^${address}$`, 'i') } },
+          { tokenAddress: address.toLowerCase() },
+          { token: address.toLowerCase() },
+          { contractAddress: address.toLowerCase() },
+          { address: address.toLowerCase() },
         ],
       });
 
@@ -888,7 +885,7 @@ export async function GET(
       if (token.type === 'VRC-721') {
         try {
           mintCount = await db.collection('tokentransfers').countDocuments({
-            tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+            tokenAddress: address.toLowerCase(),
             from: '0x0000000000000000000000000000000000000000',
           });
           if (token.totalSupply && token.totalSupply !== '0') {
@@ -916,7 +913,7 @@ export async function GET(
       // For all token types, use db.collection directly for reliable query
       const earliestTransfer = await db.collection('tokentransfers').findOne(
         {
-          tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+          tokenAddress: address.toLowerCase(),
         },
         { sort: { timestamp: 1 } }
       );
@@ -939,10 +936,10 @@ export async function GET(
     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const transfers24h = await db.collection('tokentransfers').countDocuments({
       $or: [
-        { tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') } },
-        { token: { $regex: new RegExp(`^${address}$`, 'i') } },
-        { contractAddress: { $regex: new RegExp(`^${address}$`, 'i') } },
-        { address: { $regex: new RegExp(`^${address}$`, 'i') } },
+        { tokenAddress: address.toLowerCase() },
+        { token: address.toLowerCase() },
+        { contractAddress: address.toLowerCase() },
+        { address: address.toLowerCase() },
       ],
       timestamp: { $gte: yesterday },
     });
@@ -953,7 +950,7 @@ export async function GET(
 
     // Get contract source information from database
     const dbContractInfo = await db.collection('Contract').findOne({
-      address: { $regex: new RegExp(`^${address}$`, 'i') },
+      address: address.toLowerCase(),
     });
     contractSource = dbContractInfo
       ? {
@@ -976,7 +973,7 @@ export async function GET(
     // Get the contract creation transaction
     const contractCreateTx = await db.collection('tokentransfers').findOne(
       {
-        to: { $regex: new RegExp(`^${address}$`, 'i') },
+        to: address.toLowerCase(),
         value: { $in: [0, '0', '0x0', '0x00'] },
         $or: [{ tokenId: { $exists: false } }, { tokenId: null }, { tokenId: '' }],
       },
@@ -987,9 +984,7 @@ export async function GET(
     let creator = null;
     // --- Start of bytecode heuristic logic ---
     // Prefer Contract (capitalized) first
-    const contractDoc = await db
-      .collection('Contract')
-      .findOne({ address: { $regex: new RegExp(`^${address}$`, 'i') } });
+    const contractDoc = await db.collection('Contract').findOne({ address: address.toLowerCase() });
     // console.log('contractDoc:', contractDoc); // byteCode is always present here
     if (contractDoc && contractDoc.byteCode) {
       let txs = await db
@@ -1069,7 +1064,7 @@ export async function GET(
       for (const col of colNames) {
         const firstNonZeroTx = await db.collection(col).findOne(
           {
-            to: { $regex: new RegExp(`^${address}$`, 'i') },
+            to: address.toLowerCase(),
             from: { $ne: ZERO_ADDR },
           },
           { sort: { blockNumber: 1 } }
@@ -1083,7 +1078,7 @@ export async function GET(
       // Also search for a deploy Tx that has a creates field
       if (!creator) {
         const deployTx = await db.collection('Transaction').findOne({
-          creates: { $regex: new RegExp(`^${address}$`, 'i') },
+          creates: address.toLowerCase(),
           from: { $ne: ZERO_ADDR },
         });
         if (deployTx?.from) {
@@ -1104,7 +1099,7 @@ export async function GET(
       const tokenTransfers = await db
         .collection('tokentransfers')
         .find({
-          tokenAddress: { $regex: new RegExp(`^${address}$`, 'i') },
+          tokenAddress: address.toLowerCase(),
           tokenId: tokenIdParam,
         })
         .sort({ timestamp: 1 })
@@ -1296,7 +1291,7 @@ export async function GET(
     if (token.type !== 'Native') {
       try {
         const contract = await db.collection('Contract').findOne({
-          address: { $regex: new RegExp(`^${address}$`, 'i') },
+          address: address.toLowerCase(),
         });
         verified = contract?.verified || false;
 

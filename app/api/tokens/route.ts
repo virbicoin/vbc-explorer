@@ -460,7 +460,7 @@ export async function GET(request: NextRequest) {
           // Get actual holder count from tokenholders collection (exclude zero and dead addresses)
           try {
             actualHolders = await TokenHolder.countDocuments({
-              tokenAddress: { $regex: new RegExp(`^${token.address}$`, 'i') },
+              tokenAddress: String(token.address).toLowerCase(),
               holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] },
             });
 
@@ -482,7 +482,7 @@ export async function GET(request: NextRequest) {
         if (type === 'VRC-721') {
           // Get holder count from tokenholders collection (exclude zero address)
           actualHolders = await TokenHolder.countDocuments({
-            tokenAddress: { $regex: new RegExp(`^${token.address}$`, 'i') },
+            tokenAddress: String(token.address).toLowerCase(),
             holderAddress: { $nin: [ZERO_ADDR, DEAD_ADDR] },
           });
 
@@ -491,7 +491,7 @@ export async function GET(request: NextRequest) {
             // For NFTs, total supply is the total number of minted tokens
             // Count minting transactions (from address 0x0000...)
             const mintCount = await TokenTransfer.countDocuments({
-              tokenAddress: { $regex: new RegExp(`^${token.address}$`, 'i') },
+              tokenAddress: String(token.address).toLowerCase(),
               from: '0x0000000000000000000000000000000000000000',
             });
 

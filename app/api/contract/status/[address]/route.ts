@@ -52,7 +52,7 @@ export async function GET(
     let creationTxData: { hash?: string; from?: string; blockNumber?: number } | null = null;
     try {
       const creationTx = await Transaction.findOne({
-        creates: { $regex: new RegExp(`^${address}$`, 'i') },
+        creates: address.toLowerCase(),
       }).lean();
 
       if (creationTx) {
@@ -69,7 +69,7 @@ export async function GET(
 
     // Find contract in database (case-insensitive search)
     const contract = await Contract.findOne({
-      address: { $regex: new RegExp(`^${address}$`, 'i') },
+      address: address.toLowerCase(),
     }).lean();
 
     const contractDoc = Array.isArray(contract) ? contract[0] : contract;

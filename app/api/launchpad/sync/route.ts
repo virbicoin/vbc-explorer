@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
       try {
         // Check if already registered
         const existing = await Token.findOne({
-          address: { $regex: new RegExp(`^${tokenAddress}$`, 'i') },
+          address: tokenAddress.toLowerCase(),
         });
 
         if (existing) {

@@ -115,7 +115,7 @@ export async function getNftOwnershipFromDb(
   const transfers = await db
     .collection('tokentransfers')
     .find({
-      tokenAddress: { $regex: new RegExp(`^${tokenAddress}$`, 'i') },
+      tokenAddress: tokenAddress.toLowerCase(),
       tokenId: { $exists: true, $ne: null },
     })
     .sort({ timestamp: 1 })

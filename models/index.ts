@@ -239,7 +239,7 @@ const BlockSchema = new Schema(
 
 const AccountSchema = new Schema(
   {
-    address: { type: String, index: { unique: true } },
+    address: { type: String, lowercase: true, index: { unique: true } },
     balance: String, // Changed from Number to String to avoid scientific notation
     blockNumber: Number,
     type: { type: Number, default: 0 }, // address: 0x0, contract: 0x1
@@ -249,9 +249,9 @@ const AccountSchema = new Schema(
 
 const ContractSchema = new Schema(
   {
-    address: { type: String, index: { unique: true } },
+    address: { type: String, lowercase: true, index: { unique: true } },
     blockNumber: Number,
-    ERC: { type: Number, index: true }, //0:normal contract, 2:ERC20, 3:ERC223
+    ERC: Number, //0:normal contract, 2:ERC20, 3:ERC223
     creationTransaction: String,
     contractName: String,
     tokenName: String,
@@ -383,10 +383,10 @@ const MarketSchema = new Schema(
 // DEX Swap Event Schema
 const DexSwapSchema = new Schema(
   {
-    hash: { type: String, index: true, lowercase: true },
-    blockNumber: { type: Number, index: true },
-    timestamp: { type: Number, index: true },
-    pair: { type: String, index: true, lowercase: true },
+    hash: { type: String, lowercase: true },
+    blockNumber: Number,
+    timestamp: Number,
+    pair: { type: String, lowercase: true },
     sender: { type: String, lowercase: true },
     to: { type: String, lowercase: true },
     amount0In: String,
@@ -405,7 +405,7 @@ const DexSwapSchema = new Schema(
 const VerificationJobSchema = new Schema(
   {
     guid: { type: String, index: { unique: true } },
-    address: { type: String, lowercase: true, index: true },
+    address: { type: String, lowercase: true },
     status: { type: String, enum: ['pending', 'pass', 'fail'], default: 'pending' },
     message: { type: String, default: '' },
     sourceCode: String,
@@ -422,25 +422,43 @@ const VerificationJobSchema = new Schema(
   { collection: 'VerificationJob', timestamps: true }
 );
 
-// DEX Swap indexes
+/*
+ * Indexes
+ * -------
+ * Every index below is backed by a real query (the README "Database indexes"
+ * section lists the evidence). Unique single-field indexes are declared on
+ * the paths above: Block.number, Block.hash, Transaction.hash,
+ * Account.address, Contract.address, BlockStat.number, VerificationJob.guid,
+ * tokens.address, scan_progress.scanType.
+ */
+
+// Block: mined-block lists by miner (address API `mining`, blockscout `getminedblocks`,
+// search/blocks-by-miner) and per-day block counts (stats/daily, blockscout getblocknobytime).
+BlockSchema.index({ miner: 1, number: -1 });
+BlockSchema.index({ timestamp: -1 });
+
+// Transaction: latest-transaction lists and per-block lookups (transactions, v2, realtime),
+// per-address history (address API, v2 addresses, blockscout account, CSV export),
+// contract-creation lookups (contract/status, blockscout getcontractcreation),
+// per-day / 24h counts (stats/daily, v2/stats).
+TransactionSchema.index({ blockNumber: -1, transactionIndex: -1 });
+TransactionSchema.index({ from: 1, blockNumber: -1, transactionIndex: -1 });
+TransactionSchema.index({ to: 1, blockNumber: -1, transactionIndex: -1 });
+TransactionSchema.index({ creates: 1, blockNumber: -1 }, { sparse: true });
+TransactionSchema.index({ timestamp: -1 });
+
+// Account: richlist `$match: { balance: { $gt: '0' } }`.
+AccountSchema.index({ balance: -1 });
+
+// Market: latest price lookups (`findOne().sort({ timestamp: -1 })`).
+MarketSchema.index({ timestamp: -1 });
+
+// DexSwap: swap sync upsert key (tools/price.ts), per-pool OHLCV / trades / 24h stats,
+// 24h trader and volume aggregations by timestamp.
+DexSwapSchema.index({ hash: 1, pair: 1 }, { unique: true });
 DexSwapSchema.index({ pair: 1, timestamp: -1 });
 DexSwapSchema.index({ pair: 1, blockNumber: -1 });
-DexSwapSchema.index({ hash: 1, pair: 1 }, { unique: true });
-
-// Create indices
-// Optimized transaction indexes for homepage queries
-TransactionSchema.index({ blockNumber: -1 });
-TransactionSchema.index({ blockNumber: -1, transactionIndex: -1 });
-TransactionSchema.index({ from: 1, blockNumber: -1 });
-TransactionSchema.index({ to: 1, blockNumber: -1 });
-TransactionSchema.index({ creates: 1, blockNumber: -1 });
-AccountSchema.index({ balance: -1 });
-AccountSchema.index({ balance: -1, blockNumber: -1 });
-AccountSchema.index({ type: -1, balance: -1 });
-BlockSchema.index({ miner: 1 });
-BlockSchema.index({ miner: 1, number: -1 });
-BlockSchema.index({ hash: 1, number: -1 });
-MarketSchema.index({ timestamp: -1 });
+DexSwapSchema.index({ timestamp: -1 });
 
 // tokentransfers: per-token history/first transfer (token API, NFT ownership),
 // per-address history (address API, CSV export), transfers of a transaction (tx API),

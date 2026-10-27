@@ -49,15 +49,15 @@ export async function GET(
   try {
     // Get blocks with mining rewards
     const minedBlocks = await Block.find({
-      miner: { $regex: new RegExp(`^${address}$`, 'i') },
+      miner: address.toLowerCase(),
     })
-      .sort({ timestamp: -1 })
+      .sort({ number: -1 })
       .skip(skip)
       .limit(limit);
 
     // Get total count
     const totalBlocks = await Block.countDocuments({
-      miner: { $regex: new RegExp(`^${address}$`, 'i') },
+      miner: address.toLowerCase(),
     });
 
     const totalPages = Math.ceil(totalBlocks / limit);

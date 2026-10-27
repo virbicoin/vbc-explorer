@@ -42,7 +42,7 @@ async function cachedDbLookup<T>(
 export async function getTokenSummary(address: string): Promise<TokenIdentity | null> {
   if (!ADDR_RE.test(address)) return null;
   return cachedDbLookup(`seo:token:${address.toLowerCase()}`, CACHE_TTL.VERY_LONG, async (db) => {
-    const byAddress = { address: { $regex: new RegExp(`^${address}$`, 'i') } };
+    const byAddress = { address: address.toLowerCase() };
 
     const token = await db
       .collection('tokens')
