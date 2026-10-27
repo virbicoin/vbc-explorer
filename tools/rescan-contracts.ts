@@ -18,7 +18,7 @@
 
 import Web3 from 'web3';
 import mongoose from 'mongoose';
-import { connectDB, Contract } from '../models/index';
+import { connectDB, ensureIndexesOnStartup, Contract } from '../models/index';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
 
 // ERC-165 interface IDs
@@ -164,6 +164,7 @@ async function rescanContracts(options: {
   // Load config and connect to database
   loadConfig();
   await connectDB();
+  await ensureIndexesOnStartup('rescan-contracts');
 
   // Connect to Web3
   const web3Url = getWeb3ProviderURL();

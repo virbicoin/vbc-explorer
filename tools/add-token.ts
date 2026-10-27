@@ -17,7 +17,7 @@ The tool will:
 
 import Web3 from 'web3';
 import mongoose from 'mongoose';
-import { connectDB, Contract } from '../models/index';
+import { connectDB, ensureIndexesOnStartup, Contract } from '../models/index';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
 
 // Define Token schema
@@ -90,6 +90,7 @@ async function addToken(tokenAddress: string) {
     // Connect to database
     await connectDB();
     console.log('✅ Connected to database');
+    await ensureIndexesOnStartup('add-token');
 
     // Check if token already exists
     const existingToken = await Token.findOne({ address: normalizedAddress });

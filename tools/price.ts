@@ -12,7 +12,7 @@
 
 import { Market, DexSwap } from '../models/index';
 import mongoose from 'mongoose';
-import { connectDB } from '../models/index';
+import { connectDB, ensureIndexesOnStartup } from '../models/index';
 import { loadConfig, getCurrencyConfig, AppConfig, CurrencyConfig } from '../lib/config';
 import { ethers, EventLog } from 'ethers';
 
@@ -104,6 +104,9 @@ const initDB = async (): Promise<void> => {
     if (mongoose.connection.readyState !== 1) throw new Error('DB connection timeout');
     dbInitialized = true;
     log('🔗 Database connected');
+
+    // Create any schema-declared index that is still missing (never drops, never throws)
+    await ensureIndexesOnStartup('price');
   } catch (error) {
     console.error('❌ DB connection failed:', error);
     process.exit(1);

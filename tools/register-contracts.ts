@@ -1,11 +1,12 @@
 /**
  * Script to register known contracts from config.json into the database
- * Run with: npx ts-node --project tsconfig.tools.json tools/register-contracts.ts
+ * Run with: npx tsx --tsconfig tsconfig.tools.json tools/register-contracts.ts
  */
 
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
+import { connectDB, ensureIndexesOnStartup, Contract } from '../models/index';
 
 // Read config
 const readConfig = () => {
@@ -24,30 +25,6 @@ const readConfig = () => {
   return null;
 };
 
-// Contract Schema (simplified for this script)
-const ContractSchema = new mongoose.Schema(
-  {
-    address: { type: String, index: { unique: true } },
-    blockNumber: Number,
-    ERC: { type: Number, index: true },
-    creationTransaction: String,
-    contractName: String,
-    tokenName: String,
-    symbol: String,
-    owner: String,
-    decimals: Number,
-    totalSupply: Number,
-    compilerVersion: String,
-    optimization: Boolean,
-    sourceCode: String,
-    abi: String,
-    byteCode: String,
-    verified: { type: Boolean, default: false },
-    verifiedAt: { type: Date },
-  },
-  { collection: 'Contract' }
-);
-
 async function registerContracts() {
   const config = readConfig();
   if (!config) {
@@ -55,12 +32,14 @@ async function registerContracts() {
     process.exit(1);
   }
 
-  // Connect to MongoDB
-  const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost/explorerDB';
-  await mongoose.connect(mongoUri);
+  // Connect to MongoDB through the shared connector (env > config.json > default)
+  await connectDB();
+  if (mongoose.connection.readyState !== 1) {
+    console.error('❌ Failed to connect to MongoDB');
+    process.exit(1);
+  }
   console.log('✅ Connected to MongoDB');
-
-  const Contract = mongoose.model('Contract', ContractSchema);
+  await ensureIndexesOnStartup('register-contracts');
 
   // Gather all contracts from config
   const contracts: Array<{

@@ -5,7 +5,14 @@ Tool for calculating VirBiCoin richlist - Optimized and simplified
 
 import mongoose from 'mongoose';
 import Web3 from 'web3';
-import { connectDB, Block, Transaction, Account, IAccount } from '../models/index';
+import {
+  connectDB,
+  ensureIndexesOnStartup,
+  Block,
+  Transaction,
+  Account,
+  IAccount,
+} from '../models/index';
 import { loadConfig, getWeb3ProviderURL, AppConfig } from '../lib/config';
 
 // Simplified interface
@@ -68,6 +75,9 @@ const initDB = async (): Promise<void> => {
     }
 
     console.log('🔗 Database connection initialized');
+
+    // Create any schema-declared index that is still missing (never drops, never throws)
+    await ensureIndexesOnStartup('richlist');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);
     process.exit(1);

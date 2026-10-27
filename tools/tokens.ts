@@ -88,7 +88,7 @@ const minimalErc721Abi = [
   },
 ];
 
-import { connectDB, Contract } from '../models/index';
+import { connectDB, ensureIndexesOnStartup, Contract } from '../models/index';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
 
 // LP Token configuration - loaded from environment or fetched from factory
@@ -118,6 +118,9 @@ const initDB = async () => {
     }
 
     console.log('🔗 Database connection initialized successfully');
+
+    // Create any schema-declared index that is still missing (never drops, never throws)
+    await ensureIndexesOnStartup('tokens');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);
     process.exit(1);

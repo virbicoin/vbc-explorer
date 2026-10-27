@@ -8,7 +8,7 @@ import mongoose from 'mongoose';
 import Web3 from 'web3';
 import fs from 'fs';
 import path from 'path';
-import { connectDB, Block, Transaction, Contract } from '../models/index';
+import { connectDB, ensureIndexesOnStartup, Block, Transaction, Contract } from '../models/index';
 import { main as statsMain } from './stats';
 import { makeRichList } from './richlist';
 import { main as tokensMain } from './tokens';
@@ -40,6 +40,9 @@ const initDB = async () => {
     }
 
     console.log('🔗 Database connection initialized successfully');
+
+    // Create any schema-declared index that is still missing (never drops, never throws)
+    await ensureIndexesOnStartup('sync');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);
     process.exit(1);

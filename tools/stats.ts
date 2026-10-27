@@ -6,7 +6,14 @@ Tool for calculating VirBiCoin block statistics
 import mongoose from 'mongoose';
 import Web3 from 'web3';
 import type { Block as Web3Block } from 'web3-types';
-import { connectDB, Block, BlockStat, IBlock, IBlockStat } from '../models/index';
+import {
+  connectDB,
+  ensureIndexesOnStartup,
+  Block,
+  BlockStat,
+  IBlock,
+  IBlockStat,
+} from '../models/index';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
 
 // Initialize database connection
@@ -33,6 +40,9 @@ const initDB = async () => {
     }
 
     console.log('🔗 Database connection initialized successfully');
+
+    // Create any schema-declared index that is still missing (never drops, never throws)
+    await ensureIndexesOnStartup('stats');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);
     process.exit(1);
