@@ -109,7 +109,8 @@ lib/                    # ユーティリティライブラリ
   cache/                # インメモリキャッシュ
   db/                   # データベース抽象化レイヤー（get-db.ts, indexes.ts）
   dex/                  # DEX 固有ユーティリティ & キャッシュサービス
-  security/             # 入力検証 & レート制限
+  security/             # 入力検証（validation.ts, url.ts）・レート制限（rate-limits.ts）・SSRF 安全 fetch（safe-fetch.ts）・表示名判定（display-name.ts）
+  sync/                 # リオーグ対応の同期共通モジュール（normalize / reorg / chain-check / web3-node）
   services/             # ビジネスロジックサービス
   types/                # TypeScript 型定義
   utils/                # ユーティリティ関数
@@ -137,6 +138,8 @@ tools/                  # ブロックチェーン同期用 CLI ツール
   price.ts              # 価格 + DEX スワップ同期
   register-contracts.ts # コントラクト登録
   optimize-indexes.ts   # スキーマ定義インデックスの作成/確認（--dry-run / --check）
+  repair-chain.ts       # 保存済みチェーンの検査と孤児ブロックの置換（--check / --sample / --fix）
+  flag-spam-tokens.ts   # URL 名トークン/コントラクトの hidden フラグ付与（バックフィル）
   add-token.ts          # 手動トークン追加
   
 types/                  # TypeScript 型定義
@@ -235,6 +238,9 @@ npm run price           # 価格 + DEX スワップデータを更新（WikaEx +
 npm run optimize-indexes              # スキーマ定義のインデックスを作成（不足分のみ、削除なし）
 npm run optimize-indexes -- --dry-run # 作成予定を表示（変更なし）
 npm run optimize-indexes -- --check   # 不足があれば一覧を出して exit 1
+npm run repair-chain -- --check       # 保存済みチェーンの parentHash 連結検査（不一致で exit 1）
+npm run repair-chain -- --fix         # 孤児ブロックをノードの正規ブロックで置換（--dry-run あり）
+npm run flag-spam-tokens -- --dry-run # URL 名トークンの hidden 判定を表示（引数なしで書き込み）
 
 # PM2 プロセス管理
 pm2 restart explorer    # explorer を再起動
@@ -293,15 +299,11 @@ const priceData = await getNativePrice();
   - XSS パターン検出（onclick=, onerror=, <script）
   - 無効な URL に対して null を返す `sanitizeImageUrl()` ラッパーを使用
 
-### レート制限
-- クライアント IP ごとのトークンバケットアルゴリズム
-- エンドポイントごとに上限を設定可能（デフォルト: 100 req/min）
-- 機微なエンドポイントにはより厳しい上限:
-  - コントラクト検証: 10 req/10s
-  - コントラクト POST/更新: 10 req/min
-  - コントラクト操作: 30 req/min
-  - Blockscout API: 100 req/min
-  - トークン残高: 60 req/min
+### レート制限（`lib/security/rate-limits.ts`）
+- クライアント IP は `getClientIp()` が **信頼ヘッダ 1 本**（`TRUSTED_IP_HEADER`、既定 `X-Client-IP`。nginx が Cloudflare の `CF-Connecting-IP` から付け直す）だけから取る。`X-Forwarded-For` / `X-Real-IP` は読まない（クライアントが詐称できるため）。不正・欠落なら `unknown` バケット（上限 1/10）
+- バケットは `RATE_LIMITS` に集約（キーは `バケット名:ip`）: `api` 100/分、`verify` 5/分＋同時実行 1（solc は同期実行なので `runExclusive` で直列化）、`interact` 30/分、`tokenMetadata`（`/api/tokens/[address]?tokenId=`）10/分、`launchpad` 30/分、`relay` 60/分、`contractWrite` 10/分。CSV export は従来の独自上限
+- 各 route.ts の先頭で `enforceRateLimit(request, 'api')` か `withRateLimit('verify', handler)` を呼ぶ。超過は 429 + `Retry-After`、`logger.warn` で記録。同一 IP が 1 分に 20 回 429 になると警告 1 行（crowdsec の種）。`proxy.ts`（Edge）には Map ベースの制限を置かない
+- nginx 側の設定例は `docs/nginx-explorer.conf.example`
 
 ### セキュリティヘッダ（`proxy.ts`）
 - `X-Content-Type-Options: nosniff`
@@ -402,7 +404,7 @@ NFT の所有者は次のように計算されます:
 - `tokens` - トークンメタデータ（モデル `Token`）
 - `tokentransfers` - トークン転送イベント（モデル `TokenTransfer`。フィールドは tokenAddress / transactionHash / from / to / value / tokenId / blockNumber / timestamp(Date)）
 - `tokenholders` - トークン保有者残高（モデル `TokenHolder`）
-- `scan_progress` - tools/tokens.ts のスキャン進捗（モデル `ScanProgress`）
+- `scan_progress` - 進捗マーカー（モデル `ScanProgress`）: `tokens`（tools/tokens.ts）、`sync`（リスナー位置）、`reorg-pending`（maxReorgDepth 超のリオーグ範囲。`meta` に from/to）、`repair`（repair-chain の再開位置）
 - `Account` - アカウント残高
 - `Market` - 複数ソースからの価格データ（price.ts が更新）
 - `DexSwap` - DEX スワップイベント（price.ts が更新）
@@ -486,6 +488,34 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 ### 耐障害性・汎用化
 - `proxy.ts` の `/address` タイプ判定 fetch に AbortController（2s）を追加 → DB 停止時も `/address` がハングしない（従来 ~15s）。
 - DEX サブシステム（`geckoterminal/info`・`pool`、`dex` ページ、`useFarming` のウォレット追加 `nativeCurrency`）の真のハードコード固有名を config 由来に。クライアントは `lib/client-config`（`getNetworkName`/`getCurrencyConfig`）または `useDexConfig`（`currency` フィールド追加）から取得。設定済みの本番では出力は不変。
+
+## 新機能（2026-10）: 第 2 次セキュリティ修正 — SSRF・リオーグ・レート制限・URL 名トークン（v0.8.6）
+
+2026-10-24 の偵察（tokenURI 由来 URL のサーバー側取得で 127.0.0.1 の各ポートを探られた）と、リオーグ未対応により DB に残った孤児ブロック 3,101 箇所への恒久対策。
+
+### 設計ルール（必ず守る）
+- **チェーン由来の文字列を URL として取得するのは `safeFetchJson()`（`lib/security/safe-fetch.ts`）だけ**。https のみ（`ipfs://` は `images.ipfsGateway` へ変換）、IP リテラルのホスト禁止、`dns.lookup` の全アドレスを非公開帯（127/8, 10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, 0/8, 224/4, 240/4, ::1, ::, fc00::/7, fe80::/10, マップ済み IPv4 等）で検証、解決済みアドレスに接続を固定（DNS リバインド対策）、リダイレクト追従なし、`application/json` 系のみ、256 KiB・5 秒上限、拒否は理由・URL・コントラクトを `logger.warn`。素の `fetch()` でチェーン由来 URL を叩かない
+- tokenURI は **ERC-721/1155 と判定できたコントラクトだけ**読む（DB の `Contract.ERC` / `type`、不明なら ERC-165 `supportsInterface`）。取得した metadata は name/description/image/attributes のみ、長さ上限付きで返す（`lib/services/nft-metadata.service.ts`）。`{tokenId}.json` フォールバックは廃止
+- **`X-Forwarded-For` を再び読まない**。レート制限は「レート制限」節のとおり
+- **`insertMany` と E11000 無視を復活させない**。Block は number、Transaction は hash をキーに upsert（`lib/sync/reorg.ts`）。`Transaction.hash` の unique は維持
+- 高さの差し替えは `replaceBlock()` 経由（孤児 tx と tokentransfers の削除、正規ブロック/tx の upsert、BlockStat 削除、tokens スキャンの巻き戻し、`logger.warn` のリオーグイベント）
+- `tokens` / `Contract` に名前を書くときは `hiddenFields()`（`lib/security/display-name.ts`）を通す。一覧 API は `hidden: { $ne: true }`、詳細 API はフラグ付きで返し、画面は `components/DisplayName.tsx` で描画（制御文字除去・長さ上限・リンク化しない・hidden はバッジ＋短縮アドレス）。公開 API に `includeHidden` は作らない
+- 攻撃元 IP や作成者アドレスをコードで遮断しない（Cloudflare / ufw の運用で行う）
+
+### 実装の要点
+- `lib/security/url.ts`: ブラウザでも使える URL 判定（`parseSafeHttpsUrl`、`isPrivateIp`、`resolveIpfsUrl`）。`isValidImageUrl` も同じ判定を使う（IP リテラル・認証情報入り URL を拒否）
+- `lib/contract/erc.ts`: `Contract.ERC` の値（2 / 721 / 1155）と ERC-165 インターフェース ID の定数
+- `next.config.ts`: `images.remotePatterns` は自ホスト・IPFS ゲートウェイ・`images.allowedHosts` のみ（チェーン由来画像は `unoptimized`）
+- `lib/sync/`: `normalize.ts`（ノード→DB ドキュメント）、`reorg.ts`（upsert / `replaceBlock` / `findCommonAncestor` / `handleReorg` / `processNewBlock` / `verifyConfirmationWindow` / リスナー位置の永続化）、`chain-check.ts`（`checkChain` / `sampleAgainstNode` / `repairChain`）、`web3-node.ts`（web3 v4 アダプタ）。リスナーは新ブロック N の parentHash と DB の N-1 を比較し、不一致なら共通祖先（最大 `maxReorgDepth`=64）まで遡って置換。毎ポーリングで head−`confirmations`（既定 12）..head も照合。設定は `config.json` の `sync` か `SYNC_CONFIRMATIONS` / `SYNC_MAX_REORG_DEPTH`
+- `tools/repair-chain.ts`: `--check`（number 昇順ストリームで欠落と parentHash 不一致を数える。不一致で exit 1）、`--sample k`、`--fix [--from] [--to] [--dry-run]`（共通祖先から連結が復元するまで置換、1 箇所 256 まで、`scan_progress` の `repair` で再開可、完了後に `--check` を自動実行）。本番ではローカルノードに対してのみ実行する
+- `tools/flag-spam-tokens.ts`: Contract / Token 全件に `classifyDisplayName` を適用（`--dry-run`、`--address --hide|--unhide`、`--unhide-all`。`manual` フラグは自動判定で上書きしない）
+- `tools/stats.ts` は import 時に接続しない（sync.ts が全モードで stats の初期化を走らせ、ログのラベルが `tool: 'stats'` に固定されていた）。`tools/sync.ts` は環境変数 `MONGODB_URI` を config.json より優先し、`${VAR}` プレースホルダを解決する
+- テスト: `tests/security/{url,safe-fetch,rate-limits,display-name}.test.ts`、`tests/services/nft-metadata.test.ts`、`tests/sync/{reorg,chain-check}.test.ts`（モックノード＋mongodb-memory-server）、`tests/api/hidden-tokens.test.ts`
+
+### 本番反映時の注意
+- nginx の explorer vhost に `proxy_set_header X-Client-IP $http_cf_connecting_ip;` と `X-Forwarded-For` / `X-Real-IP` の上書きを入れる（`docs/nginx-explorer.conf.example`）。入れないと全リクエストが `unknown` バケット（上限 1/10）になる
+- 反映後に `npm run flag-spam-tokens -- --dry-run` で対象（本番 19 件）を確認してから本実行、`npm run repair-chain -- --check` → `--fix --dry-run` → `--fix` → `--check` が 0、`--sample 1000` が 0 を確認。実行前に Block / Transaction / BlockStat を mongodump する
+- `/api/tokens/<addr>?tokenId=1` を 19 件のいずれかに実行しても metadata は null（ERC-20 判定なので tokenURI は呼ばれない）
 
 ## 新機能（2026-10）: DB インデックス管理とモデル一本化（v0.8.5）
 

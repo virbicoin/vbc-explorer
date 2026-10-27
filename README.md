@@ -577,6 +577,8 @@ sequenceDiagram
 |    |-- richlist.ts          # Rich list generation
 |    |-- register-contracts.ts  # Contract registration
 |    |-- optimize-indexes.ts  # Create/check schema indexes (--dry-run, --check)
+|    |-- repair-chain.ts      # Verify the stored chain / replace orphaned blocks (--check, --sample, --fix)
+|    |-- flag-spam-tokens.ts  # Hide tokens and contracts whose names look like URLs (backfill)
 |    |-- add-token.ts         # Manual token addition
 |-- types/
 |    |-- global.d.ts          # Global type declarations
@@ -733,6 +735,27 @@ Every index is backed by a real query:
 
 Rules for contributors: define models only in `models/index.ts` (no inline `mongoose.model()`), set `collection` explicitly to the real collection name, declare indexes in the schema, keep `autoIndex: false`, query addresses and hashes with lowercase equality instead of `$regex`, and never call `syncIndexes()` (it drops indexes that are not in the schema).
 
+### Chain Integrity (Reorg Handling)
+
+The block listener (`tools/sync.ts`) is reorg-aware (`lib/sync/`):
+
+- Blocks are **upserted by `number`** and transactions **by `hash`** (`bulkWrite`); a transaction re-included in another block is moved, never dropped. `insertMany` with ignored duplicate-key errors is gone.
+- Before a new block N is stored its `parentHash` is compared with the stored block N-1. On a mismatch the listener walks back to the last height where DB and node agree (at most `maxReorgDepth`, default 64) and replaces every height above it: the orphan's transactions and token transfers are deleted, the canonical block and transactions are upserted, the `BlockStat` of the height is dropped (stats recompute it) and the token scan is rewound. A reorg deeper than `maxReorgDepth` is logged and recorded in `scan_progress` (`reorg-pending`) for the repair tool.
+- Every poll also re-verifies the last `confirmations` heights (default 12) against the node, so a reorg that happened between polls is caught too.
+- The listener position is persisted in `scan_progress` (`sync`) and restored on restart.
+- Configure in `config.json` (`"sync": { "confirmations": 12, "maxReorgDepth": 64 }`) or with `SYNC_CONFIRMATIONS` / `SYNC_MAX_REORG_DEPTH`.
+
+Repair an existing database (orphaned blocks left by older versions):
+
+```bash
+npm run repair-chain -- --check            # gaps + parentHash mismatches, exit 1 when mismatches exist (~2 min for 3M blocks)
+npm run repair-chain -- --sample 1000      # compare 1000 random heights with the node
+npm run repair-chain -- --fix --dry-run    # list the heights / hashes that would be replaced
+npm run repair-chain -- --fix              # replace orphans (resumable), then re-check; exit 0 only when 0 mismatches remain
+```
+
+After `--fix`: recompute statistics for the replaced range with `RESCAN=<minReplaced>:<count> npm run stats` (the tool prints the command), the token scan re-indexes transfers automatically, and richlist balances come from the node (no action). Run it against the local node only; it issues about two RPC calls per replaced block. Back up `Block`, `Transaction` and `BlockStat` first.
+
 ## 🔒 Security
 
 ### Environment Variables
@@ -780,10 +803,43 @@ You can reference environment variables in `config.json` using `${VAR_NAME}` syn
 4. **Use HTTPS** - Enable Strict-Transport-Security in production
 5. **Regular audits** - Run `npm audit` periodically
 
-### Security Features (v0.7.5)
+### Rate Limiting and the Client IP
+
+Limits are keyed on the **client IP taken from one trusted header only** (`TRUSTED_IP_HEADER`, default `X-Client-IP`), which the reverse proxy must set from Cloudflare's `CF-Connecting-IP` and overwrite on every request. `X-Forwarded-For` and `X-Real-IP` are never read, so a client cannot choose its bucket. Requests without a valid trusted IP share one `unknown` bucket with a tenth of the normal limit. Buckets live in `lib/security/rate-limits.ts`:
+
+| Bucket | Limit | Routes |
+|--------|-------|--------|
+| `api` | 100/min | every read API |
+| `verify` | 5/min, one at a time | `/api/compile`, `/api/contract/verify`, v2 verification, Etherscan `verifysourcecode` (solc compiles synchronously) |
+| `interact` | 30/min | `/api/contract/interact` |
+| `tokenMetadata` | 10/min | `/api/tokens/[address]?tokenId=` (reads tokenURI, fetches metadata) |
+| `launchpad` / `relay` / `contractWrite` | 30 / 60 / 10 per min | Launchpad registration and sync, `/api/web3relay`, `POST /api/contract/[address]` |
+
+Exceeding a limit returns `429` with `Retry-After`; every denial is logged and 20 denials from one IP within a minute produce one warning line (a seed for a crowdsec scenario). See [docs/nginx-explorer.conf.example](docs/nginx-explorer.conf.example) for the nginx side (header rewrite, optional `real_ip`, `limit_req` as a second line of defence).
+
+### SSRF Protection (NFT metadata)
+
+The only code that fetches a URL coming from the chain (`tokenURI`) is `safeFetchJson()` in `lib/security/safe-fetch.ts`: https only (`ipfs://` is rewritten to `images.ipfsGateway`, default `https://ipfs.io/ipfs/`), no IP-literal hosts, every DNS answer checked against private / link-local / loopback / CGNAT / multicast ranges (IPv4, IPv6, mapped forms), the socket pinned to the validated address, no redirects, `application/json` only, 256 KiB cap, 5 s timeout, every rejection logged with the contract address. `tokenURI` is only read for ERC-721 / ERC-1155 contracts (DB classification, ERC-165 when unknown) and the metadata is reduced to `name`, `description`, `image` and `attributes` with length caps. `next/image` only optimizes the explorer host, the IPFS gateway and `images.allowedHosts`; chain-derived images are rendered `unoptimized`.
+
+### Hidden (spam) Tokens
+
+Tokens and contracts whose name or symbol looks like a URL, contains control / zero-width / bidi characters or HTML, or is too long are flagged `hidden` when they are written (sync, token scan, Launchpad registration). List APIs skip them, detail pages show a badge with the shortened address instead of the name, and names are always rendered through `components/DisplayName.tsx` (control characters removed, length capped, never linkified). Backfill or manage flags with:
+
+```bash
+npm run flag-spam-tokens -- --dry-run                 # list what would change
+npm run flag-spam-tokens                              # classify every Contract and Token
+npm run flag-spam-tokens -- --address 0x... --hide    # hide one address (reason: manual)
+npm run flag-spam-tokens -- --address 0x... --unhide  # clear a flag
+npm run flag-spam-tokens -- --unhide-all              # clear every flag
+```
+
+### Security Features (v0.8.6)
 
 - ✅ **Input Validation** - All addresses, hashes, and pagination parameters validated
-- ✅ **Rate Limiting** - Token bucket algorithm per client IP (100 req/min default)
+- ✅ **Rate Limiting** - Token bucket per client IP from the proxy-set `X-Client-IP` header only; per-purpose buckets, `429` + `Retry-After`
+- ✅ **SSRF-safe metadata fetch** - tokenURI metadata only through `safeFetchJson()` (https, public addresses, no redirects, size/content-type limits)
+- ✅ **Spam-name hiding** - URL-like / control-character names flagged `hidden`, excluded from lists, rendered safely
+- ✅ **Reorg-aware sync** - orphaned blocks are replaced, transactions upserted by hash; `repair-chain` verifies the stored chain
 - ✅ **Security Headers** - X-Content-Type-Options, X-Frame-Options, X-XSS-Protection
 - ✅ **ReDoS Protection** - Safe RegExp patterns with input sanitization
 - ✅ **Method Whitelist** - Contract interaction limited to read-only methods
@@ -1036,6 +1092,11 @@ npm run optimize-indexes              # Create missing indexes
 npm run optimize-indexes -- --dry-run # Show what would be created
 npm run optimize-indexes -- --check   # Exit 1 if any index is missing
 
+# Chain integrity and spam tokens
+npm run repair-chain -- --check       # Verify parentHash links (exit 1 on mismatches)
+npm run repair-chain -- --fix         # Replace orphaned blocks with the node's canonical blocks
+npm run flag-spam-tokens -- --dry-run # Classify token/contract names (URL-like names are hidden)
+
 # PM2 management
 npm run pm2:start
 npm run pm2:stop
@@ -1072,6 +1133,10 @@ npx tsx --tsconfig tsconfig.tools.json tools/price.ts
 
 # Database indexes
 npx tsx --tsconfig tsconfig.tools.json tools/optimize-indexes.ts --check
+
+# Chain integrity / spam tokens
+npx tsx --tsconfig tsconfig.tools.json tools/repair-chain.ts --check
+npx tsx --tsconfig tsconfig.tools.json tools/flag-spam-tokens.ts --dry-run
 
 # Environment variable configuration
 RESCAN=100:10000 npx tsx --tsconfig tsconfig.tools.json tools/sync.ts stats  # Statistics rescan
@@ -1894,6 +1959,28 @@ RESCAN=100:10000 npm run stats
 
 # Check sync status
 pm2 logs sync | tail -50
+```
+
+9. **Orphaned blocks (parentHash mismatches, stale transactions)**
+```bash
+# Count broken links in the stored chain (exit 1 when any exist)
+npm run repair-chain -- --check
+
+# Preview, then replace the orphans with the node's canonical blocks (back up Block/Transaction/BlockStat first)
+npm run repair-chain -- --fix --dry-run
+npm run repair-chain -- --fix
+
+# Recompute statistics for the replaced range (the tool prints the exact command)
+RESCAN=<minReplaced>:<count> npm run stats
+
+# Reorgs the live sync could not resolve are recorded here
+mongosh explorerDB --quiet --eval 'db.scan_progress.find({ scanType: "reorg-pending" }).pretty()'
+```
+
+10. **Spam tokens with URL-like names showing up in lists**
+```bash
+npm run flag-spam-tokens -- --dry-run   # list what would be hidden
+npm run flag-spam-tokens                # write the hidden flags
 ```
 
 ### Performance Optimization

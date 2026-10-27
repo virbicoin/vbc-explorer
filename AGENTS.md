@@ -41,14 +41,20 @@ Practical instructions for AI coding agents working in this repository.
 
 ## API Security Checklist
 For new or modified API handlers in `app/api/**`:
-1. Apply rate limiting using helpers from `lib/security/`.
+1. Apply rate limiting at the top of the handler with `enforceRateLimit(request, '<bucket>')` or `withRateLimit('<bucket>', handler)` from `lib/security/rate-limits.ts`; add new buckets to `RATE_LIMITS` there, never inline numbers. Do not put Map-based limits in `proxy.ts` (Edge runtime).
 2. Validate and sanitize all external input (address/hash/pagination/image URLs).
 3. Return security headers on responses.
 4. Avoid regex-based untrusted DB matching when exact/sanitized matching is possible.
+5. Never fetch a chain-derived string (name, symbol, logoUrl, tokenURI, metadata contents) outside `safeFetchJson()` (`lib/security/safe-fetch.ts`): https only, DNS answers validated, no redirects, size and content-type limits. Plain `fetch()` of such URLs is forbidden.
+6. The client IP comes only from `getClientIp()` (trusted header `TRUSTED_IP_HEADER`, default `X-Client-IP`, set by nginx). Never read `X-Forwarded-For` / `X-Real-IP`.
+7. Render chain-derived names through `components/DisplayName.tsx`; list queries must exclude `hidden: true` documents and there is no `includeHidden` parameter on public APIs.
 
 ## Data and Sync Notes
 - Tools in `tools/` are production-relevant and use memory-limited scripts in `package.json`.
 - NFT transfer sync logic must preserve multi-event correctness; avoid simplistic dedupe by tx hash only.
+- Blocks are written with `upsertBlocks()` (by `number`) and transactions with `upsertTransactions()` (by `hash`) from `lib/sync/`. Never reintroduce `insertMany` with ignored E11000 errors; `Transaction.hash` stays unique.
+- Replacing a height goes through `replaceBlock()` (`lib/sync/reorg.ts`), which also removes the orphan's transactions / token transfers, drops the BlockStat and rewinds the token scan. `tools/repair-chain.ts` reuses it for existing orphans.
+- Names written to `tokens` / `Contract` must pass `hiddenFields()` (`lib/security/display-name.ts`) so URL-like or control-character names are flagged `hidden`.
 
 ## Database Models and Indexes
 - Define Mongoose models only in `models/index.ts`. Never write inline `mongoose.models.X || mongoose.model('X', schema)` in routes or tools; import the model instead (`grep "mongoose.model("` must only match `models/index.ts`).
