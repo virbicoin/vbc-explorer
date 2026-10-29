@@ -143,6 +143,10 @@ The explorer includes a Token Launchpad feature for creating and managing custom
 - **Configurable Supply** - Define total supply and decimals
 - **Creation Fee** - Configurable fee per token creation
 
+### Factory-Authenticated Registration (v0.8.7)
+
+`POST /api/launchpad/register` accepts only `{ "tokenAddress": "0x..." }`. The server asks the configured TokenFactory contracts (`launchpad.factoryAddress` and `launchpad.legacyFactories`) whether they created the token — `isFactoryToken()`, or membership in `getAllTokens()` for legacy factories without it — and takes creator, name, symbol, decimals, supply, creation time and metadata from `tokenInfo()` and the token contract (`lib/launchpad/factory.ts`). Nothing from the request body is persisted. Addresses no factory knows get `404`; an already registered address returns `200` with the stored record; the creator's first holder row uses the real `balanceOf()`. `GET /api/launchpad/sync` is read-only (last sync time and result from `scan_progress`), `POST /api/launchpad/sync` runs an immediate import with a 60 s cooldown (`429`), and the periodic factory → `tokens` import runs inside `npm run tokens` (startup and hourly; `npm run tokens -- --sync-launchpad` for one shot). `npm run flag-spam-tokens -- --audit-launchpad` lists Launchpad-sourced tokens no factory knows and records `factoryVerified: false`; the token page shows a 「ファクトリー外」 badge for them.
+
 ### Security Features
 - **HTTPS-Only Images** - Only secure HTTPS URLs allowed for token logos
 - **XSS Protection** - Malicious URL patterns blocked (javascript:, data:, etc.)
@@ -810,10 +814,11 @@ Limits are keyed on the **client IP taken from one trusted header only** (`TRUST
 | Bucket | Limit | Routes |
 |--------|-------|--------|
 | `api` | 100/min | every read API |
-| `verify` | 5/min, one at a time | `/api/compile`, `/api/contract/verify`, v2 verification, Etherscan `verifysourcecode` (solc compiles synchronously) |
+| `verify` | 5/min | `/api/compile`, `/api/contract/verify`, v2 verification, Etherscan `verifysourcecode` (compiles queue in the solc worker, see below) |
+| `write` | 10/min | `POST /api/launchpad/register`, `POST /api/launchpad/sync` (chain-authenticated writes) |
 | `interact` | 30/min | `/api/contract/interact` |
 | `tokenMetadata` | 10/min | `/api/tokens/[address]?tokenId=` (reads tokenURI, fetches metadata) |
-| `launchpad` / `relay` / `contractWrite` | 30 / 60 / 10 per min | Launchpad registration and sync, `/api/web3relay`, `POST /api/contract/[address]` |
+| `launchpad` / `relay` / `contractWrite` | 30 / 60 / 10 per min | Launchpad reads, `/api/web3relay`, `POST /api/contract/[address]` |
 
 Exceeding a limit returns `429` with `Retry-After`; every denial is logged and 20 denials from one IP within a minute produce one warning line (a seed for a crowdsec scenario). See [docs/nginx-explorer.conf.example](docs/nginx-explorer.conf.example) for the nginx side (header rewrite, optional `real_ip`, `limit_req` as a second line of defence).
 
@@ -831,9 +836,26 @@ npm run flag-spam-tokens                              # classify every Contract 
 npm run flag-spam-tokens -- --address 0x... --hide    # hide one address (reason: manual)
 npm run flag-spam-tokens -- --address 0x... --unhide  # clear a flag
 npm run flag-spam-tokens -- --unhide-all              # clear every flag
+npm run flag-spam-tokens -- --audit-launchpad         # Launchpad-sourced tokens no factory knows → factoryVerified: false
 ```
 
-### Security Features (v0.8.6)
+### Solidity Compiler Isolation (v0.8.7)
+
+Contract verification compiles in a `worker_threads` worker (`lib/contract/compile-worker.ts`, `lib/contract/solc-worker.cjs`), never on the request thread: one compile at a time (`compiler.concurrency`), at most five waiting (`compiler.maxQueue`, then `503` + `Retry-After`), a 60 s timeout (`compiler.timeoutMs`; the worker is terminated), a 1024 MB heap limit (`compiler.maxOldGenerationSizeMb`), 500 KB input and 20 MB output caps. Compilers come only from `lib/contract/compiler-cache.ts`: a release build is downloaded from `https://binaries.soliditylang.org/bin` (`list.json`: 15 s, 2 MB), its sha256 is compared with the one published in `list.json`, and only then is it stored as `<cacheDir>/<version>.js` next to `<version>.sha256` (default `~/.cache/vbc-solc`; `compiler.cacheDir` or `SOLC_CACHE_DIR`). The hash is checked again on every read. Nightly builds, versions outside `releases` and versions outside the optional `compiler.allowedVersions` list are refused; `solc.loadRemoteVersion` is not used anywhere. Every compile logs version, duration and result. `/api/compile` only looks up stored verification data (it never compiled). Settings live in the `compiler` section of `config.json` (see `config.example.json`).
+
+### Pagination Limits (v0.8.7)
+
+Every route that accepts `limit` / `page` (including DataTables `start` / `length` on `/api/richlist`) goes through `validatePagination()` in `lib/security/validation.ts`: `limit` is clamped to the route's maximum (100 for lists, 300 for GeckoTerminal trades, 1000 for OHLCV), a `page` below 1 or non-numeric becomes 1, and `page × limit` above 100,000 (`DEFAULT_MAX_OFFSET`) is refused with `400`, because such skips scan the collection even with indexes.
+
+### Public RPC Method Filter (nginx njs)
+
+The public JSON-RPC hostnames are fronted by nginx. [docs/njs/rpc-filter.js](docs/njs/rpc-filter.js) inspects every POST body (single call or batch) and answers `403` with a JSON-RPC error for methods starting with `trace_`, `parity_`, `debug_`, `personal_`, `admin_` or `miner_`, `400` for non-JSON bodies or non-string methods and `413` for bodies above the buffer; everything else is forwarded unchanged to the node. [docs/nginx-rpc.conf.example](docs/nginx-rpc.conf.example) shows the vhost wiring (`js_import`, `/_rpc_post`, `/_rpc`, `limit_req`); the node's own `--jsonrpc-apis` is not changed. The classifier is unit-tested in `tests/ops/rpc-filter.test.ts`.
+
+### Security Features (v0.8.7)
+
+- ✅ **Factory-authenticated Launchpad** - registration accepts only tokens the TokenFactory contracts vouch for; creator and metadata come from the chain
+- ✅ **Compiler isolation** - solc runs in a worker thread with timeout and heap limits, from a sha256-verified local cache (no nightly builds)
+- ✅ **Pagination caps** - every `limit` / `page` clamped by `validatePagination()`; deep pages refused
 
 - ✅ **Input Validation** - All addresses, hashes, and pagination parameters validated
 - ✅ **Rate Limiting** - Token bucket per client IP from the proxy-set `X-Client-IP` header only; per-purpose buckets, `429` + `Retry-After`
@@ -1815,7 +1837,7 @@ Complete NFT functionality:
 
 ### Contract Verification
 Smart contract verification system:
-- Source code compilation with multiple Solidity versions
+- Source code compilation with multiple Solidity versions (release builds from a sha256-verified local cache, compiled in a worker thread — see [Solidity Compiler Isolation](#solidity-compiler-isolation-v087))
 - Bytecode comparison
 - ABI generation
 - Contract interaction interface
@@ -1956,6 +1978,8 @@ SYNCALL=true npm run sync
 
 # Rescan statistics
 RESCAN=100:10000 npm run stats
+# ... or from a block height up to the head (what repair-chain prints; RESCAN_INTERVAL=10 for a finer grid)
+RESCAN_FROM=2298155 npm run stats
 
 # Check sync status
 pm2 logs sync | tail -50

@@ -48,6 +48,9 @@ For new or modified API handlers in `app/api/**`:
 5. Never fetch a chain-derived string (name, symbol, logoUrl, tokenURI, metadata contents) outside `safeFetchJson()` (`lib/security/safe-fetch.ts`): https only, DNS answers validated, no redirects, size and content-type limits. Plain `fetch()` of such URLs is forbidden.
 6. The client IP comes only from `getClientIp()` (trusted header `TRUSTED_IP_HEADER`, default `X-Client-IP`, set by nginx). Never read `X-Forwarded-For` / `X-Real-IP`.
 7. Render chain-derived names through `components/DisplayName.tsx`; list queries must exclude `hidden: true` documents and there is no `includeHidden` parameter on public APIs.
+8. Never persist values a client asserts about a token (creator, name, supply, metadata). Launchpad registration resolves the address through `resolveFactoryToken()` (`lib/launchpad/factory.ts`: `isFactoryToken` / `getAllTokens` + `tokenInfo` via eth_call) and writes chain values only; such POSTs use the `write` bucket. `GET` handlers never write.
+9. Never run solc on the request thread and never call `solc.loadRemoteVersion`. Compile only through `compileStandardJson()` (`lib/contract/compile-worker.ts`: worker thread, timeout, heap limit, queue → 503), which loads compilers from the sha256-verified cache (`lib/contract/compiler-cache.ts`; release builds only). `grep -rn "solc\." app lib` must only match those two files.
+10. Every `limit` / `page` (and DataTables `start` / `length`) goes through `validatePagination()` with an explicit `maxLimit`, followed by `rejectDeepPagination()` (`page × limit` > 100,000 → 400).
 
 ## Data and Sync Notes
 - Tools in `tools/` are production-relevant and use memory-limited scripts in `package.json`.
@@ -55,6 +58,8 @@ For new or modified API handlers in `app/api/**`:
 - Blocks are written with `upsertBlocks()` (by `number`) and transactions with `upsertTransactions()` (by `hash`) from `lib/sync/`. Never reintroduce `insertMany` with ignored E11000 errors; `Transaction.hash` stays unique.
 - Replacing a height goes through `replaceBlock()` (`lib/sync/reorg.ts`), which also removes the orphan's transactions / token transfers, drops the BlockStat and rewinds the token scan. `tools/repair-chain.ts` reuses it for existing orphans.
 - Names written to `tokens` / `Contract` must pass `hiddenFields()` (`lib/security/display-name.ts`) so URL-like or control-character names are flagged `hidden`.
+- `tools/stats.ts` reads `RESCAN=<interval>:<range>` (range × interval blocks back from the head) or `RESCAN_FROM=<height>` (height → head); `tools/repair-chain.ts` prints the latter after a repair, and both forms exit when done.
+- The Launchpad factory → `tokens` import lives in `lib/launchpad/sync.ts` (`syncLaunchpadTokens`), run by `tools/tokens.ts` and `POST /api/launchpad/sync`; it never rewrites existing names or attributions, only adds `factoryVerified` / `factory`.
 
 ## Database Models and Indexes
 - Define Mongoose models only in `models/index.ts`. Never write inline `mongoose.models.X || mongoose.model('X', schema)` in routes or tools; import the model instead (`grep "mongoose.model("` must only match `models/index.ts`).
@@ -68,6 +73,8 @@ For new or modified API handlers in `app/api/**`:
 - Secrets must not be committed. Use `.env.local` and `${ENV_VAR}` references in `config.json`.
 - DEX endpoints rely on cache and blacklist behavior from `lib/dex/cache-service.ts`; preserve that behavior when editing.
 - Prefer singleton/provider patterns already implemented in `lib/web3/` and `lib/db/connection.ts`.
+- Only `connectDB()` in `models/index.ts` calls `mongoose.connect`; `lib/db/connection.ts` is a wrapper over it and pool / timeout options live in `config.database.options` alone.
+- The solc worker (`lib/contract/solc-worker.cjs`) is started by path from `process.cwd()`; keep it a plain CommonJS file without TypeScript, and keep `solc` in `serverExternalPackages`.
 
 ## Reference
 - Primary project guide: [CLAUDE.md](CLAUDE.md)
@@ -75,3 +82,4 @@ For new or modified API handlers in `app/api/**`:
 - Security policy and hardening details: [SECURITY.md](SECURITY.md)
 - Config template: [config.example.json](config.example.json)
 - Environment variables: [.env.example](.env.example)
+- nginx examples: [docs/nginx-explorer.conf.example](docs/nginx-explorer.conf.example) (explorer, trusted client IP), [docs/nginx-rpc.conf.example](docs/nginx-rpc.conf.example) + [docs/njs/rpc-filter.js](docs/njs/rpc-filter.js) (public RPC method filter)

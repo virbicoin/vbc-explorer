@@ -143,7 +143,7 @@ function sha256Hex(buffer: Buffer): string {
 function sha256File(file: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const hash = createHash('sha256');
-    fs.createReadStream(file)
+    fs.createReadStream(/*turbopackIgnore: true*/ file)
       .on('data', (chunk) => hash.update(chunk))
       .on('error', reject)
       .on('end', () => resolve(hash.digest('hex')));
@@ -294,7 +294,13 @@ async function removeQuietly(file: string): Promise<void> {
 /** A cached version whose file still matches its recorded sha256, or null. */
 async function readVerifiedCache(cacheDir: string, short: string): Promise<CachedCompiler | null> {
   const { file, meta } = cachedCompilerPaths(cacheDir, short);
-  if (!fs.existsSync(file) || !fs.existsSync(meta)) return null;
+  // turbopackIgnore: the cache lives outside the project; tracing must not follow it
+  if (
+    !fs.existsSync(/*turbopackIgnore: true*/ file) ||
+    !fs.existsSync(/*turbopackIgnore: true*/ meta)
+  ) {
+    return null;
+  }
   const record = parseMeta(await fsp.readFile(meta, 'utf8'));
   if (!record) {
     logger.warn('Cached compiler has no readable sha256 record; discarding it', { file });
