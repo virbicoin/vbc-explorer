@@ -1,196 +1,136 @@
+/**
+ * /api/launchpad/sync
+ *
+ * GET  — read-only: when the Launchpad factories were last synchronised with
+ *        the `tokens` collection and what that run did. Never writes.
+ * POST — manual synchronisation (imports factory tokens missing from the DB,
+ *        values from the chain only). `write` rate bucket plus a 60 s
+ *        cooldown shared with the periodic run in tools/tokens.ts (429 when
+ *        a sync finished less than a minute ago or one is still running).
+ */
 import { NextRequest, NextResponse } from 'next/server';
-import Web3 from 'web3';
-import { connectDB, Token, TokenHolder } from '../../../../models/index';
+import { connectDB } from '../../../../models/index';
 import { loadConfig } from '../../../../lib/config';
-import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { getSecurityHeaders } from '../../../../lib/security/validation';
+import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
+import { FactoryRpcError, getLaunchpadFactories } from '@/lib/launchpad/factory';
+import {
+  LAUNCHPAD_SYNC_COOLDOWN_MS,
+  getLaunchpadSyncStatus,
+  syncLaunchpadTokens,
+} from '@/lib/launchpad/sync';
+import { logger } from '@/lib/logger';
 
-// Load configuration
-const config = loadConfig();
-const RPC_URL = config.web3Provider?.url || 'http://localhost:8545';
-const web3 = new Web3(RPC_URL);
+export const dynamic = 'force-dynamic';
 
-// TokenFactory ABI (only what we need)
-const TokenFactoryABI = [
-  {
-    inputs: [],
-    name: 'getAllTokens',
-    outputs: [{ name: '', type: 'address[]' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ name: 'token', type: 'address' }],
-    name: 'tokenInfo',
-    outputs: [
-      { name: 'creator', type: 'address' },
-      { name: 'name', type: 'string' },
-      { name: 'symbol', type: 'string' },
-      { name: 'decimals', type: 'uint8' },
-      { name: 'totalSupply', type: 'uint256' },
-      { name: 'createdAt', type: 'uint256' },
-    ],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const;
+/** A sync started through this API and not finished yet (per process). */
+let manualSyncInFlight: Promise<unknown> | null = null;
 
-// ERC20 ABI for token info
-const ERC20_ABI = [
-  {
-    inputs: [],
-    name: 'name',
-    outputs: [{ name: '', type: 'string' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'symbol',
-    outputs: [{ name: '', type: 'string' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'decimals',
-    outputs: [{ name: '', type: 'uint8' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'totalSupply',
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const;
+function factoriesForResponse() {
+  return getLaunchpadFactories(loadConfig()).map((f) => ({
+    address: f.address,
+    legacy: f.legacy,
+    ...(f.version ? { version: f.version } : {}),
+  }));
+}
 
-// GET - Sync all tokens from TokenFactory to database
 export async function GET(request: NextRequest) {
-  const limited = enforceRateLimit(request, 'launchpad');
+  const limited = enforceRateLimit(request, 'api');
   if (limited) return limited;
 
   try {
-    const launchpadConfig = config.launchpad;
-    const factoryAddress = launchpadConfig?.factoryAddress;
-
-    if (!factoryAddress || factoryAddress === '0x0000000000000000000000000000000000000000') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'TokenFactory not configured',
-        },
-        { status: 400 }
-      );
-    }
-
     await connectDB();
-
-    // Get all tokens from factory
-    const factory = new web3.eth.Contract(TokenFactoryABI, factoryAddress);
-    const allTokens = (await factory.methods.getAllTokens().call()) as string[];
-
-    console.log(`Found ${allTokens.length} tokens in TokenFactory`);
-
-    const results = {
-      total: allTokens.length,
-      registered: 0,
-      skipped: 0,
-      errors: 0,
-      tokens: [] as { address: string; symbol: string; status: string }[],
-    };
-
-    for (const tokenAddress of allTokens) {
-      try {
-        // Check if already registered
-        const existing = await Token.findOne({
-          address: tokenAddress.toLowerCase(),
-        });
-
-        if (existing) {
-          results.skipped++;
-          results.tokens.push({
-            address: tokenAddress,
-            symbol: existing.symbol,
-            status: 'skipped',
-          });
-          continue;
-        }
-
-        // Get token info directly from ERC20 contract
-        const tokenContract = new web3.eth.Contract(ERC20_ABI, tokenAddress);
-
-        let name = 'Unknown';
-        let symbol = 'UNKNOWN';
-        let decimals = 18;
-        let totalSupply = '0';
-
-        try {
-          name = (await tokenContract.methods.name().call()) as string;
-        } catch (e) {
-          /* ignore */
-        }
-
-        try {
-          symbol = (await tokenContract.methods.symbol().call()) as string;
-        } catch (e) {
-          /* ignore */
-        }
-
-        try {
-          decimals = Number(await tokenContract.methods.decimals().call());
-        } catch (e) {
-          /* ignore */
-        }
-
-        try {
-          totalSupply = String(await tokenContract.methods.totalSupply().call());
-        } catch (e) {
-          /* ignore */
-        }
-
-        // Create token record
-        const newToken = new Token({
-          address: tokenAddress.toLowerCase(),
-          name,
-          symbol,
-          decimals,
-          totalSupply,
-          supply: totalSupply,
-          holders: 0,
-          type: 'VRC-20',
-          verified: false,
-          createdAt: new Date(),
-          source: 'launchpad',
-        });
-
-        await newToken.save();
-
-        results.registered++;
-        results.tokens.push({ address: tokenAddress, symbol, status: 'registered' });
-        console.log(`✅ Registered: ${symbol} (${tokenAddress})`);
-      } catch (err) {
-        results.errors++;
-        results.tokens.push({ address: tokenAddress, symbol: 'unknown', status: 'error' });
-        console.error(`❌ Error registering ${tokenAddress}:`, err);
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `Sync completed: ${results.registered} registered, ${results.skipped} skipped, ${results.errors} errors`,
-      results,
-    });
-  } catch (error) {
-    console.error('Error syncing tokens:', error);
+    const factories = factoriesForResponse();
+    const status = await getLaunchpadSyncStatus();
     return NextResponse.json(
       {
-        success: false,
-        error: 'Failed to sync tokens',
-        details: String(error),
+        success: true,
+        configured: factories.length > 0,
+        factories,
+        lastSyncAt: status.lastSyncAt ? status.lastSyncAt.toISOString() : null,
+        lastResult: status.lastResult,
+        cooldownSeconds: LAUNCHPAD_SYNC_COOLDOWN_MS / 1000,
+        message:
+          'Read-only status. Tokens are imported periodically by the tokens tool; POST here to run a sync now.',
       },
-      { status: 500 }
+      { headers: getSecurityHeaders() }
+    );
+  } catch (error) {
+    logger.error('Launchpad sync status failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return NextResponse.json(
+      { success: false, error: 'Failed to read sync status' },
+      { status: 500, headers: getSecurityHeaders() }
     );
   }
 }
+
+export const POST = withRateLimit('write', async (request: NextRequest) => {
+  const factories = factoriesForResponse();
+  if (factories.length === 0) {
+    return NextResponse.json(
+      { success: false, error: 'TokenFactory not configured' },
+      { status: 400, headers: getSecurityHeaders() }
+    );
+  }
+
+  try {
+    await connectDB();
+
+    if (manualSyncInFlight) {
+      return NextResponse.json(
+        { success: false, error: 'A sync is already running', retryAfter: 15 },
+        { status: 429, headers: { ...getSecurityHeaders(), 'Retry-After': '15' } }
+      );
+    }
+    const status = await getLaunchpadSyncStatus();
+    if (status.lastSyncAt) {
+      const elapsed = Date.now() - status.lastSyncAt.getTime();
+      if (elapsed >= 0 && elapsed < LAUNCHPAD_SYNC_COOLDOWN_MS) {
+        const retryAfter = Math.max(1, Math.ceil((LAUNCHPAD_SYNC_COOLDOWN_MS - elapsed) / 1000));
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Sync ran less than a minute ago',
+            lastSyncAt: status.lastSyncAt.toISOString(),
+            retryAfter,
+          },
+          { status: 429, headers: { ...getSecurityHeaders(), 'Retry-After': String(retryAfter) } }
+        );
+      }
+    }
+
+    const run = syncLaunchpadTokens();
+    manualSyncInFlight = run;
+    let result;
+    try {
+      result = await run;
+    } finally {
+      manualSyncInFlight = null;
+    }
+    const { tokens, ...summary } = result;
+    return NextResponse.json(
+      {
+        success: true,
+        message: `Sync completed: ${result.registered} registered, ${result.updated} updated, ${result.unchanged} unchanged, ${result.errors} errors`,
+        results: { ...summary, tokens: tokens.filter((t) => t.status !== 'unchanged') },
+      },
+      { headers: getSecurityHeaders() }
+    );
+  } catch (error) {
+    if (error instanceof FactoryRpcError) {
+      return NextResponse.json(
+        { success: false, error: 'Blockchain node unavailable, retry later' },
+        { status: 503, headers: { ...getSecurityHeaders(), 'Retry-After': '15' } }
+      );
+    }
+    logger.error('Launchpad manual sync failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return NextResponse.json(
+      { success: false, error: 'Failed to sync tokens' },
+      { status: 500, headers: getSecurityHeaders() }
+    );
+  }
+});

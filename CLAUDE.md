@@ -109,8 +109,10 @@ lib/                    # ユーティリティライブラリ
   cache/                # インメモリキャッシュ
   db/                   # データベース抽象化レイヤー（get-db.ts, indexes.ts）
   dex/                  # DEX 固有ユーティリティ & キャッシュサービス
-  security/             # 入力検証（validation.ts, url.ts）・レート制限（rate-limits.ts）・SSRF 安全 fetch（safe-fetch.ts）・表示名判定（display-name.ts）
+  security/             # 入力検証（validation.ts, url.ts, pagination.ts）・レート制限（rate-limits.ts）・SSRF 安全 fetch（safe-fetch.ts）・表示名判定（display-name.ts）
   sync/                 # リオーグ対応の同期共通モジュール（normalize / reorg / chain-check / web3-node）
+  launchpad/            # Launchpad ファクトリー照会（factory.ts: eth_call でチェーン認証）と tokens への同期（sync.ts）
+  contract/             # solc 補助（solc-utils.ts）・検証済みコンパイラキャッシュ（compiler-cache.ts）・worker_threads コンパイル（compile-worker.ts, solc-worker.cjs）
   services/             # ビジネスロジックサービス
   types/                # TypeScript 型定義
   utils/                # ユーティリティ関数
@@ -133,13 +135,13 @@ models/                 # Mongoose モデル（index.ts が唯一の定義場所
 tools/                  # ブロックチェーン同期用 CLI ツール
   sync.ts               # ブロックチェーン同期
   tokens.ts             # トークンデータ同期（NFT/ERC20）
-  stats.ts              # 統計計算
+  stats.ts              # 統計計算（RESCAN=<interval>:<range> / RESCAN_FROM=<height> で再計算）
   richlist.ts           # リッチリスト生成
   price.ts              # 価格 + DEX スワップ同期
   register-contracts.ts # コントラクト登録
   optimize-indexes.ts   # スキーマ定義インデックスの作成/確認（--dry-run / --check）
   repair-chain.ts       # 保存済みチェーンの検査と孤児ブロックの置換（--check / --sample / --fix）
-  flag-spam-tokens.ts   # URL 名トークン/コントラクトの hidden フラグ付与（バックフィル）
+  flag-spam-tokens.ts   # URL 名トークン/コントラクトの hidden フラグ付与（バックフィル）、--audit-launchpad でファクトリー外トークンの列挙
   add-token.ts          # 手動トークン追加
   
 types/                  # TypeScript 型定義
@@ -241,6 +243,8 @@ npm run optimize-indexes -- --check   # 不足があれば一覧を出して exi
 npm run repair-chain -- --check       # 保存済みチェーンの parentHash 連結検査（不一致で exit 1）
 npm run repair-chain -- --fix         # 孤児ブロックをノードの正規ブロックで置換（--dry-run あり）
 npm run flag-spam-tokens -- --dry-run # URL 名トークンの hidden 判定を表示（引数なしで書き込み）
+npm run flag-spam-tokens -- --audit-launchpad # ファクトリーが知らない Launchpad トークンを列挙し factoryVerified を記録
+RESCAN_FROM=<height> npm run stats    # 指定高さから先端まで BlockStat を再計算（repair-chain が案内する形）
 
 # PM2 プロセス管理
 pm2 restart explorer    # explorer を再起動
@@ -301,7 +305,7 @@ const priceData = await getNativePrice();
 
 ### レート制限（`lib/security/rate-limits.ts`）
 - クライアント IP は `getClientIp()` が **信頼ヘッダ 1 本**（`TRUSTED_IP_HEADER`、既定 `X-Client-IP`。nginx が Cloudflare の `CF-Connecting-IP` から付け直す）だけから取る。`X-Forwarded-For` / `X-Real-IP` は読まない（クライアントが詐称できるため）。不正・欠落なら `unknown` バケット（上限 1/10）
-- バケットは `RATE_LIMITS` に集約（キーは `バケット名:ip`）: `api` 100/分、`verify` 5/分＋同時実行 1（solc は同期実行なので `runExclusive` で直列化）、`interact` 30/分、`tokenMetadata`（`/api/tokens/[address]?tokenId=`）10/分、`launchpad` 30/分、`relay` 60/分、`contractWrite` 10/分。CSV export は従来の独自上限
+- バケットは `RATE_LIMITS` に集約（キーは `バケット名:ip`）: `api` 100/分、`verify` 5/分（コンパイル自体はワーカーキューが直列化するので mutex は持たない）、`interact` 30/分、`tokenMetadata`（`/api/tokens/[address]?tokenId=`）10/分、`write` 10/分（`POST /api/launchpad/register` と `POST /api/launchpad/sync`）、`launchpad` 30/分、`relay` 60/分、`contractWrite` 10/分。CSV export は従来の独自上限
 - 各 route.ts の先頭で `enforceRateLimit(request, 'api')` か `withRateLimit('verify', handler)` を呼ぶ。超過は 429 + `Retry-After`、`logger.warn` で記録。同一 IP が 1 分に 20 回 429 になると警告 1 行（crowdsec の種）。`proxy.ts`（Edge）には Map ベースの制限を置かない
 - nginx 側の設定例は `docs/nginx-explorer.conf.example`
 
@@ -447,6 +451,9 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 - 恒久的にアイコンを差し替えたい場合は `config.json` の `tokenIcons` にシンボルとパスを追加
 - **Launchpad ページも同様に正規化（2026-07）**: `/launchpad`（TokenList/MyTokens/トークン管理ページ）はチェーンを直接読むため、クライアント側でも `normalizeLegacyLogoUrl()` を表示時に適用。`explorer.url` / `explorer.legacyUrls` は `/api/config/client` が公開し、`useLaunchpadConfig` が `explorerHost` / `legacyExplorerHosts` として提供
 
+### Launchpad の登録はファクトリー認証（2026-10）
+`POST /api/launchpad/register` はリクエスト本文の creator / name / metadata を一切使わず、ファクトリーがそのアドレスを作ったとチェーンが答えた場合だけ登録する（詳細は「第 3 次修正」節）。ファクトリー外で作られたトークンは Launchpad 一覧には出ず、通常の tokens 一覧には従来どおり出る（意図した動作）。
+
 ### Launchpad トークンの metadata が空になる問題（2026-07 対策済み）
 作成フォームはタブ切替でアンマウントされ state が消えるため、metadata（ロゴ等）を入れたのに素の `createToken` で作成してしまう事故が起きうる（実例: SSBC）。対策:
 
@@ -488,6 +495,34 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 ### 耐障害性・汎用化
 - `proxy.ts` の `/address` タイプ判定 fetch に AbortController（2s）を追加 → DB 停止時も `/address` がハングしない（従来 ~15s）。
 - DEX サブシステム（`geckoterminal/info`・`pool`、`dex` ページ、`useFarming` のウォレット追加 `nativeCurrency`）の真のハードコード固有名を config 由来に。クライアントは `lib/client-config`（`getNetworkName`/`getCurrencyConfig`）または `useDexConfig`（`currency` フィールド追加）から取得。設定済みの本番では出力は不変。
+
+## 新機能（2026-10）: 第 3 次修正 — Launchpad 認証・solc 分離・ページング・運用（v0.8.7）
+
+第 2 次の調査で残った課題への対応。リポジトリ側はタスク A〜D、運用側（本番サーバー）はタスク E。
+
+### 設計ルール（必ず守る）
+- **クライアントが申告した値（creator、名前、供給量、メタデータ）をそのまま永続化しない**。Launchpad の登録は `resolveFactoryToken()`（`lib/launchpad/factory.ts`）でファクトリー（`launchpad.factoryAddress` ＋ `legacyFactories`）に `isFactoryToken()`（無い旧ファクトリーは `getAllTokens()` の包含）を eth_call し、`tokenInfo()` と token 本体の `totalSupply()` / `balanceOf(creator)` から値を取る。どのファクトリーも知らなければ 404
+- **GET に書き込みの副作用を持たせない**。`GET /api/launchpad/sync` は `scan_progress`（`scanType: 'launchpad-sync'`）の最終同期時刻と結果を返すだけ。同期は `POST`（`write` バケット＋ 60 秒クールダウン → 429）か `tools/tokens.ts`（起動時＋毎時、`--sync-launchpad`）が `lib/launchpad/sync.ts` の `syncLaunchpadTokens()` を呼ぶ
+- **solc をリクエストスレッドで実行しない。`solc.loadRemoteVersion` を使わない。sha256 を照合していないファイルを実行しない。nightly を許可しない**。コンパイルは `compileStandardJson()`（`lib/contract/compile-worker.ts`）のみ: worker_threads（`lib/contract/solc-worker.cjs`、`solc/wrapper` の `setupMethods`）、`resourceLimits.maxOldGenerationSizeMb` 1024、タイムアウト 60 秒で `worker.terminate()`、入力 500 KB・出力 20 MB、同時 1・待ち 5（超過は `CompileQueueFullError` → 503 + `Retry-After`）。コンパイラは `getCompiler()`（`lib/contract/compiler-cache.ts`）が `https://binaries.soliditylang.org/bin/list.json`（15 秒・2 MB）の `releases` にある版だけを取得し、`list.json` の sha256 と一致したときだけ `<cacheDir>/<version>.js` ＋ `<version>.sha256` に保存（読み出し時も再検証、同時ダウンロード 1、同一版は Promise 共有）。`grep -rn "solc\." app lib` はこの 2 ファイル以外で 0 件
+- **ワーカー分離を「同時実行 1 のセマフォ」で代替しない**。`verify` バケットの `exclusive` は外した（`runExclusive` 自体は残る）
+- **`limit` / `page` を読むルートは必ず `validatePagination(page, limit, maxLimit, { defaultLimit })`** を通し、`rejectDeepPagination()`（`page × limit` > 100,000 → 400）を続ける。DataTables の `start` / `length`（`/api/richlist` POST）も同じ
+- DB 接続は `models/index.ts` の `connectDB()` だけが `mongoose.connect` を呼ぶ。`lib/db/connection.ts` はそのラッパー（プール設定は `config.database.options` の 1 箇所）
+- 攻撃元 IP の遮断、ovbc / MongoDB の再起動、`--jsonrpc-apis` の縮小はコードでやらない（運用で判断）
+
+### 実装の要点
+- `lib/launchpad/factory.ts`: `FactoryClient`（`call(to, data)`、既定は `lib/web3/provider.ts` の Web3 シングルトン。revert / JSON-RPC エラーは '0x'、接続失敗は `FactoryRpcError` → 503）、`getLaunchpadFactories()`、`resolveFactoryToken()`、`describeFactoryToken()`、`listFactoryTokens()`、`readBalanceOf()`。ABI は ethers `Interface` の human-readable 断片
+- `lib/launchpad/sync.ts`: `registerFactoryToken()`（新規はチェーン値＋ `hiddenFields()` ＋ `factory` / `factoryVerified: true`、creator の実残高で TokenHolder。既存は `factoryVerified` / `factory` を付けるだけで名前や帰属は書き換えない）、`syncLaunchpadTokens()`、`getLaunchpadSyncStatus()`
+- `tokens` に `factory`（小文字）と `factoryVerified`（true / false / 未設定）を追加。`/api/tokens/[address]` は `source` / `factory` / `factoryVerified` を返し、`TokenDetailClient` は `source === 'launchpad' && factoryVerified === false` で「ファクトリー外」バッジ。`npm run flag-spam-tokens -- --audit-launchpad [--dry-run]` が Launchpad 由来トークンをファクトリーに照会して記録する（非表示にするかは別判断）
+- `CreateTokenForm.tsx` は `tokenAddress` だけを送り、404 なら「トークンのデプロイがまだ確定していません」と表示して 12 秒間隔で最大 3 回再試行
+- `config.compiler`（`cacheDir` 既定 `~/.cache/vbc-solc`、`SOLC_CACHE_DIR` で上書き / `concurrency` / `maxQueue` / `timeoutMs` / `maxOldGenerationSizeMb` / `allowedVersions`）を `lib/config.ts` の `getCompilerConfig()` が既定値付きで返す。`next.config.ts` は `outputFileTracingIncludes` でワーカーと `solc` を standalone に含める。`/api/compile` はコンパイルしない（検証データの参照）
+- `tools/stats.ts`: `RESCAN_FROM=<height>`（`RESCAN_INTERVAL` で間隔）を追加。RESCAN 系は完了時に exit、BlockStat は `bulkWrite` の upsert で再計算（insertMany ＋ E11000 無視は撤去）。`tools/repair-chain.ts` は `RESCAN_FROM=<minReplaced> npm run stats` と等価な `RESCAN=100:<ceil((head − minReplaced) / 100) + 10>` を案内（`lib/sync/chain-check.ts` の `rescanHint()`）
+- 運用タスク E-1 の収録物: `docs/njs/rpc-filter.js`（禁止プレフィックス `trace_` / `parity_` / `debug_` / `personal_` / `admin_` / `miner_` を先頭の定数に集約。バッチ対応、本文未バッファ 413、JSON 不正 400 / -32700、method 非文字列 400 / -32600、禁止 403 / -32601、許可は `r.subrequest('/_rpc')` で透過）と `docs/nginx-rpc.conf.example`。純粋関数 `classify()` は `tests/ops/rpc-filter.test.ts` で Node から検証
+- テスト: `tests/launchpad/{fake-factory,factory.test}.ts`（偽ファクトリー世界＋モック JSON-RPC ノード）、`tests/api/launchpad-register.test.ts`、`tests/contract/{compiler-cache,compile-worker}.test.ts`（フィクスチャサーバーと同梱 `node_modules/solc/soljson.js`）、`tests/security/validation.test.ts`（limit 丸め・page 正規化・maxOffset）、`tests/sync/chain-check.test.ts`（`rescanHint`）、`tests/db/db-connect.test.ts`
+
+### 本番反映時の注意
+- `config.json` に `compiler` セクションを追加し、キャッシュディレクトリ（既定 `~/.cache/vbc-solc`）を explorer の実行ユーザー所有で作る。初回の検証リクエストで対象版をダウンロードする（外向き https が必要）
+- 反映後の確認: 任意アドレスの `POST /api/launchpad/register` が 404、ファクトリー製の既存トークンは 200、`GET /api/launchpad/sync` 前後で `tokens` / `tokenholders` の件数が不変。検証 API を 3 並列で送りながら `/api/v2/blocks` が 200 ms 未満、キャッシュに `<version>.js` と `<version>.sha256`。`/api/richlist?limit=100000` が 100 件、`page=0` が 1 ページ目、深いページが 400。`npm run flag-spam-tokens -- --audit-launchpad --dry-run` で対象を確認してから本実行
+- 公開 RPC の njs フィルター（E-1）は `apt install libnginx-mod-http-js` → スクリプト配置 → vhost 変更 → `nginx -t` → reload。ovbc の起動オプションは変えない。E-2（MongoDB 認証）・E-3（crowdsec バウンサー）・E-4（mongod ログローテーション）は指示書の手順に従い、停止を伴うものはユーザー承認のうえで実施する
 
 ## 新機能（2026-10）: 第 2 次セキュリティ修正 — SSRF・リオーグ・レート制限・URL 名トークン（v0.8.6）
 

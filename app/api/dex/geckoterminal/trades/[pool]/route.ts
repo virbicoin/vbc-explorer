@@ -5,6 +5,7 @@ import { ethers } from 'ethers';
 import { loadConfig } from '@/lib/config';
 import { connectDB, DexSwap, Contract } from '@/models/index';
 import { getNativePrice } from '@/lib/price-service';
+import { validatePagination } from '@/lib/security/validation';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -67,8 +68,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
     const volumeRaw = parseFloat(searchParams.get('trade_volume_in_usd_greater_than') || '0');
     const tradeVolumeInUsdGreaterThan = Math.max(0, isNaN(volumeRaw) ? 0 : volumeRaw);
 
-    const limitRaw = parseInt(searchParams.get('limit') || '50');
-    const limit = Math.max(1, Math.min(isNaN(limitRaw) ? 50 : limitRaw, 300)); // 1-300 range
+    // GeckoTerminal spec: 1-300 trades
+    const limit = validatePagination(undefined, searchParams.get('limit'), 300, {
+      defaultLimit: 50,
+    }).limit;
 
     const config = loadConfig();
     if (!config.dex?.enabled) {

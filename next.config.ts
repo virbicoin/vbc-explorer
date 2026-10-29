@@ -63,6 +63,13 @@ const nextConfig: NextConfig = {
   // 外部パッケージ設定（サーバーサイドでバンドルしない）
   serverExternalPackages: ['mongoose', 'web3', 'pino', 'thread-stream', 'pino-pretty', 'solc'],
 
+  // solc のコンパイルは worker_threads（lib/contract/solc-worker.cjs）で実行する。ワーカーは
+  // パス指定で起動し自身で solc/wrapper を require するため、バンドラからは見えない。
+  // standalone 出力にも含まれるようトレース対象に明示する
+  outputFileTracingIncludes: {
+    '/api/**/*': ['./lib/contract/solc-worker.cjs', './node_modules/solc/**/*'],
+  },
+
   // 軽量化設定
   compiler: {
     // 未使用コードの削除

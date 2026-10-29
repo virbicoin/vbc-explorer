@@ -153,7 +153,8 @@ describe('withRateLimit', () => {
     expect(handler).toHaveBeenCalledTimes(RATE_LIMITS.interact.perMinute);
   });
 
-  it('serializes handlers of a bucket with an exclusive mutex (verify)', async () => {
+  it('does not serialize the verify bucket (compiles are queued by the worker module instead)', async () => {
+    expect((RATE_LIMITS.verify as { exclusive?: string }).exclusive).toBeUndefined();
     const order: string[] = [];
     const wrapped = withRateLimit('verify', async (request: Request) => {
       const id = new URL(request.url).searchParams.get('id');
@@ -162,13 +163,11 @@ describe('withRateLimit', () => {
       order.push(`end ${id}`);
       return new Response('ok');
     });
-    const ipA = freshIp();
-    const ipB = freshIp();
     await Promise.all([
-      wrapped(makeRequest({ 'x-client-ip': ipA }, '/api/compile?id=a'), undefined),
-      wrapped(makeRequest({ 'x-client-ip': ipB }, '/api/compile?id=b'), undefined),
+      wrapped(makeRequest({ 'x-client-ip': freshIp() }, '/api/compile?id=a'), undefined),
+      wrapped(makeRequest({ 'x-client-ip': freshIp() }, '/api/compile?id=b'), undefined),
     ]);
-    expect(order).toEqual(['start a', 'end a', 'start b', 'end b']);
+    expect(order.slice(0, 2)).toEqual(['start a', 'start b']);
   });
 });
 

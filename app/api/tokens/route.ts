@@ -9,6 +9,8 @@ import { logger } from '../../../lib/logger';
 import { normalizeLegacyLogoUrl } from '../../../lib/utils';
 import { TokenFactoryV2ABI } from '../../../abi/TokenFactoryV2ABI';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { validatePagination } from '@/lib/security/validation';
+import { rejectDeepPagination } from '@/lib/security/pagination';
 
 // Get shared Web3 instance
 const web3 = getWeb3();
@@ -130,8 +132,12 @@ export async function GET(request: NextRequest) {
   if (limited) return limited;
 
   const { searchParams } = new URL(request.url);
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
-  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50')));
+  const pagination = validatePagination(searchParams.get('page'), searchParams.get('limit'), 100, {
+    defaultLimit: 50,
+  });
+  const tooDeep = rejectDeepPagination(pagination);
+  if (tooDeep) return tooDeep;
+  const { page, limit } = pagination;
   const type = searchParams.get('type'); // 'all', 'vrc20', 'nft'
 
   await connectDB();

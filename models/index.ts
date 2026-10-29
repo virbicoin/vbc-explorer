@@ -136,6 +136,10 @@ export interface IToken extends Document {
   updatedAt: Date;
   createdBy?: string;
   source?: string;
+  /** Launchpad factory that created the token (lib/launchpad/factory.ts). */
+  factory?: string | null;
+  /** True when a factory vouched for the token, false when an audit found no factory that knows it. */
+  factoryVerified?: boolean;
   /** Hidden from lists (see lib/security/display-name.ts). */
   hidden?: boolean;
   hiddenReason?: string | null;
@@ -324,8 +328,10 @@ const TokenSchema = new Schema(
     },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
-    createdBy: String, // Creator address (Launchpad)
+    createdBy: String, // Creator address (Launchpad; chain value from the factory)
     source: String, // 'launchpad' or 'scan'
+    factory: { type: String, lowercase: true, default: null }, // Launchpad factory that created the token
+    factoryVerified: Boolean, // true: factory vouched; false: audit found no factory; unset: never checked
     hidden: { type: Boolean, default: false },
     hiddenReason: { type: String, default: null },
   },
@@ -362,7 +368,7 @@ const TokenTransferSchema = new Schema(
 // Scan Progress Schema (collection `scan_progress`; tools/tokens.ts)
 const ScanProgressSchema = new Schema(
   {
-    scanType: { type: String, index: { unique: true } }, // 'tokens' | 'sync' | 'reorg-pending' | 'repair'
+    scanType: { type: String, index: { unique: true } }, // 'tokens' | 'sync' | 'reorg-pending' | 'repair' | 'launchpad-sync'
     lastScannedBlock: { type: Number, default: 0 },
     lastUpdateTime: { type: Date, default: Date.now },
     meta: { type: Schema.Types.Mixed, default: null },

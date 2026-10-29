@@ -55,6 +55,7 @@ const minimalErc721Abi = [
 ];
 
 import { connectDB, ensureIndexesOnStartup, Contract, Token, ScanProgress } from '../models/index';
+import { syncLaunchpadTokens } from '../lib/launchpad/sync';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
 import { hiddenFields } from '../lib/security/display-name';
 
@@ -1384,6 +1385,20 @@ async function syncLPTokensFromFactory() {
   }
 }
 
+/** Import Launchpad factory tokens the DB does not know yet (chain values only). */
+const LAUNCHPAD_SYNC_INTERVAL = 60 * 60 * 1000; // 1 hour
+async function runLaunchpadSync(): Promise<void> {
+  try {
+    console.log('🔄 Syncing Launchpad tokens from the TokenFactory contracts...');
+    const result = await syncLaunchpadTokens();
+    console.log(
+      `✅ Launchpad sync: ${result.factories} factories, ${result.total} tokens, ${result.registered} registered, ${result.updated} updated, ${result.errors} errors`
+    );
+  } catch (error) {
+    console.error('❌ Error syncing Launchpad tokens:', error);
+  }
+}
+
 async function main() {
   try {
     // Initialize database connection first
@@ -1457,12 +1472,21 @@ Without options, the scanner runs continuously and:
       return;
     }
 
+    if (args.includes('--sync-launchpad')) {
+      await runLaunchpadSync();
+      await disconnect();
+      return;
+    }
+
     // Ensure initial DB connection
     await connectDB();
 
     // Initial LP token sync from factory (register any new LP tokens)
     console.log('🔄 Initial LP token sync from factory...');
     await syncLPTokensFromFactory();
+
+    // Initial Launchpad factory import (tokens the factories know but the DB does not)
+    await runLaunchpadSync();
 
     // Default: regular token scan + periodic auto-update of VRC-721/VRC-20 tokens
     await scanForTokens(); // Run once on start
@@ -1507,6 +1531,11 @@ Without options, the scanner runs continuously and:
         console.error('❌ Error in syncLPTokensFromFactory interval:', error);
       }
     }, LP_SYNC_INTERVAL);
+
+    // Launchpad factories → tokens collection (replaces the former writing GET /api/launchpad/sync)
+    setInterval(async () => {
+      await runLaunchpadSync();
+    }, LAUNCHPAD_SYNC_INTERVAL);
 
     // Graceful shutdown
     process.on('SIGINT', async () => {

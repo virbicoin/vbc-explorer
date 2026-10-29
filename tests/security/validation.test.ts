@@ -8,12 +8,14 @@ import {
   escapeRegex,
   createAddressRegex,
   validatePagination,
+  DEFAULT_MAX_OFFSET,
   sanitizeSearchQuery,
   isValidImageUrl,
   sanitizeImageUrl,
   getSecurityHeaders,
   checkRateLimit,
 } from '@/lib/security/validation';
+import { rejectDeepPagination } from '@/lib/security/pagination';
 
 const VALID_ADDRESS = '0x1234567890abcdef1234567890abcdef12345678';
 const VALID_HASH = '0x' + 'a'.repeat(64);
@@ -118,22 +120,57 @@ describe('createAddressRegex', () => {
 
 describe('validatePagination', () => {
   it('returns defaults when input is missing', () => {
-    expect(validatePagination(undefined, undefined)).toEqual({ page: 1, limit: 20 });
-    expect(validatePagination(null, null)).toEqual({ page: 1, limit: 20 });
+    expect(validatePagination(undefined, undefined)).toMatchObject({ page: 1, limit: 20, skip: 0 });
+    expect(validatePagination(null, null)).toMatchObject({ page: 1, limit: 20 });
+    expect(validatePagination(null, null, 100, { defaultLimit: 50 })).toMatchObject({ limit: 50 });
+    // a default above the cap is capped as well
+    expect(validatePagination(null, null, 25, { defaultLimit: 50 })).toMatchObject({ limit: 25 });
   });
 
-  it('parses valid page and limit', () => {
-    expect(validatePagination('3', '50')).toEqual({ page: 3, limit: 50 });
-    expect(validatePagination(2, 10)).toEqual({ page: 2, limit: 10 });
+  it('parses valid page and limit and computes skip', () => {
+    expect(validatePagination('3', '50')).toMatchObject({ page: 3, limit: 50, skip: 100 });
+    expect(validatePagination(2, 10)).toMatchObject({ page: 2, limit: 10, skip: 10 });
   });
 
-  it('falls back to default limit when limit exceeds the cap', () => {
-    expect(validatePagination(1, 1000, 100)).toEqual({ page: 1, limit: 20 });
+  it('rounds a limit above the cap down to the cap', () => {
+    expect(validatePagination(1, 1000, 100)).toMatchObject({ page: 1, limit: 100 });
+    expect(validatePagination(1, '100000', 100)).toMatchObject({ limit: 100 });
+    expect(validatePagination(1, 500, 300)).toMatchObject({ limit: 300 });
   });
 
-  it('falls back to default page for non-positive or invalid page', () => {
-    expect(validatePagination(0, 25)).toEqual({ page: 1, limit: 25 });
-    expect(validatePagination('abc', 25)).toEqual({ page: 1, limit: 25 });
+  it('falls back to default limit for zero, negative or invalid limits', () => {
+    expect(validatePagination(1, 0)).toMatchObject({ limit: 20 });
+    expect(validatePagination(1, -5)).toMatchObject({ limit: 20 });
+    expect(validatePagination(1, 'abc')).toMatchObject({ limit: 20 });
+  });
+
+  it('falls back to page 1 for zero, negative, or invalid pages', () => {
+    expect(validatePagination(0, 25)).toMatchObject({ page: 1, limit: 25 });
+    expect(validatePagination(-3, 25)).toMatchObject({ page: 1 });
+    expect(validatePagination('abc', 25)).toMatchObject({ page: 1, limit: 25 });
+  });
+
+  it('flags pages deeper than maxOffset', () => {
+    expect(validatePagination(1000, 100)).toMatchObject({
+      tooDeep: false,
+      maxOffset: DEFAULT_MAX_OFFSET,
+    });
+    expect(validatePagination(1001, 100)).toMatchObject({ tooDeep: true });
+    expect(validatePagination(11, 10, 100, { maxOffset: 100 })).toMatchObject({ tooDeep: true });
+    expect(validatePagination(10, 10, 100, { maxOffset: 100 })).toMatchObject({ tooDeep: false });
+  });
+});
+
+describe('rejectDeepPagination', () => {
+  it('returns null for shallow pages and a 400 for deep ones', async () => {
+    expect(rejectDeepPagination(validatePagination(1, 50))).toBeNull();
+    const deep = rejectDeepPagination(validatePagination(5000, 100));
+    expect(deep?.status).toBe(400);
+    expect(await deep?.json()).toMatchObject({ maxOffset: DEFAULT_MAX_OFFSET });
+    const v2 = rejectDeepPagination(validatePagination(5000, 100), 'v2');
+    expect(await v2?.json()).toHaveProperty('message');
+    const etherscan = rejectDeepPagination(validatePagination(5000, 100), 'etherscan');
+    expect(await etherscan?.json()).toMatchObject({ status: '0', result: null });
   });
 });
 

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Contract } from '@/models/index';
 import Web3 from 'web3';
-import solc from 'solc';
 import fs from 'fs';
 import path from 'path';
 import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
+import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
+import { LATEST_KNOWN_SOLC_VERSION } from '@/lib/contract/solc-utils';
 
 // Function to read config
 const readConfig = () => {
@@ -32,9 +33,6 @@ const config = readConfig();
 const WEB3_PROVIDER_URL =
   process.env.WEB3_PROVIDER_URL || `http://${config.nodeAddr}:${config.port}`;
 const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
-
-// Get the installed solc version
-const installedSolcVersion = (solc as unknown as { version: () => string }).version?.() || '0.8.30';
 
 // Helper function to remove metadata from bytecode
 function removeMetadata(bytecode: string): string {
@@ -177,16 +175,29 @@ export const POST = withRateLimit(
       };
 
       // Compile
+      // Requested release build (verified cache), executed in a worker thread
       let compiledOutput;
+      let compiledLongVersion = '';
       try {
-        compiledOutput = JSON.parse(solc.compile(JSON.stringify(standardInput)));
+        const compiled = await compileStandardJson({
+          version: compiler_version || LATEST_KNOWN_SOLC_VERSION,
+          input: standardInput,
+        });
+        compiledOutput = JSON.parse(compiled.output);
+        compiledLongVersion = compiled.longVersion;
       } catch (compileError) {
+        const described = describeCompileError(compileError);
         return NextResponse.json(
           {
-            message: 'Compilation failed',
-            errors: [compileError instanceof Error ? compileError.message : 'Unknown error'],
+            message: described.status >= 500 ? 'Compiler unavailable' : 'Compilation failed',
+            errors: [described.message],
           },
-          { status: 400, headers: getSecurityHeaders() }
+          {
+            status: described.status,
+            headers: described.retryAfter
+              ? { ...getSecurityHeaders(), 'Retry-After': String(described.retryAfter) }
+              : getSecurityHeaders(),
+          }
         );
       }
 
@@ -273,7 +284,8 @@ export const POST = withRateLimit(
         const license = license_type || 'none';
 
         // Normalize compiler version
-        let normalizedVersion = compiler_version || installedSolcVersion;
+        let normalizedVersion =
+          compiledLongVersion || compiler_version || LATEST_KNOWN_SOLC_VERSION;
         if (normalizedVersion.startsWith('v')) {
           normalizedVersion = normalizedVersion.substring(1);
         }

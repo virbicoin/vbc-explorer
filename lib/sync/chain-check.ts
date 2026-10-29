@@ -302,3 +302,28 @@ export async function repairChain(
   }
   return result;
 }
+
+export interface RescanHint {
+  /** Preferred: `RESCAN_FROM=<height> npm run stats` (tools/stats.ts). */
+  preferred: string;
+  /** Equivalent legacy form `RESCAN=<interval>:<range>`: range = ceil((head - from) / interval) + 10. */
+  legacy: string;
+  interval: number;
+  range: number;
+}
+
+/**
+ * The stats rescan command that covers every replaced height. tools/stats.ts
+ * reads `RESCAN=<interval>:<range>` as "range × interval blocks back from the
+ * head", so the legacy form derives the range from the head; RESCAN_FROM takes
+ * the height directly.
+ */
+export function rescanHint(fromHeight: number, head: number, interval = 100): RescanHint {
+  const range = Math.max(1, Math.ceil(Math.max(0, head - fromHeight) / interval) + 10);
+  return {
+    preferred: `RESCAN_FROM=${fromHeight} npm run stats`,
+    legacy: `RESCAN=${interval}:${range} npm run stats`,
+    interval,
+    range,
+  };
+}

@@ -803,13 +803,9 @@ const apiCategories: ApiCategory[] = [
       {
         method: 'POST',
         path: '/api/compile',
-        description: 'Compile Solidity source code',
-        params: [
-          'sourceCode (required)',
-          'compilerVersion (required)',
-          'optimizationEnabled (optional)',
-          'runs (optional)',
-        ],
+        description:
+          'Look up the stored verification data and compiler version of a contract (does not compile; use /api/contract/verify)',
+        params: ['addr (required) - contract address', "action (required) - 'find'"],
         response: '{"success":true,"contracts":{...},"errors":[...]}',
       },
       {

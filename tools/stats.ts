@@ -137,7 +137,11 @@ const updateStats = async (range: number, interval: number, rescan: boolean): Pr
     latestBlock -= latestBlock % interval;
   }
 
-  const startBlock = latestBlock - range;
+  // RESCAN_FROM: start one interval below the requested height (aligned to the interval)
+  const startBlock =
+    rescanFromHeight !== null
+      ? Math.max(0, Math.floor(rescanFromHeight / interval) * interval - interval)
+      : latestBlock - range;
   const endBlock = latestBlock;
 
   // Check which blocks already have statistics
@@ -262,17 +266,22 @@ const processStatsInBatches = async (
         }
       }
 
-      // Bulk insert statistics
+      // Bulk upsert statistics (keyed by block number, so a rescan recomputes
+      // existing rows instead of tripping over the unique index)
       if (statsToInsert.length > 0) {
         try {
-          await BlockStat.insertMany(statsToInsert, { ordered: false });
-          console.log(`✅ Inserted ${statsToInsert.length} block statistics`);
+          const result = await BlockStat.bulkWrite(
+            statsToInsert.map((stat) => ({
+              updateOne: { filter: { number: stat.number }, update: { $set: stat }, upsert: true },
+            })),
+            { ordered: false }
+          );
+          console.log(
+            `✅ Wrote ${statsToInsert.length} block statistics (${result.upsertedCount} new, ${result.modifiedCount} recomputed)`
+          );
         } catch (error) {
-          // Handle duplicate key errors gracefully
           const errorMessage = error instanceof Error ? error.message : String(error);
-          if (!errorMessage.includes('duplicate key') && !errorMessage.includes('E11000')) {
-            console.log(`❌ Database error: ${errorMessage}`);
-          }
+          console.log(`❌ Database error: ${errorMessage}`);
         }
       }
 
@@ -435,8 +444,20 @@ let rescan = false; /* rescan: true - rescan range */
 let range = 250; // reduced from 500 to 250
 let interval = 100;
 
+/** Round an interval down to a power of ten (1, 10, 100, ...). */
+const roundIntervalToPowerOfTen = (value: number): number => {
+  let i = Math.abs(value);
+  let j = 0;
+  while (i >= 10) {
+    i = Math.floor(i / 10);
+    j++;
+  }
+  return Math.pow(10, j);
+};
+
 /**
- * RESCAN=1000:100000 means interval:range
+ * RESCAN=<interval>:<range> rescans `range × interval` blocks back from the head,
+ * one BlockStat every `interval` blocks (interval is rounded to a power of ten).
  * Usage:
  *   RESCAN=1000:100000 node tools/stats.ts
  */
@@ -448,15 +469,31 @@ if (process.env.RESCAN) {
       range = Math.abs(parseInt(tmp[1]));
     }
   }
-  let i = interval;
-  let j = 0;
-  for (j = 0; i >= 10; j++) {
-    i = parseInt((i / 10).toString());
-  }
-  interval = Math.pow(10, j);
+  interval = roundIntervalToPowerOfTen(interval);
   console.log(`📊 Selected interval = ${interval}`);
 
   rescan = true;
+}
+
+/**
+ * RESCAN_FROM=<height> rescans from that block height to the chain head, one
+ * BlockStat every `interval` blocks (default 100, override with RESCAN_INTERVAL).
+ * This is what tools/repair-chain.ts prints after replacing blocks; it is
+ * preferred over RESCAN because no range arithmetic is needed.
+ */
+let rescanFromHeight: number | null = null;
+if (process.env.RESCAN_FROM) {
+  const from = parseInt(process.env.RESCAN_FROM, 10);
+  if (Number.isFinite(from) && from >= 0) {
+    rescanFromHeight = from;
+    if (process.env.RESCAN_INTERVAL) {
+      interval = roundIntervalToPowerOfTen(parseInt(process.env.RESCAN_INTERVAL, 10) || interval);
+    }
+    rescan = true;
+    console.log(`📊 RESCAN_FROM=${from}: rescanning every ${interval} blocks up to the head`);
+  } else {
+    console.log(`⚠️ Ignoring invalid RESCAN_FROM=${process.env.RESCAN_FROM}`);
+  }
 }
 
 /**
@@ -481,17 +518,22 @@ const main = async (): Promise<void> => {
     // Run statistics update
     await updateStats(range, interval, rescan);
 
-    // Set up interval for continuous updates if not rescanning
-    if (!rescan) {
-      setInterval(async () => {
-        try {
-          await updateStats(range, interval, false);
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.log(`❌ Error in interval update: ${errorMessage}`);
-        }
-      }, statInterval);
+    // RESCAN / RESCAN_FROM are one-shot maintenance runs: exit when done
+    if (rescan) {
+      console.log('✅ Rescan finished');
+      await mongoose.disconnect();
+      process.exit(0);
     }
+
+    // Set up interval for continuous updates
+    setInterval(async () => {
+      try {
+        await updateStats(range, interval, false);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.log(`❌ Error in interval update: ${errorMessage}`);
+      }
+    }, statInterval);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.log(`💥 Fatal error: ${errorMessage}`);

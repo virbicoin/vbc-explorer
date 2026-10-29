@@ -119,6 +119,11 @@ export async function GET(request: NextRequest) {
           searchParams.get('offset'),
           100
         );
+        if (pagination.tooDeep) {
+          return errorResponse(
+            `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
+          );
+        }
         const sort = searchParams.get('sort') || 'desc';
         return getTxList(address, pagination.page, pagination.limit, sort);
       }
@@ -132,6 +137,11 @@ export async function GET(request: NextRequest) {
           searchParams.get('offset'),
           100
         );
+        if (pagination.tooDeep) {
+          return errorResponse(
+            `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
+          );
+        }
         return getTxListInternal(
           address || undefined,
           txhash || undefined,
@@ -152,6 +162,11 @@ export async function GET(request: NextRequest) {
           searchParams.get('offset'),
           100
         );
+        if (pagination.tooDeep) {
+          return errorResponse(
+            `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
+          );
+        }
         return getTokenTx(address, contractaddress, pagination.page, pagination.limit);
       }
       if (action === 'tokenbalance') {
@@ -173,6 +188,11 @@ export async function GET(request: NextRequest) {
           searchParams.get('offset'),
           100
         );
+        if (pagination.tooDeep) {
+          return errorResponse(
+            `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
+          );
+        }
         return getMinedBlocks(address, pagination.page, pagination.limit);
       }
     }
@@ -227,6 +247,11 @@ export async function GET(request: NextRequest) {
           searchParams.get('offset'),
           100
         );
+        if (pagination.tooDeep) {
+          return errorResponse(
+            `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
+          );
+        }
         return getTokenHolders(contractaddress, pagination.page, pagination.limit);
       }
       if (action === 'tokenlist') {
@@ -235,6 +260,11 @@ export async function GET(request: NextRequest) {
           searchParams.get('offset'),
           100
         );
+        if (pagination.tooDeep) {
+          return errorResponse(
+            `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
+          );
+        }
         return getTokenList(pagination.page, pagination.limit);
       }
     }

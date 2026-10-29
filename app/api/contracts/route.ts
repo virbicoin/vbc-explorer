@@ -16,6 +16,8 @@ import {
 } from '../../../lib/api-response';
 import { readConfig } from '../../../lib/config';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { validatePagination } from '@/lib/security/validation';
+import { rejectDeepPagination } from '@/lib/security/pagination';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,9 +185,17 @@ export async function GET(request: NextRequest) {
     if (limited) return limited;
 
     const searchParams = request.nextUrl.searchParams;
-    // Validate and limit page number to prevent excessive skip operations
-    const page = Math.min(Math.max(parseInt(searchParams.get('page') || '1', 10), 1), 1000);
-    const limit = Math.min(parseInt(searchParams.get('limit') || '25', 10), 100);
+    const pagination = validatePagination(
+      searchParams.get('page'),
+      searchParams.get('limit'),
+      100,
+      {
+        defaultLimit: 25,
+      }
+    );
+    const tooDeep = rejectDeepPagination(pagination);
+    if (tooDeep) return tooDeep;
+    const { page, limit } = pagination;
     const verified = searchParams.get('verified');
     const type = searchParams.get('type');
     const search = searchParams.get('search');

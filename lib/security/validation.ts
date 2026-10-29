@@ -70,16 +70,43 @@ export function createAddressRegex(address: string): RegExp | null {
   return new RegExp(`^${sanitized}$`, 'i');
 }
 
+/** Deepest page any list API serves: `page × limit` above this is rejected (skip ≈ full scan). */
+export const DEFAULT_MAX_OFFSET = 100_000;
+
+export interface PaginationOptions {
+  /** Limit used when the parameter is missing or invalid (default 20). */
+  defaultLimit?: number;
+  /** Reject requests whose `page × limit` exceeds this (default DEFAULT_MAX_OFFSET). */
+  maxOffset?: number;
+}
+
+export interface Pagination {
+  page: number;
+  limit: number;
+  /** `(page - 1) × limit` */
+  skip: number;
+  /** True when `page × limit` exceeds `maxOffset`; the route must answer 400. */
+  tooDeep: boolean;
+  maxOffset: number;
+}
+
 /**
- * Validate pagination parameters
+ * Validate pagination parameters (the single place `page` / `limit` are interpreted).
+ * - page: integer ≥ 1, otherwise 1
+ * - limit: integer ≥ 1 capped at `maxLimit` (values above are rounded down to the cap),
+ *   otherwise `defaultLimit`
+ * - tooDeep: `page × limit > maxOffset` — callers reject with 400 (see rejectDeepPagination)
  */
 export function validatePagination(
   page: unknown,
   limit: unknown,
-  maxLimit: number = 100
-): { page: number; limit: number } {
+  maxLimit: number = 100,
+  options: PaginationOptions = {}
+): Pagination {
+  const defaultLimit = Math.min(options.defaultLimit ?? 20, maxLimit);
+  const maxOffset = options.maxOffset ?? DEFAULT_MAX_OFFSET;
   let validPage = 1;
-  let validLimit = 20;
+  let validLimit = defaultLimit;
 
   if (page !== undefined && page !== null) {
     const parsed = parseInt(String(page), 10);
@@ -90,12 +117,18 @@ export function validatePagination(
 
   if (limit !== undefined && limit !== null) {
     const parsed = parseInt(String(limit), 10);
-    if (!isNaN(parsed) && parsed >= 1 && parsed <= maxLimit) {
-      validLimit = parsed;
+    if (!isNaN(parsed) && parsed >= 1) {
+      validLimit = Math.min(parsed, maxLimit);
     }
   }
 
-  return { page: validPage, limit: validLimit };
+  return {
+    page: validPage,
+    limit: validLimit,
+    skip: (validPage - 1) * validLimit,
+    tooDeep: validPage * validLimit > maxOffset,
+    maxOffset,
+  };
 }
 
 /**

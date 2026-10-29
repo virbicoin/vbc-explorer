@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Block } from '../../../models/index';
 import { apiCache, CACHE_TTL } from '../../../lib/cache';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { validatePagination } from '@/lib/security/validation';
+import { rejectDeepPagination } from '@/lib/security/pagination';
 
 interface BlockData {
   number: string;
@@ -144,8 +146,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = Math.min(parseInt(searchParams.get('limit') || '25'), 100);
+    const pagination = validatePagination(
+      searchParams.get('page'),
+      searchParams.get('limit'),
+      100,
+      {
+        defaultLimit: 25,
+      }
+    );
+    const tooDeep = rejectDeepPagination(pagination);
+    if (tooDeep) return tooDeep;
+    const { page, limit } = pagination;
 
     const cacheKey = `blocks_${page}_${limit}`;
     const now = Date.now();

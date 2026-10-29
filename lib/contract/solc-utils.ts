@@ -48,6 +48,9 @@ export const SOLC_RELEASES: Record<string, string> = {
   '0.6.12': 'v0.6.12+commit.27d51765',
 };
 
+/** Newest release in SOLC_RELEASES (default when a client sends no compiler version). */
+export const LATEST_KNOWN_SOLC_VERSION = Object.keys(SOLC_RELEASES)[0];
+
 /**
  * Modernize old Solidity syntax so legacy sources compile under newer compilers.
  * Strips NatSpec block comments, rewrites `var`, `suicide`, `throw`.

@@ -1,4 +1,5 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 
 /**
@@ -232,6 +233,31 @@ export interface ImagesConfig {
   allowedHosts?: string[];
 }
 
+// Solidity compiler (contract verification) — see lib/contract/compiler-cache.ts / compile-worker.ts
+export interface CompilerConfig {
+  /** Directory of verified compiler builds (`<version>.js` + `<version>.sha256`). `~` expands to $HOME. */
+  cacheDir?: string;
+  /** Compile workers running at the same time (default 1). */
+  concurrency?: number;
+  /** Requests allowed to wait for a worker before the API answers 503 (default 5). */
+  maxQueue?: number;
+  /** Per-compile timeout in milliseconds; the worker is terminated when exceeded (default 60000). */
+  timeoutMs?: number;
+  /** V8 old-generation heap limit of a compile worker in MB (default 1024). */
+  maxOldGenerationSizeMb?: number;
+  /** Optional allow-list of short versions ("0.8.30"); empty = every release build. Nightlies are always refused. */
+  allowedVersions?: string[];
+}
+
+export interface ResolvedCompilerConfig {
+  cacheDir: string;
+  concurrency: number;
+  maxQueue: number;
+  timeoutMs: number;
+  maxOldGenerationSizeMb: number;
+  allowedVersions: string[] | null;
+}
+
 export interface AppConfig {
   nodeAddr: string;
   port: number;
@@ -259,6 +285,7 @@ export interface AppConfig {
   social?: SocialConfig;
   images?: ImagesConfig;
   sync?: SyncConfig;
+  compiler?: CompilerConfig;
   [key: string]: unknown;
 }
 
@@ -508,4 +535,53 @@ export const loadConfig = readConfig;
  */
 export const clearConfigCache = (): void => {
   cachedConfig = null;
+};
+
+// ---------------------------------------------------------------------------
+// Compiler (contract verification) settings
+
+export const DEFAULT_COMPILER_CACHE_DIR = '~/.cache/vbc-solc';
+export const COMPILER_DEFAULTS = Object.freeze({
+  concurrency: 1,
+  maxQueue: 5,
+  timeoutMs: 60_000,
+  maxOldGenerationSizeMb: 1024,
+});
+
+/** Expand a leading `~` to the home directory and make the path absolute. */
+export function expandHomeDir(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed === '~' || trimmed.startsWith('~/')) {
+    return path.join(os.homedir(), trimmed.slice(1));
+  }
+  return path.resolve(trimmed);
+}
+
+function positiveInt(value: unknown, fallback: number): number {
+  const n = typeof value === 'string' ? Number(value) : value;
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+}
+
+/**
+ * `config.compiler` with defaults applied. `SOLC_CACHE_DIR` overrides the
+ * cache directory (handy for tests and containers).
+ */
+export const getCompilerConfig = (): ResolvedCompilerConfig => {
+  const raw = (readConfig().compiler ?? {}) as CompilerConfig;
+  const allowed = Array.isArray(raw.allowedVersions)
+    ? raw.allowedVersions.filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+    : [];
+  return {
+    cacheDir: expandHomeDir(
+      process.env.SOLC_CACHE_DIR || raw.cacheDir || DEFAULT_COMPILER_CACHE_DIR
+    ),
+    concurrency: positiveInt(raw.concurrency, COMPILER_DEFAULTS.concurrency),
+    maxQueue: positiveInt(raw.maxQueue, COMPILER_DEFAULTS.maxQueue),
+    timeoutMs: positiveInt(raw.timeoutMs, COMPILER_DEFAULTS.timeoutMs),
+    maxOldGenerationSizeMb: positiveInt(
+      raw.maxOldGenerationSizeMb,
+      COMPILER_DEFAULTS.maxOldGenerationSizeMb
+    ),
+    allowedVersions: allowed.length > 0 ? allowed : null,
+  };
 };

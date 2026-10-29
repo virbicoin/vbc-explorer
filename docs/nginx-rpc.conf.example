@@ -1,0 +1,86 @@
+# nginx vhost example for the PUBLIC JSON-RPC endpoints (rpc2.virbicoin.com and
+# friends) with the njs method filter from docs/njs/rpc-filter.js.
+#
+# Goal: trace_ / parity_ / debug_ / personal_ / admin_ / miner_ calls are answered
+# with 403 before they reach the node; everything else is proxied unchanged to
+# ovbc on 127.0.0.1:8329. The node's own --jsonrpc-apis stays as it is, so local
+# clients and the direct (ufw allow-listed) 8329 connections keep every API.
+# WebSocket (ws2.*, 8330) is not covered: ws-apis has no traces.
+#
+# Install the module once:   apt install libnginx-mod-http-js   (adds load_module
+# to /etc/nginx/modules-enabled automatically), then  nginx -t && systemctl reload nginx.
+# Copy the script to /etc/nginx/njs/rpc-filter.js.
+#
+# Roll back: restore the vhost from its backup and reload; the module can stay.
+
+# ---- http context (top of the vhost file; once per nginx) -------------------
+
+js_import rpcfilter from njs/rpc-filter.js;
+
+# Second line of defence: per-IP request rate on the filtered POST path. With the
+# real_ip module configured (see docs/nginx-explorer.conf.example) $remote_addr is
+# the real client even behind Cloudflare.
+limit_req_zone $binary_remote_addr zone=rpc_api:10m rate=30r/s;
+
+# ---- one server block per hostname (production has four: rpc2.virbicoin.com,
+#      apne4.virbicoin.com, rpc2.digitalregion.jp, apne4.digitalregion.jp) -------
+
+server {
+    listen 443 ssl http2;
+    server_name rpc2.virbicoin.com;
+
+    # ssl_certificate / ssl_certificate_key ...
+
+    # CORS for browser wallets; `always` so the 403 / 400 answers carry it too
+    add_header Access-Control-Allow-Origin  "*" always;
+    add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+    add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
+
+    location / {
+        if ($request_method = OPTIONS) {
+            return 204;
+        }
+
+        # JSON-RPC: hand POST bodies to the njs filter (was: proxy_pass to 8329 directly)
+        if ($request_method = POST) {
+            rewrite ^ /_rpc_post last;
+        }
+
+        # GET: the status web UI on port 4000 (unchanged)
+        proxy_pass http://127.0.0.1:4000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # Filter stage: the whole body must fit in the buffer, otherwise r.requestText
+    # is undefined and the script answers 413.
+    location = /_rpc_post {
+        internal;
+        limit_req zone=rpc_api burst=50 nodelay;
+        client_max_body_size   1m;
+        client_body_buffer_size 1m;
+        js_content rpcfilter.rpc;
+    }
+
+    # Upstream stage: reached only through r.subrequest() from the filter.
+    location = /_rpc {
+        internal;
+        proxy_pass http://127.0.0.1:8329/;
+        proxy_http_version 1.1;
+        proxy_set_header Content-Type application/json;
+        proxy_set_header Host $host;
+        proxy_read_timeout 60s;
+    }
+}
+
+# ---- verification (from outside) --------------------------------------------
+# curl -s -o /dev/null -w '%{http_code}\n' -X POST https://rpc2.virbicoin.com \
+#   -H 'content-type: application/json' \
+#   -d '{"jsonrpc":"2.0","method":"trace_block","params":["0x1"],"id":1}'        → 403
+# ... "method":"parity_netPeers" ...                                            → 403
+# ... "method":"eth_blockNumber" ...                                            → 200 with result
+# -d '[{"jsonrpc":"2.0","method":"eth_blockNumber","id":1},{"jsonrpc":"2.0","method":"trace_block","params":["0x1"],"id":2}]'  → 403 (batch)
+# curl -s https://rpc2.virbicoin.com/                                            → the port-4000 page
+# On the host: curl -X POST http://127.0.0.1:8329 ... trace_block              → still answered (internal use)
+# tail /var/log/nginx/error.log                                                  → no "js" errors
