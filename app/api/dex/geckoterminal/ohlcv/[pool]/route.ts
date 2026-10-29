@@ -6,6 +6,7 @@ import { ethers } from 'ethers';
 import { loadConfig } from '@/lib/config';
 import { connectDB, DexSwap, Contract } from '@/models';
 import { getNativePrice } from '@/lib/price-service';
+import { validatePagination } from '@/lib/security/validation';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -129,8 +130,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
     const aggregateRaw = parseInt(searchParams.get('aggregate') || '1');
     const aggregate = Math.max(1, Math.min(aggregateRaw || 1, 60)); // 1-60 range
 
-    const limitRaw = parseInt(searchParams.get('limit') || '100');
-    const limit = Math.max(1, Math.min(limitRaw || 100, 1000)); // 1-1000 range
+    // GeckoTerminal spec: 1-1000 candles
+    const limit = validatePagination(undefined, searchParams.get('limit'), 1000, {
+      defaultLimit: 100,
+    }).limit;
 
     const currencyParam = searchParams.get('currency') || 'usd';
     const currency = ['usd', 'token'].includes(currencyParam) ? currencyParam : 'usd';

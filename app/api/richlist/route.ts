@@ -5,6 +5,8 @@ import { connectToDatabase } from '@/lib/db';
 import { loadConfig } from '@/lib/config';
 import { calculateTotalSupply } from '@/lib/supply';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { validatePagination, DEFAULT_MAX_OFFSET } from '@/lib/security/validation';
+import { rejectDeepPagination } from '@/lib/security/pagination';
 
 export async function GET(request: NextRequest) {
   const limited = enforceRateLimit(request, 'api');
@@ -14,9 +16,17 @@ export async function GET(request: NextRequest) {
     await connectToDatabase();
 
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = (page - 1) * limit;
+    const pagination = validatePagination(
+      searchParams.get('page'),
+      searchParams.get('limit'),
+      100,
+      {
+        defaultLimit: 50,
+      }
+    );
+    const tooDeep = rejectDeepPagination(pagination);
+    if (tooDeep) return tooDeep;
+    const { page, limit, skip: offset } = pagination;
 
     // Get totalSupply from lib/supply.ts (returns native currency unit, e.g., VBC)
     // Multiply by 1e18 to convert to wei for percentage calculation
@@ -198,9 +208,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Set datatable params
-    const limit = parseInt(body.length);
-    const start = parseInt(body.start);
+    // Set datatable params (DataTables sends length/start; same caps as the GET API)
+    const limit = validatePagination(undefined, body.length, 100, { defaultLimit: 50 }).limit;
+    const startRaw = parseInt(body.start, 10);
+    const start = Number.isFinite(startRaw) && startRaw > 0 ? startRaw : 0;
+    if (start + limit > DEFAULT_MAX_OFFSET) {
+      return NextResponse.json(
+        { error: `Offset too deep: start + length must not exceed ${DEFAULT_MAX_OFFSET}` },
+        { status: 400 }
+      );
+    }
 
     const data: Record<string, unknown> = {
       draw: parseInt(body.draw),

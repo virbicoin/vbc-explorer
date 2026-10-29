@@ -4,6 +4,8 @@ import { connectDB, Block } from '../../../../../models/index';
 import fs from 'fs';
 import path from 'path';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { validatePagination } from '@/lib/security/validation';
+import { rejectDeepPagination } from '@/lib/security/pagination';
 
 // Function to read config
 const readConfig = () => {
@@ -46,9 +48,12 @@ export async function GET(
 
   const { address } = await params;
   const { searchParams } = new URL(request.url);
-  const page = parseInt(searchParams.get('page') || '1');
-  const limit = parseInt(searchParams.get('limit') || '50');
-  const skip = (page - 1) * limit;
+  const pagination = validatePagination(searchParams.get('page'), searchParams.get('limit'), 100, {
+    defaultLimit: 50,
+  });
+  const tooDeep = rejectDeepPagination(pagination);
+  if (tooDeep) return tooDeep;
+  const { page, limit, skip } = pagination;
 
   try {
     // Get blocks with mining rewards

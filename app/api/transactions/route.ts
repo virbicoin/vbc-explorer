@@ -4,6 +4,8 @@ import { connectDB } from '../../../models/index';
 import { getTransactionTypeGlobal, TransactionTypeResult } from '../../../lib/transaction-utils';
 import { tryGetDb } from '../../../lib/db/get-db';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { validatePagination } from '@/lib/security/validation';
+import { rejectDeepPagination } from '@/lib/security/pagination';
 
 // Transaction cache
 interface CacheEntry {
@@ -152,8 +154,17 @@ export async function GET(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = Math.min(parseInt(searchParams.get('limit') || '15'), 100);
+    const pagination = validatePagination(
+      searchParams.get('page'),
+      searchParams.get('limit'),
+      100,
+      {
+        defaultLimit: 15,
+      }
+    );
+    const tooDeep = rejectDeepPagination(pagination);
+    if (tooDeep) return tooDeep;
+    const { page, limit } = pagination;
     const hasPageParams = searchParams.has('page') || searchParams.has('limit');
 
     const cacheKey = `tx_${page}_${limit}`;

@@ -11,6 +11,9 @@ export {
   escapeRegex,
   createAddressRegex,
   validatePagination,
+  DEFAULT_MAX_OFFSET,
+  type Pagination,
+  type PaginationOptions,
   sanitizeSearchQuery,
   checkRateLimit,
   cleanupRateLimits,
@@ -44,3 +47,5 @@ export {
   resetRateLimitTracking,
   type RateLimitBucket,
 } from './rate-limits';
+
+export { rejectDeepPagination } from './pagination';

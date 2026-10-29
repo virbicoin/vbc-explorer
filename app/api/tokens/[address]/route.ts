@@ -29,6 +29,7 @@ import {
   getSecurityHeaders,
 } from '../../../../lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { rejectDeepPagination } from '@/lib/security/pagination';
 
 // Get shared Web3 instance
 const web3 = getWeb3();
@@ -341,6 +342,11 @@ export async function GET(
       searchParams.get('nftsPage'),
       searchParams.get('nftsLimit')
     );
+    const tooDeep =
+      rejectDeepPagination(holdersParams) ||
+      rejectDeepPagination(transfersParams) ||
+      rejectDeepPagination(nftsParams);
+    if (tooDeep) return tooDeep;
 
     const holdersPage = holdersParams.page;
     const holdersLimit = holdersParams.limit;

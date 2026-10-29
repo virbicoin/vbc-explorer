@@ -7,6 +7,7 @@ import {
   validatePagination,
 } from '@/lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { rejectDeepPagination } from '@/lib/security/pagination';
 
 // Blockscout API v2 - Get blocks list
 export async function GET(request: NextRequest) {
@@ -20,6 +21,8 @@ export async function GET(request: NextRequest) {
 
     // Pagination
     const pagination = validatePagination(searchParams.get('page'), searchParams.get('limit'), 50);
+    const tooDeep = rejectDeepPagination(pagination, 'v2');
+    if (tooDeep) return tooDeep;
     const skip = (pagination.page - 1) * pagination.limit;
 
     // Type filter
