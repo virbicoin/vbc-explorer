@@ -835,7 +835,7 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 - TypeScript の strict モードを使用
 - ESLint ルールに従う（eslint-config-next）
 - スタイリングには Tailwind CSS を使用
-- ロケール: ユーザー向け表示は日本語（ja）
+- 言語: 表向きの文字列はすべて英語で書く（UI 表示、README / AGENTS.md / docs、コードコメント、ツールのログ、コミットメッセージ、PR のタイトルと本文）。日本語を使うのは CLAUDE.md（このファイル）だけ
 
 ## アーキテクチャ改善提案
 

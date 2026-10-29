@@ -70,7 +70,7 @@ export default function DisplayName({
     return (
       <span
         className={`inline-flex items-center gap-1 rounded bg-yellow-500/15 px-2 py-0.5 text-xs font-medium text-yellow-300 ${className ?? ''}`}
-        title="名前が URL や制御文字を含むため、名前の代わりにアドレスを表示しています"
+        title="The name contains a URL or control characters, so the address is shown instead"
       >
         <span aria-hidden="true">⚠</span>
         {HIDDEN_NAME_LABEL}

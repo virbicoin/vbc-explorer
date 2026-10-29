@@ -1143,9 +1143,9 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                   tokenData?.token?.factoryVerified === false && (
                     <span
                       className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/40"
-                      title="Launchpad のファクトリーが作成した記録のないトークンです。作成者やメタデータはチェーンで確認できません。"
+                      title="No Launchpad TokenFactory contract reports creating this token, so its creator and metadata cannot be verified on-chain."
                     >
-                      ファクトリー外
+                      Not factory-verified
                     </span>
                   )}
                 <h1 className="text-2xl font-bold text-gray-100">

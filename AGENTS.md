@@ -12,7 +12,7 @@ Practical instructions for AI coding agents working in this repository.
 - Install: `npm install`
 - Dev server: `npm run dev`
 - Quality gate: `npm run check`
-- Tests: `npm run test` (Vitest; `test:watch` / `test:coverage` も利用可). DB tests use mongodb-memory-server, which downloads a MongoDB 8.0 binary on first run (`MONGOMS_SYSTEM_BINARY=/usr/bin/mongod` uses a local binary instead).
+- Tests: `npm run test` (Vitest; `test:watch` / `test:coverage` are also available). DB tests use mongodb-memory-server, which downloads a MongoDB 8.0 binary on first run (`MONGOMS_SYSTEM_BINARY=/usr/bin/mongod` uses a local binary instead).
 - Individual checks:
   - `npm run lint`
   - `npm run typecheck`
@@ -21,7 +21,7 @@ Practical instructions for AI coding agents working in this repository.
 ## Architecture Map
 - App routes and pages: `app/`
 - API routes: `app/api/`
-- Etherscan 互換 API のドメイン別モジュール: `lib/api/blockscout/`（`app/api/route.ts` は薄いディスパッチャ）
+- Etherscan-compatible API split by domain: `lib/api/blockscout/` (`app/api/route.ts` is a thin dispatcher)
 - Shared components: `components/`
 - Business logic and utilities: `lib/`
 - Pure helpers with unit tests: `lib/security/`, `lib/services/`, `lib/contract/`, `lib/address/`, `lib/db/get-db.ts`, `lib/logger.ts`
@@ -38,6 +38,7 @@ Practical instructions for AI coding agents working in this repository.
 - Preserve response patterns from `lib/api-response.ts` for consistency.
 - Server-side code (API routes, tools, DB layer) should log via `lib/logger.ts` instead of `console.*`.
 - When extracting pure logic, add Vitest coverage under `tests/` and keep behavior identical.
+- Language: every public-facing text is English — UI strings, README / AGENTS.md / docs, code comments, tool output, commit messages, PR titles and bodies. `CLAUDE.md` is the only file written in Japanese.
 
 ## API Security Checklist
 For new or modified API handlers in `app/api/**`:

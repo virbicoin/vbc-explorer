@@ -18,7 +18,7 @@
  * --audit-launchpad asks the configured TokenFactory contracts about every
  * token the DB attributes to the Launchpad (`source: 'launchpad'`, or already
  * audited) and records the answer in `factoryVerified` (true / false). Tokens
- * with `factoryVerified: false` get the "ファクトリー外" badge on the token
+ * with `factoryVerified: false` get the "Not factory-verified" badge on the token
  * page; whether to hide them is a separate decision (--address ... --hide).
  *
  * Direct: npx tsx --tsconfig tsconfig.tools.json tools/flag-spam-tokens.ts [options]
@@ -277,7 +277,7 @@ export async function run(argv: string[], auditDeps: LaunchpadAuditDeps = {}): P
     );
     for (const token of audit.unknown) {
       console.log(
-        `  ${token.address}  "${token.name}" (${token.symbol})  createdBy=${token.createdBy ?? '-'}  → factoryVerified: false (badge "ファクトリー外"; hide with --address ${token.address} --hide if needed)`
+        `  ${token.address}  "${token.name}" (${token.symbol})  createdBy=${token.createdBy ?? '-'}  → factoryVerified: false (badge "Not factory-verified"; hide with --address ${token.address} --hide if needed)`
       );
     }
     console.log(options.dryRun ? '\n(dry run: no changes were made)' : '\n✅ Done');
