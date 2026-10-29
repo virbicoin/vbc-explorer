@@ -6,7 +6,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Block, ScanProgress, Transaction } from '@/models/index';
-import { checkChain, repairChain, sampleAgainstNode, REPAIR_SCAN_TYPE } from '@/lib/sync';
+import {
+  checkChain,
+  repairChain,
+  rescanHint,
+  sampleAgainstNode,
+  REPAIR_SCAN_TYPE,
+} from '@/lib/sync';
 import { parseArgs } from '../../tools/repair-chain';
 import { FakeNode, block, canonicalChain, dbHash, seed, type TestBlock } from './helpers';
 
@@ -197,5 +203,19 @@ describe('repair-chain parseArgs', () => {
       maxReplace: 16,
     });
     expect(parseArgs([])).toMatchObject({ mode: 'help' });
+  });
+});
+
+describe('rescanHint', () => {
+  it('matches the RESCAN semantics of tools/stats.ts (range × interval back from the head)', () => {
+    const hint = rescanHint(2_298_155, 3_252_000);
+    expect(hint.preferred).toBe('RESCAN_FROM=2298155 npm run stats');
+    expect(hint.range).toBe(Math.ceil((3_252_000 - 2_298_155) / 100) + 10); // 9549
+    expect(hint.legacy).toBe('RESCAN=100:9549 npm run stats');
+  });
+
+  it('keeps a margin of ten intervals when the replaced height is at the head', () => {
+    expect(rescanHint(100, 100).range).toBe(10);
+    expect(rescanHint(500, 100).range).toBe(10);
   });
 });

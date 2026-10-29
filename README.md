@@ -754,7 +754,7 @@ npm run repair-chain -- --fix --dry-run    # list the heights / hashes that woul
 npm run repair-chain -- --fix              # replace orphans (resumable), then re-check; exit 0 only when 0 mismatches remain
 ```
 
-After `--fix`: recompute statistics for the replaced range with `RESCAN=<minReplaced>:<count> npm run stats` (the tool prints the command), the token scan re-indexes transfers automatically, and richlist balances come from the node (no action). Run it against the local node only; it issues about two RPC calls per replaced block. Back up `Block`, `Transaction` and `BlockStat` first.
+After `--fix`: recompute statistics from the lowest replaced height with `RESCAN_FROM=<minReplaced> npm run stats` (the tool prints the command). The legacy form `RESCAN=<interval>:<range>` scans `range × interval` blocks back from the head, so the equivalent is `RESCAN=100:<ceil((head − minReplaced) / 100) + 10>`; the tool prints that too. The token scan re-indexes transfers automatically, and richlist balances come from the node (no action). Run it against the local node only; it issues about two RPC calls per replaced block. Back up `Block`, `Transaction` and `BlockStat` first.
 
 ## 🔒 Security
 
@@ -1970,8 +1970,8 @@ npm run repair-chain -- --check
 npm run repair-chain -- --fix --dry-run
 npm run repair-chain -- --fix
 
-# Recompute statistics for the replaced range (the tool prints the exact command)
-RESCAN=<minReplaced>:<count> npm run stats
+# Recompute statistics from the lowest replaced height to the head (the tool prints the exact command)
+RESCAN_FROM=<minReplaced> npm run stats
 
 # Reorgs the live sync could not resolve are recorded here
 mongosh explorerDB --quiet --eval 'db.scan_progress.find({ scanType: "reorg-pending" }).pretty()'

@@ -1,22 +1,29 @@
 /**
  * Database Connection Manager
  *
- * Singleton pattern for MongoDB connection to ensure
- * connection reuse across the application.
+ * Thin wrapper around the single connector in `models/index.ts` (connectDB).
+ * There is exactly one `mongoose.connect()` in the codebase; pool sizes,
+ * timeouts, `autoIndex: false` and the URI resolution (environment >
+ * config.json > default) live there and in `config.database.options`. This
+ * module only keeps the historical API (`db`, `connectDatabase`,
+ * `disconnectDatabase`) used through `lib/db`.
  */
 
 import mongoose from 'mongoose';
+import { connectDB } from '../../models/index';
+import { logger } from '../logger';
 
 interface ConnectionConfig {
-  uri: string;
+  /** Ignored: the connection string comes from MONGODB_URI / config.json. */
+  uri?: string;
+  /** Ignored: the database is part of the URI. */
   dbName?: string;
+  /** Ignored: pool and timeout options come from config.database.options. */
   options?: mongoose.ConnectOptions;
 }
 
 class DatabaseConnection {
   private static instance: DatabaseConnection;
-  private isConnected = false;
-  private connectionPromise: Promise<typeof mongoose> | null = null;
 
   private constructor() {}
 
@@ -27,61 +34,23 @@ class DatabaseConnection {
     return DatabaseConnection.instance;
   }
 
+  /** Connect through models/index.ts `connectDB()`; per-call options are not supported. */
   async connect(config?: ConnectionConfig): Promise<typeof mongoose> {
-    // Return existing connection if already connected
-    if (this.isConnected && mongoose.connection.readyState === 1) {
-      return mongoose;
-    }
-
-    // Return pending connection promise if connecting
-    if (this.connectionPromise) {
-      return this.connectionPromise;
-    }
-
-    const uri = config?.uri || process.env.MONGO_URI || 'mongodb://localhost:27017';
-    const dbName = config?.dbName || process.env.MONGO_DB || 'explorerDB';
-
-    const options: mongoose.ConnectOptions = {
-      dbName,
-      maxPoolSize: 10,
-      minPoolSize: 5,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-      ...config?.options,
-    };
-
-    this.connectionPromise = mongoose
-      .connect(uri, options)
-      .then((mongooseInstance) => {
-        this.isConnected = true;
-        console.log(`MongoDB connected: ${dbName}`);
-        return mongooseInstance;
-      })
-      .catch((error) => {
-        this.connectionPromise = null;
-        console.error('MongoDB connection error:', error);
-        throw error;
+    if (config && Object.keys(config).length > 0) {
+      logger.warn('connectDatabase(): per-call options are ignored; configure config.database', {
+        keys: Object.keys(config),
       });
-
-    // Setup connection event handlers
-    mongoose.connection.on('disconnected', () => {
-      this.isConnected = false;
-      this.connectionPromise = null;
-      console.log('MongoDB disconnected');
-    });
-
-    mongoose.connection.on('error', (err) => {
-      console.error('MongoDB connection error:', err);
-    });
-
-    return this.connectionPromise;
+    }
+    await connectDB();
+    if (mongoose.connection.readyState !== mongoose.ConnectionStates.connected) {
+      throw new Error('Database connection failed');
+    }
+    return mongoose;
   }
 
   async disconnect(): Promise<void> {
-    if (mongoose.connection.readyState !== 0) {
+    if (mongoose.connection.readyState !== mongoose.ConnectionStates.disconnected) {
       await mongoose.disconnect();
-      this.isConnected = false;
-      this.connectionPromise = null;
     }
   }
 
@@ -90,7 +59,7 @@ class DatabaseConnection {
   }
 
   isConnectedToDb(): boolean {
-    return this.isConnected && mongoose.connection.readyState === 1;
+    return mongoose.connection.readyState === mongoose.ConnectionStates.connected;
   }
 }
 
