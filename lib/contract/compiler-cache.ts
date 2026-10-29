@@ -301,7 +301,7 @@ async function readVerifiedCache(cacheDir: string, short: string): Promise<Cache
   ) {
     return null;
   }
-  const record = parseMeta(await fsp.readFile(meta, 'utf8'));
+  const record = parseMeta(await fsp.readFile(/*turbopackIgnore: true*/ meta, 'utf8'));
   if (!record) {
     logger.warn('Cached compiler has no readable sha256 record; discarding it', { file });
     await Promise.all([removeQuietly(file), removeQuietly(meta)]);
