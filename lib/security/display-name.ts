@@ -32,7 +32,7 @@ export const NAME_MAX = 64;
 export const SYMBOL_MAX = 16;
 
 /** Text used in place of a hidden name. */
-export const HIDDEN_NAME_LABEL = '非表示（スパム判定）';
+export const HIDDEN_NAME_LABEL = 'Hidden (flagged as spam)';
 
 const URL_PATTERNS = [
   /:\/\//,

@@ -4,10 +4,10 @@ import nextPlugin from '@next/eslint-plugin-next';
 import reactHooks from 'eslint-plugin-react-hooks';
 import eslintConfigPrettier from 'eslint-config-prettier';
 
-// typescript-eslint / @eslint-react は TypeScript 7（ネイティブ版）が JS コンパイラ API を
-// 同梱しなくなったため動作せず撤去。TS/TSX の構文解析は @babel/eslint-parser
-// （@babel/preset-typescript、型情報なし）で行い、型に依存する検査は tsc（TS7）が担う。
-// TSX かどうかは Babel 8 が拡張子から自動判定する。
+// typescript-eslint / @eslint-react were removed: TypeScript 7 (the native compiler) no longer
+// ships the JS compiler API they depend on. TS/TSX syntax is parsed by @babel/eslint-parser
+// (@babel/preset-typescript, no type information); type-aware checks are left to tsc (TS7).
+// Babel 8 decides TS vs TSX from the file extension.
 
 /** @type {import('eslint').Linter.Config[]} */
 export default [
@@ -28,7 +28,7 @@ export default [
     },
   },
   {
-    // .tsx の JSX 構文は Babel 8 では自動有効にならないため明示する
+    // Babel 8 does not enable JSX automatically for .tsx, so request it explicitly
     files: ['**/*.tsx'],
     languageOptions: {
       parser: babelParser,
@@ -46,12 +46,12 @@ export default [
     files: ['**/*.{ts,tsx}'],
     rules: {
       ...js.configs.recommended.rules,
-      // TypeScript(tsc) 側で検査されるルール、および TS 構文へ誤検知するルールは無効化
+      // Rules covered by tsc, or that misfire on TypeScript syntax, are off
       'no-undef': 'off',
       'no-unused-vars': 'off',
       'no-redeclare': 'off',
       'no-dupe-class-members': 'off',
-      // 既存コードに残る指摘は warn で計上し、漸進的に解消する（旧構成では未検査だったルール）
+      // Findings left in existing code are warnings to be cleaned up gradually (not checked by the old config)
       'no-useless-assignment': 'warn',
       'preserve-caught-error': 'warn',
       'no-useless-escape': 'warn',

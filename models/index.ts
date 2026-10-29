@@ -10,7 +10,7 @@ import {
   type IndexSpec,
 } from '../lib/db/indexes';
 
-// 環境変数の設定
+// Environment defaults
 if (!process.env.MONGODB_URI) {
   process.env.MONGODB_URI = 'mongodb://localhost/explorerDB';
 }

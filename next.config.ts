@@ -38,17 +38,17 @@ function imageRemotePatterns(): Array<{ protocol: 'https'; hostname: string }> {
 }
 
 const nextConfig: NextConfig = {
-  // Next.js 16でTurbopackがデフォルトのため、空のturbopack設定を追加
+  // Turbopack is the default in Next.js 16, so provide a turbopack section
   turbopack: {
     resolveAlias: {
-      // WalletConnect/pino依存関係を無視
+      // Resolve pino to its browser build for the WalletConnect dependency chain
       pino: { browser: './node_modules/pino/browser.js' },
     },
   },
 
-  // 本番環境でのメモリ最適化
+  // Memory optimisation for production
   experimental: {
-    // メモリ使用量を削減 - 大きなパッケージを最適化
+    // Reduce memory usage by tree-shaking large packages
     optimizePackageImports: [
       'react',
       'react-dom',
@@ -60,32 +60,32 @@ const nextConfig: NextConfig = {
     ],
   },
 
-  // 外部パッケージ設定（サーバーサイドでバンドルしない）
+  // Server-side packages that must not be bundled
   serverExternalPackages: ['mongoose', 'web3', 'pino', 'thread-stream', 'pino-pretty', 'solc'],
 
-  // solc のコンパイルは worker_threads（lib/contract/solc-worker.cjs）で実行する。ワーカーは
-  // パス指定で起動し自身で solc/wrapper を require するため、バンドラからは見えない。
-  // standalone 出力にも含まれるようトレース対象に明示する
+  // Solidity is compiled in worker_threads (lib/contract/solc-worker.cjs). The worker is started
+  // by path and requires solc/wrapper itself, so the bundler never sees it; list both explicitly
+  // so the standalone output traces and includes them
   outputFileTracingIncludes: {
     '/api/**/*': ['./lib/contract/solc-worker.cjs', './node_modules/solc/**/*'],
   },
 
-  // 軽量化設定
+  // Output size
   compiler: {
-    // 未使用コードの削除
+    // Strip console calls from production bundles
     removeConsole: process.env.NODE_ENV === 'production',
   },
 
-  // バンドルサイズ最適化
+  // Bundle size optimisation
   bundlePagesRouterDependencies: true,
 
-  // 圧縮有効化
+  // Enable gzip compression
   compress: true,
 
-  // PoweredByヘッダー削除
+  // Remove the X-Powered-By header
   poweredByHeader: false,
 
-  // 静的ファイルの最適化
+  // No browser source maps in production
   productionBrowserSourceMaps: false,
 
   env: {
@@ -94,7 +94,7 @@ const nextConfig: NextConfig = {
     WEB3_PROVIDER_URL: process.env.WEB3_PROVIDER_URL,
   },
   webpack: (config, { isServer, webpack }) => {
-    // lightningcssのネイティブモジュールエラーを回避
+    // Avoid native-module errors from lightningcss in the browser bundle
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -105,30 +105,30 @@ const nextConfig: NextConfig = {
       };
     }
 
-    // lightningcssのネイティブモジュールを完全に無視
+    // Treat lightningcss as an external
     config.externals = config.externals || [];
     config.externals.push({
       lightningcss: 'lightningcss',
     });
 
-    // lightningcssのネイティブモジュールを空のオブジェクトに置き換え
+    // Alias lightningcss to an empty module
     config.resolve.alias = {
       ...config.resolve.alias,
       lightningcss: false,
     };
 
-    // lightningcssのネイティブモジュールを無視するプラグインを追加
+    // Ignore the lightningcss native module
     config.plugins.push(
       new webpack.IgnorePlugin({
-        // require()をwebpackインスタンスに変更
+        // webpack comes from the Next.js callback argument, not require('webpack')
         resourceRegExp: /lightningcss\.linux-x64-gnu\.node$/,
       })
     );
 
-    // lightningcssのネイティブモジュールを無視するプラグインを追加
+    // Ignore the lightningcss native module
     config.plugins.push(
       new webpack.IgnorePlugin({
-        // require()をwebpackインスタンスに変更
+        // webpack comes from the Next.js callback argument, not require('webpack')
         resourceRegExp: /lightningcss/,
       })
     );

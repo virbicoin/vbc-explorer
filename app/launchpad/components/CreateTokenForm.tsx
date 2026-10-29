@@ -186,13 +186,13 @@ export function CreateTokenForm() {
         if (response.status === 404) {
           if (attempt < REGISTER_MAX_ATTEMPTS) {
             setRegistrationStatus(
-              `トークンのデプロイがまだ確定していません。${REGISTER_RETRY_DELAY_MS / 1000} 秒後に再試行します（${attempt}/${REGISTER_MAX_ATTEMPTS}）`
+              `The token deployment is not confirmed yet. Retrying in ${REGISTER_RETRY_DELAY_MS / 1000} s (${attempt}/${REGISTER_MAX_ATTEMPTS})`
             );
             await new Promise((resolve) => setTimeout(resolve, REGISTER_RETRY_DELAY_MS));
             continue;
           }
           setRegistrationStatus(
-            'トークンのデプロイがまだ確定していません。しばらくしてからトークン管理ページを開くか、再度登録してください。'
+            'The token deployment is not confirmed yet. Open the token management page in a moment, or register the token again.'
           );
           return;
         }
@@ -204,13 +204,13 @@ export function CreateTokenForm() {
         }
         console.error('[RegisterToken] Failed to register token:', data.error || response.status);
         setRegistrationStatus(
-          `エクスプローラーへの登録に失敗しました（${data.error || response.status}）。トークン自体は作成されています。`
+          `Registering the token with the explorer failed (${data.error || response.status}). The token itself has been created.`
         );
         return;
       } catch (error) {
         console.error('[RegisterToken] Error registering token:', error);
         setRegistrationStatus(
-          'エクスプローラーへの登録に失敗しました。トークン自体は作成されています。'
+          'Registering the token with the explorer failed. The token itself has been created.'
         );
         return;
       }
