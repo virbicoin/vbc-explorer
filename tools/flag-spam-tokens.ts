@@ -13,6 +13,13 @@
  *   npm run flag-spam-tokens -- --address 0x... --hide         # hide one address (reason: manual)
  *   npm run flag-spam-tokens -- --address 0x... --unhide       # clear the flag of one address
  *   npm run flag-spam-tokens -- --unhide-all                   # clear every flag (incl. manual)
+ *   npm run flag-spam-tokens -- --audit-launchpad [--dry-run] # list Launchpad-sourced tokens no factory knows
+ *
+ * --audit-launchpad asks the configured TokenFactory contracts about every
+ * token the DB attributes to the Launchpad (`source: 'launchpad'`, or already
+ * audited) and records the answer in `factoryVerified` (true / false). Tokens
+ * with `factoryVerified: false` get the "ファクトリー外" badge on the token
+ * page; whether to hide them is a separate decision (--address ... --hide).
  *
  * Direct: npx tsx --tsconfig tsconfig.tools.json tools/flag-spam-tokens.ts [options]
  */
@@ -21,6 +28,13 @@ import mongoose from 'mongoose';
 import { connectDB, ensureIndexesOnStartup, Contract, Token } from '../models/index';
 import { classifyDisplayName, type HiddenReason } from '../lib/security/display-name';
 import type { AnyModel } from '../lib/db/indexes';
+import {
+  createWeb3FactoryClient,
+  getLaunchpadFactories,
+  resolveFactoryToken,
+  type FactoryClient,
+  type FactorySource,
+} from '../lib/launchpad/factory';
 
 interface Options {
   dryRun: boolean;
@@ -28,6 +42,7 @@ interface Options {
   hide: boolean;
   unhide: boolean;
   unhideAll: boolean;
+  auditLaunchpad: boolean;
   reason: HiddenReason;
   help: boolean;
 }
@@ -39,6 +54,7 @@ export function parseArgs(argv: string[]): Options {
     hide: argv.includes('--hide'),
     unhide: argv.includes('--unhide'),
     unhideAll: argv.includes('--unhide-all'),
+    auditLaunchpad: argv.includes('--audit-launchpad'),
     reason: 'manual',
     help: argv.includes('--help') || argv.includes('-h'),
   };
@@ -62,6 +78,7 @@ function usage(): void {
   npm run flag-spam-tokens -- --address 0x... --hide    hide one address (reason: manual)
   npm run flag-spam-tokens -- --address 0x... --unhide  clear the flag of one address
   npm run flag-spam-tokens -- --unhide-all              clear every flag, including manual ones
+  npm run flag-spam-tokens -- --audit-launchpad         ask the factories about Launchpad tokens; list the unknown ones
 `);
 }
 
@@ -162,7 +179,76 @@ async function setFlag(
   }
 }
 
-export async function run(argv: string[]): Promise<number> {
+export interface LaunchpadAuditDeps {
+  client?: FactoryClient;
+  factories?: FactorySource[];
+}
+
+export interface LaunchpadAuditResult {
+  checked: number;
+  verified: number;
+  unknown: Array<{ address: string; name: string; symbol: string; createdBy: string | null }>;
+  errors: number;
+}
+
+/**
+ * Ask the factories about every token the DB attributes to the Launchpad and
+ * record `factoryVerified` (true / false) unless dryRun. Returns the tokens no
+ * factory knows.
+ */
+export async function auditLaunchpadTokens(
+  dryRun: boolean,
+  deps: LaunchpadAuditDeps = {}
+): Promise<LaunchpadAuditResult> {
+  const client = deps.client ?? createWeb3FactoryClient();
+  const factories = deps.factories ?? getLaunchpadFactories();
+  const docs = (await Token.find(
+    { $or: [{ source: 'launchpad' }, { factoryVerified: { $exists: true } }] },
+    { address: 1, name: 1, symbol: 1, createdBy: 1, factory: 1, factoryVerified: 1 }
+  ).lean()) as Array<{
+    _id: unknown;
+    address: string;
+    name?: string;
+    symbol?: string;
+    createdBy?: string | null;
+    factory?: string | null;
+    factoryVerified?: boolean;
+  }>;
+  const result: LaunchpadAuditResult = { checked: 0, verified: 0, unknown: [], errors: 0 };
+  for (const doc of docs) {
+    result.checked += 1;
+    try {
+      const info = await resolveFactoryToken(doc.address, { client, factories });
+      if (info) {
+        result.verified += 1;
+        if (!dryRun && (doc.factoryVerified !== true || doc.factory !== info.factory)) {
+          await Token.updateOne(
+            { _id: doc._id },
+            { $set: { factoryVerified: true, factory: info.factory } }
+          );
+        }
+      } else {
+        result.unknown.push({
+          address: doc.address,
+          name: (doc.name ?? '').slice(0, 80),
+          symbol: (doc.symbol ?? '').slice(0, 20),
+          createdBy: doc.createdBy ?? null,
+        });
+        if (!dryRun && doc.factoryVerified !== false) {
+          await Token.updateOne({ _id: doc._id }, { $set: { factoryVerified: false } });
+        }
+      }
+    } catch (error) {
+      result.errors += 1;
+      console.error(
+        `  ❌ ${doc.address}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+  return result;
+}
+
+export async function run(argv: string[], auditDeps: LaunchpadAuditDeps = {}): Promise<number> {
   const options = parseArgs(argv);
   if (options.help) {
     usage();
@@ -175,6 +261,28 @@ export async function run(argv: string[]): Promise<number> {
     return 1;
   }
   await ensureIndexesOnStartup('flag-spam-tokens');
+
+  if (options.auditLaunchpad) {
+    const factories = auditDeps.factories ?? getLaunchpadFactories();
+    if (factories.length === 0) {
+      console.error('❌ No Launchpad factory configured (config.launchpad.factoryAddress)');
+      return 1;
+    }
+    console.log(
+      `🏭 Auditing Launchpad tokens against ${factories.length} factory contract(s)${options.dryRun ? ' (dry run: nothing is written)' : ''}...`
+    );
+    const audit = await auditLaunchpadTokens(options.dryRun, auditDeps);
+    console.log(
+      `\n📦 tokens: ${audit.checked} checked, ${audit.verified} known to a factory, ${audit.unknown.length} unknown, ${audit.errors} error(s)`
+    );
+    for (const token of audit.unknown) {
+      console.log(
+        `  ${token.address}  "${token.name}" (${token.symbol})  createdBy=${token.createdBy ?? '-'}  → factoryVerified: false (badge "ファクトリー外"; hide with --address ${token.address} --hide if needed)`
+      );
+    }
+    console.log(options.dryRun ? '\n(dry run: no changes were made)' : '\n✅ Done');
+    return audit.errors > 0 ? 1 : 0;
+  }
 
   if (options.unhideAll) {
     console.log(

@@ -19,6 +19,10 @@ import { getCurrencySymbol, initializeCurrencyConfig } from '@/lib/client-config
 type PaymentMethod = 'native' | 'alternative';
 
 // sessionStorage key for the create-form draft (survives tab switches)
+// Explorer registration retry (blocks are ~12 s apart; the node may lag right after deployment)
+const REGISTER_MAX_ATTEMPTS = 3;
+const REGISTER_RETRY_DELAY_MS = 12_000;
+
 const DRAFT_KEY = 'launchpad-create-token-draft';
 
 export function CreateTokenForm() {
@@ -46,6 +50,8 @@ export function CreateTokenForm() {
   // UI state
   const [showSuccess, setShowSuccess] = useState(false);
   const [deployedAddress, setDeployedAddress] = useState<string | null>(null);
+  // Explorer registration progress shown on the success panel (null = registered / nothing to show)
+  const [registrationStatus, setRegistrationStatus] = useState<string | null>(null);
 
   // Native currency symbol (loaded from config)
   const [nativeCurrencySymbol, setNativeCurrencySymbol] = useState<string>('');
@@ -164,27 +170,50 @@ export function CreateTokenForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isApproveConfirmed]);
 
-  // Register token to database
-  const registerToken = async (tokenAddress: string, creatorAddress: string) => {
-    console.log('[RegisterToken] Starting registration for:', tokenAddress, 'by:', creatorAddress);
-    try {
-      const response = await fetch('/api/launchpad/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tokenAddress,
-          creator: creatorAddress,
-          metadata: { logoUrl, description, website },
-        }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        console.log('[RegisterToken] Token registered to database successfully:', data);
-      } else {
-        console.error('[RegisterToken] Failed to register token:', data.error);
+  // Register token to database. The API accepts only the address and verifies
+  // on-chain that the factory created it; creator and metadata are read from
+  // the chain. Right after deployment the node may not have the block yet
+  // (404), so retry up to REGISTER_MAX_ATTEMPTS times, one block interval apart.
+  const registerToken = async (tokenAddress: string) => {
+    console.log('[RegisterToken] Starting registration for:', tokenAddress);
+    for (let attempt = 1; attempt <= REGISTER_MAX_ATTEMPTS; attempt++) {
+      try {
+        const response = await fetch('/api/launchpad/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenAddress }),
+        });
+        if (response.status === 404) {
+          if (attempt < REGISTER_MAX_ATTEMPTS) {
+            setRegistrationStatus(
+              `トークンのデプロイがまだ確定していません。${REGISTER_RETRY_DELAY_MS / 1000} 秒後に再試行します（${attempt}/${REGISTER_MAX_ATTEMPTS}）`
+            );
+            await new Promise((resolve) => setTimeout(resolve, REGISTER_RETRY_DELAY_MS));
+            continue;
+          }
+          setRegistrationStatus(
+            'トークンのデプロイがまだ確定していません。しばらくしてからトークン管理ページを開くか、再度登録してください。'
+          );
+          return;
+        }
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data.success) {
+          console.log('[RegisterToken] Token registered to database successfully:', data);
+          setRegistrationStatus(null);
+          return;
+        }
+        console.error('[RegisterToken] Failed to register token:', data.error || response.status);
+        setRegistrationStatus(
+          `エクスプローラーへの登録に失敗しました（${data.error || response.status}）。トークン自体は作成されています。`
+        );
+        return;
+      } catch (error) {
+        console.error('[RegisterToken] Error registering token:', error);
+        setRegistrationStatus(
+          'エクスプローラーへの登録に失敗しました。トークン自体は作成されています。'
+        );
+        return;
       }
-    } catch (error) {
-      console.error('[RegisterToken] Error registering token:', error);
     }
   };
 
@@ -326,13 +355,9 @@ export function CreateTokenForm() {
       if (foundTokenAddress) {
         console.log('[CreateToken] Token address found:', foundTokenAddress);
         setDeployedAddress(foundTokenAddress);
-        // Register token to database for /tokens page
-        if (address) {
-          console.log('[CreateToken] Registering token to database...');
-          registerToken(foundTokenAddress, address);
-        } else {
-          console.warn('[CreateToken] No wallet address available, skipping registration');
-        }
+        // Register token to database for /tokens page (factory-verified server side)
+        console.log('[CreateToken] Registering token to database...');
+        void registerToken(foundTokenAddress);
       } else {
         console.error('[CreateToken] Failed to extract token address from receipt');
       }
@@ -655,6 +680,14 @@ export function CreateTokenForm() {
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">Token Created Successfully!</h2>
             <p className="text-gray-400 mb-6">Your token has been deployed to the blockchain</p>
+            {registrationStatus && (
+              <div
+                className="mb-6 rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300"
+                role="status"
+              >
+                {registrationStatus}
+              </div>
+            )}
 
             {/* Token Info Card */}
             <div className="bg-gray-800/50 rounded-xl p-4 mb-4">

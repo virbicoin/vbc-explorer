@@ -301,6 +301,20 @@ interface ApiToken {
   logoUrl?: string;
 }
 
+/**
+ * Launchpad provenance of a token: `source` ('launchpad' | 'scan'), the factory
+ * that created it and whether a factory vouched for it (`factoryVerified`
+ * false = an audit found no factory that knows the token → "outside factory"
+ * badge on the detail page; null = never checked).
+ */
+function launchpadFields(token: Record<string, unknown>) {
+  return {
+    source: typeof token.source === 'string' ? token.source : null,
+    factory: typeof token.factory === 'string' ? token.factory : null,
+    factoryVerified: typeof token.factoryVerified === 'boolean' ? token.factoryVerified : null,
+  };
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ address: string }> }
@@ -1255,6 +1269,7 @@ export async function GET(
           hidden: (token as Record<string, unknown>).hidden === true,
           hiddenReason:
             ((token as Record<string, unknown>).hiddenReason as string | undefined) || null,
+          ...launchpadFields(token as Record<string, unknown>),
           type: token.type,
           decimals: Number(token.decimals ?? 0),
           totalSupply: actualNftSupply,
@@ -1357,6 +1372,7 @@ export async function GET(
         hidden: (token as Record<string, unknown>).hidden === true,
         hiddenReason:
           ((token as Record<string, unknown>).hiddenReason as string | undefined) || null,
+        ...launchpadFields(token as Record<string, unknown>),
         type: token.type,
         isNFT: isNFT,
         decimals: Number(token.decimals ?? (isNFT ? 0 : 18)),

@@ -1,168 +1,104 @@
+/**
+ * POST /api/launchpad/register — register a Launchpad token in the explorer DB.
+ *
+ * The only input is `tokenAddress`. Registration succeeds solely when one of
+ * the configured TokenFactory contracts vouches for the address
+ * (`isFactoryToken` / `getAllTokens`, see lib/launchpad/factory.ts); creator,
+ * name, symbol, decimals, supply, creation time and metadata are read from the
+ * chain, never from the request body. Unknown tokens get 404, a token that is
+ * already registered gets 200 with the stored record (idempotent).
+ */
 import { NextRequest, NextResponse } from 'next/server';
-import Web3 from 'web3';
-import { connectDB, Token, TokenHolder } from '../../../../models/index';
-import { loadConfig } from '../../../../lib/config';
-import { hiddenFields } from '../../../../lib/security/display-name';
-import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { connectDB, Token } from '../../../../models/index';
+import { getSecurityHeaders } from '../../../../lib/security/validation';
+import { withRateLimit } from '@/lib/security/rate-limits';
+import { FactoryRpcError, isHexAddress, resolveFactoryToken } from '@/lib/launchpad/factory';
+import { createWeb3FactoryClient } from '@/lib/launchpad/factory';
+import { registerFactoryToken, toPublicToken } from '@/lib/launchpad/sync';
+import { logger } from '@/lib/logger';
 
-// Load configuration
-const config = loadConfig();
-const RPC_URL = config.web3Provider?.url || 'http://localhost:8545';
-const web3 = new Web3(RPC_URL);
+export const dynamic = 'force-dynamic';
 
-// ERC20 ABI for fetching token info
-const ERC20_ABI = [
-  {
-    inputs: [],
-    name: 'name',
-    outputs: [{ name: '', type: 'string' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'symbol',
-    outputs: [{ name: '', type: 'string' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'decimals',
-    outputs: [{ name: '', type: 'uint8' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'totalSupply',
-    outputs: [{ name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const;
-
-export async function POST(request: NextRequest) {
-  const limited = enforceRateLimit(request, 'launchpad');
-  if (limited) return limited;
-
+export const POST = withRateLimit('write', async (request: NextRequest) => {
+  let body: unknown;
   try {
-    const body = await request.json();
-    const { tokenAddress, creator } = body;
-
-    if (!tokenAddress) {
-      return NextResponse.json({ error: 'Token address is required' }, { status: 400 });
-    }
-
-    // Validate address format
-    if (!web3.utils.isAddress(tokenAddress)) {
-      return NextResponse.json({ error: 'Invalid token address format' }, { status: 400 });
-    }
-
-    await connectDB();
-
-    // Check if token already exists (case-insensitive match without regex)
-    const existingToken = await Token.findOne({
-      address: tokenAddress.toLowerCase(),
-    });
-
-    if (existingToken) {
-      return NextResponse.json({
-        success: true,
-        message: 'Token already registered',
-        token: existingToken,
-      });
-    }
-
-    // Fetch token info from blockchain
-    const contract = new web3.eth.Contract(ERC20_ABI, tokenAddress);
-
-    let name = 'Unknown';
-    let symbol = 'UNKNOWN';
-    let decimals = 18;
-    let totalSupply = '0';
-
-    try {
-      name = (await contract.methods.name().call()) as string;
-    } catch (e) {
-      console.error('Failed to fetch token name:', e);
-    }
-
-    try {
-      symbol = (await contract.methods.symbol().call()) as string;
-    } catch (e) {
-      console.error('Failed to fetch token symbol:', e);
-    }
-
-    try {
-      decimals = Number(await contract.methods.decimals().call());
-    } catch (e) {
-      console.error('Failed to fetch token decimals:', e);
-    }
-
-    try {
-      totalSupply = String(await contract.methods.totalSupply().call());
-    } catch (e) {
-      console.error('Failed to fetch token totalSupply:', e);
-    }
-
-    // Create new token record
-    const newToken = new Token({
-      address: tokenAddress.toLowerCase(),
-      name,
-      symbol,
-      decimals,
-      totalSupply,
-      supply: totalSupply,
-      holders: creator ? 1 : 0, // Creator is initial holder
-      type: 'VRC-20',
-      verified: false,
-      createdAt: new Date(),
-      createdBy: creator?.toLowerCase() || null,
-      source: 'launchpad',
-      ...hiddenFields({ name, symbol }),
-    });
-
-    await newToken.save();
-
-    // Register creator as initial holder if provided
-    if (creator && totalSupply !== '0') {
-      const existingHolder = await TokenHolder.findOne({
-        tokenAddress: tokenAddress.toLowerCase(),
-        holderAddress: creator.toLowerCase(),
-      });
-
-      if (!existingHolder) {
-        const newHolder = new TokenHolder({
-          tokenAddress: tokenAddress.toLowerCase(),
-          holderAddress: creator.toLowerCase(),
-          balance: totalSupply,
-          rank: 1,
-          percentage: 100,
-        });
-        await newHolder.save();
-      }
-    }
-
-    console.log(`✅ Registered new launchpad token: ${symbol} (${tokenAddress})`);
-
-    return NextResponse.json({
-      success: true,
-      message: 'Token registered successfully',
-      token: {
-        address: tokenAddress.toLowerCase(),
-        name,
-        symbol,
-        decimals,
-        totalSupply,
-        type: 'VRC-20',
-      },
-    });
-  } catch (error) {
-    console.error('Error registering token:', error);
+    body = await request.json();
+  } catch {
     return NextResponse.json(
-      { error: 'Failed to register token', details: String(error) },
-      { status: 500 }
+      { error: 'Invalid JSON in request body' },
+      { status: 400, headers: getSecurityHeaders() }
     );
   }
-}
+
+  const tokenAddress = (body as { tokenAddress?: unknown } | null)?.tokenAddress;
+  if (!tokenAddress) {
+    return NextResponse.json(
+      { error: 'Token address is required' },
+      { status: 400, headers: getSecurityHeaders() }
+    );
+  }
+  if (!isHexAddress(tokenAddress)) {
+    return NextResponse.json(
+      { error: 'Invalid token address format' },
+      { status: 400, headers: getSecurityHeaders() }
+    );
+  }
+  const address = tokenAddress.toLowerCase();
+
+  try {
+    await connectDB();
+
+    const existing = await Token.findOne({ address }).lean();
+    if (existing) {
+      return NextResponse.json(
+        {
+          success: true,
+          message: 'Token already registered',
+          token: toPublicToken(existing as Parameters<typeof toPublicToken>[0]),
+        },
+        { headers: getSecurityHeaders() }
+      );
+    }
+
+    const client = createWeb3FactoryClient();
+    const info = await resolveFactoryToken(address, { client });
+    if (!info) {
+      logger.info('Launchpad registration refused: no factory knows the token', { address });
+      return NextResponse.json(
+        {
+          error: 'Token is not known to any Launchpad factory',
+          code: 'NOT_FACTORY_TOKEN',
+          address,
+        },
+        { status: 404, headers: getSecurityHeaders() }
+      );
+    }
+
+    const { status, token } = await registerFactoryToken(info, client);
+    return NextResponse.json(
+      {
+        success: true,
+        message:
+          status === 'created' ? 'Token registered successfully' : 'Token already registered',
+        token,
+      },
+      { headers: getSecurityHeaders() }
+    );
+  } catch (error) {
+    if (error instanceof FactoryRpcError) {
+      logger.warn('Launchpad registration: node unavailable', { address, error: error.message });
+      return NextResponse.json(
+        { error: 'Blockchain node unavailable, retry later' },
+        { status: 503, headers: { ...getSecurityHeaders(), 'Retry-After': '15' } }
+      );
+    }
+    logger.error('Launchpad registration failed', {
+      address,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return NextResponse.json(
+      { error: 'Failed to register token' },
+      { status: 500, headers: getSecurityHeaders() }
+    );
+  }
+});

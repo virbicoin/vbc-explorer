@@ -24,6 +24,11 @@ interface TokenData {
     symbol: string;
     hidden?: boolean;
     hiddenReason?: string | null;
+    /** 'launchpad' | 'scan' */
+    source?: string | null;
+    factory?: string | null;
+    /** false: no Launchpad factory knows this token (see tools/flag-spam-tokens.ts --audit-launchpad) */
+    factoryVerified?: boolean | null;
     type: string;
     isNFT: boolean;
     decimals: number;
@@ -1134,6 +1139,15 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                 >
                   {tokenData?.token?.type || 'Token'}
                 </span>
+                {tokenData?.token?.source === 'launchpad' &&
+                  tokenData?.token?.factoryVerified === false && (
+                    <span
+                      className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/20 text-yellow-400 border border-yellow-500/40"
+                      title="Launchpad のファクトリーが作成した記録のないトークンです。作成者やメタデータはチェーンで確認できません。"
+                    >
+                      ファクトリー外
+                    </span>
+                  )}
                 <h1 className="text-2xl font-bold text-gray-100">
                   {tokenData?.token?.hidden ? (
                     <DisplayName
