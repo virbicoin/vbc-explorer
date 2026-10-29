@@ -4,7 +4,8 @@
  *
  * Extracted from `app/api/route.ts` to keep the dispatcher thin. Only
  * `verifySourceCode` (POST) and `checkVerifyStatus` (GET) are part of the public
- * surface; `loadSolcVersion` and `processVerification` are internal helpers.
+ * surface; `processVerification` is an internal helper. Compilation runs through
+ * lib/contract/compile-worker.ts (verified release build, worker thread).
  */
 
 import { NextResponse } from 'next/server';
@@ -12,67 +13,14 @@ import { type Address } from 'viem';
 import { connectDB, Contract, VerificationJob } from '@/models/index';
 import { isValidAddress, getSecurityHeaders } from '@/lib/security';
 import { randomUUID } from 'crypto';
-import solc from 'solc';
 import {
   normalizeCompilerVersion,
-  SOLC_RELEASES,
   modernizeSyntax,
   removeMetadata,
 } from '@/lib/contract/solc-utils';
+import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
 import { publicClient, successResponse, errorResponse } from './shared';
 
-// Cache for loaded solc compilers
-const solcCache: Map<string, unknown> = new Map();
-
-// Load a specific version of solc compiler
-async function loadSolcVersion(version: string): Promise<unknown> {
-  const normalizedVersion = normalizeCompilerVersion(version);
-
-  // Check cache first
-  if (solcCache.has(normalizedVersion)) {
-    console.log(`📦 Using cached solc ${normalizedVersion}`);
-    return solcCache.get(normalizedVersion);
-  }
-
-  // Get the full release name for this version
-  const fullReleaseName = SOLC_RELEASES[normalizedVersion];
-
-  if (!fullReleaseName) {
-    console.warn(
-      `⚠️ No release mapping for solc ${normalizedVersion}, falling back to installed solc`
-    );
-    return solc;
-  }
-
-  return new Promise((resolve) => {
-    console.log(`📥 Loading solc ${normalizedVersion} (${fullReleaseName}) from remote...`);
-
-    // Use solc.loadRemoteVersion to load the specific version
-    // The version string must be the full release name like "v0.8.30+commit.73712a01"
-    (
-      solc as unknown as {
-        loadRemoteVersion: (
-          version: string,
-          callback: (err: Error | null, solcSnapshot: unknown) => void
-        ) => void;
-      }
-    ).loadRemoteVersion(fullReleaseName, (err: Error | null, solcSnapshot: unknown) => {
-      if (err) {
-        console.error(`❌ Failed to load solc ${normalizedVersion}:`, err.message);
-        // Fall back to installed solc
-        console.log(`⚠️ Falling back to installed solc`);
-        resolve(solc);
-      } else {
-        console.log(`✅ Successfully loaded solc ${normalizedVersion}`);
-        // Cache the loaded compiler
-        solcCache.set(normalizedVersion, solcSnapshot);
-        resolve(solcSnapshot);
-      }
-    });
-  });
-}
-
-// Verify source code (Etherscan/Hardhat compatible)
 export async function verifySourceCode(params: {
   contractaddress: string;
   sourceCode: string;
@@ -251,21 +199,17 @@ async function processVerification(guid: string) {
       `🔧 Requested compiler version: ${compilerVersion} (normalized: ${normalizedVersion})`
     );
 
-    const solcCompiler = await loadSolcVersion(compilerVersion);
-
-    // Compile with the loaded compiler
+    // Verified release build from the local cache, executed in a worker thread
     let compiledOutput;
     try {
-      const compileFunc = (solcCompiler as { compile: (input: string) => string }).compile;
-      compiledOutput = JSON.parse(compileFunc(JSON.stringify(inputJson)));
-      console.log(`✅ Compiled with solc ${normalizedVersion}`);
+      const compiled = await compileStandardJson({ version: compilerVersion, input: inputJson });
+      compiledOutput = JSON.parse(compiled.output);
+      console.log(`✅ Compiled with solc ${compiled.longVersion} in ${compiled.durationMs} ms`);
     } catch (compileError) {
+      const described = describeCompileError(compileError);
       await VerificationJob.updateOne(
         { guid },
-        {
-          status: 'fail',
-          message: `Compilation failed: ${compileError instanceof Error ? compileError.message : 'Unknown error'}`,
-        }
+        { status: 'fail', message: `Compilation failed (${described.code}): ${described.message}` }
       );
       return;
     }

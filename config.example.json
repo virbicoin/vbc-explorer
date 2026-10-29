@@ -172,6 +172,15 @@
     "confirmations": 12,
     "maxReorgDepth": 64
   },
+  "compiler": {
+    "cacheDir": "~/.cache/vbc-solc",
+    "concurrency": 1,
+    "maxQueue": 5,
+    "timeoutMs": 60000,
+    "maxOldGenerationSizeMb": 1024,
+    "allowedVersions": [],
+    "_comment": "Solidity compilers for contract verification run in a worker thread. Release builds are downloaded from binaries.soliditylang.org, verified against the sha256 published in list.json and cached as <version>.js + <version>.sha256 in cacheDir (~ expands to the home directory; SOLC_CACHE_DIR overrides). allowedVersions is an optional allow-list such as [\"0.8.30\"] (empty = every release); nightly builds are always refused."
+  },
   "network": {
     "chainId": 1,
     "name": "Ethereum Mainnet",

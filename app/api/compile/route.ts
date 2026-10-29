@@ -1,3 +1,11 @@
+/**
+ * POST /api/compile — despite its name this route does not compile anything.
+ * `action: 'find'` returns the stored verification data of a contract and
+ * normalizes `Contract.compilerVersion` for display (writing a default when it
+ * is missing); `action: 'compile'` is a stub kept for API compatibility.
+ * Solidity is compiled only by lib/contract/compile-worker.ts through the
+ * verification routes (/api/contract/verify, /api/v2/..., Etherscan API).
+ */
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Contract } from '../../../models/index';
 import { withRateLimit } from '@/lib/security/rate-limits';

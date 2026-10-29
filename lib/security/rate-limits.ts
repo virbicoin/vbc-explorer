@@ -28,8 +28,11 @@ export interface RateLimitBucketConfig {
 export const RATE_LIMITS = {
   /** General read APIs (blocks, transactions, stats, DEX, config, ...). */
   api: { perMinute: 100 },
-  /** /api/compile, /api/contract/verify, v2 verification, Etherscan verifysourcecode: 5/min, one at a time. */
-  verify: { perMinute: 5, exclusive: 'solc' },
+  /**
+   * /api/compile, /api/contract/verify, v2 verification, Etherscan verifysourcecode: 5/min.
+   * Compiles run in a worker-thread queue (lib/contract/compile-worker.ts), so no mutex here.
+   */
+  verify: { perMinute: 5 },
   /** /api/contract/interact (POST). */
   interact: { perMinute: 30 },
   /** /api/tokens/[address]?tokenId= — reads tokenURI and fetches external metadata. */

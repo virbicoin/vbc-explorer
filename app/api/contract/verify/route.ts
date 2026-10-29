@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Contract } from '../../../../models/index';
 import Web3 from 'web3';
-import solc from 'solc';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -11,7 +10,8 @@ import {
   getSecurityHeaders,
   isValidContentType,
 } from '../../../../lib/security';
-import { normalizeCompilerVersion, SOLC_RELEASES } from '../../../../lib/contract/solc-utils';
+import { normalizeCompilerVersion } from '../../../../lib/contract/solc-utils';
+import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
 import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
 
 // Function to read config
@@ -41,13 +41,6 @@ const WEB3_PROVIDER_URL =
   process.env.WEB3_PROVIDER_URL || `http://${config.nodeAddr}:${config.port}`;
 const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
 
-// Get the installed solc version
-const installedSolcVersion = (solc as unknown as { version: () => string }).version?.() || '0.8.30';
-console.log(`📦 Installed solc version: ${installedSolcVersion}`);
-
-// Cache for loaded solc compilers
-const solcCache: Map<string, unknown> = new Map();
-
 // Supported compiler versions
 const SUPPORTED_COMPILER_VERSIONS = [
   '0.8.33',
@@ -71,61 +64,6 @@ const SUPPORTED_COMPILER_VERSIONS = [
   '0.8.15',
   '0.6.12', // Legacy support
 ];
-
-// Load a specific version of solc compiler
-async function loadSolcVersion(version: string): Promise<unknown> {
-  const normalizedVersion = normalizeCompilerVersion(version);
-
-  // Check cache first
-  if (solcCache.has(normalizedVersion)) {
-    console.log(`📦 Using cached solc ${normalizedVersion}`);
-    return solcCache.get(normalizedVersion);
-  }
-
-  // Get the full release name for this version
-  const fullReleaseName = SOLC_RELEASES[normalizedVersion];
-
-  if (!fullReleaseName) {
-    console.warn(
-      `⚠️ No release mapping for solc ${normalizedVersion}, falling back to installed solc`
-    );
-    return solc;
-  }
-
-  return new Promise((resolve) => {
-    console.log(`📥 Loading solc ${normalizedVersion} (${fullReleaseName}) from remote...`);
-
-    // Use solc.loadRemoteVersion to load the specific version
-    // The version string must be the full release name like "v0.8.30+commit.73712a01"
-    (
-      solc as unknown as {
-        loadRemoteVersion: (
-          version: string,
-          callback: (err: Error | null, solcSnapshot: unknown) => void
-        ) => void;
-      }
-    ).loadRemoteVersion(fullReleaseName, (err: Error | null, solcSnapshot: unknown) => {
-      if (err) {
-        console.error(`❌ Failed to load solc ${normalizedVersion}:`, err.message);
-        // Fall back to installed solc
-        console.log(`⚠️ Falling back to installed solc`);
-        resolve(solc);
-      } else {
-        console.log(`✅ Successfully loaded solc ${normalizedVersion}`);
-        // Cache the loaded compiler
-        solcCache.set(normalizedVersion, solcSnapshot);
-        resolve(solcSnapshot);
-      }
-    });
-  });
-}
-
-// Check if version matches installed solc (major.minor only)
-function isVersionCompatible(requestedVersion: string): boolean {
-  const requested = requestedVersion.split('.').slice(0, 2).join('.');
-  const installed = installedSolcVersion.split('+')[0].split('.').slice(0, 2).join('.');
-  return requested === installed;
-}
 
 // Helper function to strip NatSpec comments to avoid DocstringParsingError
 // NatSpec comments (/** ... */) can cause compilation errors if @param doesn't match
@@ -207,7 +145,7 @@ function findBestCompilerVersion(requestedVersion: string): string {
   }
 
   // For non-supported versions, warn and use the requested version anyway
-  // (loadSolcVersion will handle fallback if needed)
+  // (the compiler cache serves release builds only; unknown versions fail with 400)
   if (normalizedVersion.startsWith('0.8.') || normalizedVersion.startsWith('0.6.')) {
     console.warn(
       `⚠️ Requested version ${normalizedVersion} is not in the pre-defined list, but will try to load it.`
@@ -600,39 +538,33 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
 
     let compiledOutput;
     try {
-      // Load the requested compiler version dynamically
       const normalizedVersion = normalizeCompilerVersion(finalCompilerVersion);
-      console.log(
-        `🔧 Loading compiler version: ${finalCompilerVersion} (normalized: ${normalizedVersion})...`
-      );
+      console.log(`🔧 Compiling with solc ${normalizedVersion} in a worker thread...`);
 
-      const solcCompiler = await loadSolcVersion(finalCompilerVersion);
-
-      // Compile with the loaded compiler
-      const compileFunc = (solcCompiler as { compile: (input: string) => string }).compile;
-      compiledOutput = JSON.parse(compileFunc(JSON.stringify(input)));
-      console.log(`✅ Compiled with solc ${normalizedVersion}`);
+      // Verified release build from the local cache, executed off the event loop
+      const compiled = await compileStandardJson({ version: finalCompilerVersion, input });
+      compiledOutput = JSON.parse(compiled.output);
+      console.log(`✅ Compiled with solc ${compiled.longVersion} in ${compiled.durationMs} ms`);
     } catch (compileError) {
-      console.error('❌ Compilation error:', compileError);
-
-      // Format compilation errors for better display
-      let errorDetails = compileError;
-      if (typeof compileError === 'string') {
-        errorDetails = { message: compileError };
-      } else if (compileError instanceof Error) {
-        errorDetails = {
-          message: compileError.message,
-          stack: compileError.stack,
-        };
-      }
+      const described = describeCompileError(compileError);
+      console.error('❌ Compilation error:', described.code, described.message);
 
       return NextResponse.json(
         {
-          error: 'Compilation failed',
-          details: errorDetails,
-          message: 'The source code could not be compiled. Please check the syntax and try again.',
+          error: described.status >= 500 ? 'Compiler unavailable' : 'Compilation failed',
+          code: described.code,
+          details: { message: described.message },
+          message:
+            described.status >= 500
+              ? 'The compiler could not run right now. Please try again later.'
+              : 'The source code could not be compiled. Please check the compiler version and the syntax and try again.',
         },
-        { status: 400 }
+        {
+          status: described.status,
+          headers: described.retryAfter
+            ? { ...getSecurityHeaders(), 'Retry-After': String(described.retryAfter) }
+            : getSecurityHeaders(),
+        }
       );
     }
 
