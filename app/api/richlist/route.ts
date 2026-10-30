@@ -1,5 +1,6 @@
 // Richlist API
 import { NextRequest, NextResponse } from 'next/server';
+import { countAll } from '@/lib/db/count';
 import { Account, Contract } from '@/lib/models';
 import { connectToDatabase } from '@/lib/db';
 import { loadConfig } from '@/lib/config';
@@ -187,8 +188,8 @@ export async function POST(request: NextRequest) {
     const totalSupplyWei = totalSupplyNative * 1e18;
 
     if (!count) {
-      // Get the number of all accounts
-      count = await Account.countDocuments({});
+      // Number of all accounts, from the collection metadata (lib/db/count.ts)
+      count = await countAll(Account);
     }
 
     // Check sort order

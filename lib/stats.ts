@@ -1,4 +1,5 @@
 import { connectDB as connectDBFromModels } from '../models/index';
+import { countAll } from './db/count';
 import { requireDb } from './db/get-db';
 
 // Use the connectDB function from models/index.ts
@@ -221,7 +222,7 @@ export async function getChainStats() {
   let activeAddresses = 0;
   try {
     // First try to get from accounts collection
-    activeAddresses = (await db?.collection('Account').countDocuments()) || 0;
+    activeAddresses = db ? await countAll(db.collection('Account')) : 0;
 
     // If accounts collection is empty, calculate from transactions
     if (activeAddresses === 0) {

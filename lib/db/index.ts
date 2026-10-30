@@ -13,6 +13,9 @@ export { BaseRepository, type PaginationOptions, type PaginatedResult } from './
 // Native Db handle helpers
 export { assertDb, requireDb, tryGetDb, getDb } from './get-db';
 
+// Unfiltered totals from collection metadata (never an empty-filter countDocuments)
+export { countAll, type CountableCollection } from './count';
+
 // Connection-string resolution (environment > config.json, never a default)
 export {
   resolveMongoUri,

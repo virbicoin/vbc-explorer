@@ -28,12 +28,16 @@ export async function GET(request: NextRequest) {
     // Type filter
     const type = searchParams.get('type'); // block or uncle
 
-    // Get blocks
-    const blocks = await Block.find({})
+    // Get blocks. One extra row tells whether a next page exists, which avoids
+    // counting the whole collection (the former unfiltered countDocuments walked
+    // 3.2 M index entries per request; see lib/db/count.ts).
+    const rows = await Block.find({})
       .sort({ number: -1 })
       .skip(skip)
-      .limit(pagination.limit)
+      .limit(pagination.limit + 1)
       .lean();
+    const hasNextPage = rows.length > pagination.limit;
+    const blocks = hasNextPage ? rows.slice(0, pagination.limit) : rows;
 
     // Get transaction counts for each block
     const blockNumbers = blocks.map((b) => b.number);
@@ -88,10 +92,6 @@ export async function GET(request: NextRequest) {
       blob_gas_price: null,
       burnt_blob_fees: null,
     }));
-
-    // Get next page info
-    const totalCount = await Block.countDocuments({});
-    const hasNextPage = skip + blocks.length < totalCount;
 
     const response = {
       items,

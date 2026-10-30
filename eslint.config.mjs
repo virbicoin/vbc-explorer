@@ -43,6 +43,28 @@ export default [
     },
   },
   {
+    // Unfiltered collection counts walk the whole _id index (1 s+ on Block in
+    // production). Totals go through countAll() in lib/db/count.ts; filtered
+    // countDocuments(filter) calls are fine. Tests may count exactly.
+    files: ['app/**/*.{ts,tsx}', 'lib/**/*.ts', 'models/**/*.ts', 'tools/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "CallExpression[callee.property.name='countDocuments'][arguments.length=0]",
+          message:
+            'countDocuments() without a filter scans the whole index; use countAll() from lib/db/count.ts (estimatedDocumentCount).',
+        },
+        {
+          selector:
+            "CallExpression[callee.property.name='countDocuments'] > ObjectExpression.arguments:first-child[properties.length=0]",
+          message:
+            'countDocuments({}) scans the whole index; use countAll() from lib/db/count.ts (estimatedDocumentCount).',
+        },
+      ],
+    },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     rules: {
       ...js.configs.recommended.rules,

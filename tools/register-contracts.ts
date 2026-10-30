@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
 import { connectDB, ensureIndexesOnStartup, Contract } from '../models/index';
+import { countAll } from '../lib/db/count';
 
 // Read config
 const readConfig = () => {
@@ -197,7 +198,7 @@ async function registerContracts() {
   console.log('\n✅ Contract registration complete!');
 
   // Show summary
-  const totalContracts = await Contract.countDocuments();
+  const totalContracts = await countAll(Contract);
   const verifiedContracts = await Contract.countDocuments({ verified: true });
   console.log(`\n📊 Database Summary:`);
   console.log(`   Total contracts: ${totalContracts}`);
