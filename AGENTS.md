@@ -10,6 +10,7 @@ Practical instructions for AI coding agents working in this repository.
 ## Quick Start
 - Requirements: Node.js 22.18+ or 24.11+ (Node 24 LTS per `.nvmrc`; Node 20 is end-of-life since 2026-04-30 and no longer satisfies Vitest 5 / Babel 8), npm >= 10.
 - Install: `npm install`
+- Environment: copy `.env.example` to `.env` (or `.env.local`, which takes precedence); `MONGODB_URI` is required. Next.js and every `tools/*.ts` (through `lib/env.ts`, always their first import) read these files. There is no default URI: `connectDB()` stops with `MissingMongoUriError`. Credentials never go into `ecosystem.config.json`, pm2's environment, logs, docs or chat.
 - Dev server: `npm run dev`
 - Quality gate: `npm run check`
 - Tests: `npm run test` (Vitest; `test:watch` / `test:coverage` are also available). DB tests use mongodb-memory-server, which downloads a MongoDB 8.0 binary on first run (`MONGOMS_SYSTEM_BINARY=/usr/bin/mongod` uses a local binary instead).
@@ -52,6 +53,8 @@ For new or modified API handlers in `app/api/**`:
 8. Never persist values a client asserts about a token (creator, name, supply, metadata). Launchpad registration resolves the address through `resolveFactoryToken()` (`lib/launchpad/factory.ts`: `isFactoryToken` / `getAllTokens` + `tokenInfo` via eth_call) and writes chain values only; such POSTs use the `write` bucket. `GET` handlers never write.
 9. Never run solc on the request thread and never call `solc.loadRemoteVersion`. Compile only through `compileStandardJson()` (`lib/contract/compile-worker.ts`: worker thread, timeout, heap limit, queue → 503), which loads compilers from the sha256-verified cache (`lib/contract/compiler-cache.ts`; release builds only). `grep -rn "solc\." app lib` must only match those two files.
 10. Every `limit` / `page` (and DataTables `start` / `length`) goes through `validatePagination()` with an explicit `maxLimit`, followed by `rejectDeepPagination()` (`page × limit` > 100,000 → 400).
+11. Never count a collection without a filter: `countDocuments()` / `countDocuments({})` walk the whole index (1 s+ on Block) and ESLint rejects them. Totals go through `countAll()` (`lib/db/count.ts`, `estimatedDocumentCount`); keep `countDocuments(filter)` for filtered counts, and decide "has next page" from one extra row rather than a total.
+12. An address without contract code is never a token: `POST /api/launchpad/register` answers `404 NO_CODE` before any DB or factory lookup, `registerFactoryToken()` skips such factory entries, `tools/tokens.ts` checks `eth_getCode` before creating a record, and existing records are hidden (never deleted) with `hiddenReason: 'no-code'` by `flag-spam-tokens --audit-code`; addresses with token transfers are only reported.
 
 ## Data and Sync Notes
 - Tools in `tools/` are production-relevant and use memory-limited scripts in `package.json`.
@@ -61,6 +64,9 @@ For new or modified API handlers in `app/api/**`:
 - Names written to `tokens` / `Contract` must pass `hiddenFields()` (`lib/security/display-name.ts`) so URL-like or control-character names are flagged `hidden`.
 - `tools/stats.ts` reads `RESCAN=<interval>:<range>` (range × interval blocks back from the head) or `RESCAN_FROM=<height>` (height → head); `tools/repair-chain.ts` prints the latter after a repair, and both forms exit when done.
 - The Launchpad factory → `tokens` import lives in `lib/launchpad/sync.ts` (`syncLaunchpadTokens`), run by `tools/tokens.ts` and `POST /api/launchpad/sync`; it never rewrites existing names or attributions, only adds `factoryVerified` / `factory`.
+- Production runs MongoDB with `security.authorization: enabled`: the application user has `readWrite` on `explorerDB` and cannot run `profile`; administrative commands use a separate admin account whose password is not stored anywhere in the repository. The URI comes from `.env` through `lib/env.ts` / `lib/db/uri.ts`; never reintroduce a default `mongodb://localhost` fallback.
+- Backups use `mongodump --config <YAML with a uri: line>` and restores `mongorestore --config ... --gzip --drop` (README "Backup and Restore"); never pass `--uri user:password@...` or `-p <password>` on a command line, in docs or in examples.
+- `hiddenReason` values `manual` and `no-code` are sticky (`STICKY_HIDDEN_REASONS`): the automatic name classification never clears them. The badge wording comes from `hiddenNameLabel()` / `hiddenReasonDescription()`.
 
 ## Database Models and Indexes
 - Define Mongoose models only in `models/index.ts`. Never write inline `mongoose.models.X || mongoose.model('X', schema)` in routes or tools; import the model instead (`grep "mongoose.model("` must only match `models/index.ts`).
@@ -71,7 +77,7 @@ For new or modified API handlers in `app/api/**`:
 - DB tests run against mongodb-memory-server (`tests/db/`, `tests/tools/`); never point tests at a real database.
 
 ## Known Pitfalls
-- Secrets must not be committed. Use `.env.local` and `${ENV_VAR}` references in `config.json`.
+- Secrets must not be committed. Use `.env` (or `.env.local`) and `${ENV_VAR}` references in `config.json`; never put them in `ecosystem.config.json`, pm2's environment or log output (`describeMongoUri()` logs host and database only).
 - DEX endpoints rely on cache and blacklist behavior from `lib/dex/cache-service.ts`; preserve that behavior when editing.
 - Prefer singleton/provider patterns already implemented in `lib/web3/` and `lib/db/connection.ts`.
 - Only `connectDB()` in `models/index.ts` calls `mongoose.connect`; `lib/db/connection.ts` is a wrapper over it and pool / timeout options live in `config.database.options` alone.
@@ -82,5 +88,5 @@ For new or modified API handlers in `app/api/**`:
 - Setup and feature overview: [README.md](README.md)
 - Security policy and hardening details: [SECURITY.md](SECURITY.md)
 - Config template: [config.example.json](config.example.json)
-- Environment variables: [.env.example](.env.example)
+- Environment variables: [.env.example](.env.example); loading: [lib/env.ts](lib/env.ts), URI resolution: [lib/db/uri.ts](lib/db/uri.ts)
 - nginx examples: [docs/nginx-explorer.conf.example](docs/nginx-explorer.conf.example) (explorer, trusted client IP), [docs/nginx-rpc.conf.example](docs/nginx-rpc.conf.example) + [docs/njs/rpc-filter.js](docs/njs/rpc-filter.js) (public RPC method filter)

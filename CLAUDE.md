@@ -107,7 +107,7 @@ hooks/                  # カスタム React フック
   
 lib/                    # ユーティリティライブラリ
   cache/                # インメモリキャッシュ
-  db/                   # データベース抽象化レイヤー（get-db.ts, indexes.ts）
+  db/                   # データベース抽象化レイヤー（get-db.ts, indexes.ts, uri.ts: MONGODB_URI 解決・既定なし, count.ts: estimatedDocumentCount）
   dex/                  # DEX 固有ユーティリティ & キャッシュサービス
   security/             # 入力検証（validation.ts, url.ts, pagination.ts）・レート制限（rate-limits.ts）・SSRF 安全 fetch（safe-fetch.ts）・表示名判定（display-name.ts）
   sync/                 # リオーグ対応の同期共通モジュール（normalize / reorg / chain-check / web3-node）
@@ -121,6 +121,7 @@ lib/                    # ユーティリティライブラリ
   client-config.ts      # クライアント側設定
   config.ts             # サーバー側設定
   db.ts                 # データベース接続
+  env.ts                # .env / .env.local の読み込み（tools の最初の import。資格情報はログに出さない）
   etherUnits.ts         # 単位変換
   filters.ts            # データフィルタ
   launchpad-token-source.ts # Launchpad トークンデータ
@@ -244,6 +245,10 @@ npm run repair-chain -- --check       # 保存済みチェーンの parentHash �
 npm run repair-chain -- --fix         # 孤児ブロックをノードの正規ブロックで置換（--dry-run あり）
 npm run flag-spam-tokens -- --dry-run # URL 名トークンの hidden 判定を表示（引数なしで書き込み）
 npm run flag-spam-tokens -- --audit-launchpad # ファクトリーが知らない Launchpad トークンを列挙し factoryVerified を記録
+npm run flag-spam-tokens -- --audit-code --dry-run # コードのないアドレス（eth_getCode が 0x）の token / Contract を列挙（--dry-run なしで hidden: no-code）
+
+# バックアップ（URI は YAML 経由で渡し、コマンド行や ps に出さない。アプリ用ユーザーで可）
+umask 077; printf 'uri: %s\n' "$(sed -n 's/^MONGODB_URI=//p' .env)" > /tmp/md.yaml && mongodump --config /tmp/md.yaml --gzip --out "$HOME/backup/explorerDB-$(date +%F)"; rm -f /tmp/md.yaml
 RESCAN_FROM=<height> npm run stats    # 指定高さから先端まで BlockStat を再計算（repair-chain が案内する形）
 
 # PM2 プロセス管理
@@ -430,6 +435,8 @@ API は、次の複数の手がかりからトークンの種類を推定しま�
 
 メイン設定ファイル: `config.json`（git 管理外。`config.example.json` をテンプレートとして使用）
 
+秘密情報は `.env`（または `.env.local`。後者が優先。どちらも git 管理外）に置く。`MONGODB_URI` は必須で既定値はない（未設定なら `connectDB()` が `MissingMongoUriError` で止まる）。Next.js も tools も同じファイルを読む（tools は `lib/env.ts` を最初に import する）。`config.json` の `database.uri` は `${MONGODB_URI}` のまま。本番の MongoDB は 2026-10-30 から認証あり（アプリ用ユーザーは explorerDB の readWrite。管理ユーザーのパスワードはサーバー管理者の手元にあり、リポジトリには置かない）。
+
 主な設定セクション:
 - `web3Provider` - RPC エンドポイント
 - `database` - MongoDB 接続
@@ -495,6 +502,37 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 ### 耐障害性・汎用化
 - `proxy.ts` の `/address` タイプ判定 fetch に AbortController（2s）を追加 → DB 停止時も `/address` がハングしない（従来 ~15s）。
 - DEX サブシステム（`geckoterminal/info`・`pool`、`dex` ページ、`useFarming` のウォレット追加 `nativeCurrency`）の真のハードコード固有名を config 由来に。クライアントは `lib/client-config`（`getNetworkName`/`getCurrencyConfig`）または `useDexConfig`（`currency` フィールド追加）から取得。設定済みの本番では出力は不変。
+
+## 新機能（2026-10）: 第 4 次修正 — .env 読み込み・全件カウント・nginx 例・README・token 整理（v0.8.8）
+
+第 3 次の本番反映と運用タスク E-1〜E-4（njs フィルター、MongoDB 認証、crowdsec、mongod ログローテーション）で見つかった残件への対応。リポジトリ側はタスク A〜E、運用側（本番サーバー）はタスク F。
+
+### 設計ルール（必ず守る）
+- **tools は `.env` を自分で読む**。`tools/*.ts` の最初の import は `import '../lib/env';`（`process.loadEnvFile()` で `.env.local` → `.env` の順に読む。環境 > .env.local > .env で、既にある変数は上書きしない。ファイルがなければ何もしない）。dotenv は追加しない。ログに出すのはファイル名と MONGODB_URI のホスト・DB 名だけ（ユーザー名・パスワードは出さない）
+- **既定の MongoDB URI を復活させない**。URI は `lib/db/uri.ts` の `resolveMongoUri()`（環境変数 → config.json の `${VAR}` 置換）だけが決め、空なら `MissingMongoUriError` で止まる（無認証の localhost へ接続しない）。`config.json` の `${MONGODB_URI}` が空に解決された場合も同じエラー。エラーメッセージに URI を含めない。資格情報を `ecosystem.config.json`・pm2 の env・README・コミット・ログ・チャットに出さない
+- **フィルターなしの `countDocuments` を書かない**。総件数は `countAll()`（`lib/db/count.ts`、`estimatedDocumentCount`）。フィルター付きの `countDocuments(filter)` はそのまま（`estimatedDocumentCount` はフィルターを受け付けない）。ESLint の `no-restricted-syntax` が app/ lib/ models/ tools/ で引数なし・空オブジェクトの `countDocuments` をエラーにする。`/api/v2/blocks` の `hasNextPage` は `limit + 1` 件取得で判定
+- **token レコードを削除しない**。コードのないアドレス（`eth_getCode` が `0x`）は `hidden: true, hiddenReason: 'no-code'` で非表示。tokentransfers が 1 件でもあるアドレス（selfdestruct の可能性）は自動で非表示にせず「要確認」として出す。`manual` と `no-code` は名前判定の自動パスで上書きしない（`STICKY_HIDDEN_REASONS`）
+- **コードのないアドレスを token として作らない**。`POST /api/launchpad/register` は DB 照会・ファクトリー照会の前に `eth_getCode` を見て 404（`code: NO_CODE`。既存レコードがあっても 200 を返さない）、`registerFactoryToken()` は `skipped`、`tools/tokens.ts` は ERC-20 / VRC-721 / LP の作成前に確認
+- `docs/njs/rpc-filter.js` の禁止プレフィックスや判定は変えない（本番と sha256 一致）。変える場合は本番への反映手順（cp → `nginx -t` → reload）を同じ PR に書く
+- バックアップ・復元・mongosh の手順は資格情報をコマンド行に出さない形で書く（`mongodump --config <uri を書いた YAML>`、`set -a; . .env; set +a` → `mongosh --nodb --eval 'const db = connect(process.env.MONGODB_URI); …'`）。`-p password` の例は書かない。管理ユーザーのパスワードの置き場所は「サーバー管理者の手元」とだけ書く
+
+### 実装の要点
+- `lib/env.ts`: `loadEnvFiles({ cwd, files, log })`（import 時に実行）、`describeMongoUri()`（ホスト・DB・認証有無のみ）。`lib/db/uri.ts`: `resolveMongoUri()`、`MissingMongoUriError` / `InvalidMongoUriError`。`models/index.ts` の `connectDB()` は設定エラーを再 throw し、同期的に失敗した Promise をキャッシュしない（次の呼び出しで再試行できる）。`lib/config.ts` の `getMongoDBURI()` も空なら throw
+- `lib/db/count.ts`: `countAll(model | collection)`。置換箇所: `/api/v2/blocks`（`limit + 1` 方式）、`/api/v2/stats`（Transaction / Account）、`/api/richlist`（Account）、`lib/stats.ts`（Account）、`lib/api/blockscout/handlers.ts` の getChainSize（Block / Transaction）、`tools/register-contracts.ts`
+- `lib/security/display-name.ts`: `HiddenReason` に `'no-code'`、`hiddenNameLabel()` / `hiddenReasonDescription()`（理由別のバッジ文言）。`components/DisplayName.tsx` は `hiddenReason` を受け取り、token / address / contract ページが API の値を渡す
+- `lib/launchpad/factory.ts`: `FactoryClient.getCode()`、`isContractCode()` / `hasContractCode()`。`lib/launchpad/sync.ts`: `RegistrationStatus` に `'skipped'`、`LaunchpadSyncResult.skipped`
+- `tools/flag-spam-tokens.ts`: `--audit-code [--dry-run]`（`auditNoCode(dryRun, { getCode, batchSize })`。10 件ずつ、エラーは数えて続行、`needsReview` を別出し。本番の 6 件は旧 register API が creator の EOA 等を name Unknown / symbol UNKNOWN / totalSupply 0 で保存したもの）
+- `docs/nginx-rpc.conf.example`: 本番と同じ構成（http 文脈の `js_import` / `limit_req_zone`、`location /` の OPTIONS → 204 / POST → `rewrite ^ /_rpc_post last` / GET → 4000、`/_rpc_post`、`/_rpc` に `subrequest_output_buffer_size 8m`）と検証コマンド（大きな応答の `cmp`、80 並列のレート制限）。`docs/nginx-explorer.conf.example` は real_ip を `snippets/cloudflare-real-ip.conf` の include で記述（Cloudflare の帯が増えたら crowdsec の whitelist と同時に更新）
+- テスト: `tests/lib/env.test.ts`、`tests/db/db-connect.test.ts`（URI なしで reject）、`tests/tools/optimize-indexes.test.ts`（作業ディレクトリの `.env` から読む / 未設定で停止）、`tests/api/v2-blocks-stats.test.ts`、`tests/tools/flag-spam-tokens-audit-code.test.ts`、`tests/api/launchpad-register.test.ts`（404 `NO_CODE`、sync の `skipped`）、`tests/security/display-name.test.ts`（理由別文言）
+
+### 本番反映時の注意
+- 反映前に mongodump（上記の `--config` YAML 経由。アプリ用ユーザーで取れる）。`git pull --ff-only origin main` → `npm ci --include=dev` → `npm run check` → `npm test` → `npm run build`（NODE_ENV を export したシェルで `npm ci` を走らせない）
+- pm2 の保存環境に残っている `MONGODB_URI`（2026-10-30 の応急処置）を外す: MONGODB_URI を export していないシェルで `pm2 delete sync stats richlist tokens price && pm2 start ecosystem.config.json --only sync,stats,richlist,tokens,price && pm2 restart explorer && pm2 save`。6 アプリが「MongoDB connected successfully」、`pm2 jlist` の pm2_env に MONGODB_URI がない、mongod.log の Authentication failed が増えないこと。`env -u MONGODB_URI npm run optimize-indexes -- --check` が 0。`/home/aoi/backup/pm2-restart-with-env.sh` は不要になる（削除するか「不要」と注記）
+- `/api/v2/blocks?limit=10` を 10 回計測して全部 100 ms 未満。`/api/v2/stats` と `/api/richlist` の応答形は従来どおり
+- `npm run flag-spam-tokens -- --audit-code --dry-run` で 6 件（name が Unknown の token）を確認してから本実行。`/api/tokens` から消え、それらへの register が 404 になること
+- nginx: 本番の vhost と `docs/nginx-rpc.conf.example` の diff が server_name・証明書・ログ・ブロック数だけであることを確認（本番の設定変更は不要）。README のバックアップ手順をそのまま実行して成功すること
+- 運用タスク F（F-1 crowdsec のデータファイル不整合、F-2 ovbc の `--jsonrpc-apis` 縮小＝再起動を伴うので要承認、F-3 Cloudflare 経由の遮断＝方針決定と API トークンが先、F-4 apt 保留更新・`pm2 reset rpc`）はユーザーが本番で実施する。推奨順は F-1 → F-4 → F-2 → F-3
+- ロールバック: 前の commit に戻してビルド・再起動。旧コードは `.env` を読まないので pm2-restart-with-env.sh でツールアプリを起動する。hidden にした token は `flag-spam-tokens -- --address 0x... --unhide` で戻せる
 
 ## 新機能（2026-10）: 第 3 次修正 — Launchpad 認証・solc 分離・ページング・運用（v0.8.7）
 
