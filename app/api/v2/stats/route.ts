@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { countAll } from '@/lib/db/count';
 
 // Function to read config
 const readConfig = () => {
@@ -48,11 +49,9 @@ export async function GET(request: NextRequest) {
     const latestBlock = await Block.findOne({}).sort({ number: -1 }).lean();
     const blockNumber = latestBlock?.number || 0;
 
-    // Get total transactions
-    const totalTransactions = await Transaction.countDocuments({});
-
-    // Get total addresses
-    const totalAddresses = await Account.countDocuments({});
+    // Totals from collection metadata (lib/db/count.ts), not a full index walk
+    const totalTransactions = await countAll(Transaction);
+    const totalAddresses = await countAll(Account);
 
     // Get verified contracts count
     const verifiedContracts = await Contract.countDocuments({

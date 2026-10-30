@@ -4,7 +4,8 @@
  * Thin wrapper around the single connector in `models/index.ts` (connectDB).
  * There is exactly one `mongoose.connect()` in the codebase; pool sizes,
  * timeouts, `autoIndex: false` and the URI resolution (environment >
- * config.json > default) live there and in `config.database.options`. This
+ * config.json, no default: see lib/db/uri.ts) live there and in
+ * `config.database.options`. This
  * module only keeps the historical API (`db`, `connectDatabase`,
  * `disconnectDatabase`) used through `lib/db`.
  */

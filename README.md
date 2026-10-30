@@ -764,21 +764,27 @@ After `--fix`: recompute statistics from the lowest replaced height with `RESCAN
 
 ### Environment Variables
 
-For security, sensitive configuration values should be set via environment variables:
+Secrets live in environment files in the project root, never in `config.json`, `ecosystem.config.json` or pm2's saved environment:
 
 ```bash
-# Copy the example environment file
-cp .env.example .env.local
+# Copy the example and fill in your values
+cp .env.example .env
 
-# Edit with your values (DO NOT commit .env.local)
-vi .env.local
+# Edit (DO NOT commit .env or .env.local)
+vi .env
 ```
+
+- `.env` is read first, `.env.local` overrides it, and a variable that is already set in the environment wins over both. Production uses `.env`.
+- Next.js and the CLI tools read the same files: every `tools/*.ts` starts with `import '../lib/env'`, which loads them with `process.loadEnvFile()` before anything else runs. `pm2 start ecosystem.config.json` from the project root is enough; no `export`, no `--update-env`.
+- `MONGODB_URI` is required and has no default: `connectDB()` stops with `MONGODB_URI is not set` instead of connecting to an unauthenticated `localhost` (`lib/db/uri.ts`).
+- Percent-encode reserved characters in the password (`@` → `%40`, `:` → `%3A`, `/` → `%2F`, `?` → `%3F`, `#` → `%23`).
+- Only the host and database name of the URI are ever logged; credentials are not.
 
 **Required environment variables:**
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `MONGODB_URI` | MongoDB connection string | `mongodb://user:pass@localhost:27017/db` |
+| `MONGODB_URI` | MongoDB connection string (a user with `readWrite` on the database) | `mongodb://explorer:<percent-encoded-password>@localhost:27017/explorerDB?authSource=explorerDB` |
 
 **Optional environment variables:**
 
@@ -786,6 +792,8 @@ vi .env.local
 |----------|-------------|---------|
 | `WEB3_PROVIDER_URL` | Web3 RPC endpoint | `http://localhost:8545` |
 | `NODE_ENV` | Environment mode | `development` |
+| `TRUSTED_IP_HEADER` | Header that carries the real client IP (set by nginx) | `X-Client-IP` |
+| `SOLC_CACHE_DIR` | Directory of the sha256-verified Solidity compilers | `~/.cache/vbc-solc` |
 
 ### Using Environment Variables in config.json
 
@@ -799,9 +807,11 @@ You can reference environment variables in `config.json` using `${VAR_NAME}` syn
 }
 ```
 
+An unset variable resolves to an empty string with a warning. For `database.uri` an empty value is an error: the process stops with `MONGODB_URI is not set` rather than falling back to a default.
+
 ### Security Best Practices
 
-1. **Never commit credentials** - Use `.env.local` for sensitive values
+1. **Never commit credentials** - Use `.env` / `.env.local` for sensitive values and keep them out of `config.json`, `ecosystem.config.json` and pm2's environment
 2. **Configure CORS** - Restrict origins in production
 3. **Enable rate limiting** - Protect API endpoints from abuse
 4. **Use HTTPS** - Enable Strict-Transport-Security in production
@@ -828,7 +838,7 @@ The only code that fetches a URL coming from the chain (`tokenURI`) is `safeFetc
 
 ### Hidden (spam) Tokens
 
-Tokens and contracts whose name or symbol looks like a URL, contains control / zero-width / bidi characters or HTML, or is too long are flagged `hidden` when they are written (sync, token scan, Launchpad registration). List APIs skip them, detail pages show a badge with the shortened address instead of the name, and names are always rendered through `components/DisplayName.tsx` (control characters removed, length capped, never linkified). Backfill or manage flags with:
+Tokens and contracts whose name or symbol looks like a URL, contains control / zero-width / bidi characters or HTML, or is too long are flagged `hidden` when they are written (sync, token scan, Launchpad registration). Records whose address has no contract code at all (`eth_getCode` is empty: an externally owned account registered as a token by the old Launchpad API, a typo, a self-destructed contract) are hidden by the `--audit-code` pass with `hiddenReason: 'no-code'`, and new records are never created for such addresses (the scanner, the Launchpad sync and `POST /api/launchpad/register`, which answers `404 NO_CODE`, all check the code first). List APIs skip hidden entries, detail pages show a badge worded after the reason with the shortened address instead of the name, and names are always rendered through `components/DisplayName.tsx` (control characters removed, length capped, never linkified). Backfill or manage flags with:
 
 ```bash
 npm run flag-spam-tokens -- --dry-run                 # list what would change
@@ -837,7 +847,10 @@ npm run flag-spam-tokens -- --address 0x... --hide    # hide one address (reason
 npm run flag-spam-tokens -- --address 0x... --unhide  # clear a flag
 npm run flag-spam-tokens -- --unhide-all              # clear every flag
 npm run flag-spam-tokens -- --audit-launchpad         # Launchpad-sourced tokens no factory knows → factoryVerified: false
+npm run flag-spam-tokens -- --audit-code --dry-run    # addresses without contract code (eth_getCode); omit --dry-run to hide them
 ```
+
+`--audit-code` never deletes anything and never hides an address that has token transfers in the database (a self-destructed contract looks the same to `eth_getCode`); those are listed as "needs review". Already hidden records keep their reason, and the automatic name pass never clears a `no-code` or `manual` flag.
 
 ### Solidity Compiler Isolation (v0.8.7)
 
@@ -874,7 +887,7 @@ For detailed security information, see [SECURITY.md](SECURITY.md).
 ### Prerequisites
 
 - **Node.js 22.18+ or 24.11+** (Node 24 LTS recommended, see `.nvmrc`) and npm 10+
-- **MongoDB 6.0+** (8.0 recommended) running on localhost:27017
+- **MongoDB 6.0+** (8.0 recommended) running on localhost:27017 with authentication enabled (see [Database Setup](#database-setup))
 - **EVM Node** running with RPC enabled (e.g., localhost:8545)
 - **PM2** installed globally: `npm install -g pm2`
 
@@ -887,16 +900,20 @@ cd vbc-explorer
 npm install
 ```
 
-2. **Configure environment** (optional)
+2. **Configure environment**
 ```bash
-# Copy and edit config file
+# Credentials: MONGODB_URI (required) and other secrets. Read by Next.js and by the tools.
+cp .env.example .env
+vi .env
+
+# Chain, DEX, Launchpad and compiler settings (keep "uri": "${MONGODB_URI}")
 cp config.example.json config.json
 vi config.json
 ```
 
 3. **Start all services with PM2**
 ```bash
-# Start all services (Web + Data sync)
+# Start all services (Web + Data sync) from the project root: the processes read .env themselves
 pm2 start ecosystem.config.json
 
 # Check status
@@ -935,8 +952,8 @@ pm2 status
 
 # View logs
 pm2 logs                    # All logs
-pm2 logs explorer-web       # Web service only
-pm2 logs explorer-sync      # Sync service only
+pm2 logs explorer           # Web service only
+pm2 logs sync               # Sync service only
 
 # Monitor resources
 pm2 monit
@@ -949,18 +966,20 @@ pm2 startup
 pm2 save
 ```
 
+Credentials are not part of `ecosystem.config.json` and must not be added to pm2's environment: every app reads `.env` from the project root on start. `pm2 restart <app> --update-env` is never needed for `MONGODB_URI`; after changing `.env`, `pm2 restart <app>` is enough.
+
 ### Individual Service Management
 
 ```bash
 # Start specific services only
-pm2 start ecosystem.config.json --only explorer-web
-pm2 start ecosystem.config.json --only explorer-sync
-pm2 start ecosystem.config.json --only explorer-stats
+pm2 start ecosystem.config.json --only explorer
+pm2 start ecosystem.config.json --only sync
+pm2 start ecosystem.config.json --only stats
 
 # Restart specific service
-pm2 restart explorer-web
-pm2 restart explorer-sync
-pm2 restart explorer-stats
+pm2 restart explorer
+pm2 restart sync
+pm2 restart stats
 ```
 
 ## Local Installation (Development)
@@ -985,18 +1004,19 @@ cd explorer
 npm install
 ```
 
-3. **Configure MongoDB Authentication**
+3. **Create the database user** (MongoDB with `security.authorization: enabled`, see [Database Setup](#database-setup))
 ```bash
-# Start MongoDB and create database user
-mongosh
+# As the MongoDB administrator; mongosh prompts for the passwords, nothing is typed on the command line
+mongosh -u admin --authenticationDatabase admin
 use explorerDB
 db.createUser({
   user: "explorer",
-  pwd: "your_secure_password",
+  pwd: passwordPrompt(),
   roles: [{ role: "readWrite", db: "explorerDB" }]
 })
 exit
 ```
+Then put the connection string into `.env`: `MONGODB_URI=mongodb://explorer:<percent-encoded-password>@localhost:27017/explorerDB?authSource=explorerDB`.
 
 4. **Set up configuration**
 ```bash
@@ -1063,7 +1083,7 @@ pm2 start ecosystem.config.json --only stats    # Statistics calculation only
 pm2 start ecosystem.config.json --only richlist # Richlist calculation only
 pm2 start ecosystem.config.json --only tokens   # Token tracking only
 pm2 start ecosystem.config.json --only price    # Price monitoring only
-pm2 start ecosystem.config.json --only web      # Web application only
+pm2 start ecosystem.config.json --only explorer # Web application only
 
 # Stop services
 pm2 stop all
@@ -1082,7 +1102,7 @@ pm2 logs stats
 pm2 logs richlist
 pm2 logs tokens
 pm2 logs price
-pm2 logs web
+pm2 logs explorer
 
 # Monitor processes
 pm2 monit
@@ -1118,6 +1138,8 @@ npm run optimize-indexes -- --check   # Exit 1 if any index is missing
 npm run repair-chain -- --check       # Verify parentHash links (exit 1 on mismatches)
 npm run repair-chain -- --fix         # Replace orphaned blocks with the node's canonical blocks
 npm run flag-spam-tokens -- --dry-run # Classify token/contract names (URL-like names are hidden)
+npm run flag-spam-tokens -- --audit-launchpad # Launchpad tokens no factory knows → factoryVerified: false
+npm run flag-spam-tokens -- --audit-code      # Hide token/contract records whose address has no code
 
 # PM2 management
 npm run pm2:start
@@ -1259,7 +1281,7 @@ All configuration is now centralized in `config.json`. The following settings ar
     }
   },
   "database": {
-    "uri": "mongodb://explorer:your_secure_password@localhost:27017/explorerDB?authSource=explorerDB",
+    "uri": "${MONGODB_URI}",
     "options": {
       "maxPoolSize": 20,
       "serverSelectionTimeoutMS": 15000,
@@ -1269,6 +1291,14 @@ All configuration is now centralized in `config.json`. The following settings ar
       "autoIndex": false,
       "autoCreate": false
     }
+  },
+  "compiler": {
+    "cacheDir": "~/.cache/vbc-solc",
+    "concurrency": 1,
+    "maxQueue": 5,
+    "timeoutMs": 60000,
+    "maxOldGenerationSizeMb": 1024,
+    "allowedVersions": null
   },
   "logging": {
     "level": "info",
@@ -1294,33 +1324,66 @@ All configuration is now centralized in `config.json`. The following settings ar
 
 ## Database Setup
 
-### MongoDB Authentication (Recommended)
+### MongoDB Authentication (Required in Production)
 
-For production environments, configure MongoDB authentication:
+Production runs MongoDB with `security.authorization: enabled`. The application connects as a user with `readWrite` on `explorerDB` (the `MONGODB_URI` in `.env`); administrative work (user management, `serverStatus`, profiling) is done with a separate admin account whose password stays with the server administrator and is never stored in the repository, in `config.json` or in pm2.
 
-1. **Create admin user**
+1. **Create the admin user** (before enabling authorization; `passwordPrompt()` asks for the password instead of putting it on the command line or in the shell history)
 ```bash
 mongosh
 > use admin
-> db.createUser({ user: "admin", pwd: "<secure_password>", roles: ["root"] })
+> db.createUser({
+    user: "admin",
+    pwd: passwordPrompt(),
+    roles: ["userAdminAnyDatabase", "backup", "clusterMonitor"]
+  })
 ```
 
-2. **Create explorer database user**
+2. **Create the application user**
 ```bash
 > use explorerDB
-> db.createUser({ user: "explorer", pwd: "<secure_password>", roles: ["dbOwner"] })
+> db.createUser({ user: "explorer", pwd: passwordPrompt(), roles: [{ role: "readWrite", db: "explorerDB" }] })
 ```
+`readWrite` is enough for the explorer, the sync tools, `mongodump` and `mongorestore`. It cannot run the `profile` command (`db.getProfilingStatus()`), so profiling and `serverStatus` are checked with the admin user.
 
-3. **Enable authentication in MongoDB config**
-```bash
-# Add to /etc/mongod.conf
+3. **Enable authentication**
+```yaml
+# /etc/mongod.conf
 security:
   authorization: enabled
 ```
+Then `systemctl restart mongod` (a short outage: stop the writers first with `pm2 stop sync stats richlist tokens price`).
 
-4. **Update connection string in config.json**
+4. **Put the URI into `.env`** (percent-encode the password) and restart the pm2 apps from the project root. `config.json` keeps `"uri": "${MONGODB_URI}"`.
 ```bash
-# Edit config.json and update the database.uri field
+MONGODB_URI=mongodb://explorer:<percent-encoded-password>@localhost:27017/explorerDB?authSource=explorerDB
+```
+
+### Running mongosh with the Application Credentials
+
+Load `.env` into the shell and let mongosh connect from the variable, so the password never appears on the command line or in `ps`:
+```bash
+set -a; . ./.env; set +a
+mongosh --nodb --quiet --eval 'const db = connect(process.env.MONGODB_URI); printjson(db.runCommand({ ping: 1 }))'
+```
+
+### Backup and Restore
+
+`mongodump` and `mongorestore` read the URI from a config file, so it is not visible in the process list (`--uri mongodb://user:password@...` on the command line would be). The application user is sufficient for both.
+```bash
+# Backup (as the deploy user; the YAML holds a single line: uri: mongodb://...)
+umask 077
+printf 'uri: %s\n' "$(sed -n 's/^MONGODB_URI=//p' .env)" > /tmp/md.yaml
+mongodump --config /tmp/md.yaml --gzip --out "$HOME/backup/explorerDB-$(date +%F)"
+rm -f /tmp/md.yaml
+
+# Restore (stop the writers first: pm2 stop sync stats tokens)
+umask 077
+printf 'uri: %s\n' "$(sed -n 's/^MONGODB_URI=//p' .env)" > /tmp/md.yaml
+mongorestore --config /tmp/md.yaml --gzip --drop "$HOME/backup/explorerDB-<date>/explorerDB"
+rm -f /tmp/md.yaml
+npm run optimize-indexes -- --check   # the dump carries the indexes; verify they are all there
+pm2 start sync stats tokens
 ```
 
 ## Running the Application
@@ -1897,7 +1960,7 @@ pm2 status
 pm2 logs --lines 100
 
 # Restart specific service
-pm2 restart explorer-web
+pm2 restart explorer
 ```
 
 4. **Memory Issues (1GB RAM)**
@@ -1911,16 +1974,16 @@ pm2 restart ecosystem.config.json
 
 5. **Database Connection Issues**
 ```bash
-# Check MongoDB authentication
-mongosh -u explorer -p password --authenticationDatabase explorerDB
+# The web app and the tools read MONGODB_URI from .env; without it they stop with
+# "MONGODB_URI is not set" (there is no default URI)
+grep -c '^MONGODB_URI=' .env
 
-# Test connection from application
-node -e "
-const mongoose = require('mongoose');
-mongoose.connect(config.database.uri || 'mongodb://localhost/explorerDB')
-  .then(() => console.log('✓ Connected'))
-  .catch(err => console.error('✗ Failed:', err.message));
-"
+# Authenticate with the application credentials; the password stays out of the command line
+set -a; . ./.env; set +a
+mongosh --nodb --quiet --eval 'const db = connect(process.env.MONGODB_URI); printjson(db.runCommand({ ping: 1 }))'
+
+# Authentication failures recorded by the server
+grep -a -c 'Authentication failed' /var/log/mongodb/mongod.log
 ```
 
 6. **EVM Node Connection Issues**
@@ -1958,7 +2021,9 @@ npm run optimize-indexes
 
 # Confirm a block lookup uses the index: the plan must contain IXSCAN
 # (or EXPRESS_IXSCAN on MongoDB 8) and totalDocsExamined must be 1
-mongosh explorerDB --quiet --eval '
+set -a; . ./.env; set +a
+mongosh --nodb --quiet --eval '
+  const db = connect(process.env.MONGODB_URI);
   const s = db.Block.find({ number: 1 }).explain("executionStats");
   printjson(s.queryPlanner.winningPlan);
   print("totalDocsExamined:", s.executionStats.totalDocsExamined);'
@@ -1998,13 +2063,16 @@ npm run repair-chain -- --fix
 RESCAN_FROM=<minReplaced> npm run stats
 
 # Reorgs the live sync could not resolve are recorded here
-mongosh explorerDB --quiet --eval 'db.scan_progress.find({ scanType: "reorg-pending" }).pretty()'
+set -a; . ./.env; set +a
+mongosh --nodb --quiet --eval 'const db = connect(process.env.MONGODB_URI); db.scan_progress.find({ scanType: "reorg-pending" }).forEach(printjson)'
 ```
 
-10. **Spam tokens with URL-like names showing up in lists**
+10. **Spam tokens with URL-like names, or token records at addresses without code**
 ```bash
-npm run flag-spam-tokens -- --dry-run   # list what would be hidden
-npm run flag-spam-tokens                # write the hidden flags
+npm run flag-spam-tokens -- --dry-run              # list what would be hidden (URL-like names)
+npm run flag-spam-tokens                           # write the hidden flags
+npm run flag-spam-tokens -- --audit-code --dry-run # addresses with no contract code (eth_getCode)
+npm run flag-spam-tokens -- --audit-code           # hide them (hiddenReason: no-code)
 ```
 
 ### Performance Optimization
@@ -2039,7 +2107,7 @@ pm2 monit
 
 ## Security
 
-1. Configure MongoDB access control
+1. MongoDB runs with authorization enabled; the application user has `readWrite` only and the credentials live in `.env` (see [Database Setup](#database-setup))
 2. Properly restrict RPC access to EVM node
 3. Set appropriate permissions for log files
 4. Implement proper firewall settings in production
@@ -2096,7 +2164,7 @@ interface MetadataProvider {
 1. Use PM2 for process management
 2. Configure log rotation
 3. Set up monitoring and alerting
-4. Implement backup strategies
+4. Back up with `mongodump --config` (see [Backup and Restore](#backup-and-restore))
 5. Configure CDN for static assets
 6. Set up Redis for caching
 

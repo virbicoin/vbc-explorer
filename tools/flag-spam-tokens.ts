@@ -14,6 +14,7 @@
  *   npm run flag-spam-tokens -- --address 0x... --unhide       # clear the flag of one address
  *   npm run flag-spam-tokens -- --unhide-all                   # clear every flag (incl. manual)
  *   npm run flag-spam-tokens -- --audit-launchpad [--dry-run] # list Launchpad-sourced tokens no factory knows
+ *   npm run flag-spam-tokens -- --audit-code [--dry-run]      # hide token/contract records whose address has no code
  *
  * --audit-launchpad asks the configured TokenFactory contracts about every
  * token the DB attributes to the Launchpad (`source: 'launchpad'`, or already
@@ -21,20 +22,35 @@
  * with `factoryVerified: false` get the "Not factory-verified" badge on the token
  * page; whether to hide them is a separate decision (--address ... --hide).
  *
+ * --audit-code calls eth_getCode (latest) for every address in `tokens` and
+ * `Contract`, ten at a time, and lists the ones with no code (externally owned
+ * accounts registered as tokens by the old Launchpad API, typos, …). Without
+ * --dry-run they are flagged `hidden: true, hiddenReason: 'no-code'` (nothing
+ * is deleted; already hidden records are left as they are). An address that
+ * has token transfers in the DB may be a self-destructed contract, so it is
+ * reported under "needs review" and never hidden automatically.
+ *
  * Direct: npx tsx --tsconfig tsconfig.tools.json tools/flag-spam-tokens.ts [options]
  */
 
+import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
-import { connectDB, ensureIndexesOnStartup, Contract, Token } from '../models/index';
-import { classifyDisplayName, type HiddenReason } from '../lib/security/display-name';
+import { connectDB, ensureIndexesOnStartup, Contract, Token, TokenTransfer } from '../models/index';
+import {
+  classifyDisplayName,
+  STICKY_HIDDEN_REASONS,
+  type HiddenReason,
+} from '../lib/security/display-name';
 import type { AnyModel } from '../lib/db/indexes';
 import {
   createWeb3FactoryClient,
   getLaunchpadFactories,
+  isContractCode,
   resolveFactoryToken,
   type FactoryClient,
   type FactorySource,
 } from '../lib/launchpad/factory';
+import { getWeb3 } from '../lib/web3/provider';
 
 interface Options {
   dryRun: boolean;
@@ -43,6 +59,7 @@ interface Options {
   unhide: boolean;
   unhideAll: boolean;
   auditLaunchpad: boolean;
+  auditCode: boolean;
   reason: HiddenReason;
   help: boolean;
 }
@@ -55,6 +72,7 @@ export function parseArgs(argv: string[]): Options {
     unhide: argv.includes('--unhide'),
     unhideAll: argv.includes('--unhide-all'),
     auditLaunchpad: argv.includes('--audit-launchpad'),
+    auditCode: argv.includes('--audit-code'),
     reason: 'manual',
     help: argv.includes('--help') || argv.includes('-h'),
   };
@@ -79,6 +97,7 @@ function usage(): void {
   npm run flag-spam-tokens -- --address 0x... --unhide  clear the flag of one address
   npm run flag-spam-tokens -- --unhide-all              clear every flag, including manual ones
   npm run flag-spam-tokens -- --audit-launchpad         ask the factories about Launchpad tokens; list the unknown ones
+  npm run flag-spam-tokens -- --audit-code [--dry-run]  hide records whose address has no contract code (eth_getCode)
 `);
 }
 
@@ -129,9 +148,9 @@ export async function classifyCollection(
     const result = classifyDisplayName({ name, symbol: doc.symbol ?? '', logoUrl: doc.logoUrl });
     const currentlyHidden = doc.hidden === true;
     const currentReason = doc.hiddenReason ?? null;
-    if (currentReason === 'manual') {
+    if (currentReason !== null && STICKY_HIDDEN_REASONS.includes(currentReason)) {
       if (currentlyHidden) hidden += 1;
-      continue; // manual decisions win
+      continue; // manual decisions and the no-code audit win over the name classifier
     }
     const wantHidden = result.hidden;
     const wantReason = result.reason ?? null;
@@ -248,7 +267,151 @@ export async function auditLaunchpadTokens(
   return result;
 }
 
-export async function run(argv: string[], auditDeps: LaunchpadAuditDeps = {}): Promise<number> {
+export interface CodeAuditDeps {
+  /** `eth_getCode` at the latest block (default: the shared Web3 singleton). */
+  getCode?: (address: string) => Promise<string>;
+  /** Addresses queried in parallel per batch (default 10, gentle on the node). */
+  batchSize?: number;
+}
+
+export interface CodeAuditEntry {
+  address: string;
+  /** Collections that hold a record for the address (`tokens`, `Contract`). */
+  collections: string[];
+  name: string;
+  symbol: string;
+  /** True when every record of the address was already hidden (left untouched). */
+  alreadyHidden: boolean;
+}
+
+export interface CodeAuditResult {
+  /** Distinct addresses queried. */
+  checked: number;
+  withCode: number;
+  /** No code and no token transfers: hidden with reason 'no-code' (or would be, in a dry run). */
+  noCode: CodeAuditEntry[];
+  /** No code but token transfers exist (self-destructed contract?): reported, never hidden here. */
+  needsReview: CodeAuditEntry[];
+  /** Records flagged by this run (0 in a dry run). */
+  hidden: number;
+  errors: number;
+}
+
+interface AddressRecord {
+  model: AnyModel;
+  collection: string;
+  doc: NamedDoc;
+}
+
+const ADDRESS_RE = /^0x[0-9a-f]{40}$/;
+
+/**
+ * Hide token / contract records whose address has no contract code. Addresses
+ * with token transfers are only reported (a self-destructed contract looks the
+ * same to eth_getCode). Already hidden records keep their reason.
+ */
+export async function auditNoCode(
+  dryRun: boolean,
+  deps: CodeAuditDeps = {}
+): Promise<CodeAuditResult> {
+  const getCode = deps.getCode ?? ((address: string) => getWeb3().eth.getCode(address));
+  const batchSize = Math.max(1, deps.batchSize ?? 10);
+  const result: CodeAuditResult = {
+    checked: 0,
+    withCode: 0,
+    noCode: [],
+    needsReview: [],
+    hidden: 0,
+    errors: 0,
+  };
+
+  const byAddress = new Map<string, AddressRecord[]>();
+  for (const model of [Token, Contract] as AnyModel[]) {
+    const docs = (await model
+      .find(
+        {},
+        {
+          address: 1,
+          name: 1,
+          tokenName: 1,
+          contractName: 1,
+          symbol: 1,
+          hidden: 1,
+          hiddenReason: 1,
+        }
+      )
+      .lean()) as NamedDoc[];
+    for (const doc of docs) {
+      const address = (doc.address ?? '').toLowerCase();
+      if (!ADDRESS_RE.test(address)) continue;
+      const list = byAddress.get(address) ?? [];
+      list.push({ model, collection: model.collection.name, doc });
+      byAddress.set(address, list);
+    }
+  }
+
+  const addresses = [...byAddress.keys()].sort();
+  for (let i = 0; i < addresses.length; i += batchSize) {
+    const batch = addresses.slice(i, i + batchSize);
+    const codes = await Promise.all(
+      batch.map(async (address) => {
+        try {
+          return { address, code: await getCode(address), error: null as string | null };
+        } catch (error) {
+          return {
+            address,
+            code: null,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      })
+    );
+    for (const { address, code, error } of codes) {
+      result.checked += 1;
+      if (error !== null) {
+        result.errors += 1;
+        console.error(`  ❌ ${address}: eth_getCode failed: ${error}`);
+        continue;
+      }
+      if (isContractCode(code)) {
+        result.withCode += 1;
+        continue;
+      }
+      const records = byAddress.get(address) ?? [];
+      const first = records[0]?.doc;
+      const entry: CodeAuditEntry = {
+        address,
+        collections: records.map((r) => r.collection),
+        name: (first?.name ?? first?.tokenName ?? first?.contractName ?? '').slice(0, 80),
+        symbol: (first?.symbol ?? '').slice(0, 20),
+        alreadyHidden: records.every((r) => r.doc.hidden === true),
+      };
+      const hasTransfers = (await TokenTransfer.exists({ tokenAddress: address })) !== null;
+      if (hasTransfers) {
+        result.needsReview.push(entry);
+        continue;
+      }
+      result.noCode.push(entry);
+      for (const record of records) {
+        if (record.doc.hidden === true) continue; // keep the existing reason
+        if (!dryRun) {
+          await record.model.updateOne(
+            { _id: record.doc._id },
+            { $set: { hidden: true, hiddenReason: 'no-code' } }
+          );
+        }
+        result.hidden += 1;
+      }
+    }
+  }
+  return result;
+}
+
+export async function run(
+  argv: string[],
+  auditDeps: LaunchpadAuditDeps = {},
+  codeDeps: CodeAuditDeps = {}
+): Promise<number> {
   const options = parseArgs(argv);
   if (options.help) {
     usage();
@@ -281,6 +444,38 @@ export async function run(argv: string[], auditDeps: LaunchpadAuditDeps = {}): P
       );
     }
     console.log(options.dryRun ? '\n(dry run: no changes were made)' : '\n✅ Done');
+    return audit.errors > 0 ? 1 : 0;
+  }
+
+  if (options.auditCode) {
+    console.log(
+      `🔎 Checking eth_getCode for every token / contract address${options.dryRun ? ' (dry run: nothing is written)' : ''}...`
+    );
+    const audit = await auditNoCode(options.dryRun, codeDeps);
+    console.log(
+      `\n📦 ${audit.checked} address(es) checked: ${audit.withCode} with code, ${audit.noCode.length} without code, ${audit.needsReview.length} to review, ${audit.errors} error(s)`
+    );
+    for (const entry of audit.noCode) {
+      console.log(
+        `  ${entry.address}  "${entry.name}" (${entry.symbol})  [${entry.collections.join(', ')}]  → ${
+          entry.alreadyHidden
+            ? 'already hidden'
+            : options.dryRun
+              ? 'would be hidden (no-code)'
+              : 'hidden (no-code)'
+        }`
+      );
+    }
+    for (const entry of audit.needsReview) {
+      console.log(
+        `  ⚠️ ${entry.address}  "${entry.name}" (${entry.symbol})  [${entry.collections.join(', ')}]  no code but token transfers exist (self-destructed?): review by hand, not hidden`
+      );
+    }
+    console.log(
+      options.dryRun
+        ? `\n(dry run: ${audit.hidden} record(s) would be hidden; no changes were made)`
+        : `\n✅ Done: ${audit.hidden} record(s) hidden`
+    );
     return audit.errors > 0 ? 1 : 0;
   }
 

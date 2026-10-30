@@ -50,6 +50,10 @@ import { LAUNCHPAD_SYNC_SCAN_TYPE } from '@/lib/launchpad/sync';
 const V2_TOKEN = '0xaaaa000000000000000000000000000000000001';
 const LEGACY_TOKEN = '0xbbbb000000000000000000000000000000000002';
 const STRANGER = '0xcccc000000000000000000000000000000000003';
+/** Listed by the V2 factory but with no contract code at the address. */
+const GHOST = '0xdddd000000000000000000000000000000000004';
+/** No contract code at all: an externally owned account. */
+const EOA = '0xeeee000000000000000000000000000000000005';
 
 let mongod: MongoMemoryServer;
 let node: Awaited<ReturnType<typeof startFakeNode>>;
@@ -122,6 +126,7 @@ beforeEach(async () => {
 
 describe('POST /api/launchpad/register', () => {
   it('answers 404 for an address no factory knows and writes nothing', async () => {
+    world.addContract(STRANGER); // deployed, but created by no factory
     const res = await registerPost(
       post('/api/launchpad/register', { tokenAddress: STRANGER }),
       undefined
@@ -131,6 +136,29 @@ describe('POST /api/launchpad/register', () => {
     expect(body.code).toBe('NOT_FACTORY_TOKEN');
     expect(await Token.countDocuments()).toBe(0);
     expect(await TokenHolder.countDocuments()).toBe(0);
+  });
+
+  it('answers 404 NO_CODE for an address without contract code, even with a stale record', async () => {
+    // What the old registration API left behind: the creator's EOA stored as a token
+    await Token.collection.insertOne({
+      address: EOA,
+      name: 'Unknown',
+      symbol: 'UNKNOWN',
+      totalSupply: '0',
+      supply: '0',
+      type: 'VRC-20',
+      source: 'launchpad',
+      holders: 0,
+    });
+    const res = await registerPost(
+      post('/api/launchpad/register', { tokenAddress: EOA }),
+      undefined
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: 'NO_CODE', address: EOA });
+    // the stale record is left to flag-spam-tokens --audit-code; no factory was asked
+    expect(await Token.countDocuments({ address: EOA })).toBe(1);
+    expect(world.calls).toEqual([]);
   });
 
   it('rejects malformed input', async () => {
@@ -251,12 +279,26 @@ describe('/api/launchpad/sync', () => {
   });
 
   it("POST imports the factories' tokens with chain values, then GET shows the run", async () => {
+    // a factory entry without contract code is skipped, never written
+    world.addToken({ address: GHOST, factory: V2_FACTORY, symbol: 'GHOST', hasCode: false });
     const res = await syncPost(post('/api/launchpad/sync', {}), undefined);
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
-    expect(body.results).toMatchObject({ factories: 2, total: 2, registered: 2, errors: 0 });
+    expect(body.results).toMatchObject({
+      factories: 2,
+      total: 3,
+      registered: 2,
+      skipped: 1,
+      errors: 0,
+    });
+    expect(body.results.tokens).toContainEqual({
+      address: GHOST,
+      symbol: 'GHOST',
+      status: 'skipped',
+    });
     expect(await Token.countDocuments()).toBe(2);
+    expect(await Token.countDocuments({ address: GHOST })).toBe(0);
     const legacy = (await Token.findOne({ address: LEGACY_TOKEN }).lean()) as Record<
       string,
       unknown

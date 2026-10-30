@@ -9,11 +9,7 @@ import {
   type EnsureIndexesResult,
   type IndexSpec,
 } from '../lib/db/indexes';
-
-// Environment defaults
-if (!process.env.MONGODB_URI) {
-  process.env.MONGODB_URI = 'mongodb://localhost/explorerDB';
-}
+import { MongoUriConfigError, resolveMongoUri } from '../lib/db/uri';
 
 /*
  * Model and index policy
@@ -516,48 +512,16 @@ export const connectDB = async (): Promise<void> => {
   }
 
   // Create new connection promise
-  connectionPromise = (async () => {
+  const attempt = (async () => {
     try {
       mongoose.set('strictQuery', false);
 
       if (mongoose.connection.readyState === 0) {
-        // Priority: environment variable > config.json > default
-        let uri = process.env.MONGODB_URI || '';
-
-        // If not in env, try config.json
-        if (!uri) {
-          try {
-            const fs = await import('fs');
-            const path = await import('path');
-            const configPath = path.join(process.cwd(), 'config.json');
-            if (fs.existsSync(configPath)) {
-              const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-              if (config.database && config.database.uri) {
-                uri = config.database.uri;
-                // Resolve ${VAR_NAME} syntax
-                uri = uri.replace(/\$\{([^}]+)\}/g, (_: string, varName: string) => {
-                  return process.env[varName] || '';
-                });
-                console.log('📄 Using MongoDB URI from config.json');
-              }
-            }
-          } catch (configError) {
-            console.log('📄 Config read error, using environment variable');
-          }
-        } else {
-          console.log('📄 Using MongoDB URI from environment variable');
-        }
-
-        // Fallback to default
-        if (!uri) {
-          uri = 'mongodb://localhost/explorerDB';
-          console.log('📄 Using default MongoDB URI');
-        }
-
-        // Validate URI format
-        if (!uri.startsWith('mongodb://') && !uri.startsWith('mongodb+srv://')) {
-          throw new Error(`Invalid MongoDB URI format: ${uri.substring(0, 20)}...`);
-        }
+        // Environment variable, then config.json (`${VAR}` substituted). There is
+        // no default: a missing URI throws MissingMongoUriError (lib/db/uri.ts)
+        // instead of connecting to an unauthenticated localhost.
+        const { uri, source } = resolveMongoUri();
+        console.log(`📄 Using MongoDB URI from ${source}`);
 
         // Optimized database connection options for t4g.small (2GB RAM)
         let dbOptions: mongoose.ConnectOptions = {
@@ -601,16 +565,27 @@ export const connectDB = async (): Promise<void> => {
       if (mongoose.connection.readyState === 1) {
         return;
       }
-      console.error('❌ MongoDB connection error:', error);
       // Clear the promise so retry is possible
       connectionPromise = null;
+      if (error instanceof MongoUriConfigError) {
+        // Configuration error: stop immediately, never fall back to a default URI
+        console.error(`❌ ${error.message}`);
+        throw error;
+      }
+      console.error('❌ MongoDB connection error:', error);
       // Don't throw error, just log it and continue
       console.log('⚠️ Continuing without database connection...');
     }
     // Note: Don't clear connectionPromise on success to prevent race conditions
   })();
+  connectionPromise = attempt;
+  // A configuration error is thrown before the first await, i.e. before the
+  // assignment above: clear the cached rejection so the next call retries.
+  attempt.catch(() => {
+    if (connectionPromise === attempt) connectionPromise = null;
+  });
 
-  return connectionPromise;
+  return attempt;
 };
 
 // Models

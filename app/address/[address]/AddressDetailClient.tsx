@@ -53,6 +53,7 @@ interface Contract {
   name: string;
   symbol: string;
   hidden?: boolean;
+  hiddenReason?: string | null;
   type: string;
   decimals: number;
   totalSupply: string;
@@ -282,7 +283,11 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
   const getAddressName = () => {
     // Contract case
     if (contract?.hidden) {
-      return displayNameText(contract.name, { hidden: true, address: resolvedParams.address });
+      return displayNameText(contract.name, {
+        hidden: true,
+        hiddenReason: contract.hiddenReason,
+        address: resolvedParams.address,
+      });
     }
     if (
       contract?.name &&
@@ -379,6 +384,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
               <DisplayName
                 value={contract?.name}
                 hidden={contract?.hidden}
+                hiddenReason={contract?.hiddenReason}
                 address={resolvedParams.address}
                 fallback="Smart Contract"
               />{' '}
@@ -784,6 +790,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                             <DisplayName
                               value={contract.name}
                               hidden={contract.hidden}
+                              hiddenReason={contract.hiddenReason}
                               address={resolvedParams.address}
                             />
                           </div>

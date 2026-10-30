@@ -3,9 +3,13 @@ import {
   classifyDisplayName,
   containsControlCharacters,
   hiddenFields,
+  hiddenNameLabel,
+  hiddenReasonDescription,
   looksLikeUrl,
   sanitizeDisplayText,
+  HIDDEN_NAME_LABEL,
   NAME_MAX,
+  STICKY_HIDDEN_REASONS,
   SYMBOL_MAX,
 } from '@/lib/security/display-name';
 
@@ -137,5 +141,25 @@ describe('sanitizeDisplayText', () => {
     expect(containsControlCharacters('plain')).toBe(false);
     expect(containsControlCharacters('tab\there')).toBe(true);
     expect(containsControlCharacters('zero‌width')).toBe(true);
+  });
+});
+
+describe('hidden badge wording', () => {
+  it('names the reason and keeps the spam label for name-based reasons', () => {
+    expect(hiddenNameLabel('url-name')).toBe(HIDDEN_NAME_LABEL);
+    expect(hiddenNameLabel('control-chars')).toBe(HIDDEN_NAME_LABEL);
+    expect(hiddenNameLabel(undefined)).toBe(HIDDEN_NAME_LABEL);
+    expect(hiddenNameLabel('no-code')).toBe('Hidden (no contract code)');
+    expect(hiddenNameLabel('manual')).toMatch(/operators/);
+    for (const reason of ['url-name', 'control-chars', 'html', 'too-long', 'no-code', 'manual']) {
+      expect(hiddenReasonDescription(reason).length).toBeGreaterThan(20);
+    }
+    expect(hiddenReasonDescription('no-code')).toMatch(/no contract code/);
+    expect(hiddenReasonDescription('url-name')).toMatch(/URL/);
+    expect(hiddenReasonDescription(null)).toMatch(/URL or control characters/);
+  });
+
+  it('treats operator and audit reasons as sticky for the automatic pass', () => {
+    expect(STICKY_HIDDEN_REASONS).toEqual(['manual', 'no-code']);
   });
 });

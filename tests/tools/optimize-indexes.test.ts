@@ -8,6 +8,8 @@
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
@@ -27,18 +29,32 @@ interface RunResult {
   output: string;
 }
 
-function runTool(args: string[], env: Record<string, string> = {}): Promise<RunResult> {
+interface RunOptions {
+  /** Working directory of the tool (default: the repository root). */
+  cwd?: string;
+  /** Environment variables to remove, e.g. MONGODB_URI to test the .env loading. */
+  unset?: string[];
+}
+
+function runTool(
+  args: string[],
+  env: Record<string, string> = {},
+  options: RunOptions = {}
+): Promise<RunResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(TSX, ['--tsconfig', 'tsconfig.tools.json', TOOL, ...args], {
-      cwd: ROOT,
-      env: {
-        ...process.env,
-        MONGODB_URI: uri,
-        LOG_LEVEL: 'error',
-        SKIP_INDEX_SYNC: '',
-        ...env,
-      },
-    });
+    const childEnv: Record<string, string | undefined> = {
+      ...process.env,
+      MONGODB_URI: uri,
+      LOG_LEVEL: 'error',
+      SKIP_INDEX_SYNC: '',
+      ...env,
+    };
+    for (const key of options.unset ?? []) delete childEnv[key];
+    const child = spawn(
+      TSX,
+      ['--tsconfig', path.join(ROOT, 'tsconfig.tools.json'), TOOL, ...args],
+      { cwd: options.cwd ?? ROOT, env: childEnv as NodeJS.ProcessEnv }
+    );
     let output = '';
     child.stdout.on('data', (chunk) => (output += chunk));
     child.stderr.on('data', (chunk) => (output += chunk));
@@ -149,6 +165,42 @@ describe('optimize-indexes CLI', () => {
 
       const check = await runTool(['--check']);
       expect(check.code).toBe(1);
+    },
+    RUN_TIMEOUT
+  );
+});
+
+describe('environment files (lib/env.ts)', () => {
+  let workDir: string;
+
+  beforeAll(() => {
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vbc-tool-env-'));
+  });
+
+  afterAll(() => {
+    fs.rmSync(workDir, { recursive: true, force: true });
+  });
+
+  it(
+    'reads MONGODB_URI from .env in the working directory when the variable is not exported',
+    async () => {
+      fs.writeFileSync(path.join(workDir, '.env'), `MONGODB_URI=${uri}\n`);
+      const result = await runTool(['--check'], {}, { cwd: workDir, unset: ['MONGODB_URI'] });
+      expect(result.output).not.toContain('MONGODB_URI is not set');
+      expect(result.output).toContain('Using MongoDB URI from environment');
+      expect(result.code).toBe(1); // connected: the empty database is missing every index
+    },
+    RUN_TIMEOUT
+  );
+
+  it(
+    'stops with MissingMongoUriError when neither the environment nor .env provides a URI',
+    async () => {
+      fs.rmSync(path.join(workDir, '.env'), { force: true });
+      const result = await runTool(['--check'], {}, { cwd: workDir, unset: ['MONGODB_URI'] });
+      expect(result.code).not.toBe(0);
+      expect(result.output).toContain('MONGODB_URI is not set');
+      expect(result.output).not.toContain('MongoDB connected successfully');
     },
     RUN_TIMEOUT
   );

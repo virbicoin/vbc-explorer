@@ -128,6 +128,7 @@ describe('resolveFactoryToken', () => {
             return '0x';
           return w.handleCall(to, data);
         },
+        getCode: fakeClient(w).getCode,
       },
       factories: FACTORIES,
     }).catch(() => null);

@@ -113,7 +113,7 @@ export const POST = withRateLimit('write', async (request: NextRequest) => {
     return NextResponse.json(
       {
         success: true,
-        message: `Sync completed: ${result.registered} registered, ${result.updated} updated, ${result.unchanged} unchanged, ${result.errors} errors`,
+        message: `Sync completed: ${result.registered} registered, ${result.updated} updated, ${result.unchanged} unchanged, ${result.skipped} skipped (no contract code), ${result.errors} errors`,
         results: { ...summary, tokens: tokens.filter((t) => t.status !== 'unchanged') },
       },
       { headers: getSecurityHeaders() }

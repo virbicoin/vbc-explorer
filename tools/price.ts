@@ -10,6 +10,7 @@
  * 5. DEX on-chain price (fallback)
  */
 
+import '../lib/env'; // .env / .env.local before any other module reads process.env
 import { Market, DexSwap } from '../models/index';
 import mongoose from 'mongoose';
 import { connectDB, ensureIndexesOnStartup } from '../models/index';

@@ -5,15 +5,24 @@
  * the configured TokenFactory contracts vouches for the address
  * (`isFactoryToken` / `getAllTokens`, see lib/launchpad/factory.ts); creator,
  * name, symbol, decimals, supply, creation time and metadata are read from the
- * chain, never from the request body. Unknown tokens get 404, a token that is
- * already registered gets 200 with the stored record (idempotent).
+ * chain, never from the request body. An address without contract code
+ * (`eth_getCode` empty: an EOA, an unmined deployment, a self-destructed
+ * contract) gets 404 `NO_CODE` before anything else is looked at, even when
+ * a stale record exists for it. Unknown tokens get 404 `NOT_FACTORY_TOKEN`; a
+ * token that is already registered gets 200 with the stored record
+ * (idempotent).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Token } from '../../../../models/index';
 import { getSecurityHeaders } from '../../../../lib/security/validation';
 import { withRateLimit } from '@/lib/security/rate-limits';
-import { FactoryRpcError, isHexAddress, resolveFactoryToken } from '@/lib/launchpad/factory';
-import { createWeb3FactoryClient } from '@/lib/launchpad/factory';
+import {
+  FactoryRpcError,
+  createWeb3FactoryClient,
+  hasContractCode,
+  isHexAddress,
+  resolveFactoryToken,
+} from '@/lib/launchpad/factory';
 import { registerFactoryToken, toPublicToken } from '@/lib/launchpad/sync';
 import { logger } from '@/lib/logger';
 
@@ -47,6 +56,19 @@ export const POST = withRateLimit('write', async (request: NextRequest) => {
 
   try {
     await connectDB();
+    const client = createWeb3FactoryClient();
+
+    // No contract code, no token: this is checked before the DB lookup so a
+    // stale record (the old API registered creator EOAs as "Unknown" tokens)
+    // never turns into a 200. Those records are hidden by
+    // `flag-spam-tokens --audit-code`.
+    if (!(await hasContractCode(client, address))) {
+      logger.info('Launchpad registration refused: no contract code at the address', { address });
+      return NextResponse.json(
+        { error: 'No contract code at this address', code: 'NO_CODE', address },
+        { status: 404, headers: getSecurityHeaders() }
+      );
+    }
 
     const existing = await Token.findOne({ address }).lean();
     if (existing) {
@@ -60,7 +82,6 @@ export const POST = withRateLimit('write', async (request: NextRequest) => {
       );
     }
 
-    const client = createWeb3FactoryClient();
     const info = await resolveFactoryToken(address, { client });
     if (!info) {
       logger.info('Launchpad registration refused: no factory knows the token', { address });

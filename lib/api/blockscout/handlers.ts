@@ -8,6 +8,7 @@
  */
 
 import { type Address } from 'viem';
+import { countAll } from '../../db/count';
 import { connectDB, Block, Transaction, Account, Contract } from '@/models/index';
 import {
   configJson,
@@ -239,8 +240,9 @@ export async function getEthPrice() {
 export async function getChainSize() {
   try {
     await connectDB();
-    const blockCount = await Block.countDocuments();
-    const txCount = await Transaction.countDocuments();
+    // Collection metadata counts (lib/db/count.ts): the estimate is enough for a size approximation
+    const blockCount = await countAll(Block);
+    const txCount = await countAll(Transaction);
 
     // Estimate size: ~500 bytes per block, ~300 bytes per tx
     const estimatedSize = blockCount * 500 + txCount * 300;

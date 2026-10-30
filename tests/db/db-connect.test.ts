@@ -1,9 +1,32 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { isConnected } from '@/lib/db';
 import { connectDatabase, db, disconnectDatabase } from '@/lib/db/connection';
+import { MissingMongoUriError } from '@/lib/db/uri';
 import { connectDB } from '@/models/index';
+
+describe('connectDB without a configured URI', () => {
+  it('rejects with MissingMongoUriError and does not try a default localhost', async () => {
+    const previousUri = process.env.MONGODB_URI;
+    const previousCwd = process.cwd();
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'vbc-nouri-')); // no config.json here
+    delete process.env.MONGODB_URI;
+    process.chdir(empty);
+    try {
+      await expect(connectDB()).rejects.toBeInstanceOf(MissingMongoUriError);
+      expect(mongoose.connection.readyState).toBe(mongoose.ConnectionStates.disconnected);
+    } finally {
+      process.chdir(previousCwd);
+      if (previousUri === undefined) delete process.env.MONGODB_URI;
+      else process.env.MONGODB_URI = previousUri;
+      fs.rmSync(empty, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('isConnected', () => {
   it('returns true only for the mongoose "connected" readyState', () => {

@@ -7,9 +7,17 @@
 # clients and the direct (ufw allow-listed) 8329 connections keep every API.
 # WebSocket (ws2.*, 8330) is not covered: ws-apis has no traces.
 #
+# This file mirrors the production vhost. The only intended differences are
+# server_name, the certificate paths, the access_log line and the number of
+# server blocks: production has four (rpc2 and apne4 for virbicoin.com and for
+# digitalregion.jp), each with the same three locations as the one below.
+#
 # Install the module once:   apt install libnginx-mod-http-js   (adds load_module
 # to /etc/nginx/modules-enabled automatically), then  nginx -t && systemctl reload nginx.
-# Copy the script to /etc/nginx/njs/rpc-filter.js.
+# Script:  cp docs/njs/rpc-filter.js /etc/nginx/njs/rpc-filter.js
+#   The deployed script and the repository copy stay byte-identical; check with
+#   sha256sum docs/njs/rpc-filter.js /etc/nginx/njs/rpc-filter.js. After a change
+#   to the script: cp again, then nginx -t && systemctl reload nginx (no restart).
 #
 # Roll back: restore the vhost from its backup and reload; the module can stay.
 
@@ -19,19 +27,22 @@ js_import rpcfilter from njs/rpc-filter.js;
 
 # Second line of defence: per-IP request rate on the filtered POST path. With the
 # real_ip module configured (see docs/nginx-explorer.conf.example) $remote_addr is
-# the real client even behind Cloudflare.
+# the real client even behind Cloudflare. One address firing 80 parallel requests
+# gets a handful of 503s (see the verification below).
 limit_req_zone $binary_remote_addr zone=rpc_api:10m rate=30r/s;
 
-# ---- one server block per hostname (production has four: rpc2.virbicoin.com,
-#      apne4.virbicoin.com, rpc2.digitalregion.jp, apne4.digitalregion.jp) -------
+# ---- one server block per hostname ------------------------------------------
 
 server {
     listen 443 ssl http2;
     server_name rpc2.virbicoin.com;
 
     # ssl_certificate / ssl_certificate_key ...
+    # access_log /var/log/nginx/rpc2.access.log cloudflare;  (production logs with
+    # a `cloudflare` log_format that includes $http_cf_connecting_ip)
 
-    # CORS for browser wallets; `always` so the 403 / 400 answers carry it too
+    # CORS for browser wallets: server context and `always`, so the 403 / 400
+    # answers produced by the filter carry the headers too.
     add_header Access-Control-Allow-Origin  "*" always;
     add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
     add_header Access-Control-Allow-Headers "Content-Type, Authorization" always;
@@ -71,10 +82,20 @@ server {
         proxy_set_header Content-Type application/json;
         proxy_set_header Host $host;
         proxy_read_timeout 60s;
+
+        # njs keeps the whole upstream response of r.subrequest() in this buffer.
+        # With the default (one memory page, 4k or 8k) eth_getBlockByNumber with
+        # full transactions or a large eth_getLogs answer fails inside the filter
+        # while the same call works directly against 8329. 8m covers the largest
+        # blocks seen so far (a 258-transaction block is about 462 KB); memory is
+        # only used as needed. ovbc runs with --jsonrpc-max-payload 10 (MB), so
+        # 16m is the sensible ceiling if responses ever grow beyond that.
+        subrequest_output_buffer_size 8m;
     }
 }
 
-# ---- verification (from outside) --------------------------------------------
+# ---- verification -----------------------------------------------------------
+# From outside:
 # curl -s -o /dev/null -w '%{http_code}\n' -X POST https://rpc2.virbicoin.com \
 #   -H 'content-type: application/json' \
 #   -d '{"jsonrpc":"2.0","method":"trace_block","params":["0x1"],"id":1}'        → 403
@@ -82,5 +103,17 @@ server {
 # ... "method":"eth_blockNumber" ...                                            → 200 with result
 # -d '[{"jsonrpc":"2.0","method":"eth_blockNumber","id":1},{"jsonrpc":"2.0","method":"trace_block","params":["0x1"],"id":2}]'  → 403 (batch)
 # curl -s https://rpc2.virbicoin.com/                                            → the port-4000 page
+#
+# Large responses are byte-identical through the filter and directly. Run on the
+# host with a block that has many transactions (block 262637 = 0x401ed, 258 txs):
+# BODY='{"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["0x401ed",true],"id":1}'
+# curl -s -X POST http://127.0.0.1:8329 -H 'content-type: application/json' -d "$BODY" > /tmp/direct.json
+# curl -s -X POST https://rpc2.virbicoin.com -H 'content-type: application/json' -d "$BODY" > /tmp/filtered.json
+# cmp /tmp/direct.json /tmp/filtered.json && echo identical                      → identical (about 462 KB)
+#
+# Rate limit (30 r/s, burst 50): 80 parallel requests from one address → mostly 200, some 503
+# seq 80 | xargs -P 80 -I{} curl -s -o /dev/null -w '%{http_code}\n' -X POST https://rpc2.virbicoin.com \
+#   -H 'content-type: application/json' -d '{"jsonrpc":"2.0","method":"eth_blockNumber","id":1}' | sort | uniq -c
+#
 # On the host: curl -X POST http://127.0.0.1:8329 ... trace_block              → still answered (internal use)
 # tail /var/log/nginx/error.log                                                  → no "js" errors

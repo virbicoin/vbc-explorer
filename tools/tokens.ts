@@ -7,6 +7,7 @@ Version: 1.0.0
 This file will scan the blockchain for new token contracts and update the database.
 */
 
+import '../lib/env'; // .env / .env.local before any other module reads process.env
 import Web3 from 'web3';
 import mongoose from 'mongoose';
 import humanStandardTokenAbi from 'human-standard-token-abi';
@@ -116,6 +117,17 @@ const MAX_PARALLEL_BLOCKS = 20; // Limit parallel block fetching
 const MEMORY_LIMIT_MB = parseInt(process.env.MEMORY_LIMIT_MB || '512'); // Optimized for 2GB instances
 
 const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
+
+/**
+ * eth_getCode is '0x' for externally owned accounts and self-destructed
+ * contracts. A token record is never created for such an address (the old
+ * registration API did, leaving "Unknown" tokens behind; see
+ * `flag-spam-tokens --audit-code`).
+ */
+async function hasContractCode(address: string): Promise<boolean> {
+  const code = await web3.eth.getCode(address);
+  return typeof code === 'string' && /^0x[0-9a-fA-F]+$/.test(code) && !/^0x0*$/.test(code);
+}
 
 // Memory monitoring function
 const checkMemory = () => {
@@ -887,6 +899,13 @@ async function scanForTokens() {
                       continue;
                     }
 
+                    if (!(await hasContractCode(contractAddress))) {
+                      console.log(
+                        `⏭️ Skipping ${contractAddress}: no contract code at this address`
+                      );
+                      continue;
+                    }
+
                     const contract = new web3.eth.Contract(humanStandardTokenAbi, contractAddress);
                     const name = (await contract.methods.name().call()) as string;
                     const symbol = (await contract.methods.symbol().call()) as string;
@@ -968,6 +987,13 @@ async function scanForTokens() {
                     if (existingToken) {
                       console.log(
                         `⏭️ Skipping existing VRC-721 token: ${contractAddress} (already in DB)`
+                      );
+                      continue;
+                    }
+
+                    if (!(await hasContractCode(contractAddress))) {
+                      console.log(
+                        `⏭️ Skipping ${contractAddress}: no contract code at this address`
                       );
                       continue;
                     }
@@ -1340,6 +1366,11 @@ async function syncLPTokensFromFactory() {
             );
             console.log(`✅ Updated LP token: ${pairInfo.symbol} (${normalizedAddress})`);
           }
+          continue;
+        }
+
+        if (!(await hasContractCode(pairAddress))) {
+          console.log(`⏭️ Skipping pair ${normalizedAddress}: no contract code at this address`);
           continue;
         }
 

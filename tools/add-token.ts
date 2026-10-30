@@ -15,6 +15,7 @@ The tool will:
 3. Add/update the token in the database
 */
 
+import '../lib/env'; // .env / .env.local before any other module reads process.env
 import Web3 from 'web3';
 import mongoose from 'mongoose';
 import { connectDB, ensureIndexesOnStartup, Contract, Token } from '../models/index';

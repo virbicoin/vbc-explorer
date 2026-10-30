@@ -13,7 +13,17 @@
 
 import { sanitizeImageUrl } from './validation';
 
-export type HiddenReason = 'url-name' | 'control-chars' | 'html' | 'too-long' | 'manual';
+export type HiddenReason =
+  | 'url-name'
+  | 'control-chars'
+  | 'html'
+  | 'too-long'
+  /** eth_getCode is empty at the address (EOA or self-destructed); set by flag-spam-tokens --audit-code */
+  | 'no-code'
+  | 'manual';
+
+/** Reasons set by operators / tools rather than by the name classifier; the automatic pass never clears them. */
+export const STICKY_HIDDEN_REASONS: readonly string[] = ['manual', 'no-code'];
 
 export interface DisplayNameInput {
   name?: string | null;
@@ -31,8 +41,40 @@ export interface DisplayNameClassification {
 export const NAME_MAX = 64;
 export const SYMBOL_MAX = 16;
 
-/** Text used in place of a hidden name. */
+/** Text used in place of a hidden name (name-based reasons). */
 export const HIDDEN_NAME_LABEL = 'Hidden (flagged as spam)';
+
+/** Badge label for a hidden entry, by reason. */
+export function hiddenNameLabel(reason?: string | null): string {
+  switch (reason) {
+    case 'no-code':
+      return 'Hidden (no contract code)';
+    case 'manual':
+      return 'Hidden by the explorer operators';
+    default:
+      return HIDDEN_NAME_LABEL;
+  }
+}
+
+/** Tooltip explaining why the name is not shown, by reason. */
+export function hiddenReasonDescription(reason?: string | null): string {
+  switch (reason) {
+    case 'url-name':
+      return 'The name or symbol looks like a URL, so the address is shown instead';
+    case 'control-chars':
+      return 'The name or symbol contains control or invisible characters, so the address is shown instead';
+    case 'html':
+      return 'The name or symbol contains HTML, so the address is shown instead';
+    case 'too-long':
+      return 'The name or symbol exceeds the length limit, so the address is shown instead';
+    case 'no-code':
+      return 'There is no contract code at this address (not a deployed token), so the record is kept out of the lists';
+    case 'manual':
+      return 'Hidden by the explorer operators; the address is shown instead of the name';
+    default:
+      return 'The name contains a URL or control characters, so the address is shown instead';
+  }
+}
 
 const URL_PATTERNS = [
   /:\/\//,
