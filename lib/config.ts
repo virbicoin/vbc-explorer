@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { MissingMongoUriError } from './db/uri';
 
 /**
  * Resolve environment variables in config values
@@ -335,7 +336,7 @@ export const readConfig = (): AppConfig => {
         url: 'http://localhost:8545',
       },
       database: {
-        uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/explorerDB',
+        uri: process.env.MONGODB_URI || '',
         options: {
           maxPoolSize: 500,
           serverSelectionTimeoutMS: 15000,
@@ -426,7 +427,7 @@ export const readConfig = (): AppConfig => {
         url: process.env.WEB3_PROVIDER_URL || 'http://localhost:8545',
       },
       database: {
-        uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/explorerDB',
+        uri: process.env.MONGODB_URI || '',
         options: {},
       },
       currency: {
@@ -454,11 +455,14 @@ export const readConfig = (): AppConfig => {
 };
 
 /**
- * Get MongoDB URI from config
+ * Get MongoDB URI from config (environment > config.json). Throws
+ * MissingMongoUriError when neither provides one: there is no default URI.
  */
 export const getMongoDBURI = (): string => {
   const config = readConfig();
-  return config.database.uri;
+  const uri = (config.database?.uri ?? '').trim();
+  if (!uri) throw new MissingMongoUriError();
+  return uri;
 };
 
 /**

@@ -3,6 +3,7 @@
 Tool for calculating VirBiCoin richlist - Optimized and simplified
 */
 
+import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
 import Web3 from 'web3';
 import {

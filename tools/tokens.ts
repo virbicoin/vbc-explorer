@@ -7,6 +7,7 @@ Version: 1.0.0
 This file will scan the blockchain for new token contracts and update the database.
 */
 
+import '../lib/env'; // .env / .env.local before any other module reads process.env
 import Web3 from 'web3';
 import mongoose from 'mongoose';
 import humanStandardTokenAbi from 'human-standard-token-abi';

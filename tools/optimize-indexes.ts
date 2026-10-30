@@ -21,6 +21,7 @@
  * Direct execution: npx tsx --tsconfig tsconfig.tools.json tools/optimize-indexes.ts
  */
 
+import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
 import { connectDB, ensureIndexes, checkIndexes, isIndexSyncSkipped } from '../models/index';
 import { indexNameFor, type EnsureIndexesResult, type IndexSpec } from '../lib/db/indexes';

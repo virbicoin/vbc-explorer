@@ -16,6 +16,7 @@
  *   --dry-run    Show what would be updated without making changes
  */
 
+import '../lib/env'; // .env / .env.local before any other module reads process.env
 import Web3 from 'web3';
 import mongoose from 'mongoose';
 import { connectDB, ensureIndexesOnStartup, Contract } from '../models/index';

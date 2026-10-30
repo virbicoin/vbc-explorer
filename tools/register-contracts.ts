@@ -3,6 +3,7 @@
  * Run with: npx tsx --tsconfig tsconfig.tools.json tools/register-contracts.ts
  */
 
+import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';

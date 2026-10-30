@@ -24,6 +24,7 @@
  * Direct: npx tsx --tsconfig tsconfig.tools.json tools/flag-spam-tokens.ts [options]
  */
 
+import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
 import { connectDB, ensureIndexesOnStartup, Contract, Token } from '../models/index';
 import { classifyDisplayName, type HiddenReason } from '../lib/security/display-name';

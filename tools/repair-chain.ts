@@ -25,6 +25,7 @@
  * Direct: npx tsx --tsconfig tsconfig.tools.json tools/repair-chain.ts --check
  */
 
+import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
 import Web3 from 'web3';
 import { connectDB, ensureIndexesOnStartup } from '../models/index';

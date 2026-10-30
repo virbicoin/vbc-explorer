@@ -3,6 +3,7 @@
 Tool for calculating VirBiCoin block statistics
 */
 
+import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
 import Web3 from 'web3';
 import type { Block as Web3Block } from 'web3-types';

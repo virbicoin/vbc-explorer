@@ -4,6 +4,7 @@ Name: VirBiCoin Blockchain syncer
 Description: This file will start syncing the blockchain from the VirBiCoin node
 */
 
+import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
 import Web3 from 'web3';
 import fs from 'fs';
@@ -42,7 +43,8 @@ import {
 /**
  * Apply `database.uri` from a config file to MONGODB_URI unless the variable is
  * already set (environment wins, as in models/index.ts). `${VAR}` placeholders
- * are resolved; an unresolved placeholder is ignored.
+ * are resolved; an unresolved placeholder is ignored and connectDB() then
+ * stops with MissingMongoUriError (there is no default URI).
  */
 const applyConfigMongoUri = (uri: unknown, source: string): void => {
   if (typeof uri !== 'string' || !uri) return;
@@ -52,7 +54,9 @@ const applyConfigMongoUri = (uri: unknown, source: string): void => {
   }
   const resolved = uri.replace(/\$\{([^}]+)\}/g, (_, name: string) => process.env[name] || '');
   if (!resolved || resolved.includes('${')) {
-    console.log(`📄 database.uri in ${source} has unresolved placeholders; using defaults`);
+    console.log(
+      `📄 database.uri in ${source} has unresolved placeholders; MONGODB_URI stays unset (connectDB stops)`
+    );
     return;
   }
   process.env.MONGODB_URI = resolved;

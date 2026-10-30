@@ -13,6 +13,18 @@ export { BaseRepository, type PaginationOptions, type PaginatedResult } from './
 // Native Db handle helpers
 export { assertDb, requireDb, tryGetDb, getDb } from './get-db';
 
+// Connection-string resolution (environment > config.json, never a default)
+export {
+  resolveMongoUri,
+  substituteEnvPlaceholders,
+  MongoUriConfigError,
+  MissingMongoUriError,
+  InvalidMongoUriError,
+  type EnvVars,
+  type ResolvedMongoUri,
+  type ResolveMongoUriOptions,
+} from './uri';
+
 // Index management (schema is the single source of truth; see models/index.ts)
 export {
   ensureModelIndexes,
