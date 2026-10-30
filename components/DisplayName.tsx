@@ -8,9 +8,10 @@
  */
 
 import {
-  HIDDEN_NAME_LABEL,
   NAME_MAX,
   SYMBOL_MAX,
+  hiddenNameLabel,
+  hiddenReasonDescription,
   sanitizeDisplayText,
 } from '@/lib/security/display-name';
 
@@ -19,6 +20,8 @@ export interface DisplayNameProps {
   value: string | null | undefined;
   /** True when the token/contract is flagged hidden; renders the badge. */
   hidden?: boolean;
+  /** Why it is hidden (`hiddenReason` of the record); selects the badge wording. */
+  hiddenReason?: string | null;
   /** Shown next to the badge so a hidden entry stays identifiable. */
   address?: string;
   variant?: 'name' | 'symbol';
@@ -38,6 +41,7 @@ export function displayNameText(
   value: string | null | undefined,
   options: {
     hidden?: boolean;
+    hiddenReason?: string | null;
     address?: string;
     variant?: 'name' | 'symbol';
     fallback?: string;
@@ -45,9 +49,8 @@ export function displayNameText(
   } = {}
 ): string {
   if (options.hidden) {
-    return options.address
-      ? `${HIDDEN_NAME_LABEL} ${shortenAddress(options.address)}`
-      : HIDDEN_NAME_LABEL;
+    const label = hiddenNameLabel(options.hiddenReason);
+    return options.address ? `${label} ${shortenAddress(options.address)}` : label;
   }
   const max = options.max ?? (options.variant === 'symbol' ? SYMBOL_MAX : NAME_MAX);
   return (
@@ -60,6 +63,7 @@ export function displayNameText(
 export default function DisplayName({
   value,
   hidden = false,
+  hiddenReason,
   address,
   variant = 'name',
   fallback,
@@ -70,10 +74,10 @@ export default function DisplayName({
     return (
       <span
         className={`inline-flex items-center gap-1 rounded bg-yellow-500/15 px-2 py-0.5 text-xs font-medium text-yellow-300 ${className ?? ''}`}
-        title="The name contains a URL or control characters, so the address is shown instead"
+        title={hiddenReasonDescription(hiddenReason)}
       >
         <span aria-hidden="true">⚠</span>
-        {HIDDEN_NAME_LABEL}
+        {hiddenNameLabel(hiddenReason)}
         {address ? (
           <span className="font-mono text-yellow-200/80">{shortenAddress(address)}</span>
         ) : null}

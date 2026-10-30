@@ -2,8 +2,9 @@
  * Shared fixture for the Launchpad tests: an in-memory "chain" with a V2
  * TokenFactory (isFactoryToken / 9-field tokenInfo), a legacy factory without
  * isFactoryToken (6-field tokenInfo, membership via getAllTokens) and ERC-20
- * tokens. `handleCall()` answers `eth_call` payloads, so the same world backs a
- * fake FactoryClient and a mock JSON-RPC HTTP node.
+ * tokens. `handleCall()` answers `eth_call` payloads and `hasCode()` answers
+ * `eth_getCode`, so the same world backs a fake FactoryClient and a mock
+ * JSON-RPC HTTP node.
  */
 import http from 'node:http';
 import { Interface } from 'ethers';
@@ -18,6 +19,9 @@ export const FACTORIES: FactorySource[] = [
   { address: V2_FACTORY, legacy: false },
   { address: LEGACY_FACTORY, legacy: true, version: 'v1' },
 ];
+
+/** What `eth_getCode` returns for every deployed contract of the fake chain. */
+export const FAKE_CODE = '0x6080604052348015600f57600080fd5b50';
 
 const FACTORY_IFACE = new Interface([
   'function isFactoryToken(address token) view returns (bool)',
@@ -49,11 +53,28 @@ export interface FakeToken {
   description?: string;
   website?: string;
   balances: Record<string, bigint>;
+  /** False simulates a factory entry whose address has no contract code (default true). */
+  hasCode?: boolean;
 }
 
 export class FakeFactoryWorld {
   readonly tokens = new Map<string, FakeToken>();
+  /** Deployed contracts that are not tokens of any factory (eth_getCode is non-empty). */
+  readonly contracts = new Set<string>();
   readonly calls: Array<{ to: string; selector: string }> = [];
+
+  addContract(address: string): void {
+    this.contracts.add(address.toLowerCase());
+  }
+
+  /** eth_getCode semantics: factories, tokens (unless hasCode: false) and extra contracts have code. */
+  hasCode(address: string): boolean {
+    const lower = address.toLowerCase();
+    if (lower === V2_FACTORY || lower === LEGACY_FACTORY) return true;
+    if (this.contracts.has(lower)) return true;
+    const token = this.tokens.get(lower);
+    return token !== undefined && token.hasCode !== false;
+  }
 
   addToken(token: Partial<FakeToken> & { address: string; factory: string }): FakeToken {
     const full: FakeToken = {
@@ -65,6 +86,7 @@ export class FakeFactoryWorld {
       liveSupply: 1_000_000n * 10n ** 18n,
       createdAt: 1_760_000_000,
       balances: {},
+      hasCode: true,
       ...token,
       address: token.address.toLowerCase(),
       factory: token.factory.toLowerCase(),
@@ -165,7 +187,10 @@ export class FakeFactoryWorld {
 }
 
 export function fakeClient(world: FakeFactoryWorld): FactoryClient {
-  return { call: async (to, data) => world.handleCall(to, data) };
+  return {
+    call: async (to, data) => world.handleCall(to, data),
+    getCode: async (address) => (world.hasCode(address) ? FAKE_CODE : '0x'),
+  };
 }
 
 /** Minimal JSON-RPC node over HTTP backed by the world (eth_call + chain identity). */
@@ -197,6 +222,10 @@ export async function startFakeNode(
               };
             }
             return { jsonrpc: '2.0', id: m.id, result };
+          }
+          case 'eth_getCode': {
+            const address = String(m.params?.[0] ?? '');
+            return { jsonrpc: '2.0', id: m.id, result: world.hasCode(address) ? FAKE_CODE : '0x' };
           }
           case 'eth_chainId':
             return { jsonrpc: '2.0', id: m.id, result: '0x149' };

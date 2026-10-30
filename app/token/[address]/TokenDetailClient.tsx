@@ -1153,6 +1153,7 @@ export default function TokenDetailPage({ params }: { params: Promise<{ address:
                     <DisplayName
                       value={tokenData.token.name}
                       hidden
+                      hiddenReason={tokenData.token.hiddenReason}
                       address={tokenData.token.address}
                     />
                   ) : (

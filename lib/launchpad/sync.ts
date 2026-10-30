@@ -17,6 +17,7 @@ import {
   createWeb3FactoryClient,
   describeFactoryToken,
   getLaunchpadFactories,
+  hasContractCode,
   listFactoryTokens,
   readBalanceOf,
   type FactoryClient,
@@ -42,7 +43,8 @@ export interface PublicLaunchpadToken {
   hidden: boolean;
 }
 
-export type RegistrationStatus = 'created' | 'updated' | 'unchanged';
+/** `skipped`: the factory lists the address but no contract code is deployed there. */
+export type RegistrationStatus = 'created' | 'updated' | 'unchanged' | 'skipped';
 
 export interface LaunchpadSyncResult {
   factories: number;
@@ -50,6 +52,8 @@ export interface LaunchpadSyncResult {
   registered: number;
   updated: number;
   unchanged: number;
+  /** Factory entries without contract code (nothing written). */
+  skipped: number;
   errors: number;
   tokens: Array<{ address: string; symbol: string; status: RegistrationStatus | 'error' }>;
   startedAt: string;
@@ -115,6 +119,34 @@ export async function registerFactoryToken(
       return { status: 'unchanged', token: toPublicToken(existing) };
     await Token.updateOne({ address: info.address }, { $set: patch });
     return { status: 'updated', token: toPublicToken({ ...existing, ...patch }) };
+  }
+
+  // Never create a record for an address without contract code (an externally
+  // owned account, a deployment that is not mined yet, a self-destructed
+  // contract). The old registration API did exactly that and left "Unknown"
+  // tokens behind; those are hidden by `flag-spam-tokens --audit-code`.
+  if (!(await hasContractCode(client, info.address))) {
+    logger.warn('Launchpad token not registered: no contract code at the address', {
+      address: info.address,
+      factory: info.factory,
+    });
+    return {
+      status: 'skipped',
+      token: toPublicToken({
+        address: info.address,
+        name: info.name,
+        symbol: info.symbol,
+        decimals: info.decimals,
+        totalSupply: info.totalSupply,
+        type: 'VRC-20',
+        createdBy: info.creator !== ZERO_ADDRESS ? info.creator : null,
+        source: 'launchpad',
+        factory: info.factory,
+        factoryVerified: true,
+        createdAt: info.createdAt ?? undefined,
+        hidden: false,
+      }),
+    };
   }
 
   const creatorBalance =
@@ -188,6 +220,7 @@ export async function syncLaunchpadTokens(
     registered: 0,
     updated: 0,
     unchanged: 0,
+    skipped: 0,
     errors: 0,
     tokens: [],
     startedAt: startedAt.toISOString(),
@@ -214,6 +247,7 @@ export async function syncLaunchpadTokens(
         const { status, token } = await registerFactoryToken(info, client);
         if (status === 'created') result.registered += 1;
         else if (status === 'updated') result.updated += 1;
+        else if (status === 'skipped') result.skipped += 1;
         else result.unchanged += 1;
         result.tokens.push({ address, symbol: token.symbol, status });
       } catch (error) {

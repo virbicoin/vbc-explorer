@@ -27,6 +27,11 @@ export interface FactoryClient {
    * resolves to '0x'. Transport failures (node unreachable) reject.
    */
   call(to: string, data: string): Promise<string>;
+  /**
+   * `eth_getCode` at the latest block: '0x' for externally owned accounts and
+   * self-destructed contracts. Transport failures reject with FactoryRpcError.
+   */
+  getCode(address: string): Promise<string>;
 }
 
 export interface FactorySource {
@@ -96,6 +101,16 @@ function isEmptyResult(result: string): boolean {
   return !result || result === '0x' || /^0x0*$/.test(result);
 }
 
+/** True when an `eth_getCode` result is actual bytecode (not '0x' / zeros). */
+export function isContractCode(code: string | null | undefined): boolean {
+  return typeof code === 'string' && /^0x[0-9a-fA-F]+$/.test(code) && !/^0x0*$/.test(code);
+}
+
+/** Whether a contract is deployed at `address` (see isContractCode). */
+export async function hasContractCode(client: FactoryClient, address: string): Promise<boolean> {
+  return isContractCode(await client.getCode(address));
+}
+
 /** Factories from config: the current one first, then `legacyFactories` (deduplicated). */
 export function getLaunchpadFactories(config: AppConfig = loadConfig()): FactorySource[] {
   const launchpad = config.launchpad;
@@ -134,6 +149,17 @@ export function createWeb3FactoryClient(): FactoryClient {
         if (isJsonRpcError(error)) return '0x';
         throw new FactoryRpcError(
           `eth_call to ${to} failed: ${error instanceof Error ? error.message : String(error)}`,
+          error
+        );
+      }
+    },
+    async getCode(address: string): Promise<string> {
+      try {
+        const code = await getWeb3().eth.getCode(address);
+        return typeof code === 'string' ? code : '0x';
+      } catch (error) {
+        throw new FactoryRpcError(
+          `eth_getCode for ${address} failed: ${error instanceof Error ? error.message : String(error)}`,
           error
         );
       }

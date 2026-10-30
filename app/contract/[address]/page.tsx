@@ -47,6 +47,7 @@ interface ContractData {
   tokenType?: string;
   /** Name flagged as spam (URL / control characters): a badge is shown instead of the name */
   hidden?: boolean;
+  hiddenReason?: string | null;
 }
 
 interface Transaction {
@@ -591,6 +592,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                     <DisplayName
                       value={contract.tokenName}
                       hidden={contract.hidden}
+                      hiddenReason={contract.hiddenReason}
                       address={address}
                     />
                     {!contract.hidden && (
@@ -752,6 +754,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                       <DisplayName
                         value={contract.tokenName}
                         hidden={contract.hidden}
+                        hiddenReason={contract.hiddenReason}
                         address={address}
                       />
                       {!contract.hidden && (
@@ -889,6 +892,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                             <DisplayName
                               value={contract.name}
                               hidden={contract.hidden}
+                              hiddenReason={contract.hiddenReason}
                               address={address}
                               fallback="Unknown"
                             />
