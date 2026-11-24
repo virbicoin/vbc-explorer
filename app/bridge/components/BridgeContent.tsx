@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   useAccount,
   useBalance,
+  useBytecode,
   useConnect,
   useReadContract,
   useSwitchChain,
@@ -62,6 +63,16 @@ export function BridgeContent() {
   const effectiveRecipient = (recipient.trim() || address || '') as string;
   const recipientValid = isAddress(effectiveRecipient);
   const isErc20Deposit = direction === 'deposit' && asset.kind === 'erc20';
+
+  // The vault releases the native coin with a plain call, so a recipient contract without a
+  // payable receive/fallback cannot take it and the withdrawal stays pending.
+  const checkRecipientCode = direction === 'withdraw' && asset.kind === 'native' && recipientValid;
+  const { data: recipientCode } = useBytecode({
+    address: checkRecipientCode ? (effectiveRecipient as Address) : undefined,
+    chainId: source.chainId,
+    query: { enabled: checkRecipientCode },
+  });
+  const recipientIsContract = checkRecipientCode && !!recipientCode && recipientCode !== '0x';
 
   const { isLoading: isMining, isSuccess } = useWaitForTransactionReceipt({
     hash,
@@ -438,6 +449,13 @@ export function BridgeContent() {
           )}
           {showAdvanced && recipient && !recipientValid && (
             <p className="mt-1 text-xs text-red-400">Invalid address</p>
+          )}
+          {recipientIsContract && (
+            <p className="mt-1 text-xs text-yellow-400">
+              This recipient is a contract on {source.name}. If it cannot receive {asset.symbol},
+              the withdrawal stays pending until it can — send to a wallet address unless you are
+              sure.
+            </p>
           )}
         </div>
 
