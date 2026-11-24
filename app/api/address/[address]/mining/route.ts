@@ -1,36 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Web3 from 'web3';
-import { connectDB, Block } from '../../../../../models/index';
-import fs from 'fs';
-import path from 'path';
+import { connectDB, Block, Transaction } from '../../../../../models/index';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { validatePagination } from '@/lib/security/validation';
 import { rejectDeepPagination } from '@/lib/security/pagination';
+import {
+  getBlockRewardForHeight,
+  getBlockRewardWeiForHeight,
+  getNephewRewardWei,
+} from '@/lib/reward-schedule';
 
-// Function to read config
-const readConfig = () => {
-  try {
-    const configPath = path.join(process.cwd(), 'config.json');
-    const exampleConfigPath = path.join(process.cwd(), 'config.example.json');
-
-    if (fs.existsSync(configPath)) {
-      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    } else if (fs.existsSync(exampleConfigPath)) {
-      return JSON.parse(fs.readFileSync(exampleConfigPath, 'utf8'));
-    }
-  } catch (error) {
-    console.error('Error reading config:', error);
-  }
-
-  // Default configuration
-  return {
-    nodeAddr: 'localhost',
-    port: 8329,
-  };
-};
-
-const config = readConfig();
-const web3 = new Web3(new Web3.providers.HttpProvider(`http://${config.nodeAddr}:${config.port}`));
+/** Wei as a decimal string with 8 fractional digits (truncated), the format this API returns. */
+function toFixed8(wei: bigint): string {
+  const scaled = wei / 10n ** 10n;
+  const whole = scaled / 10n ** 8n;
+  const fraction = (scaled % 10n ** 8n).toString().padStart(8, '0');
+  return `${whole}.${fraction}`;
+}
 
 export async function GET(
   request: NextRequest,
@@ -71,92 +56,42 @@ export async function GET(
 
     const totalPages = Math.ceil(totalBlocks / limit);
 
-    // Generate mining reward transactions
-    const miningRewards = await Promise.all(
-      minedBlocks.map(async (block) => {
-        try {
-          // Get block info from Web3
-          const blockInfo = await web3.eth.getBlock(block.number, true);
+    // Fees per block from the stored transactions (blocks do not carry gasUsed)
+    const blockNumbers = minedBlocks.map((block) => block.number as number);
+    const txs = (await Transaction.find({ blockNumber: { $in: blockNumbers } })
+      .select('blockNumber gasUsed gasPrice')
+      .lean()) as Array<{ blockNumber: number; gasUsed?: number; gasPrice?: string }>;
+    const feesByBlock = new Map<number, bigint>();
+    for (const tx of txs) {
+      const fee = BigInt(tx.gasUsed ?? 0) * BigInt(tx.gasPrice || '0');
+      feesByBlock.set(tx.blockNumber, (feesByBlock.get(tx.blockNumber) ?? 0n) + fee);
+    }
 
-          // Calculate the actual reward
-          let actualReward = 0;
-
-          // 1. Block reward (fixed at 8 VBC)
-          const blockReward = 8;
-
-          // 2. Calculate gas fees (from all transactions in the block)
-          let totalGasFees = 0;
-          if (blockInfo.transactions && blockInfo.transactions.length > 0) {
-            for (const tx of blockInfo.transactions) {
-              // Type guard: check that tx is an object with gasPrice and gasUsed properties
-              if (typeof tx === 'object' && tx !== null && 'gasPrice' in tx && 'gasUsed' in tx) {
-                const txObj = tx as { gasPrice?: bigint; gasUsed?: bigint };
-                if (typeof txObj.gasPrice === 'bigint' && typeof txObj.gasUsed === 'bigint') {
-                  const gasFee = (Number(txObj.gasUsed) * Number(txObj.gasPrice)) / 1e18;
-                  totalGasFees += gasFee;
-                }
-              }
-            }
-          }
-
-          // 3. Get the actual balance change
-          try {
-            if (block.number > 0) {
-              const balanceBefore = await web3.eth.getBalance(address, block.number - 1);
-              const balanceAfter = await web3.eth.getBalance(address, block.number);
-              const balanceChange = (Number(balanceAfter) - Number(balanceBefore)) / 1e18;
-
-              // If the balance change is positive, use it as the actual reward
-              if (balanceChange > 0) {
-                actualReward = balanceChange;
-              } else {
-                // If the balance change is <= 0, use the sum of block reward and gas fees
-                actualReward = blockReward + totalGasFees;
-              }
-            } else {
-              // Genesis block case
-              actualReward = blockReward + totalGasFees;
-            }
-          } catch {
-            // If fetching the balance fails, use the calculated value
-            actualReward = blockReward + totalGasFees;
-          }
-
-          return {
-            hash: block.hash,
-            from: '0x0000000000000000000000000000000000000000',
-            to: address,
-            value: actualReward.toFixed(8),
-            timestamp: block.timestamp,
-            blockNumber: block.number,
-            type: 'mining_reward',
-            status: 'success',
-            details: {
-              blockReward: blockReward,
-              gasFees: totalGasFees.toFixed(8),
-              totalReward: actualReward.toFixed(8),
-            },
-          };
-        } catch {
-          // Fallback: use a fixed reward
-          return {
-            hash: block.hash,
-            from: '0x0000000000000000000000000000000000000000',
-            to: address,
-            value: '8.00000000', // fixed reward
-            timestamp: block.timestamp,
-            blockNumber: block.number,
-            type: 'mining_reward',
-            status: 'success',
-            details: {
-              blockReward: 8,
-              gasFees: '0.00000000',
-              totalReward: '8.00000000',
-            },
-          };
-        }
-      })
-    );
+    // What consensus credits the miner: block reward + fees + 1/32 of the reward per included uncle
+    const miningRewards = minedBlocks.map((block) => {
+      const number = block.number as number;
+      const blockReward = BigInt(getBlockRewardWeiForHeight(number));
+      const gasFees = feesByBlock.get(number) ?? 0n;
+      const uncleInclusionReward =
+        BigInt((block.uncles as string[] | undefined)?.length ?? 0) * getNephewRewardWei(number);
+      const totalReward = blockReward + gasFees + uncleInclusionReward;
+      return {
+        hash: block.hash,
+        from: '0x0000000000000000000000000000000000000000',
+        to: address,
+        value: toFixed8(totalReward),
+        timestamp: block.timestamp,
+        blockNumber: number,
+        type: 'mining_reward',
+        status: 'success',
+        details: {
+          blockReward: getBlockRewardForHeight(number),
+          gasFees: toFixed8(gasFees),
+          uncleInclusionReward: toFixed8(uncleInclusionReward),
+          totalReward: toFixed8(totalReward),
+        },
+      };
+    });
 
     return NextResponse.json({
       transactions: miningRewards,

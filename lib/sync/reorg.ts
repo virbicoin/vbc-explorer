@@ -8,8 +8,9 @@
  *   blockNumber / blockHash / transactionIndex / timestamp overwritten
  * - replaceBlock() swaps a height atomically enough for an explorer: delete
  *   the old block's transactions and their token transfers, upsert the block
- *   and its canonical transactions, drop the BlockStat so stats recompute, and
- *   log the event. Same hash → nothing is written.
+ *   (with its uncle issuance, lib/sync/uncle-rewards.ts) and its canonical
+ *   transactions, drop the BlockStat so stats recompute, and log the event.
+ *   Same hash → nothing is written.
  * - findCommonAncestor() walks back (at most maxDepth) to the last height
  *   where DB and node hashes agree; when none is found the range is recorded
  *   in scan_progress ('reorg-pending') for the repair tool.
@@ -28,6 +29,7 @@ import {
   type RawReceipt,
   type TransactionDoc,
 } from './normalize';
+import { fetchUncleReward } from './uncle-rewards';
 
 export const DEFAULT_CONFIRMATIONS = 12;
 export const DEFAULT_MAX_REORG_DEPTH = 64;
@@ -94,7 +96,14 @@ export async function upsertBlocks(docs: BlockDoc[]): Promise<number> {
   if (docs.length === 0) return 0;
   const result = await Block.bulkWrite(
     docs.map((doc) => ({
-      updateOne: { filter: { number: doc.number }, update: { $set: doc }, upsert: true },
+      updateOne: {
+        filter: { number: doc.number },
+        // A block without uncles must not keep the uncle issuance of a block it replaced.
+        // A block with uncles but no computed amount keeps the stored one (the backfill owns it).
+        update:
+          doc.uncles.length === 0 ? { $set: doc, $unset: { uncleReward: '' } } : { $set: doc },
+        upsert: true,
+      },
     })),
     { ordered: false }
   );
@@ -214,6 +223,9 @@ export async function replaceBlock(
     };
   }
 
+  // Before any delete: a failed uncle lookup must not leave the height half replaced.
+  const uncleReward = await fetchUncleReward(node, nodeBlock);
+
   let deletedTransactions = 0;
   let deletedTokenTransfers = 0;
   if (oldHash) {
@@ -232,6 +244,7 @@ export async function replaceBlock(
   }
 
   const { block, transactions } = await buildBlockDocuments(node, nodeBlock, deps);
+  if (uncleReward !== undefined) block.uncleReward = uncleReward;
   await upsertBlocks([block]);
   await upsertTransactions(transactions);
   await BlockStat.deleteOne({ number: height });

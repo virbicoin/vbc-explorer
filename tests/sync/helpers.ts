@@ -2,7 +2,7 @@
  * Shared helpers for the sync tests: deterministic block/transaction builders
  * and a fake ChainNode serving an in-memory canonical chain.
  */
-import type { ChainNode, RawBlock, RawReceipt, RawTransaction } from '@/lib/sync';
+import type { ChainNode, RawBlock, RawReceipt, RawTransaction, RawUncle } from '@/lib/sync';
 import { normalizeBlock, normalizeTransaction, upsertBlocks, upsertTransactions } from '@/lib/sync';
 import { Block } from '@/models/index';
 
@@ -62,12 +62,39 @@ export function canonicalChain(n: number, txAt: Record<number, string[]> = {}): 
   return blocks;
 }
 
+/**
+ * Gives `including` uncles at the listed heights (siblings labelled `unc`) and
+ * registers their headers on `node`. Returns the uncle hashes.
+ */
+export function addUncles(node: FakeNode, including: TestBlock, uncleHeights: number[]): string[] {
+  const hashes = uncleHeights.map((height, index) => {
+    const hash = hashOf(`unc${index}`, height);
+    node.uncles.set(`${including.hash}:${index}`, {
+      number: height,
+      hash,
+      miner: '0xDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD',
+    });
+    return hash;
+  });
+  including.uncles = hashes;
+  return hashes;
+}
+
 export class FakeNode implements ChainNode {
   blocks = new Map<number, RawBlock>();
   receipts = new Map<string, RawReceipt>();
+  /** `${blockHash}:${index}` → uncle header */
+  uncles = new Map<string, RawUncle>();
   headerCalls = 0;
+  uncleCalls = 0;
+  failUncleLookups = false;
   constructor(chain: TestBlock[]) {
     for (const b of chain) this.blocks.set(b.number, b);
+  }
+  async getUncle(blockHash: string, index: number) {
+    this.uncleCalls += 1;
+    if (this.failUncleLookups) throw new Error('node unavailable');
+    return this.uncles.get(`${blockHash}:${index}`) ?? null;
   }
   async getBlockNumber() {
     return Math.max(...this.blocks.keys());

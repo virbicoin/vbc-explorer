@@ -1,6 +1,6 @@
 {
   "name": "vbc-explorer",
-  "version": "0.8.8",
+  "version": "0.8.9",
   "description": "A modern blockchain explorer for VirBiCoin network with NFT support, contract verification, and real-time statistics",
   "keywords": [
     "blockchain",
@@ -58,6 +58,7 @@
     "optimize-indexes": "cross-env NODE_OPTIONS='--max-old-space-size=512' tsx --tsconfig tsconfig.tools.json tools/optimize-indexes.ts",
     "flag-spam-tokens": "cross-env NODE_OPTIONS='--max-old-space-size=512' tsx --tsconfig tsconfig.tools.json tools/flag-spam-tokens.ts",
     "repair-chain": "cross-env NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/repair-chain.ts",
+    "backfill-uncle-rewards": "cross-env NODE_OPTIONS='--max-old-space-size=512' tsx --tsconfig tsconfig.tools.json tools/backfill-uncle-rewards.ts",
     "fix-tx-timestamps": "cross-env NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/fix-transaction-timestamps.ts",
     "all": "cross-env MEMORY_LIMIT_MB=1024 NODE_OPTIONS='--max-old-space-size=1200' tsx --tsconfig tsconfig.tools.json tools/sync.ts all"
   },
@@ -68,7 +69,7 @@
     "human-standard-token-abi": "^2.0.0",
     "lightweight-charts": "^5.2.1",
     "mongoose": "^9.11.4",
-    "next": "^16.4.3",
+    "next": "^16.4.6",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-icons": "^5.7.0",
@@ -85,7 +86,7 @@
     "@babel/preset-typescript": "^8.0.7",
     "@eslint/eslintrc": "^3.3.7",
     "@eslint/js": "^10.0.1",
-    "@next/eslint-plugin-next": "^16.4.3",
+    "@next/eslint-plugin-next": "^16.4.6",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",

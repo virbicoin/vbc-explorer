@@ -35,6 +35,13 @@ export interface RawBlock {
   uncles?: ReadonlyArray<unknown>;
 }
 
+/** Uncle header fields the sync needs (eth_getUncleByBlockHashAndIndex). */
+export interface RawUncle {
+  number?: unknown;
+  hash?: unknown;
+  miner?: unknown;
+}
+
 export interface RawTransaction {
   hash?: unknown;
   nonce?: unknown;
@@ -65,6 +72,8 @@ export interface ChainNode {
   /** Header only (hash / parentHash), or null. */
   getBlockHeader(height: number): Promise<RawBlockHeader | null>;
   getTransactionReceipt(hash: string): Promise<RawReceipt | null>;
+  /** Uncle `index` of the block with hash `blockHash`, or null. */
+  getUncle(blockHash: string, index: number): Promise<RawUncle | null>;
 }
 
 export interface BlockDoc {
@@ -87,6 +96,12 @@ export interface BlockDoc {
   timestamp: number;
   transactions: string[];
   uncles: string[];
+  /**
+   * Wei created for this block's uncles (uncle rewards + nephew rewards), as a
+   * decimal string. Set only on blocks with uncles; filled by the sync
+   * (lib/sync/uncle-rewards.ts) or by `npm run backfill-uncle-rewards`.
+   */
+  uncleReward?: string;
 }
 
 export interface TransactionDoc {

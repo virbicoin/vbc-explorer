@@ -390,7 +390,6 @@
     "_comment": "DEX metadata for GeckoTerminal/CoinGecko listing applications"
   },
   "supply": {
-    "blockReward": 2,
     "premineAmount": 0,
     "excludedAddresses": [
       {
