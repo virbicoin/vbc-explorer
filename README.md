@@ -582,6 +582,7 @@ sequenceDiagram
 |    |-- register-contracts.ts  # Contract registration
 |    |-- optimize-indexes.ts  # Create/check schema indexes (--dry-run, --check)
 |    |-- repair-chain.ts      # Verify the stored chain / replace orphaned blocks (--check, --sample, --fix)
+|    |-- backfill-uncle-rewards.ts  # Record the uncle issuance of stored blocks (Block.uncleReward)
 |    |-- flag-spam-tokens.ts  # Hide tokens and contracts whose names look like URLs (backfill)
 |    |-- add-token.ts         # Manual token addition
 |-- types/
@@ -721,6 +722,7 @@ Every index is backed by a real query:
 | Block | `{ hash: 1 }` unique | block lookup by hash (v2 blocks API, transaction details) |
 | Block | `{ miner: 1, number: -1 }` | mined blocks per address (address API, blockscout `getminedblocks`, search) |
 | Block | `{ timestamp: -1 }` | daily block counts (`/api/stats/daily`), blockscout `getblocknobytime` |
+| Block | `{ uncleReward: 1 }` sparse | total uncle issuance for the supply endpoints (`lib/supply.ts`) |
 | Transaction | `{ hash: 1 }` unique | transaction lookups; sync relies on the duplicate-key error for de-duplication |
 | Transaction | `{ blockNumber: -1, transactionIndex: -1 }` | latest transactions, transactions of a block |
 | Transaction | `{ from: 1, blockNumber: -1, transactionIndex: -1 }`, `{ to: 1, blockNumber: -1, transactionIndex: -1 }` | address transaction history (address API, v2, blockscout, CSV export) |
@@ -757,6 +759,16 @@ npm run repair-chain -- --sample 1000      # compare 1000 random heights with th
 npm run repair-chain -- --fix --dry-run    # list the heights / hashes that would be replaced
 npm run repair-chain -- --fix              # replace orphans (resumable), then re-check; exit 0 only when 0 mismatches remain
 ```
+
+Blocks with uncles also store `uncleReward`: the coins created for their uncles (each uncle miner gets `(uncle + 8 − block) / 8` of the block reward, the including miner `1/32` of it per uncle). The amount needs each uncle's height, so the sync looks the uncles up on the node; `replaceBlock()` refuses to write a height whose uncle lookup fails, the bulk range sync stores the block without the field and logs a warning. Blocks stored before the field existed are filled once with:
+
+```bash
+npm run backfill-uncle-rewards -- --dry-run   # count the blocks and the amount, write nothing
+npm run backfill-uncle-rewards                # fill them (resumable via scan_progress 'uncle-rewards'); exit 1 if any block failed
+npm run backfill-uncle-rewards -- --from 0    # rescan everything, e.g. to retry failed blocks (filled blocks are skipped)
+```
+
+Run `repair-chain -- --check` first: the backfill checks every block against the node and reports stored blocks that are not canonical instead of filling them. Expect about two RPC calls per block with uncles.
 
 After `--fix`: recompute statistics from the lowest replaced height with `RESCAN_FROM=<minReplaced> npm run stats` (the tool prints the command). The legacy form `RESCAN=<interval>:<range>` scans `range × interval` blocks back from the head, so the equivalent is `RESCAN=100:<ceil((head − minReplaced) / 100) + 10>`; the tool prints that too. The token scan re-indexes transfers automatically, and richlist balances come from the node (no action). Run it against the local node only; it issues about two RPC calls per replaced block. Back up `Block`, `Transaction` and `BlockStat` first.
 
@@ -1137,6 +1149,7 @@ npm run optimize-indexes -- --check   # Exit 1 if any index is missing
 # Chain integrity and spam tokens
 npm run repair-chain -- --check       # Verify parentHash links (exit 1 on mismatches)
 npm run repair-chain -- --fix         # Replace orphaned blocks with the node's canonical blocks
+npm run backfill-uncle-rewards        # Record the uncle issuance of blocks stored before it was tracked
 npm run flag-spam-tokens -- --dry-run # Classify token/contract names (URL-like names are hidden)
 npm run flag-spam-tokens -- --audit-launchpad # Launchpad tokens no factory knows → factoryVerified: false
 npm run flag-spam-tokens -- --audit-code      # Hide token/contract records whose address has no code
@@ -1484,7 +1497,7 @@ curl "https://explorer.example.com/api?module=account&action=getminedblocks&addr
 
 | Action | Description | Parameters |
 |--------|-------------|------------|
-| `getblockreward` | Get block reward info | `blockno` |
+| `getblockreward` | Block reward (Etherscan semantics: static reward + fees + uncle inclusion reward), each uncle's miner and reward, and the uncle inclusion reward | `blockno` |
 | `getblocknobytime` | Get block by timestamp | `timestamp`, `closest` (before/after) |
 
 **Examples:**
@@ -1685,16 +1698,23 @@ Returns the total supply of VBC as a plain text number.
 
 **Response:** `354921680` (plain text, no JSON)
 
-**Calculation:** `(Block Height × Block Reward) + Pre-mine Amount`
+**Calculation:** `Pre-mine Amount + block rewards of blocks 1..head + uncle issuance`
 
-**Debug Mode:** Add `?debug=true` to get detailed JSON response:
+- Block rewards follow the schedule in `lib/reward-schedule.ts` (8 VBC, then 1 VBC less every 2,100,000 blocks from block 4,200,000, down to 1 VBC).
+- Uncle issuance is the sum of `Block.uncleReward` (uncle rewards plus nephew rewards). Blocks stored before the field existed count only after `npm run backfill-uncle-rewards` has run; `uncleRewardsBackfill` in the debug output shows how far it got (`null` = never run).
+- Block and uncle rewards are the only ways new coins are created, so this is the issued supply. `/api/v2/stats` and the Etherscan-compatible `stats/ethsupply` return the same figure in wei.
+
+**Debug Mode:** Add `?debug=true` to get detailed JSON response (example values; `blockReward` is the reward per block at the current height):
 ```json
 {
-  "blockNumber": "3115210",
+  "blockNumber": "3397826",
   "blockReward": 8,
-  "premineAmount": 330000000,
-  "totalSupply": 354921680,
-  "circulatingSupply": 354921679.5,
+  "premineAmount": 1,
+  "blockRewards": 27182608,
+  "uncleRewards": "1462481.25",
+  "uncleRewardsBackfill": { "lastScannedBlock": 3397826, "lastUpdateTime": "2026-11-24T12:00:00.000Z" },
+  "totalSupply": 28645090.25,
+  "circulatingSupply": 28645090.25,
   "excludedAddresses": [
     {
       "address": "0x0000000000000000000000000000000000000000",
@@ -1721,8 +1741,7 @@ Returns the circulating supply of VBC as a plain text number.
 ```json
 {
   "supply": {
-    "blockReward": 8,
-    "premineAmount": 330000000,
+    "premineAmount": 1,
     "excludedAddresses": [
       {
         "address": "0x0000000000000000000000000000000000000000",

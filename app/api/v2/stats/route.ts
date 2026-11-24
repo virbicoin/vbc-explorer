@@ -6,6 +6,7 @@ import path from 'path';
 import { checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { countAll } from '@/lib/db/count';
+import { calculateCirculatingSupplyWei, calculateTotalSupplyWei } from '@/lib/supply';
 
 // Function to read config
 const readConfig = () => {
@@ -25,10 +26,6 @@ const readConfig = () => {
   return {
     nodeAddr: 'localhost',
     port: 8329,
-    supply: {
-      blockReward: 8,
-      premineAmount: 1,
-    },
   };
 };
 
@@ -59,10 +56,11 @@ export async function GET(request: NextRequest) {
       hidden: { $ne: true },
     });
 
-    // Calculate total supply
-    const blockReward = config.supply?.blockReward || 8;
-    const premineAmount = config.supply?.premineAmount || 1;
-    const totalSupply = blockNumber * blockReward + premineAmount;
+    // Same figures as /api/total_supply and /api/circulating_supply
+    const [totalSupplyWei, circulatingSupplyWei] = await Promise.all([
+      calculateTotalSupplyWei(),
+      calculateCirculatingSupplyWei(),
+    ]);
 
     // Get gas price
     let gasPrice = '1000000000'; // 1 gwei default
@@ -119,8 +117,8 @@ export async function GET(request: NextRequest) {
       // Supply info
       coin_price: null,
       coin_price_change_percentage: null,
-      total_supply: (BigInt(Math.floor(totalSupply)) * BigInt(10 ** 18)).toString(),
-      circulating_supply: (BigInt(Math.floor(totalSupply)) * BigInt(10 ** 18)).toString(),
+      total_supply: totalSupplyWei.toString(),
+      circulating_supply: circulatingSupplyWei.toString(),
       market_cap: null,
 
       // Gas info

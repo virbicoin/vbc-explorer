@@ -5,13 +5,22 @@
  * for CoinGecko and CoinMarketCap integration.
  *
  * Calculation Logic:
- * - Total Supply = (Block Height × Block Reward) + Pre-mine Amount
+ * - Total Supply = Pre-mine Amount
+ *                  + block rewards of blocks 1..head (lib/reward-schedule.ts)
+ *                  + uncle issuance (uncle + nephew rewards, summed from Block.uncleReward)
  * - Circulating Supply = Total Supply - (Sum of Excluded Wallet Balances)
+ *
+ * Block and uncle rewards are the only ways new coins are created. Uncle
+ * issuance is read from the database: blocks synced before the field existed
+ * are filled by `npm run backfill-uncle-rewards`, whose progress
+ * getSupplyDetails() reports.
  */
 
-import { createPublicClient, http, formatEther, type Address } from 'viem';
+import { createPublicClient, http, formatEther, parseEther, type Address } from 'viem';
 import { loadConfig } from './config';
-import { calculateTotalMiningReward } from './api/blockscout/shared';
+import { calculateTotalMiningReward, getBlockRewardForHeight } from './reward-schedule';
+import { connectDB, Block, ScanProgress } from '../models/index';
+import { UNCLE_REWARD_SCAN } from './sync/uncle-rewards';
 
 // ============================================
 // Configuration
@@ -23,7 +32,6 @@ interface ExcludedAddress {
 }
 
 interface SupplyConfig {
-  blockReward: number;
   premineAmount: number;
   excludedAddresses: ExcludedAddress[];
   cacheDuration: number;
@@ -32,7 +40,6 @@ interface SupplyConfig {
 // Type assertion for config with optional supply property
 interface ConfigWithSupply {
   supply?: {
-    blockReward?: number;
     premineAmount?: number;
     excludedAddresses?: ExcludedAddress[];
     cacheDuration?: number;
@@ -49,7 +56,6 @@ const config = loadConfig() as ConfigWithSupply;
 
 // Load configuration from config.json with defaults
 const supplyConfig: SupplyConfig = {
-  blockReward: config.supply?.blockReward ?? 8,
   premineAmount: config.supply?.premineAmount ?? 330000000,
   excludedAddresses: config.supply?.excludedAddresses ?? [],
   cacheDuration: config.supply?.cacheDuration ?? 60,
@@ -81,6 +87,7 @@ interface CacheEntry<T> {
 
 interface SupplyCache {
   blockNumber: CacheEntry<bigint> | null;
+  uncleIssuance: CacheEntry<bigint> | null;
   totalSupply: CacheEntry<number> | null;
   circulatingSupply: CacheEntry<number> | null;
   excludedBalances: CacheEntry<Map<string, bigint>> | null;
@@ -88,6 +95,7 @@ interface SupplyCache {
 
 const cache: SupplyCache = {
   blockNumber: null,
+  uncleIssuance: null,
   totalSupply: null,
   circulatingSupply: null,
   excludedBalances: null,
@@ -184,19 +192,63 @@ export async function getExcludedBalances(): Promise<Map<string, bigint>> {
 }
 
 /**
- * Calculate Total Supply
- * Accounts for gradual reward reduction: 8 -> 7 -> ... -> 1 VBC every 4,200,000 blocks.
+ * Wei created for uncles across all stored blocks (sum of Block.uncleReward).
+ * Falls back to the last value when the database is unavailable.
  */
+export async function getUncleIssuanceWei(): Promise<bigint> {
+  if (isCacheValid(cache.uncleIssuance)) {
+    return cache.uncleIssuance!.data;
+  }
+
+  try {
+    await connectDB();
+    const [row] = await Block.aggregate<{ total: { toString(): string } }>([
+      { $match: { uncleReward: { $exists: true } } },
+      { $group: { _id: null, total: { $sum: { $toDecimal: '$uncleReward' } } } },
+    ]);
+    const total = row ? BigInt(row.total.toString()) : 0n;
+    cache.uncleIssuance = { data: total, timestamp: Date.now() };
+    return total;
+  } catch (error) {
+    console.error('[Supply] Error summing uncle rewards:', error);
+    if (cache.uncleIssuance) {
+      console.warn('[Supply] Using expired cache for uncle issuance');
+      return cache.uncleIssuance.data;
+    }
+    throw new Error('Failed to sum uncle rewards', { cause: error });
+  }
+}
+
+/**
+ * Calculate Total Supply
+ * Pre-mine + scheduled block rewards (8 -> 7 -> ... -> 1 VBC, every 2,100,000
+ * blocks from 4,200,000) + uncle issuance.
+ */
+/** Pre-mine + scheduled block rewards of blocks 1..blockNumber + uncle issuance, in wei. */
+export function computeTotalSupplyWei(
+  blockNumber: number,
+  premineAmount: number,
+  uncleIssuanceWei: bigint
+): bigint {
+  return (
+    parseEther(String(premineAmount)) +
+    BigInt(calculateTotalMiningReward(blockNumber)) * 10n ** 18n +
+    uncleIssuanceWei
+  );
+}
+
+export async function calculateTotalSupplyWei(): Promise<bigint> {
+  const [blockNumber, uncleIssuance] = await Promise.all([getBlockNumber(), getUncleIssuanceWei()]);
+  return computeTotalSupplyWei(Number(blockNumber), supplyConfig.premineAmount, uncleIssuance);
+}
+
 export async function calculateTotalSupply(): Promise<number> {
   // Check cache first
   if (isCacheValid(cache.totalSupply)) {
     return cache.totalSupply!.data;
   }
 
-  const blockNumber = await getBlockNumber();
-  const premineAmount = supplyConfig.premineAmount;
-
-  const totalSupply = calculateTotalMiningReward(Number(blockNumber)) + premineAmount;
+  const totalSupply = Number(formatEther(await calculateTotalSupplyWei()));
 
   // Update cache
   cache.totalSupply = {
@@ -205,6 +257,20 @@ export async function calculateTotalSupply(): Promise<number> {
   };
 
   return totalSupply;
+}
+
+/** Circulating supply in wei: total supply minus the excluded wallet balances. */
+export async function calculateCirculatingSupplyWei(): Promise<bigint> {
+  const [totalSupply, excludedBalances] = await Promise.all([
+    calculateTotalSupplyWei(),
+    getExcludedBalances(),
+  ]);
+  let totalExcluded = 0n;
+  for (const balance of excludedBalances.values()) {
+    totalExcluded += balance;
+  }
+  const circulating = totalSupply - totalExcluded;
+  return circulating > 0n ? circulating : 0n;
 }
 
 /**
@@ -251,6 +317,9 @@ export async function getSupplyDetails(): Promise<{
   blockNumber: string;
   blockReward: number;
   premineAmount: number;
+  blockRewards: number;
+  uncleRewards: string;
+  uncleRewardsBackfill: { lastScannedBlock: number; lastUpdateTime: Date | null } | null;
   totalSupply: number;
   circulatingSupply: number;
   excludedAddresses: Array<{
@@ -268,6 +337,11 @@ export async function getSupplyDetails(): Promise<{
   const totalSupply = await calculateTotalSupply();
   const circulatingSupply = await calculateCirculatingSupply();
   const excludedBalances = await getExcludedBalances();
+  const uncleIssuance = await getUncleIssuanceWei();
+  const backfill = (await ScanProgress.findOne({ scanType: UNCLE_REWARD_SCAN }).lean()) as {
+    lastScannedBlock?: number;
+    lastUpdateTime?: Date;
+  } | null;
 
   const excludedAddressDetails = supplyConfig.excludedAddresses.map(({ address, label }) => ({
     address,
@@ -277,8 +351,17 @@ export async function getSupplyDetails(): Promise<{
 
   return {
     blockNumber: blockNumber.toString(),
-    blockReward: supplyConfig.blockReward,
+    blockReward: getBlockRewardForHeight(Number(blockNumber)),
     premineAmount: supplyConfig.premineAmount,
+    blockRewards: calculateTotalMiningReward(Number(blockNumber)),
+    uncleRewards: formatEther(uncleIssuance),
+    // null until `npm run backfill-uncle-rewards` has run: blocks synced before then are not counted
+    uncleRewardsBackfill: backfill
+      ? {
+          lastScannedBlock: backfill.lastScannedBlock ?? 0,
+          lastUpdateTime: backfill.lastUpdateTime ?? null,
+        }
+      : null,
     totalSupply,
     circulatingSupply,
     excludedAddresses: excludedAddressDetails,
@@ -295,6 +378,7 @@ export async function getSupplyDetails(): Promise<{
  */
 export function clearSupplyCache(): void {
   cache.blockNumber = null;
+  cache.uncleIssuance = null;
   cache.totalSupply = null;
   cache.circulatingSupply = null;
   cache.excludedBalances = null;
@@ -304,7 +388,6 @@ export function clearSupplyCache(): void {
 // Export configuration for reference
 export const SUPPLY_CONFIG = {
   rpcUrl: RPC_URL,
-  blockReward: supplyConfig.blockReward,
   premineAmount: supplyConfig.premineAmount,
   excludedAddresses: supplyConfig.excludedAddresses,
   cacheDuration: supplyConfig.cacheDuration,

@@ -28,5 +28,9 @@ export function createWeb3Node(web3: Web3): ChainNode {
       const receipt = await web3.eth.getTransactionReceipt(hash);
       return receipt ? (receipt as unknown as RawReceipt) : null;
     },
+    async getUncle(blockHash, index) {
+      const uncle = await web3.eth.getUncle(blockHash, index);
+      return uncle ? { number: uncle.number, hash: uncle.hash, miner: uncle.miner } : null;
+    },
   };
 }

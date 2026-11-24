@@ -48,6 +48,8 @@ export interface IBlock extends Document {
   timestamp: number;
   blockTime: number;
   uncles: string[];
+  /** Wei created for the block's uncles (uncle + nephew rewards); only on blocks with uncles. */
+  uncleReward?: string;
 }
 
 export interface ITransaction extends Document {
@@ -244,6 +246,7 @@ const BlockSchema = new Schema(
     timestamp: Number,
     blockTime: Number,
     uncles: [String],
+    uncleReward: String,
   },
   { collection: 'Block' }
 );
@@ -454,6 +457,9 @@ const VerificationJobSchema = new Schema(
 // search/blocks-by-miner) and per-day block counts (stats/daily, blockscout getblocknobytime).
 BlockSchema.index({ miner: 1, number: -1 });
 BlockSchema.index({ timestamp: -1 });
+// Block: total uncle issuance for the supply endpoints (lib/supply.ts sums uncleReward
+// over the blocks that have it). Sparse: only blocks with uncles carry the field.
+BlockSchema.index({ uncleReward: 1 }, { sparse: true });
 
 // Transaction: latest-transaction lists and per-block lookups (transactions, v2, realtime),
 // per-address history (address API, v2 addresses, blockscout account, CSV export),

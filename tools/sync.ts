@@ -22,6 +22,7 @@ import {
 } from '../lib/contract/erc';
 import { hiddenFields } from '../lib/security/display-name';
 import {
+  attachUncleReward,
   createWeb3Node,
   dbHeadNumber,
   loadSyncState,
@@ -485,6 +486,8 @@ console.log(`🔌 Connecting to VirBiCoin node at ${providerUrl}...`);
 
 // Web3 connection using unified config
 const web3 = new Web3(new Web3.providers.HttpProvider(providerUrl));
+// Uncle headers for Block.uncleReward (bulk writers below)
+const uncleNode = createWeb3Node(web3);
 
 /**
  * Write block to database with improved performance
@@ -504,7 +507,7 @@ const writeBlockToDB: WriteBlockToDB = async function (
   }
 
   if (blockData && toNumber(blockData.number) >= 0) {
-    const blockDoc = normalizeBlock(blockData);
+    const blockDoc = await attachUncleReward(uncleNode, blockData, normalizeBlock(blockData));
     self.bulkOps.push(blockDoc);
 
     if (!config.quiet) {
@@ -821,7 +824,9 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
 
       for (const { blockNum, blockData } of allBlocksData) {
         if (blockData) {
-          blocksToInsert.push(normalizeBlock(blockData));
+          blocksToInsert.push(
+            await attachUncleReward(uncleNode, blockData, normalizeBlock(blockData))
+          );
 
           // Process transactions if they exist and are detailed
           if (blockData.transactions && Array.isArray(blockData.transactions)) {

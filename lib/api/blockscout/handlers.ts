@@ -7,18 +7,18 @@
  * modules.
  */
 
-import { type Address } from 'viem';
+import { hexToNumber, numberToHex, type Address, type Hash } from 'viem';
 import { countAll } from '../../db/count';
 import { connectDB, Block, Transaction, Account, Contract } from '@/models/index';
 import {
-  configJson,
   publicClient,
   Token,
   successResponse,
   errorResponse,
   getBlockRewardWeiForHeight,
-  calculateTotalMiningReward,
 } from './shared';
+import { getNephewRewardWei, getUncleRewardWei } from '@/lib/reward-schedule';
+import { calculateTotalSupplyWei } from '@/lib/supply';
 
 // ============================================
 // Block Module
@@ -28,19 +28,55 @@ export async function getBlockReward(blockno: string) {
   try {
     await connectDB();
     const blockNum = parseInt(blockno);
-    const block = await Block.findOne({ number: blockNum }).lean();
+    const block = (await Block.findOne({ number: blockNum }).lean()) as {
+      number: number;
+      hash: string;
+      miner?: string;
+      timestamp?: number;
+      uncles?: string[];
+    } | null;
 
     if (!block) {
       return errorResponse('Block not found');
     }
 
+    // The block lists only uncle hashes; the reward depends on each uncle's height.
+    const uncles = await Promise.all(
+      (block.uncles ?? []).map(async (_hash, index) => {
+        const uncle = await publicClient.request({
+          method: 'eth_getUncleByBlockHashAndIndex',
+          params: [block.hash as Hash, numberToHex(index)],
+        });
+        if (!uncle?.number) throw new Error(`uncle ${index} of block ${blockNum} not found`);
+        return {
+          miner: uncle.miner.toLowerCase(),
+          unclePosition: String(index),
+          blockreward: getUncleRewardWei(hexToNumber(uncle.number), blockNum).toString(),
+        };
+      })
+    );
+    const uncleInclusionReward = BigInt(uncles.length) * getNephewRewardWei(blockNum);
+
+    const txs = (await Transaction.find({ blockNumber: blockNum })
+      .select('gasUsed gasPrice')
+      .lean()) as Array<{ gasUsed?: number; gasPrice?: string }>;
+    const fees = txs.reduce(
+      (total, tx) => total + BigInt(tx.gasUsed ?? 0) * BigInt(tx.gasPrice || '0'),
+      0n
+    );
+
+    // Etherscan semantics: blockReward = static reward + fees + uncle inclusion reward
     const result = {
       blockNumber: String(block.number),
       timeStamp: String(block.timestamp || ''),
       blockMiner: block.miner,
-      blockReward: getBlockRewardWeiForHeight(blockNum),
-      uncles: [],
-      uncleInclusionReward: '0',
+      blockReward: (
+        BigInt(getBlockRewardWeiForHeight(blockNum)) +
+        fees +
+        uncleInclusionReward
+      ).toString(),
+      uncles,
+      uncleInclusionReward: uncleInclusionReward.toString(),
     };
 
     return successResponse(result);
@@ -200,10 +236,8 @@ export async function getTokenHolders(contractaddress: string, page = 1, offset 
 
 export async function getEthSupply() {
   try {
-    const blockNumber = await publicClient.getBlockNumber();
-    const premineAmount = configJson.supply?.premineAmount || 1;
-    const totalSupply = calculateTotalMiningReward(Number(blockNumber)) + premineAmount;
-    return successResponse((BigInt(Math.floor(totalSupply)) * BigInt(10 ** 18)).toString());
+    // Same figure as /api/total_supply (block rewards + uncle issuance + pre-mine), in wei
+    return successResponse((await calculateTotalSupplyWei()).toString());
   } catch (error) {
     return errorResponse('Error fetching supply');
   }

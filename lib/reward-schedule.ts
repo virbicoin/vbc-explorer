@@ -35,11 +35,52 @@ export function getBlockRewardForHeight(blockNumber: number): number {
   return BASE_REWARD - reductions;
 }
 
+const WEI_PER_COIN = 10n ** 18n;
+
+function blockRewardWei(blockNumber: number): bigint {
+  return BigInt(getBlockRewardForHeight(blockNumber)) * WEI_PER_COIN;
+}
+
 /**
  * Returns the block reward in wei (string) for API responses.
  */
 export function getBlockRewardWeiForHeight(blockNumber: number): string {
-  return (BigInt(getBlockRewardForHeight(blockNumber)) * BigInt(10 ** 18)).toString();
+  return blockRewardWei(blockNumber).toString();
+}
+
+/**
+ * Reward paid to the miner of uncle `uncleNumber` when block `blockNumber`
+ * includes it: (uncle + 8 - block) / 8 of the including block's reward
+ * (go-virbicoin consensus/ethash accumulateRewards).
+ */
+export function getUncleRewardWei(uncleNumber: number, blockNumber: number): bigint {
+  const depth = blockNumber - uncleNumber;
+  // Consensus keeps uncles within six generations; the formula is defined for 1..7.
+  if (!Number.isInteger(depth) || depth < 1 || depth > 7) {
+    throw new RangeError(`block ${blockNumber} cannot include an uncle at height ${uncleNumber}`);
+  }
+  return (BigInt(8 - depth) * blockRewardWei(blockNumber)) / 8n;
+}
+
+/** Extra reward the including block's miner receives per uncle: 1/32 of the block reward. */
+export function getNephewRewardWei(blockNumber: number): bigint {
+  return blockRewardWei(blockNumber) / 32n;
+}
+
+/**
+ * Coins created for the uncles of one block: each uncle's reward plus the
+ * nephew reward for including it. This issuance comes on top of the block
+ * reward schedule and is the only other way new coins are created.
+ */
+export function calculateUncleIssuanceWei(
+  blockNumber: number,
+  uncleNumbers: readonly number[]
+): bigint {
+  return uncleNumbers.reduce(
+    (total, uncle) =>
+      total + getUncleRewardWei(uncle, blockNumber) + getNephewRewardWei(blockNumber),
+    0n
+  );
 }
 
 /**
@@ -54,31 +95,31 @@ export function getNextRewardReductionBlock(blockNumber: number): number | null 
 }
 
 /**
- * Calculates cumulative mining reward from block 0 to the given block number,
- * accounting for the gradual reward reduction schedule.
+ * Calculates the cumulative block reward of blocks 1..blockNumber (the genesis
+ * block pays nothing), i.e. the sum of getBlockRewardForHeight over that range.
+ *
+ * Uncle rewards are not included: they depend on which uncles each block
+ * included and cannot be derived from the height alone.
  */
 export function calculateTotalMiningReward(blockNumber: number): number {
   if (blockNumber <= 0) return 0;
 
-  let total = 0;
+  // Blocks below the first reduction pay the base reward.
+  let total = Math.min(blockNumber, FIRST_REDUCTION_BLOCK - 1) * BASE_REWARD;
 
-  // First epoch: block 0 to FIRST_REDUCTION_BLOCK (reward = 8 VBC)
-  const firstEpochBlocks = Math.min(blockNumber, FIRST_REDUCTION_BLOCK);
-  total += firstEpochBlocks * BASE_REWARD;
-
-  let remaining = blockNumber - firstEpochBlocks;
-  let currentReward = BASE_REWARD - 1;
-
-  // Subsequent epochs: each REWARD_REDUCTION_INTERVAL blocks
-  while (remaining > 0 && currentReward >= MIN_REWARD) {
-    const blocksInEpoch = Math.min(remaining, REWARD_REDUCTION_INTERVAL);
-    total += blocksInEpoch * currentReward;
-    remaining -= blocksInEpoch;
-    currentReward--;
-  }
-
-  if (remaining > 0) {
-    total += remaining * MIN_REWARD;
+  // Each era starts on a reduction block, which already pays the reduced reward.
+  for (
+    let eraStart = FIRST_REDUCTION_BLOCK;
+    eraStart <= blockNumber;
+    eraStart += REWARD_REDUCTION_INTERVAL
+  ) {
+    const reward = getBlockRewardForHeight(eraStart);
+    if (reward <= MIN_REWARD) {
+      total += (blockNumber - eraStart + 1) * MIN_REWARD;
+      break;
+    }
+    const eraEnd = Math.min(blockNumber, eraStart + REWARD_REDUCTION_INTERVAL - 1);
+    total += (eraEnd - eraStart + 1) * reward;
   }
 
   return total;
