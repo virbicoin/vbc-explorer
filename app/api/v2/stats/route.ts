@@ -6,7 +6,12 @@ import path from 'path';
 import { checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { countAll } from '@/lib/db/count';
-import { calculateCirculatingSupplyWei, calculateTotalSupplyWei } from '@/lib/supply';
+import {
+  SUPPLY_CONFIG,
+  computeTotalSupplyWei,
+  getExcludedBalances,
+  getUncleIssuanceWei,
+} from '@/lib/supply';
 
 // Function to read config
 const readConfig = () => {
@@ -30,6 +35,21 @@ const readConfig = () => {
 };
 
 const config = readConfig();
+
+/** The promise's value, or null when it rejects or takes longer than `ms`. */
+async function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 const WEB3_PROVIDER_URL =
   process.env.WEB3_PROVIDER_URL || `http://${config.nodeAddr}:${config.port}`;
 const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
@@ -56,11 +76,22 @@ export async function GET(request: NextRequest) {
       hidden: { $ne: true },
     });
 
-    // Same figures as /api/total_supply and /api/circulating_supply
-    const [totalSupplyWei, circulatingSupplyWei] = await Promise.all([
-      calculateTotalSupplyWei(),
-      calculateCirculatingSupplyWei(),
-    ]);
+    // Same formula as /api/total_supply, from the database only (like the other figures here),
+    // so a slow or absent node cannot stall the response.
+    const totalSupplyWei = computeTotalSupplyWei(
+      blockNumber,
+      SUPPLY_CONFIG.premineAmount,
+      await getUncleIssuanceWei()
+    );
+    // The excluded balances come from the node: subtract them when it answers within 2 s.
+    const excludedWei = await within(
+      getExcludedBalances().then((balances) => [...balances.values()].reduce((a, b) => a + b, 0n)),
+      2000
+    );
+    const circulatingSupplyWei =
+      excludedWei === null || excludedWei > totalSupplyWei
+        ? totalSupplyWei
+        : totalSupplyWei - excludedWei;
 
     // Get gas price
     let gasPrice = '1000000000'; // 1 gwei default
