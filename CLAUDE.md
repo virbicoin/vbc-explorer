@@ -142,6 +142,7 @@ tools/                  # ブロックチェーン同期用 CLI ツール
   register-contracts.ts # コントラクト登録
   optimize-indexes.ts   # スキーマ定義インデックスの作成/確認（--dry-run / --check）
   repair-chain.ts       # 保存済みチェーンの検査と孤児ブロックの置換（--check / --sample / --fix）
+  backfill-uncle-rewards.ts # 保存済みブロックのアンクル発行量（Block.uncleReward）の埋め戻し
   flag-spam-tokens.ts   # URL 名トークン/コントラクトの hidden フラグ付与（バックフィル）、--audit-launchpad でファクトリー外トークンの列挙
   add-token.ts          # 手動トークン追加
   
@@ -243,6 +244,7 @@ npm run optimize-indexes -- --dry-run # 作成予定を表示（変更なし）
 npm run optimize-indexes -- --check   # 不足があれば一覧を出して exit 1
 npm run repair-chain -- --check       # 保存済みチェーンの parentHash 連結検査（不一致で exit 1）
 npm run repair-chain -- --fix         # 孤児ブロックをノードの正規ブロックで置換（--dry-run あり）
+npm run backfill-uncle-rewards -- --dry-run # アンクル発行量が未記録のブロックを数える（引数なしで書き込み）
 npm run flag-spam-tokens -- --dry-run # URL 名トークンの hidden 判定を表示（引数なしで書き込み）
 npm run flag-spam-tokens -- --audit-launchpad # ファクトリーが知らない Launchpad トークンを列挙し factoryVerified を記録
 npm run flag-spam-tokens -- --audit-code --dry-run # コードのないアドレス（eth_getCode が 0x）の token / Contract を列挙（--dry-run なしで hidden: no-code）
@@ -503,6 +505,26 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 - `proxy.ts` の `/address` タイプ判定 fetch に AbortController（2s）を追加 → DB 停止時も `/address` がハングしない（従来 ~15s）。
 - DEX サブシステム（`geckoterminal/info`・`pool`、`dex` ページ、`useFarming` のウォレット追加 `nativeCurrency`）の真のハードコード固有名を config 由来に。クライアントは `lib/client-config`（`getNetworkName`/`getCurrencyConfig`）または `useDexConfig`（`currency` フィールド追加）から取得。設定済みの本番では出力は不変。
 
+## 修正（2026-11）: アンクル報酬を含む供給量・Next.js 16.4.6（v0.8.9）
+
+Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`npm audit` に残る zod（web3 4.x → web3-validator が zod 3 系を要求し、修正は zod 4.6.6 以降のみ）は web3 側の対応待ち。
+
+`/api/total_supply` などの供給量がアンクル報酬とネフュー報酬を数えておらず、2026-11-24 時点で実際の発行量より 4% 以上少なかった（11 月以降はアンクルがほぼ毎ブロック付き、1 ブロックあたり約 7 VBC が上乗せで発行されている）ことへの対策。
+
+### 設計ルール（必ず守る）
+- **新規発行はブロック報酬とアンクル報酬だけ**。供給量 = premine + `calculateTotalMiningReward(head)`（ブロック 1..head）+ `Block.uncleReward` の合計。式は `lib/reward-schedule.ts`（`getUncleRewardWei` = (uncle + 8 − block) / 8 × 報酬、`getNephewRewardWei` = 報酬 / 32、`calculateUncleIssuanceWei`）。go-virbicoin の `accumulateRewards` と同じで、本番ブロックの採掘者残高の増分と 1 wei まで一致することを確認済み
+- **供給量をルートごとに計算しない**。`lib/supply.ts` の `calculateTotalSupply()` / `calculateTotalSupplyWei()` / `calculateCirculatingSupplyWei()` を使う（`/api/v2/stats`、blockscout `ethsupply` も同じ値）。wei で返す API は wei 版を使い、`Math.floor` で端数を落とさない
+- **採掘報酬を固定値で書かない**。mining API（`/api/address/[address]/mining`）と blockscout `getblockreward` は報酬スケジュール＋手数料（保存済み Transaction の gasUsed × gasPrice）＋ネフュー報酬で計算する。`getblockreward` の `blockReward` は Etherscan と同じく静的報酬＋手数料＋uncle inclusion reward
+- `Block.uncleReward` は wei の 10 進文字列で、アンクルを持つブロックにだけ付く（スパース索引 `{ uncleReward: 1 }`）。アンクルの高さはブロックに含まれないので `ChainNode.getUncle()` でノードに問い合わせる（`lib/sync/uncle-rewards.ts`）
+- `replaceBlock()` は**削除より前に**アンクルを取得し、失敗したら何も書かずに throw する（高さを半端に置き換えない）。一括同期（`tools/sync.ts`）は失敗時にフィールドなしで保存して warn し、埋め戻しツールが後で埋める。`upsertBlocks()` はアンクルのないブロックで `uncleReward` を `$unset` し、アンクルはあるが値のない文書では既存値を残す
+- 埋め戻し（`npm run backfill-uncle-rewards`）はブロックごとにノードの正規ブロックと照合し、孤児ブロックには値を付けず失敗として報告する。書き込みは number と hash の両方で絞る
+
+### 本番反映時の注意
+- 反映前に mongodump。反映後、最初に起動したツールが `{ uncleReward: 1 }` のスパース索引を作る（`npm run optimize-indexes -- --check` で確認）
+- `npm run repair-chain -- --check` が 0 → `npm run backfill-uncle-rewards -- --dry-run` で対象件数と量を確認 → 本実行（アンクル付きブロック 1 件あたり RPC 約 2 回。ローカルノードに対して実行する）。終了コード 1 なら `--from 0` で再実行
+- `/api/total_supply?debug=true` の `uncleRewardsBackfill.lastScannedBlock` が先端近くまで進み、`uncleRewards` が 0 でないこと。CoinGecko / CMC に出る総供給量はアンクル分（数 %）増える
+- ロールバック: 前の commit に戻せばよい（`uncleReward` フィールドとスパース索引は残っても旧コードは読まない）
+
 ## 新機能（2026-10）: 第 4 次修正 — .env 読み込み・全件カウント・nginx 例・README・token 整理（v0.8.8）
 
 第 3 次の本番反映と運用タスク E-1〜E-4（njs フィルター、MongoDB 認証、crowdsec、mongod ログローテーション）で見つかった残件への対応。リポジトリ側はタスク A〜E、運用側（本番サーバー）はタスク F。
@@ -649,7 +671,7 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 - 報酬スケジュール（8 VBC からブロック 4,200,000 を起点に 2,100,000 ブロックごとに 1 VBC ずつ減少、最低 1 VBC）は `lib/reward-schedule.ts` に集約。サーバー専用依存のない純粋モジュールで、クライアントコンポーネントからも利用可能
 - `lib/api/blockscout/shared.ts` の報酬関数は `lib/reward-schedule.ts` からの再エクスポート（既存 API ハンドラのインポートは変更不要）
 - コンポーネント: `components/HalvingCountdown.tsx`。データは既存の `GET /api/stats?enhanced=true`（`latestBlock` / `avgBlockTime`）を使用し、新規 API は不要
-- go-virbicoin 側で報酬スケジュールが変更された場合は `lib/reward-schedule.ts` を更新すること（テスト: `tests/lib/reward-schedule.test.ts`）
+- go-virbicoin 側で報酬スケジュールやアンクル報酬の式が変更された場合は `lib/reward-schedule.ts` を更新すること（テスト: `tests/lib/reward-schedule.test.ts`）
 
 ## 新機能（2026-01）
 
@@ -1059,7 +1081,7 @@ VirBiCoin エコシステムは以下のリポジトリで構成されていま�
 | **open-virbicoin** | Rust クライアント（Ovbc, OpenEthereum フォーク） | `../open-virbicoin` | [github.com/virbicoin/open-virbicoin](https://github.com/virbicoin/open-virbicoin) |
 | **vbc-stats** | ネットワーク統計ダッシュボード | `../vbc-stats` | [github.com/virbicoin/vbc-stats](https://github.com/virbicoin/vbc-stats) |
 | **vbc-explorer** ← 本リポジトリ | ブロックチェーンエクスプローラー | `../vbc-explorer` | [github.com/virbicoin/vbc-explorer](https://github.com/virbicoin/vbc-explorer) |
-| **open-virbicoin-pool** | マイニングプール | `../vbc-pool` | [github.com/virbicoin/open-virbicoin-pool](https://github.com/virbicoin/open-virbicoin-pool) |
+| **vbc-pool** | マイニングプール | `../vbc-pool` | [github.com/virbicoin/vbc-pool](https://github.com/virbicoin/vbc-pool) |
 | **vbc-rpc** | RPC ノードステータス & JSON-RPC プロキシ | `../vbc-rpc` | [github.com/virbicoin/vbc-rpc](https://github.com/virbicoin/vbc-rpc) |
 | **vbc-hash** | Ethash アルゴリズム実装（C/Go バインディング） | `../vbc-hash` | [github.com/virbicoin/vbc-hash](https://github.com/virbicoin/vbc-hash) |
 
@@ -1068,5 +1090,5 @@ VirBiCoin エコシステムは以下のリポジトリで構成されていま�
 - **open-virbicoin**: go-virbicoin（Gvbc）と同じ VirBiCoin ネットワーク（chainId 329）に接続する代替クライアント（Ovbc, Rust 実装）
 - **vbc-explorer** → **go-virbicoin**: JSON-RPC 経由でブロックチェーンデータを取得
 - **vbc-stats** → **go-virbicoin**: Gvbc ノードが eth-netstats-client プロトコルでブロック/統計データを送信
-- **open-virbicoin-pool** → **go-virbicoin**: マイニングプールが Gvbc ノードから作業を取得
+- **vbc-pool** → **go-virbicoin**: マイニングプールが Gvbc ノードから作業を取得
 - **vbc-rpc** → **go-virbicoin**: RPC プロキシが Gvbc ノードにリクエストを中継
