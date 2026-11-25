@@ -120,13 +120,12 @@ export async function loadAddressFacts(addresses: unknown[]): Promise<Map<string
   const facts = new Map<string, AddressFacts>();
   if (list.length === 0) return facts;
 
+  // Records flagged `no-code` are addresses without contract code that an earlier
+  // register API stored as tokens or contracts; they are not contracts.
+  const withCode = { address: { $in: list }, hiddenReason: { $ne: 'no-code' } };
   const [contracts, tokens, accounts] = (await Promise.all([
-    Contract.find({ address: { $in: list } })
-      .select('address verified contractName hidden')
-      .lean(),
-    Token.find({ address: { $in: list } })
-      .select('address name hidden')
-      .lean(),
+    Contract.find(withCode).select('address verified contractName hidden').lean(),
+    Token.find(withCode).select('address name hidden').lean(),
     Account.find({ address: { $in: list }, type: 1 })
       .select('address')
       .lean(),

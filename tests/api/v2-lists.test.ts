@@ -398,6 +398,21 @@ describe('transactions and blocks', () => {
     });
   });
 
+  it('does not call an address a contract because of a no-code token record', async () => {
+    // an account that an earlier register API stored as a token
+    await Token.collection.insertOne({
+      address: ALICE,
+      name: 'Unknown',
+      symbol: 'UNKNOWN',
+      type: 'VRC-20',
+      hidden: true,
+      hiddenReason: 'no-code',
+    });
+    const { body } = await list(txsGet, '/api/v2/transactions');
+    const ok = body.items.find((tx: { hash: string }) => tx.hash === TX_OK);
+    expect(ok.from).toMatchObject({ hash: ALICE, is_contract: false, name: null });
+  });
+
   it('pages the transaction list with next_page_params and filters contract creations', async () => {
     const first = await list(txsGet, '/api/v2/transactions?limit=2');
     expect(first.body.next_page_params).toMatchObject({
