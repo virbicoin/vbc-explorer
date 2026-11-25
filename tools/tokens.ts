@@ -1446,6 +1446,8 @@ async function adoptContractsCreatedByContracts(): Promise<number> {
   const created = (await InternalTransaction.find({
     createdContract: { $exists: true },
     reverted: false,
+    // created by a contract: a top-level creation is the block scan's
+    'traceAddress.0': { $exists: true },
   })
     .select('createdContract blockNumber')
     .lean()) as Array<{ createdContract: string; blockNumber: number }>;
