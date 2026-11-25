@@ -888,6 +888,15 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 ### トークン承認 API
 - `GET /api/address/[address]/approvals` - アクティブな ERC-20 allowance 一覧（`?refresh=1` でキャッシュ破棄）
 
+### Blockscout v2 互換 API（`app/api/v2/`）
+実装しているのは Blockscout v2 の一部だけです。
+- `GET /api/v2/stats`、`/api/v2/blocks`、`/api/v2/blocks/[numberOrHash]`、`/api/v2/transactions`、`/api/v2/transactions/[hash]`
+- `GET /api/v2/addresses/[address]`（`has_tokens` は `tokenholders` から判定）、`/api/v2/addresses/[address]/transactions`
+- `GET /api/v2/addresses/[address]/token-balances` - アドレスの保有トークン一覧（配列、ページングなし）。`tokenholders` / `tokens` だけから返し、ノードは呼ばない。Blockscout との違い: NFT はコレクション単位の 1 行（`value` は保有数）、hidden のトークンは出さない、`icon_url` は常に null
+- `GET /api/v2/smart-contracts/[address]` と検証（`verification/via/flattened-code`、`verification/via/standard-input`）
+
+DefiLlama はこのエクスプローラーを VirBiCoin の Blockscout として登録しており（DefiLlama-Adapters の `projects/helper/utils/blockscout.js`）、アドレスのトークン自動検出で `token-balances` を呼んで `token.address_hash` / `token.type` / `value` を読む。2026-11 まではこの経路が無く 404 だった。外部ツールが未実装の v2 経路を呼んでいると分かったら、同じ形でここに足す（テストは `tests/api/v2-token-balances.test.ts` が前例）。
+
 ## コードスタイル
 
 - フックを用いた関数コンポーネントを使用

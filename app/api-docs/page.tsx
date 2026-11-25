@@ -136,7 +136,7 @@ const apiCategories: ApiCategory[] = [
   {
     name: 'Blockscout API v2 - Addresses',
     icon: <WalletIcon className="w-6 h-6" />,
-    description: 'Address information and transactions.',
+    description: 'Address information, transactions and token balances.',
     endpoints: [
       {
         method: 'GET',
@@ -160,6 +160,15 @@ const apiCategories: ApiCategory[] = [
         response: '{"items":[...],"next_page_params":{...}}',
         sampleUrl:
           '/api/v2/addresses/0x0000000000000000000000000000000000000000/transactions?limit=5',
+      },
+      {
+        method: 'GET',
+        path: '/api/v2/addresses/[address]/token-balances',
+        description: 'Get the tokens held by an address (plain array, one row per token)',
+        params: ['address (required)'],
+        response:
+          '[{"token":{"address_hash":"0x...","name":"...","symbol":"...","decimals":"18","type":"ERC-20",...},"token_id":null,"value":"1000000000000000000"}]',
+        sampleUrl: '/api/v2/addresses/0x0000000000000000000000000000000000000000/token-balances',
       },
     ],
   },

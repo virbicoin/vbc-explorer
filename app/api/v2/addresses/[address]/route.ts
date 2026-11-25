@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, Account, Transaction, Contract } from '@/models/index';
+import { connectDB, Account, Transaction, Contract, TokenHolder } from '@/models/index';
 import Web3 from 'web3';
 import fs from 'fs';
 import path from 'path';
@@ -95,6 +95,19 @@ export async function GET(
       }).lean();
     }
 
+    // Whether /token-balances has rows for this address (hidden tokens are not checked here)
+    let hasTokens = false;
+    try {
+      hasTokens = Boolean(
+        await TokenHolder.exists({
+          holderAddress: sanitizedAddress.toLowerCase(),
+          balance: { $nin: ['0', ''], $exists: true },
+        })
+      );
+    } catch (error) {
+      console.error('Error checking token holdings:', error);
+    }
+
     // Blockscout API v2 response format
     const response: Record<string, unknown> = {
       hash: sanitizedAddress.toLowerCase(),
@@ -134,7 +147,7 @@ export async function GET(
       has_methods_write: isContract,
       has_methods_write_proxy: false,
       has_token_transfers: false,
-      has_tokens: false,
+      has_tokens: hasTokens,
       has_validated_blocks: false,
 
       // Watchlist
