@@ -904,13 +904,23 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 既知の制約: ERC-20 の移動は 1 取引・1 トークンにつき 1 件しか保存されない（`tools/tokens.ts` の upsert キーが `transactionHash` + `tokenAddress` で、ログ番号を持たない）。同じ取引の中で同じトークンが複数回動くと（DEX のスワップや手数料付きトークンなど）履歴が欠ける。保有者の残高は全イベントから計算しているので正しい。直すには移動にログ番号を持たせてキーを変え、本番の `tokentransfers` を取り直す必要がある（未着手）。
 
 ### Blockscout v2 互換 API（`app/api/v2/`）
-実装しているのは Blockscout v2 の一部だけです。
-- `GET /api/v2/stats`、`/api/v2/blocks`、`/api/v2/blocks/[numberOrHash]`、`/api/v2/transactions`、`/api/v2/transactions/[hash]`
-- `GET /api/v2/addresses/[address]`（`has_tokens` は `tokenholders` から判定）、`/api/v2/addresses/[address]/transactions`
-- `GET /api/v2/addresses/[address]/token-balances` - アドレスの保有トークン一覧（配列、ページングなし）。`tokenholders` / `tokens` だけから返し、ノードは呼ばない。Blockscout との違い: NFT はコレクション単位の 1 行（`value` は保有数）、hidden のトークンは出さない、`icon_url` は常に null
-- `GET /api/v2/smart-contracts/[address]` と検証（`verification/via/flattened-code`、`verification/via/standard-input`）
+共通の部品は `lib/api/v2/common.ts`（`v2Route()` = レート制限・DB 接続・エラー応答、`v2Page()` / `paginate()` = ページ送り、`addressParam()` / `tokenInfo()` / `transactionItem()` / `tokenTransferItem()` = 一覧に埋め込むオブジェクト）。新しい経路はこれらを使って書く。
 
-DefiLlama はこのエクスプローラーを VirBiCoin の Blockscout として登録しており（DefiLlama-Adapters の `projects/helper/utils/blockscout.js`）、アドレスのトークン自動検出で `token-balances` を呼んで `token.address_hash` / `token.type` / `value` を読む。2026-11 まではこの経路が無く 404 だった。外部ツールが未実装の v2 経路を呼んでいると分かったら、同じ形でここに足す（テストは `tests/api/v2-token-balances.test.ts` が前例）。
+- 統計・ブロック: `stats`、`blocks`、`blocks/[numberOrHash]`、`blocks/[numberOrHash]/transactions`
+- 取引: `transactions`、`transactions/[hash]`、`transactions/[hash]/token-transfers`、`transactions/[hash]/logs`（ノードのレシートから）、`transactions/[hash]/internal-transactions`（常に空）
+- アドレス: `addresses/[address]`、`…/transactions`、`…/tokens`（ページあり）、`…/token-balances`（配列、ページなし）、`…/token-transfers`、`…/counters`、`…/internal-transactions`（常に空）
+- トークン: `tokens`、`tokens/[address]`、`…/holders`、`…/transfers`、`…/counters`
+- 検索: `search`、`search/check-redirect`
+- コントラクト: `smart-contracts`（検証済みの一覧）、`smart-contracts/[address]` と検証（`verification/via/flattened-code`、`verification/via/standard-input`）
+
+設計ルール（必ず守る）:
+- **項目名は Blockscout の現行のもの**（`block_number`、`transaction_types`、`transaction_hash`、`address_hash`、`holders_count` など）。Blockscout 7 より前の名前（`block`、`tx_types`、`tx_hash`、`address`、`holders`）は既存の利用者のために併記している。本家の応答（例: `https://eth.blockscout.com/api/v2/…`）と突き合わせて決める
+- **`next_page_params` は、そのまま次の要求のクエリにすると次ページが返る値にする。** Blockscout の利用側はこれを機械的に送り返す。この実装が読むのは `page` と `limit` なので、必ずその 2 つを入れる（`paginate()` が入れる）。`block_number` や `index` は位置の目安として併記するだけ。1 ページは 50 件（`limit` で小さくできる）。次ページの有無は 1 件多く取って判断し、件数を数えない
+- **持っていないデータは null か空にする。作らない。** 内部取引は空の一覧、トークン移動の `log_index` は null、アドレスの `is_contract` / `is_verified` / `name` は `loadAddressFacts()`（Contract・tokens・Account.type）から引く。hidden の名前は返さない
+- トークン移動の並びは `timestamp` のみ（アドレス別・トークン別の索引で並ぶ）。全トークン横断の移動一覧（`/api/v2/token-transfers`）は、対応する索引が無いので作っていない
+- テストは `tests/api/v2-lists.test.ts`（一覧・検索・カウンター）、`tests/api/v2-token-balances.test.ts`、`tests/api/v2-blocks-stats.test.ts`
+
+DefiLlama はこのエクスプローラーを VirBiCoin の Blockscout として登録しており（DefiLlama-Adapters の `projects/helper/utils/blockscout.js`）、アドレスのトークン自動検出で `token-balances` を呼んで `token.address_hash` / `token.type` / `value` を読む。2026-11 まではこの経路が無く 404 だった。
 
 ## コードスタイル
 

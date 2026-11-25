@@ -20,7 +20,9 @@ export async function GET(request: NextRequest) {
     await connectDB();
 
     // Pagination
-    const pagination = validatePagination(searchParams.get('page'), searchParams.get('limit'), 50);
+    const pagination = validatePagination(searchParams.get('page'), searchParams.get('limit'), 50, {
+      defaultLimit: 50,
+    });
     const tooDeep = rejectDeepPagination(pagination, 'v2');
     if (tooDeep) return tooDeep;
     const skip = (pagination.page - 1) * pagination.limit;
@@ -78,6 +80,9 @@ export async function GET(request: NextRequest) {
       receipts_root: block.receiptRoot,
       sha3_uncles: block.sha3Uncles,
       uncles_hashes: block.uncles || [],
+      transactions_count: txCountMap.get(block.number as number) || 0,
+      transaction_fees: null,
+      // names used before Blockscout 7, kept for existing clients
       tx_count: txCountMap.get(block.number as number) || 0,
       tx_fees: '0',
       burnt_fees: null,
@@ -95,10 +100,14 @@ export async function GET(request: NextRequest) {
 
     const response = {
       items,
+      // A client sends these back as the query of the next request: `page` and `limit`
+      // are what this route reads, `block_number` is the position Blockscout shows.
       next_page_params: hasNextPage
         ? {
             block_number: blocks[blocks.length - 1]?.number,
-            items_count: pagination.limit,
+            page: pagination.page + 1,
+            limit: pagination.limit,
+            items_count: pagination.page * pagination.limit,
           }
         : null,
     };

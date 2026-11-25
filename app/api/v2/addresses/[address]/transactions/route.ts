@@ -1,180 +1,58 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, Transaction, Block } from '@/models/index';
+import { NextRequest } from 'next/server';
+import { Transaction } from '@/models/index';
+import { sanitizeAddress } from '@/lib/security';
 import {
-  sanitizeAddress,
-  checkRateLimit,
-  getClientIp,
-  getSecurityHeaders,
-  validatePagination,
-} from '@/lib/security';
-import { enforceRateLimit } from '@/lib/security/rate-limits';
-import { rejectDeepPagination } from '@/lib/security/pagination';
+  fillTimestamps,
+  headNumber,
+  invalidParameter,
+  json,
+  loadAddressFacts,
+  paginate,
+  transactionItem,
+  v2Page,
+  v2Route,
+} from '@/lib/api/v2/common';
 
-// Blockscout API v2 - Get address transactions
+type Doc = Record<string, unknown>;
+
+// Blockscout API v2 - transactions of an address, newest first. `filter` = to | from.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ address: string }> }
 ) {
-  try {
-    const { address } = await params;
+  return v2Route(request, async () => {
+    const address = sanitizeAddress((await params).address);
+    if (!address) return invalidParameter('Invalid address');
     const { searchParams } = new URL(request.url);
+    const paging = v2Page(searchParams);
+    if (paging.response) return paging.response;
 
-    const limited = enforceRateLimit(request, 'api', { format: 'v2' });
-    if (limited) return limited;
+    const filter = searchParams.get('filter');
+    const query: Doc =
+      filter === 'to'
+        ? { to: address }
+        : filter === 'from'
+          ? { from: address }
+          : { $or: [{ from: address }, { to: address }] };
 
-    // Validate address
-    const sanitizedAddress = sanitizeAddress(address);
-    if (!sanitizedAddress) {
-      return NextResponse.json(
-        { message: 'Invalid address' },
-        { status: 400, headers: getSecurityHeaders() }
-      );
-    }
+    // One extra row tells whether a next page exists (no count over the matches)
+    const [rows, head] = (await Promise.all([
+      Transaction.find(query)
+        .sort({ blockNumber: -1, transactionIndex: -1 })
+        .skip(paging.page.skip)
+        .limit(paging.page.limit + 1)
+        .lean(),
+      headNumber(),
+    ])) as [Doc[], number];
+    const { items, next_page_params } = paginate(rows, paging.page, (last) => ({
+      block_number: last.blockNumber,
+      index: last.transactionIndex,
+    }));
+    const [facts] = await Promise.all([
+      loadAddressFacts(items.flatMap((tx) => [tx.from, tx.to, tx.creates])),
+      fillTimestamps(items),
+    ]);
 
-    await connectDB();
-
-    // Pagination
-    const pagination = validatePagination(searchParams.get('page'), searchParams.get('limit'), 50);
-    const tooDeep = rejectDeepPagination(pagination, 'v2');
-    if (tooDeep) return tooDeep;
-    const skip = (pagination.page - 1) * pagination.limit;
-
-    // Filter
-    const filter = searchParams.get('filter'); // to, from, or null for both
-
-    // Build query
-    interface TxQuery {
-      $or?: Array<{ from: string } | { to: string }>;
-      from?: string;
-      to?: string;
-    }
-
-    const query: TxQuery = {};
-    if (filter === 'to') {
-      query.to = sanitizedAddress.toLowerCase();
-    } else if (filter === 'from') {
-      query.from = sanitizedAddress.toLowerCase();
-    } else {
-      query.$or = [
-        { from: sanitizedAddress.toLowerCase() },
-        { to: sanitizedAddress.toLowerCase() },
-      ];
-    }
-
-    // Get transactions
-    const transactions = await Transaction.find(query)
-      .sort({ blockNumber: -1, transactionIndex: -1 })
-      .skip(skip)
-      .limit(pagination.limit)
-      .lean();
-
-    // Get block info for timestamps
-    const blockNumbers = [...new Set(transactions.map((tx) => tx.blockNumber))];
-    const blocks = await Block.find({ number: { $in: blockNumbers } })
-      .select('number timestamp')
-      .lean();
-    const blockMap = new Map(blocks.map((b) => [b.number, b]));
-
-    // Format response in Blockscout v2 format
-    const items = transactions.map((tx: Record<string, unknown>) => {
-      const block = blockMap.get(tx.blockNumber as number);
-      return {
-        hash: tx.hash,
-        block: tx.blockNumber,
-        timestamp: block?.timestamp
-          ? new Date((block.timestamp as number) * 1000).toISOString()
-          : null,
-        confirmation_duration: null,
-        from: {
-          hash: tx.from,
-          is_contract: false,
-          is_verified: false,
-          name: null,
-          ens_domain_name: null,
-          implementation_name: null,
-        },
-        to: tx.to
-          ? {
-              hash: tx.to,
-              is_contract: false,
-              is_verified: false,
-              name: null,
-              ens_domain_name: null,
-              implementation_name: null,
-            }
-          : null,
-        created_contract: tx.creates
-          ? {
-              hash: tx.creates,
-              is_contract: true,
-              is_verified: false,
-              name: null,
-              ens_domain_name: null,
-              implementation_name: null,
-            }
-          : null,
-        value: tx.value?.toString() || '0',
-        fee: {
-          type: 'actual',
-          value: (
-            BigInt((tx.gasUsed as number) || 21000) *
-            BigInt((tx.gasPrice as string) || '1000000000')
-          ).toString(),
-        },
-        gas_price: tx.gasPrice?.toString() || '0',
-        gas_limit: tx.gas?.toString() || '21000',
-        gas_used: tx.gasUsed?.toString() || '21000',
-        status: tx.status === 0 ? 'error' : 'ok',
-        method:
-          tx.input && (tx.input as string).length > 10
-            ? (tx.input as string).substring(0, 10)
-            : null,
-        tx_types: tx.creates ? ['contract_creation'] : ['coin_transfer'],
-        exchange_rate: null,
-        has_error_in_internal_txs: false,
-        actions: [],
-        decoded_input: null,
-        token_transfers: [],
-        token_transfers_overflow: false,
-        raw_input: tx.input || '0x',
-        result: tx.status === 0 ? 'error' : 'success',
-        revert_reason: null,
-        nonce: tx.nonce,
-        position: tx.transactionIndex,
-        type: 0,
-        max_fee_per_gas: null,
-        max_priority_fee_per_gas: null,
-        priority_fee: null,
-        base_fee_per_gas: null,
-        tx_burnt_fee: null,
-        tx_tag: null,
-      };
-    });
-
-    // Get next page info
-    const totalCount = await Transaction.countDocuments(query);
-    const hasNextPage = skip + transactions.length < totalCount;
-
-    const response = {
-      items,
-      next_page_params: hasNextPage
-        ? {
-            block_number: transactions[transactions.length - 1]?.blockNumber,
-            index: transactions[transactions.length - 1]?.transactionIndex,
-            items_count: pagination.limit,
-          }
-        : null,
-    };
-
-    return NextResponse.json(response, { headers: getSecurityHeaders() });
-  } catch (error) {
-    console.error('Error fetching address transactions:', error);
-    return NextResponse.json(
-      {
-        message: 'Internal server error',
-        errors: [error instanceof Error ? error.message : 'Unknown error'],
-      },
-      { status: 500, headers: getSecurityHeaders() }
-    );
-  }
+    return json({ items: items.map((tx) => transactionItem(tx, head, facts)), next_page_params });
+  });
 }

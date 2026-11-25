@@ -255,6 +255,105 @@ const apiCategories: ApiCategory[] = [
           '[{"token":{"address_hash":"0x...","name":"...","symbol":"...","decimals":"18","type":"ERC-20",...},"token_id":null,"value":"1000000000000000000"}]',
         sampleUrl: '/api/v2/addresses/0x0000000000000000000000000000000000000000/token-balances',
       },
+      {
+        method: 'GET',
+        path: '/api/v2/addresses/[address]/tokens',
+        description: 'Tokens held by an address, largest balance first, in pages',
+        params: [
+          'address (required)',
+          'type (optional) - ERC-20, ERC-721, ERC-1155',
+          'page / limit',
+        ],
+        response:
+          '{"items":[{"token":{...},"token_id":null,"token_instance":null,"value":"..."}],"next_page_params":null}',
+        sampleUrl: '/api/v2/addresses/0x0000000000000000000000000000000000000000/tokens',
+      },
+      {
+        method: 'GET',
+        path: '/api/v2/addresses/[address]/token-transfers',
+        description: 'Token transfers of an address, newest first',
+        params: [
+          'address (required)',
+          'filter (optional) - "to", "from"',
+          'type (optional) - ERC-20, ERC-721',
+          'token (optional) - one token contract',
+          'page / limit',
+        ],
+        response:
+          '{"items":[{"transaction_hash":"0x...","from":{...},"to":{...},"token":{...},"total":{"decimals":"18","value":"..."},"type":"token_transfer"}],"next_page_params":{...}}',
+        sampleUrl: '/api/v2/addresses/0x0000000000000000000000000000000000000000/token-transfers',
+      },
+      {
+        method: 'GET',
+        path: '/api/v2/addresses/[address]/counters',
+        description: 'Transaction, token transfer, gas and mined block counts of an address',
+        params: ['address (required)'],
+        response:
+          '{"transactions_count":"10","token_transfers_count":"3","gas_usage_count":"210000","validations_count":"0"}',
+        sampleUrl: '/api/v2/addresses/0x0000000000000000000000000000000000000000/counters',
+      },
+    ],
+  },
+  {
+    name: 'Blockscout API v2 - Tokens & Search',
+    icon: <CurrencyDollarIcon className="w-6 h-6" />,
+    description:
+      'Tokens, holders, token transfers and search in the Blockscout v2 format. Send next_page_params back as the query to get the next page.',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/api/v2/tokens',
+        description: 'Tokens by number of holders',
+        params: [
+          'q (optional) - address, or start of the name / symbol',
+          'type (optional) - ERC-20, ERC-721, ERC-1155',
+          'page / limit',
+        ],
+        response:
+          '{"items":[{"address_hash":"0x...","name":"...","symbol":"...","decimals":"18","holders_count":"12","total_supply":"...","type":"ERC-20"}],"next_page_params":{...}}',
+        sampleUrl: '/api/v2/tokens?limit=5',
+      },
+      {
+        method: 'GET',
+        path: '/api/v2/tokens/[address]',
+        description: 'One token',
+        params: ['address (required)'],
+        response:
+          '{"address_hash":"0x...","name":"...","symbol":"...","decimals":"18","holders_count":"12","total_supply":"...","type":"ERC-20"}',
+      },
+      {
+        method: 'GET',
+        path: '/api/v2/tokens/[address]/holders',
+        description: 'Holders of a token by rank (also /transfers and /counters)',
+        params: ['address (required)', 'page / limit'],
+        response:
+          '{"items":[{"address":{"hash":"0x...","is_contract":false,...},"token":{...},"token_id":null,"value":"..."}],"next_page_params":{...}}',
+      },
+      {
+        method: 'GET',
+        path: '/api/v2/transactions/[hash]/token-transfers',
+        description: 'Token transfers of one transaction (also /logs for its event logs)',
+        params: ['hash (required)'],
+        response: '{"items":[{...}],"next_page_params":null}',
+      },
+      {
+        method: 'GET',
+        path: '/api/v2/blocks/[numberOrHash]/transactions',
+        description: 'Transactions of one block',
+        params: ['numberOrHash (required)', 'page / limit'],
+        response: '{"items":[{...}],"next_page_params":null}',
+        sampleUrl: '/api/v2/blocks/1/transactions',
+      },
+      {
+        method: 'GET',
+        path: '/api/v2/search?q=...',
+        description:
+          'Search by address, transaction hash, block height or hash, or the start of a token name / symbol',
+        params: ['q (required)'],
+        response:
+          '{"items":[{"type":"token","name":"...","symbol":"...","address_hash":"0x...","token_type":"ERC-20"}],"next_page_params":null}',
+        sampleUrl: '/api/v2/search?q=1',
+      },
     ],
   },
   {

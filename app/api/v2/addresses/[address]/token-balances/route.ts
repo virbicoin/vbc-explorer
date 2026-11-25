@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Token, TokenHolder } from '@/models/index';
 import { sanitizeAddress, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
-import { ercTokenType } from '@/lib/api/token-standard';
+import { tokenInfo } from '@/lib/api/v2/common';
 
 function isPositive(balance: string | null | undefined): boolean {
   try {
@@ -60,32 +60,16 @@ export async function GET(
 
     const items = holdings
       .filter((holding) => !tokenByAddress.get(holding.tokenAddress.toLowerCase())?.hidden)
-      .map((holding) => {
-        const tokenAddress = holding.tokenAddress.toLowerCase();
-        const token = tokenByAddress.get(tokenAddress);
-        const holders = token ? String(token.holders ?? 0) : null;
-        return {
-          token: {
-            address_hash: tokenAddress,
-            // older Blockscout versions name the field `address`; clients read either
-            address: tokenAddress,
-            circulating_market_cap: null,
-            decimals: token ? String(token.decimals ?? 18) : null,
-            exchange_rate: null,
-            holders_count: holders,
-            holders,
-            icon_url: null,
-            name: token?.name ?? null,
-            symbol: token?.symbol ?? null,
-            total_supply: token?.totalSupply ?? null,
-            type: ercTokenType(token?.type),
-            volume_24h: null,
-          },
-          token_id: null,
-          token_instance: null,
-          value: holding.balance,
-        };
-      })
+      .map((holding) => ({
+        token: tokenInfo(
+          holding.tokenAddress,
+          tokenByAddress.get(holding.tokenAddress.toLowerCase()) as
+            Record<string, unknown> | undefined
+        ),
+        token_id: null,
+        token_instance: null,
+        value: holding.balance,
+      }))
       .sort((a, b) => a.token.address_hash.localeCompare(b.token.address_hash));
 
     return NextResponse.json(items, { headers: getSecurityHeaders() });

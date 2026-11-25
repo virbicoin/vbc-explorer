@@ -77,12 +77,21 @@ describe('GET /api/v2/blocks', () => {
     expect(body.items[0]).toMatchObject({
       height: 7,
       hash: block(7).hash,
+      transactions_count: 2,
       tx_count: 2,
       type: 'block',
       miner: { hash: '0x1111111111111111111111111111111111111111' },
     });
     expect(body.items[1].tx_count).toBe(0);
-    expect(body.next_page_params).toEqual({ block_number: 3, items_count: 5 });
+    expect(body.next_page_params).toEqual({ block_number: 3, page: 2, limit: 5, items_count: 5 });
+
+    // sent back as the query, the way a Blockscout client pages, they yield the next page
+    const query = new URLSearchParams(
+      Object.entries(body.next_page_params).map(([key, value]) => [key, String(value)])
+    );
+    const next = await (await blocksGet(request(`/api/v2/blocks?${query}`))).json();
+    expect(next.items.map((b: { height: number }) => b.height)).toEqual([2, 1]);
+    expect(next.next_page_params).toBeNull();
   });
 
   it('returns next_page_params null on the last page and an empty page after it', async () => {
