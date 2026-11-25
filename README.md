@@ -1469,11 +1469,18 @@ The explorer provides a Blockscout/Etherscan compatible API endpoint at `/api`. 
 |--------|-------------|------------|
 | `balance` | Get address balance (wei) | `address` |
 | `balancemulti` | Get multiple balances (max 20) | `address` (comma separated) |
-| `txlist` | Get transaction list | `address`, `page`, `offset`, `sort` |
-| `txlistinternal` | Get internal transactions | `address` or `txhash`, `page`, `offset` |
-| `tokentx` | Get token transfers | `address`, `contractaddress`, `page`, `offset` |
+| `eth_get_balance` | Balance from the node, in the JSON-RPC envelope (Blockscout) | `address`, `block` (optional) |
+| `txlist` | Transactions of an address | `address`, `startblock`, `endblock`, `page`, `offset`, `sort` |
+| `tokentx` | Token transfer events of fungible tokens (`value`) | `address` and/or `contractaddress`, `startblock`, `endblock`, `page`, `offset`, `sort` |
+| `tokennfttx` | NFT (ERC-721) transfer events (`tokenID`) | same as `tokentx` |
+| `tokenlist` | Tokens an address holds (Blockscout) | `address` |
 | `tokenbalance` | Get specific token balance | `address`, `contractaddress` |
 | `getminedblocks` | Get blocks mined by address | `address`, `page`, `offset` |
+| `txlistinternal`, `token1155tx` | Always answer `No transactions found`: call traces and ERC-1155 transfers are not indexed | - |
+
+The list actions follow Etherscan's paging: a call without `page` / `offset` returns up to 10000 rows, `offset` may be at most 10000 and `page × offset` at most 100000. Calls that ask for more than 1000 rows per page are additionally limited to 10 per minute per client. `sort` is `desc` unless `asc` is given. A list without rows is answered with `{"status":"0","message":"No transactions found","result":[]}`.
+
+`isError` / `txreceipt_status` come from the stored receipt (`txreceipt_status` is empty when a transaction was saved without one), `confirmations` from the newest stored block, and `contractAddress` is the contract a creation transaction deployed. `cumulativeGasUsed` is not stored and reported as `0`; `functionName` is always empty. Transfers of tokens hidden as spam are left out of `tokentx` / `tokennfttx` unless that contract is asked for with `contractaddress`.
 
 **Examples:**
 ```bash
@@ -1484,7 +1491,14 @@ curl "https://explorer.example.com/api?module=account&action=balance&address=0x9
 curl "https://explorer.example.com/api?module=account&action=balancemulti&address=0xaddr1,0xaddr2,0xaddr3"
 
 # Get transaction list
-curl "https://explorer.example.com/api?module=account&action=txlist&address=0x...&page=1&offset=10&sort=desc"
+curl "https://explorer.example.com/api?module=account&action=txlist&address=0x...&startblock=0&endblock=99999999&page=1&offset=10&sort=desc"
+
+# Get token transfers of an address (ERC-20), and its NFT transfers
+curl "https://explorer.example.com/api?module=account&action=tokentx&address=0x...&page=1&offset=100&sort=asc"
+curl "https://explorer.example.com/api?module=account&action=tokennfttx&address=0x..."
+
+# Get the tokens an address holds
+curl "https://explorer.example.com/api?module=account&action=tokenlist&address=0x..."
 
 # Get token balance for specific token
 curl "https://explorer.example.com/api?module=account&action=tokenbalance&address=0x...&contractaddress=0x..."
@@ -1499,6 +1513,8 @@ curl "https://explorer.example.com/api?module=account&action=getminedblocks&addr
 |--------|-------------|------------|
 | `getblockreward` | Block reward (Etherscan semantics: static reward + fees + uncle inclusion reward), each uncle's miner and reward, and the uncle inclusion reward | `blockno` |
 | `getblocknobytime` | Get block by timestamp | `timestamp`, `closest` (before/after) |
+| `getblockcountdown` | Blocks and estimated seconds until a future block | `blockno` |
+| `eth_block_number` | Current block number from the node, in the JSON-RPC envelope (Blockscout) | - |
 
 **Examples:**
 ```bash
@@ -1513,8 +1529,9 @@ curl "https://explorer.example.com/api?module=block&action=getblocknobytime&time
 
 | Action | Description | Parameters |
 |--------|-------------|------------|
-| `gettxinfo` | Get transaction details | `txhash` |
-| `gettxreceiptstatus` | Get transaction status | `txhash` |
+| `gettxinfo` | Transaction details in the Blockscout layout (`success`, `confirmations`, `gasLimit`, `logs`, ...) | `txhash` |
+| `getstatus` | Contract execution status (Etherscan): `isError`, `errDescription` | `txhash` |
+| `gettxreceiptstatus` | Receipt status: `1` success, `0` failed | `txhash` |
 
 **Examples:**
 ```bash
@@ -1529,9 +1546,13 @@ curl "https://explorer.example.com/api?module=transaction&action=gettxreceiptsta
 
 | Action | Description | Parameters |
 |--------|-------------|------------|
-| `gettoken` / `tokeninfo` | Get token information | `contractaddress` |
-| `gettokenholders` | Get token holders list | `contractaddress`, `page`, `offset` |
-| `tokenlist` | Get all tokens list | `page`, `offset` |
+| `gettoken` | Token information in the Blockscout layout | `contractaddress` |
+| `tokeninfo` | Token information in the Etherscan layout (one-element array: `tokenName`, `divisor`, `tokenType`, ...) | `contractaddress` |
+| `gettokenholders` | Holders by rank (Blockscout: `address`, `value`) | `contractaddress`, `page`, `offset` |
+| `tokenholderlist` | Holders by rank (Etherscan: `TokenHolderAddress`, `TokenHolderQuantity`) | `contractaddress`, `page`, `offset` |
+| `tokenlist` | Get all tokens list (tokens hidden as spam are left out) | `page`, `offset` |
+
+Token types are reported with their ERC name (`ERC-20`, `ERC-721`, `ERC-1155`).
 
 **Examples:**
 ```bash
@@ -1551,7 +1572,8 @@ curl "https://explorer.example.com/api?module=token&action=tokenlist&page=1&offs
 |--------|-------------|------------|
 | `ethsupply` / `coinsupply` | Get total coin supply (wei) | - |
 | `tokensupply` | Get token total supply | `contractaddress` |
-| `ethprice` / `coinprice` | Get coin price (placeholder) | - |
+| `ethprice` | Latest stored coin price with Etherscan's field names (`ethusd`, `ethbtc`) | - |
+| `coinprice` | The same price with Blockscout's field names (`coin_usd`, `coin_btc`) | - |
 | `chainsize` | Get chain size statistics | - |
 | `dailytx` | Get daily transaction count | `startdate`, `enddate`, `sort` |
 
@@ -1568,6 +1590,16 @@ curl "https://explorer.example.com/api?module=stats&action=chainsize"
 
 # Get daily transactions (last 30 days)
 curl "https://explorer.example.com/api?module=stats&action=dailytx&startdate=2025-01-01&enddate=2025-01-31"
+```
+
+#### Gas Tracker Module
+
+| Action | Description | Parameters |
+|--------|-------------|------------|
+| `gasoracle` | Gas price tiers in gwei from the latest transactions (`SafeGasPrice`, `ProposeGasPrice`, `FastGasPrice`), `LastBlock`, `gasUsedRatio` | - |
+
+```bash
+curl "https://explorer.example.com/api?module=gastracker&action=gasoracle"
 ```
 
 #### Contract Module
@@ -1637,6 +1669,8 @@ curl "https://explorer.example.com/api?module=contract&action=checkverifystatus&
 |--------|-------------|------------|
 | `getLogs` | Get event logs | `address`, `fromBlock`, `toBlock`, `topic0-3`, `page`, `offset` |
 
+`address` or at least one topic is required. Topics are matched by position (`topic0` and `topic2` leave `topic1` open) and combined with `and`; the `topicN_M_opr=or` operators are refused. At most 1000 records are returned per call. Every record carries `timeStamp`, `gasPrice` and `gasUsed` as hex, like Etherscan.
+
 **Examples:**
 ```bash
 # Get logs for contract
@@ -1652,12 +1686,19 @@ curl "https://explorer.example.com/api?module=logs&action=getLogs&address=0x...&
 |--------|-------------|------------|
 | `eth_blockNumber` | Get current block number (hex) | - |
 | `eth_getBlockByNumber` | Get block by number | `tag`, `boolean` |
+| `eth_getUncleByBlockNumberAndIndex` | Get an uncle of a block | `tag`, `index` |
+| `eth_getBlockTransactionCountByNumber` | Number of transactions in a block | `tag` |
 | `eth_getTransactionByHash` | Get transaction by hash | `txhash` |
+| `eth_getTransactionByBlockNumberAndIndex` | Get a transaction by its position in a block | `tag`, `index` |
+| `eth_getTransactionCount` | Number of transactions sent from an address (nonce) | `address`, `tag` |
 | `eth_getTransactionReceipt` | Get transaction receipt | `txhash` |
 | `eth_call` | Execute contract call | `to`, `data`, `tag` |
 | `eth_getCode` | Get contract bytecode | `address`, `tag` |
+| `eth_getStorageAt` | Value of a storage slot | `address`, `position`, `tag` |
 | `eth_gasPrice` | Get current gas price (hex) | - |
-| `eth_estimateGas` | Estimate gas for transaction | `to`, `data`, `value`, `from` |
+| `eth_estimateGas` | Estimate gas for transaction | `to`, `data`, `value`, `from`, `gas`, `gasPrice` |
+
+The node's result is returned unchanged in the JSON-RPC envelope Etherscan uses for this module: `{"jsonrpc":"2.0","id":1,"result":...}` (with `status` / `message` added for older clients). `tag` is `latest`, `earliest`, `pending` or a block number in hex or decimal. `eth_sendRawTransaction` is not offered; broadcast through the RPC endpoint.
 
 **Examples:**
 ```bash

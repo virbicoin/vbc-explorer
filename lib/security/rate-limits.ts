@@ -45,6 +45,12 @@ export const RATE_LIMITS = {
   relay: { perMinute: 60 },
   /** POST /api/contract/[address] (stores contract info). */
   contractWrite: { perMinute: 10 },
+  /**
+   * Etherscan-format list actions asked for more than 1000 rows per page (the format
+   * allows 10000, and clients stop paging when a page comes back short). Counted in
+   * addition to `api`.
+   */
+  bulk: { perMinute: 10 },
 } as const satisfies Record<string, RateLimitBucketConfig>;
 
 export type RateLimitBucket = keyof typeof RATE_LIMITS;

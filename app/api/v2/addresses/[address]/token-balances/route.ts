@@ -2,18 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Token, TokenHolder } from '@/models/index';
 import { sanitizeAddress, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
-
-/**
- * Blockscout token type for the explorer's own type strings
- * ('VRC-20', 'ERC20', 'VRC-721', 'ERC1155', ...). Anything fungible or
- * unknown is reported as ERC-20, like the holdings list of the explorer itself.
- */
-function blockscoutTokenType(type: string | null | undefined): string {
-  const standard = (type ?? '').replace(/\D/g, '');
-  if (standard === '721') return 'ERC-721';
-  if (standard === '1155') return 'ERC-1155';
-  return 'ERC-20';
-}
+import { ercTokenType } from '@/lib/api/token-standard';
 
 function isPositive(balance: string | null | undefined): boolean {
   try {
@@ -89,7 +78,7 @@ export async function GET(
             name: token?.name ?? null,
             symbol: token?.symbol ?? null,
             total_supply: token?.totalSupply ?? null,
-            type: blockscoutTokenType(token?.type),
+            type: ercTokenType(token?.type),
             volume_24h: null,
           },
           token_id: null,

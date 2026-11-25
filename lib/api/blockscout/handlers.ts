@@ -7,14 +7,21 @@
  * modules.
  */
 
-import { hexToNumber, numberToHex, type Address, type Hash } from 'viem';
+import { hexToNumber, numberToHex, type Hash } from 'viem';
 import { countAll } from '../../db/count';
-import { connectDB, Block, Transaction, Account, Contract } from '@/models/index';
+import { connectDB, Block, Transaction, Contract, Market, TokenHolder } from '@/models/index';
+import { ercTokenType } from '@/lib/api/token-standard';
 import {
   publicClient,
   Token,
   successResponse,
   errorResponse,
+  emptyListResponse,
+  rpcResponse,
+  rpcErrorResponse,
+  txStatusFields,
+  getHeadNumber,
+  confirmations,
   getBlockRewardWeiForHeight,
 } from './shared';
 import { getNephewRewardWei, getUncleRewardWei } from '@/lib/reward-schedule';
@@ -106,6 +113,48 @@ export async function getBlockNoByTime(timestamp: string, closest: string = 'bef
   }
 }
 
+/** Etherscan `getblockcountdown`: blocks and estimated seconds until a future height. */
+export async function getBlockCountdown(blockno: string) {
+  try {
+    await connectDB();
+    const target = parseInt(blockno, 10);
+    if (!Number.isSafeInteger(target) || target < 0) return errorResponse('Invalid blockno');
+    const head = await getHeadNumber();
+    if (target <= head) return errorResponse('NOTOK', 'Error! Block number already pass');
+
+    // average block time over the last blocks (up to 1000)
+    const span = Math.min(1000, head);
+    const [newest, oldest] = (await Promise.all([
+      Block.findOne({ number: head }).select('timestamp').lean(),
+      Block.findOne({ number: head - span })
+        .select('timestamp')
+        .lean(),
+    ])) as Array<{ timestamp?: number } | null>;
+    const elapsed =
+      newest?.timestamp && oldest?.timestamp ? newest.timestamp - oldest.timestamp : 0;
+    const blockTime = span > 0 && elapsed > 0 ? elapsed / span : 0;
+    const remaining = target - head;
+
+    return successResponse({
+      CurrentBlock: String(head),
+      CountdownBlock: String(target),
+      RemainingBlock: String(remaining),
+      EstimateTimeInSec: (remaining * blockTime).toFixed(1),
+    });
+  } catch (error) {
+    return errorResponse('Error fetching block countdown');
+  }
+}
+
+/** Blockscout `eth_block_number`: the node's head in the JSON-RPC envelope. */
+export async function getEthBlockNumber() {
+  try {
+    return rpcResponse(await publicClient.request({ method: 'eth_blockNumber' }));
+  } catch (error) {
+    return rpcErrorResponse('Error fetching block number');
+  }
+}
+
 // ============================================
 // Transaction Module
 // ============================================
@@ -113,38 +162,77 @@ export async function getBlockNoByTime(timestamp: string, closest: string = 'bef
 export async function getTxInfo(txhash: string) {
   try {
     await connectDB();
-    const tx = (await Transaction.findOne({
-      hash: txhash.toLowerCase(),
-    }).lean()) as Record<string, unknown> | null;
+    const [tx, head] = await Promise.all([
+      Transaction.findOne({ hash: txhash.toLowerCase() }).lean() as Promise<Record<
+        string,
+        unknown
+      > | null>,
+      getHeadNumber(),
+    ]);
 
     if (!tx) {
       return errorResponse('Transaction not found');
     }
 
+    // Logs come from the node; the transaction is still reported without them
+    let logs: Array<{ address: string; data: string; topics: string[]; index: string }> = [];
+    try {
+      const receipt = await publicClient.request({
+        method: 'eth_getTransactionReceipt',
+        params: [txhash.toLowerCase() as Hash],
+      });
+      logs = (receipt?.logs ?? []).map((log) => ({
+        address: log.address,
+        data: log.data,
+        topics: log.topics,
+        index: String(hexToNumber(log.logIndex ?? '0x0')),
+      }));
+    } catch {
+      logs = [];
+    }
+
+    // Blockscout `gettxinfo` fields, followed by the Etherscan-style ones this action used to return
     const result = {
       blockNumber: String(tx.blockNumber),
-      timeStamp: String(tx.timestamp || ''),
-      hash: tx.hash,
-      nonce: String(tx.nonce || '0'),
-      blockHash: tx.blockHash || '',
-      transactionIndex: String(tx.transactionIndex || '0'),
+      confirmations: confirmations(head, tx.blockNumber),
       from: tx.from,
+      gasLimit: String(tx.gas ?? 0),
+      gasPrice: tx.gasPrice?.toString() || '0',
+      gasUsed: String(tx.gasUsed ?? 0),
+      hash: tx.hash,
+      input: tx.input || '0x',
+      logs,
+      revertReason: '',
+      success: tx.status !== 0,
+      timeStamp: String(tx.timestamp ?? ''),
       to: tx.to || '',
       value: tx.value?.toString() || '0',
-      gas: String(tx.gas || '21000'),
-      gasPrice: tx.gasPrice?.toString() || '0',
-      isError: tx.status === false ? '1' : '0',
-      txreceipt_status: tx.status === false ? '0' : '1',
-      input: tx.input || '0x',
-      contractAddress: tx.contractAddress || '',
-      cumulativeGasUsed: String(tx.cumulativeGasUsed || '0'),
-      gasUsed: String(tx.gasUsed || '21000'),
-      confirmations: '',
+      nonce: String(tx.nonce ?? 0),
+      blockHash: tx.blockHash || '',
+      transactionIndex: String(tx.transactionIndex ?? 0),
+      gas: String(tx.gas ?? 0),
+      ...txStatusFields(tx.status),
+      contractAddress: tx.creates || '',
     };
 
     return successResponse(result);
   } catch (error) {
     return errorResponse('Error fetching transaction');
+  }
+}
+
+/** Etherscan `getstatus`: whether the contract execution failed. */
+export async function getTxStatus(txhash: string) {
+  try {
+    await connectDB();
+    const tx = (await Transaction.findOne({ hash: txhash.toLowerCase() })
+      .select('status')
+      .lean()) as { status?: number | null } | null;
+
+    // Etherscan answers an unknown hash like a successful one
+    return successResponse({ isError: tx?.status === 0 ? '1' : '0', errDescription: '' });
+  } catch (error) {
+    return errorResponse('Error fetching transaction status');
   }
 }
 
@@ -156,12 +244,10 @@ export async function getTxReceiptStatus(txhash: string) {
     }).lean()) as Record<string, unknown> | null;
 
     if (!tx) {
-      return errorResponse('Transaction not found');
+      return successResponse({ status: '' });
     }
 
-    return successResponse({
-      status: tx.status === false ? '0' : '1',
-    });
+    return successResponse({ status: txStatusFields(tx.status).txreceipt_status });
   } catch (error) {
     return errorResponse('Error fetching transaction status');
   }
@@ -171,6 +257,18 @@ export async function getTxReceiptStatus(txhash: string) {
 // Token Module
 // ============================================
 
+function tokenFields(token: Record<string, unknown>) {
+  return {
+    contractAddress: token.address,
+    name: token.name || '',
+    symbol: token.symbol || '',
+    decimals: String(token.decimals ?? 18),
+    totalSupply: token.totalSupply?.toString() || '0',
+    type: ercTokenType(token.type as string | undefined),
+  };
+}
+
+/** Blockscout `getToken`. */
 export async function getTokenInfo(contractaddress: string) {
   try {
     await connectDB();
@@ -182,22 +280,14 @@ export async function getTokenInfo(contractaddress: string) {
       return errorResponse('Token not found');
     }
 
-    const result = {
-      contractAddress: token.address,
-      name: token.name || '',
-      symbol: token.symbol || '',
-      decimals: String(token.decimals || 18),
-      totalSupply: token.totalSupply?.toString() || '0',
-      type: token.type || 'ERC-20',
-    };
-
-    return successResponse(result);
+    return successResponse({ cataloged: true, ...tokenFields(token) });
   } catch (error) {
     return errorResponse('Error fetching token info');
   }
 }
 
-export async function getTokenHolders(contractaddress: string, page = 1, offset = 10) {
+/** Etherscan `tokeninfo`: a one-element array with Etherscan's field names. */
+export async function getTokenInfoEtherscan(contractaddress: string) {
   try {
     await connectDB();
     const token = (await Token.findOne({
@@ -205,26 +295,63 @@ export async function getTokenHolders(contractaddress: string, page = 1, offset 
     }).lean()) as Record<string, unknown> | null;
 
     if (!token) {
-      return errorResponse('Token not found');
+      return errorResponse('No data found', []);
     }
 
-    // Get holders from Account collection
-    const skip = (page - 1) * offset;
-    const holders = await Account.find({
-      [`tokenBalances.${contractaddress.toLowerCase()}`]: { $exists: true, $gt: '0' },
+    const fields = tokenFields(token);
+    const metadata = (token.metadata ?? {}) as { description?: string; website?: string };
+    return successResponse([
+      {
+        contractAddress: fields.contractAddress,
+        tokenName: fields.name,
+        symbol: fields.symbol,
+        divisor: fields.decimals,
+        tokenType: fields.type.replace('-', ''),
+        totalSupply: fields.totalSupply,
+        blueCheckmark: 'false',
+        description: metadata.description || '',
+        website: metadata.website || '',
+      },
+    ]);
+  } catch (error) {
+    return errorResponse('Error fetching token info');
+  }
+}
+
+/**
+ * Holders of a token from the `tokenholders` collection, by rank.
+ * `blockscout`: `[{ address, value }]` (getTokenHolders);
+ * `etherscan`: `[{ TokenHolderAddress, TokenHolderQuantity }]` (tokenholderlist).
+ */
+export async function getTokenHolders(
+  contractaddress: string,
+  page = 1,
+  offset = 10,
+  format: 'blockscout' | 'etherscan' = 'blockscout'
+) {
+  try {
+    await connectDB();
+    const holders = (await TokenHolder.find({
+      tokenAddress: contractaddress.toLowerCase(),
+      balance: { $nin: ['0', ''], $exists: true },
     })
-      .sort({ [`tokenBalances.${contractaddress.toLowerCase()}`]: -1 })
-      .skip(skip)
+      .sort({ rank: 1 })
+      .skip((page - 1) * offset)
       .limit(offset)
-      .lean();
+      .lean()) as Array<Record<string, unknown>>;
 
-    const result = holders.map((holder: Record<string, unknown>) => ({
-      address: holder.address,
-      balance:
-        (holder.tokenBalances as Record<string, string>)?.[contractaddress.toLowerCase()] || '0',
-    }));
+    if (holders.length === 0) return emptyListResponse('No token holders found');
 
-    return successResponse(result);
+    return successResponse(
+      holders.map((holder) =>
+        format === 'etherscan'
+          ? {
+              TokenHolderAddress: holder.holderAddress,
+              TokenHolderQuantity: String(holder.balance),
+            }
+          : { address: holder.holderAddress, value: String(holder.balance) }
+      )
+    );
   } catch (error) {
     return errorResponse('Error fetching token holders');
   }
@@ -260,14 +387,51 @@ export async function getTokenSupply(contractaddress: string) {
   }
 }
 
-export async function getEthPrice() {
-  // VBC doesn't have external price feed, return placeholder
-  return successResponse({
-    ethbtc: '0',
-    ethbtc_timestamp: String(Math.floor(Date.now() / 1000)),
-    ethusd: '0',
-    ethusd_timestamp: String(Math.floor(Date.now() / 1000)),
-  });
+/** Plain decimal string (no exponent) for a price figure. */
+function plainNumber(value: unknown): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return '0';
+  return amount.toFixed(18).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+/**
+ * Latest stored price of the native coin (collection `Market`, written by
+ * tools/price.ts). `etherscan`: `ethusd` / `ethbtc` (ethprice); `blockscout`:
+ * `coin_usd` / `coin_btc` (coinprice). Zeros when no price has been stored.
+ */
+export async function getEthPrice(format: 'etherscan' | 'blockscout' = 'etherscan') {
+  let usd = '0';
+  let btc = '0';
+  let timestamp = String(Math.floor(Date.now() / 1000));
+  try {
+    await connectDB();
+    const latest = (await Market.findOne().sort({ timestamp: -1 }).lean()) as {
+      timestamp?: number;
+      quoteUSD?: number;
+      quoteBTC?: number;
+    } | null;
+    if (latest) {
+      usd = plainNumber(latest.quoteUSD);
+      btc = plainNumber(latest.quoteBTC);
+      const stored = Number(latest.timestamp);
+      if (Number.isFinite(stored) && stored > 0) {
+        timestamp = String(Math.floor(stored > 1e12 ? stored / 1000 : stored));
+      }
+    }
+  } catch (error) {
+    // fall through with zeros
+  }
+
+  return successResponse(
+    format === 'blockscout'
+      ? {
+          coin_btc: btc,
+          coin_btc_timestamp: timestamp,
+          coin_usd: usd,
+          coin_usd_timestamp: timestamp,
+        }
+      : { ethbtc: btc, ethbtc_timestamp: timestamp, ethusd: usd, ethusd_timestamp: timestamp }
+  );
 }
 
 // Get chain size (database size approximation)
@@ -344,26 +508,78 @@ export async function getDailyTx(startdate?: string, enddate?: string, sort = 'a
   }
 }
 
-// Get all tokens list
+// Get all tokens list (spam-hidden tokens are left out, as in every list API)
 export async function getTokenList(page = 1, offset = 100) {
   try {
     await connectDB();
     const skip = (page - 1) * offset;
 
-    const tokens = await Token.find({}).sort({ holders: -1 }).skip(skip).limit(offset).lean();
+    const tokens = await Token.find({ hidden: { $ne: true } })
+      .sort({ holders: -1, address: 1 })
+      .skip(skip)
+      .limit(offset)
+      .lean();
 
-    const result = tokens.map((token: Record<string, unknown>) => ({
-      contractAddress: token.address,
-      name: token.name || '',
-      symbol: token.symbol || '',
-      decimals: String(token.decimals || 18),
-      totalSupply: token.totalSupply?.toString() || '0',
-      type: token.type || 'ERC-20',
-    }));
-
-    return successResponse(result);
+    return successResponse(tokens.map((token: Record<string, unknown>) => tokenFields(token)));
   } catch (error) {
     return errorResponse('Error fetching token list');
+  }
+}
+
+/** Etherscan `gasoracle`: gas price tiers in gwei from the latest transactions. */
+export async function getGasOracle() {
+  try {
+    await connectDB();
+    const [recent, blocks] = (await Promise.all([
+      Transaction.find({})
+        .sort({ blockNumber: -1, transactionIndex: -1 })
+        .limit(200)
+        .select('gasPrice')
+        .lean(),
+      Block.find({}).sort({ number: -1 }).limit(5).select('number gasUsed gasLimit').lean(),
+    ])) as [
+      Array<{ gasPrice?: string }>,
+      Array<{ number?: number; gasUsed?: number; gasLimit?: number }>,
+    ];
+
+    let prices = recent
+      .map((tx) => {
+        try {
+          return BigInt(tx.gasPrice || '0');
+        } catch {
+          return 0n;
+        }
+      })
+      .filter((price) => price > 0n)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    if (prices.length === 0) {
+      prices = [await publicClient.getGasPrice()];
+    }
+    const percentile = (p: number) =>
+      prices[Math.min(prices.length - 1, Math.floor((prices.length * p) / 100))];
+    const gwei = (wei: bigint) => {
+      const whole = wei / 1_000_000_000n;
+      const fraction = (wei % 1_000_000_000n).toString().padStart(9, '0').replace(/0+$/, '');
+      return fraction ? `${whole}.${fraction}` : whole.toString();
+    };
+
+    return successResponse({
+      LastBlock: String(blocks[0]?.number ?? 0),
+      SafeGasPrice: gwei(percentile(10)),
+      ProposeGasPrice: gwei(percentile(50)),
+      FastGasPrice: gwei(percentile(90)),
+      // no base fee on this chain (pre-London)
+      suggestBaseFee: '0',
+      gasUsedRatio: blocks
+        .map((block) =>
+          block.gasLimit
+            ? ((block.gasUsed ?? 0) / block.gasLimit).toFixed(6).replace(/0+$/, '0')
+            : '0'
+        )
+        .join(','),
+    });
+  } catch (error) {
+    return errorResponse('Error fetching gas oracle');
   }
 }
 
@@ -375,27 +591,31 @@ export async function getTokenList(page = 1, offset = 100) {
 export async function getContractCreation(addresses: string) {
   try {
     await connectDB();
-    const addressList = addresses.split(',').slice(0, 5); // Max 5 addresses
+    const addressList = addresses
+      .split(',')
+      .slice(0, 5) // Max 5 addresses
+      .map((addr) => addr.trim().toLowerCase());
 
-    const results = await Promise.all(
-      addressList.map(async (addr) => {
-        const tx = (await Transaction.findOne({
-          creates: addr.trim().toLowerCase(),
-        }).lean()) as Record<string, unknown> | null;
+    const txs = (await Transaction.find({ creates: { $in: addressList } })
+      .select('creates from hash blockNumber timestamp')
+      .lean()) as Array<Record<string, unknown>>;
+    const txByContract = new Map(txs.map((tx) => [String(tx.creates), tx]));
 
-        if (tx) {
-          return {
-            contractAddress: addr.trim(),
-            contractCreator: tx.from,
-            txHash: tx.hash,
-          };
-        }
-        return null;
-      })
-    );
+    const result = addressList
+      .filter((addr) => txByContract.has(addr))
+      .map((addr) => {
+        const tx = txByContract.get(addr) as Record<string, unknown>;
+        return {
+          contractAddress: addr,
+          contractCreator: tx.from,
+          txHash: tx.hash,
+          blockNumber: String(tx.blockNumber),
+          timestamp: String(tx.timestamp ?? ''),
+        };
+      });
 
-    const filteredResults = results.filter((r) => r !== null);
-    return successResponse(filteredResults);
+    if (result.length === 0) return errorResponse('No data found');
+    return successResponse(result);
   } catch (error) {
     return errorResponse('Error fetching contract creation info');
   }
@@ -404,6 +624,28 @@ export async function getContractCreation(addresses: string) {
 // ============================================
 // Logs Module
 // ============================================
+
+/** Etherscan returns at most 1000 log records per call. */
+const MAX_LOG_ROWS = 1000;
+
+/** Block parameter of eth_getLogs: a tag, or a decimal / hex height as a hex quantity. */
+function logBlockTag(value: string | undefined, fallback: 'earliest' | 'latest'): string | null {
+  if (value === undefined || value === '') return fallback;
+  if (value === 'latest' || value === 'earliest') return value;
+  if (/^\d+$/.test(value) || /^0x[0-9a-fA-F]+$/.test(value)) return numberToHex(BigInt(value));
+  return null;
+}
+
+interface RawLog {
+  address: string;
+  topics: string[];
+  data: string;
+  blockNumber: string | null;
+  blockHash: string | null;
+  logIndex: string | null;
+  transactionHash: string | null;
+  transactionIndex: string | null;
+}
 
 export async function getLogs(
   address?: string,
@@ -414,69 +656,107 @@ export async function getLogs(
   topic2?: string,
   topic3?: string,
   page = 1,
-  offset = 1000
+  offset = MAX_LOG_ROWS
 ) {
   try {
-    // Build filter for RPC call
-    interface LogFilter {
-      address?: Address;
-      fromBlock?: bigint | 'earliest';
-      toBlock?: bigint | 'latest';
-      topics?: (string | null)[];
+    const from = logBlockTag(fromBlock, 'earliest');
+    const to = logBlockTag(toBlock, 'latest');
+    if (!from || !to) return errorResponse('Invalid fromBlock or toBlock');
+
+    const topicList = [topic0, topic1, topic2, topic3];
+    if (topicList.some((topic) => topic !== undefined && !/^0x[0-9a-fA-F]{64}$/.test(topic))) {
+      return errorResponse('Invalid topic format');
+    }
+    // an unfiltered scan of the whole chain is not something to forward to the node
+    if (!address && !topicList.some(Boolean)) {
+      return errorResponse('Missing address or topic parameter');
     }
 
-    const filter: LogFilter = {};
-
-    if (address) {
-      filter.address = address as Address;
+    // Topics are positional: null matches anything, trailing wildcards are dropped
+    const lastTopic = topicList.reduce((last, topic, index) => (topic ? index : last), -1);
+    const filter: Record<string, unknown> = { fromBlock: from, toBlock: to };
+    if (address) filter.address = address;
+    if (lastTopic >= 0) {
+      filter.topics = topicList.slice(0, lastTopic + 1).map((topic) => topic ?? null);
     }
 
-    filter.fromBlock =
-      fromBlock === 'latest' ? undefined : fromBlock ? BigInt(fromBlock) : 'earliest';
-    filter.toBlock = toBlock === 'latest' ? undefined : toBlock ? BigInt(toBlock) : 'latest';
+    const logs = (await publicClient.request({
+      method: 'eth_getLogs',
+      params: [filter],
+    } as never)) as RawLog[];
 
-    // Build topics array
-    const topics: (string | null)[] = [];
-    if (topic0) topics.push(topic0);
-    else if (topic1 || topic2 || topic3) topics.push(null);
-    if (topic1) topics.push(topic1);
-    else if (topic2 || topic3) topics.push(null);
-    if (topic2) topics.push(topic2);
-    else if (topic3) topics.push(null);
-    if (topic3) topics.push(topic3);
+    const pageSize = Math.min(Math.max(1, Number(offset) || MAX_LOG_ROWS), MAX_LOG_ROWS);
+    const start = (Math.max(1, Number(page) || 1) - 1) * pageSize;
+    const rows = logs.slice(start, start + pageSize);
+    if (rows.length === 0) return emptyListResponse('No records found');
 
-    if (topics.length > 0) {
-      filter.topics = topics;
+    // Etherscan adds the block time and the transaction's gas figures to every record
+    const timeByBlock = new Map<number, number>();
+    const txByHash = new Map<string, { gasPrice?: string; gasUsed?: number }>();
+    try {
+      await connectDB();
+      const heights = [
+        ...new Set(
+          rows.filter((log) => log.blockNumber).map((log) => hexToNumber(log.blockNumber as Hash))
+        ),
+      ];
+      const hashes = [
+        ...new Set(
+          rows
+            .filter((log) => log.transactionHash)
+            .map((log) => String(log.transactionHash).toLowerCase())
+        ),
+      ];
+      const [blocks, txs] = (await Promise.all([
+        Block.find({ number: { $in: heights } })
+          .select('number timestamp')
+          .lean(),
+        Transaction.find({ hash: { $in: hashes } })
+          .select('hash gasPrice gasUsed')
+          .lean(),
+      ])) as [
+        Array<{ number: number; timestamp?: number }>,
+        Array<{ hash: string; gasPrice?: string; gasUsed?: number }>,
+      ];
+      for (const block of blocks) timeByBlock.set(block.number, block.timestamp ?? 0);
+      for (const tx of txs) txByHash.set(tx.hash, tx);
+    } catch {
+      // the records are still returned, without the added fields
     }
+    const hex = (value: bigint | number | undefined) =>
+      value === undefined ? '' : numberToHex(BigInt(value));
 
-    const logs = await publicClient.getLogs({
-      address: filter.address,
-      fromBlock: filter.fromBlock,
-      toBlock: filter.toBlock,
+    const result = rows.map((log) => {
+      const height = log.blockNumber ? hexToNumber(log.blockNumber as Hash) : undefined;
+      const tx = log.transactionHash ? txByHash.get(log.transactionHash.toLowerCase()) : undefined;
+      let gasPrice: string;
+      try {
+        gasPrice = tx?.gasPrice ? numberToHex(BigInt(tx.gasPrice)) : '';
+      } catch {
+        gasPrice = '';
+      }
+      return {
+        address: log.address,
+        topics: log.topics,
+        data: log.data,
+        blockNumber: log.blockNumber || '0x0',
+        blockHash: log.blockHash || '',
+        timeStamp:
+          height !== undefined && timeByBlock.has(height) ? hex(timeByBlock.get(height)) : '',
+        gasPrice,
+        gasUsed: hex(tx?.gasUsed),
+        logIndex: log.logIndex || '0x0',
+        transactionHash: log.transactionHash || '',
+        transactionIndex: log.transactionIndex || '0x0',
+      };
     });
-
-    // Paginate results
-    const start = (page - 1) * offset;
-    const paginatedLogs = logs.slice(start, start + offset);
-
-    const result = paginatedLogs.map((log) => ({
-      address: log.address,
-      topics: log.topics,
-      data: log.data,
-      blockNumber: log.blockNumber ? `0x${log.blockNumber.toString(16)}` : '0x0',
-      blockHash: log.blockHash || '',
-      timeStamp: '',
-      gasPrice: '',
-      gasUsed: '',
-      logIndex: log.logIndex !== undefined ? `0x${log.logIndex.toString(16)}` : '0x0',
-      transactionHash: log.transactionHash || '',
-      transactionIndex:
-        log.transactionIndex !== undefined ? `0x${log.transactionIndex.toString(16)}` : '0x0',
-    }));
 
     return successResponse(result);
   } catch (error) {
-    console.error('[getLogs] Error:', error);
+    console.error(
+      '[getLogs] Error:',
+      error instanceof Error ? error.message.split('\n')[0] : error
+    );
     return errorResponse('Error fetching logs');
   }
 }

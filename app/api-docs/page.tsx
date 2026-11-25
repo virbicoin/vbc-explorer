@@ -94,6 +94,91 @@ const apiCategories: ApiCategory[] = [
     ],
   },
   {
+    name: 'Etherscan-compatible API - Accounts, Tokens & Logs',
+    icon: <WalletIcon className="w-6 h-6" />,
+    description:
+      'Etherscan / Blockscout RPC-style actions (module & action). Lists follow Etherscan paging: up to 10000 rows per page, "No transactions found" when empty.',
+    endpoints: [
+      {
+        method: 'GET',
+        path: '/api?module=account&action=txlist&address=...',
+        description: 'Transactions of an address',
+        params: [
+          'address (required)',
+          'startblock / endblock (optional)',
+          'page / offset (optional) - offset up to 10000',
+          'sort (optional) - "asc" or "desc" (default)',
+        ],
+        response:
+          '{"status":"1","message":"OK","result":[{"blockNumber":"...","timeStamp":"...","hash":"0x...","from":"0x...","to":"0x...","value":"...","isError":"0","txreceipt_status":"1","confirmations":"..."}]}',
+        sampleUrl:
+          '/api?module=account&action=txlist&address=0x0000000000000000000000000000000000000000&page=1&offset=5',
+      },
+      {
+        method: 'GET',
+        path: '/api?module=account&action=tokentx&address=...',
+        description:
+          'Token transfer events of fungible tokens (use action=tokennfttx for NFT transfers)',
+        params: [
+          'address and/or contractaddress (one is required)',
+          'startblock / endblock (optional)',
+          'page / offset (optional)',
+          'sort (optional)',
+        ],
+        response:
+          '{"status":"1","message":"OK","result":[{"hash":"0x...","from":"0x...","to":"0x...","contractAddress":"0x...","value":"...","tokenName":"...","tokenSymbol":"...","tokenDecimal":"18"}]}',
+        sampleUrl:
+          '/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&page=1&offset=5',
+      },
+      {
+        method: 'GET',
+        path: '/api?module=account&action=tokenlist&address=...',
+        description: 'Tokens an address holds',
+        params: ['address (required)'],
+        response:
+          '{"status":"1","message":"OK","result":[{"balance":"...","contractAddress":"0x...","decimals":"18","name":"...","symbol":"...","type":"ERC-20"}]}',
+        sampleUrl:
+          '/api?module=account&action=tokenlist&address=0x0000000000000000000000000000000000000000',
+      },
+      {
+        method: 'GET',
+        path: '/api?module=token&action=getTokenHolders&contractaddress=...',
+        description: 'Holders of a token by rank (action=tokenholderlist for the Etherscan layout)',
+        params: ['contractaddress (required)', 'page / offset (optional)'],
+        response: '{"status":"1","message":"OK","result":[{"address":"0x...","value":"..."}]}',
+      },
+      {
+        method: 'GET',
+        path: '/api?module=logs&action=getLogs&address=...&topic0=...',
+        description: 'Event logs (at most 1000 records per call)',
+        params: [
+          'address and/or topic0..topic3 (one is required)',
+          'fromBlock / toBlock (optional) - number or "latest"',
+          'page / offset (optional)',
+        ],
+        response:
+          '{"status":"1","message":"OK","result":[{"address":"0x...","topics":["0x..."],"data":"0x...","blockNumber":"0x...","timeStamp":"0x...","transactionHash":"0x..."}]}',
+      },
+      {
+        method: 'GET',
+        path: '/api?module=gastracker&action=gasoracle',
+        description: 'Gas price tiers in gwei',
+        response:
+          '{"status":"1","message":"OK","result":{"LastBlock":"...","SafeGasPrice":"1","ProposeGasPrice":"1","FastGasPrice":"1","suggestBaseFee":"0","gasUsedRatio":"..."}}',
+        sampleUrl: '/api?module=gastracker&action=gasoracle',
+      },
+      {
+        method: 'GET',
+        path: '/api?module=proxy&action=eth_getTransactionCount&address=...&tag=latest',
+        description:
+          'JSON-RPC proxy (eth_blockNumber, eth_getBlockByNumber, eth_call, eth_getCode, eth_getStorageAt, ...); the node result is returned unchanged',
+        params: ['parameters of the action, as in the Etherscan proxy module'],
+        response: '{"jsonrpc":"2.0","id":1,"result":"0x1"}',
+        sampleUrl: '/api?module=proxy&action=eth_blockNumber',
+      },
+    ],
+  },
+  {
     name: 'Blockscout API v2 - Smart Contracts',
     icon: <CodeBracketIcon className="w-6 h-6" />,
     description: 'Blockscout v2 format for contract verification and information.',

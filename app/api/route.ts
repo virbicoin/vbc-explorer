@@ -2,47 +2,56 @@
  * Blockscout-compatible API Endpoint
  *
  * This API follows the Blockscout/Etherscan API standard format.
- * All responses are in JSON format with status, message, and result fields.
+ * All responses are in JSON format with status, message, and result fields
+ * (the `proxy` module and the `eth_*` actions use the JSON-RPC envelope).
  *
  * Usage: /api?module=<module>&action=<action>&...params
  *
  * Supported modules:
- * - account: balance, balancemulti, txlist, tokentx, tokenbalance, getminedblocks, txlistinternal
- * - block: getblockreward, getblocknobytime, eth_block_number
+ * - account: balance, balancemulti, eth_get_balance, txlist, txlistinternal, tokentx,
+ *            tokennfttx, token1155tx, tokenbalance, tokenlist, getminedblocks
+ * - block: getblockreward, getblockcountdown, getblocknobytime, eth_block_number
  * - transaction: gettxinfo, gettxreceiptstatus, getstatus
- * - token: getToken, getTokenHolders, tokeninfo, tokenlist
- * - stats: ethsupply, tokensupply, ethprice, chainsize, dailytx
- * - contract: getabi, getsourcecode, getcontractcreation
+ * - token: getToken, getTokenHolders, tokeninfo, tokenholderlist, tokenlist
+ * - stats: ethsupply, coinsupply, tokensupply, ethprice, coinprice, chainsize, dailytx
+ * - gastracker: gasoracle
+ * - contract: getabi, getsourcecode, getcontractcreation, verifysourcecode, checkverifystatus
  * - logs: getLogs
- * - proxy: eth_blockNumber, eth_getBlockByNumber, eth_getTransactionByHash,
- *          eth_getTransactionReceipt, eth_call, eth_getCode, eth_gasPrice, eth_estimateGas
+ * - proxy: eth_blockNumber, eth_getBlockByNumber, eth_getUncleByBlockNumberAndIndex,
+ *          eth_getBlockTransactionCountByNumber, eth_getTransactionByHash,
+ *          eth_getTransactionByBlockNumberAndIndex, eth_getTransactionCount,
+ *          eth_getTransactionReceipt, eth_call, eth_getCode, eth_getStorageAt,
+ *          eth_gasPrice, eth_estimateGas
+ *
+ * txlistinternal and token1155tx answer "No transactions found": the explorer
+ * indexes neither call traces nor ERC-1155 transfers.
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
-import {
-  isValidAddress,
-  isValidHash,
-  validatePagination,
-  checkRateLimit,
-  getClientIp,
-  getSecurityHeaders,
-} from '@/lib/security';
+import { isValidAddress, isValidHash, validatePagination } from '@/lib/security';
 import { errorResponse } from '@/lib/api/blockscout/shared';
 import {
   getBalance,
   getBalanceMulti,
+  getEthGetBalance,
   getTxList,
-  getTokenTx,
+  getTokenTransfers,
+  getUnindexedList,
+  getAccountTokenList,
   getTokenBalance,
   getMinedBlocks,
-  getTxListInternal,
+  type ListOptions,
 } from '@/lib/api/blockscout/account';
 import {
   getBlockReward,
   getBlockNoByTime,
+  getBlockCountdown,
+  getEthBlockNumber,
   getTxInfo,
+  getTxStatus,
   getTxReceiptStatus,
   getTokenInfo,
+  getTokenInfoEtherscan,
   getTokenHolders,
   getEthSupply,
   getTokenSupply,
@@ -50,6 +59,7 @@ import {
   getChainSize,
   getDailyTx,
   getTokenList,
+  getGasOracle,
   getContractCreation,
   getLogs,
   getAbi,
@@ -58,15 +68,76 @@ import {
 import {
   proxyEthBlockNumber,
   proxyEthGetBlockByNumber,
+  proxyEthGetUncleByBlockNumberAndIndex,
+  proxyEthGetBlockTransactionCountByNumber,
   proxyEthGetTransactionByHash,
+  proxyEthGetTransactionByBlockNumberAndIndex,
+  proxyEthGetTransactionCount,
   proxyEthGetTransactionReceipt,
   proxyEthCall,
   proxyEthGetCode,
+  proxyEthGetStorageAt,
   proxyEthGasPrice,
   proxyEthEstimateGas,
+  toBlockParameter,
 } from '@/lib/api/blockscout/proxy';
 import { verifySourceCode, checkVerifyStatus } from '@/lib/api/blockscout/verification';
 import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
+
+/** Rows per page Etherscan allows, and returns when a list is asked for without paging. */
+const MAX_ROWS = 10000;
+/** Pages above this size also count against the stricter `bulk` bucket. */
+const BULK_ROWS = 1000;
+
+/** `startblock` / `endblock`: undefined when absent, null when malformed. */
+function blockBound(value: string | null): number | undefined | null {
+  if (value === null || value === '') return undefined;
+  if (!/^\d{1,15}$/.test(value)) return null;
+  return Number(value);
+}
+
+/**
+ * Paging (`page`, `offset`), order (`sort`) and block range (`startblock`,
+ * `endblock`) of the list actions, with Etherscan's limits. Returns the
+ * response to send when the parameters are refused.
+ */
+function listOptions(
+  request: NextRequest,
+  searchParams: URLSearchParams
+):
+  { options: ListOptions; response?: undefined } | { options?: undefined; response: NextResponse } {
+  const pagination = validatePagination(
+    searchParams.get('page'),
+    searchParams.get('offset'),
+    MAX_ROWS,
+    { defaultLimit: MAX_ROWS }
+  );
+  if (pagination.tooDeep) {
+    return {
+      response: errorResponse(
+        `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
+      ),
+    };
+  }
+  const startblock = blockBound(searchParams.get('startblock'));
+  const endblock = blockBound(searchParams.get('endblock'));
+  if (startblock === null || endblock === null) {
+    return { response: errorResponse('Invalid startblock or endblock') };
+  }
+  if (pagination.limit > BULK_ROWS) {
+    const limited = enforceRateLimit(request, 'bulk', { format: 'etherscan' });
+    if (limited) return { response: limited };
+  }
+  return {
+    options: {
+      page: pagination.page,
+      offset: pagination.limit,
+      sort: searchParams.get('sort')?.toLowerCase() === 'asc' ? 'asc' : 'desc',
+      startblock,
+      endblock,
+    },
+  };
+}
 
 // ============================================
 // Main Handler
@@ -110,64 +181,47 @@ export async function GET(request: NextRequest) {
         }
         return getBalanceMulti(addresses);
       }
+      if (action === 'eth_get_balance') {
+        const address = searchParams.get('address');
+        if (!address) return errorResponse('Missing address parameter');
+        if (!isValidAddress(address)) return errorResponse('Invalid address format');
+        const block = toBlockParameter(searchParams.get('block'));
+        if (!block) return errorResponse('Invalid block parameter');
+        return getEthGetBalance(address, block);
+      }
       if (action === 'txlist') {
         const address = searchParams.get('address');
         if (!address) return errorResponse('Missing address parameter');
         if (!isValidAddress(address)) return errorResponse('Invalid address format');
-        const pagination = validatePagination(
-          searchParams.get('page'),
-          searchParams.get('offset'),
-          100
-        );
-        if (pagination.tooDeep) {
-          return errorResponse(
-            `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
-          );
-        }
-        const sort = searchParams.get('sort') || 'desc';
-        return getTxList(address, pagination.page, pagination.limit, sort);
+        const list = listOptions(request, searchParams);
+        if (list.response) return list.response;
+        return getTxList(address, list.options);
       }
-      if (action === 'txlistinternal') {
+      if (action === 'txlistinternal' || action === 'token1155tx') {
         const address = searchParams.get('address');
         const txhash = searchParams.get('txhash');
         if (address && !isValidAddress(address)) return errorResponse('Invalid address format');
         if (txhash && !isValidHash(txhash)) return errorResponse('Invalid txhash format');
-        const pagination = validatePagination(
-          searchParams.get('page'),
-          searchParams.get('offset'),
-          100
-        );
-        if (pagination.tooDeep) {
-          return errorResponse(
-            `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
-          );
-        }
-        return getTxListInternal(
-          address || undefined,
-          txhash || undefined,
-          pagination.page,
-          pagination.limit
-        );
+        return getUnindexedList();
       }
-      if (action === 'tokentx') {
-        const address = searchParams.get('address');
-        if (!address) return errorResponse('Missing address parameter');
-        if (!isValidAddress(address)) return errorResponse('Invalid address format');
+      if (action === 'tokentx' || action === 'tokennfttx') {
+        const address = searchParams.get('address') || undefined;
         const contractaddress = searchParams.get('contractaddress') || undefined;
+        if (!address && !contractaddress) {
+          return errorResponse('Missing address or contractaddress parameter');
+        }
+        if (address && !isValidAddress(address)) return errorResponse('Invalid address format');
         if (contractaddress && !isValidAddress(contractaddress)) {
           return errorResponse('Invalid contractaddress format');
         }
-        const pagination = validatePagination(
-          searchParams.get('page'),
-          searchParams.get('offset'),
-          100
+        const list = listOptions(request, searchParams);
+        if (list.response) return list.response;
+        return getTokenTransfers(
+          action === 'tokennfttx' ? 'erc721' : 'erc20',
+          address,
+          contractaddress,
+          list.options
         );
-        if (pagination.tooDeep) {
-          return errorResponse(
-            `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
-          );
-        }
-        return getTokenTx(address, contractaddress, pagination.page, pagination.limit);
       }
       if (action === 'tokenbalance') {
         const address = searchParams.get('address');
@@ -179,21 +233,19 @@ export async function GET(request: NextRequest) {
           return errorResponse('Invalid contractaddress format');
         return getTokenBalance(address, contractaddress);
       }
+      if (action === 'tokenlist') {
+        const address = searchParams.get('address');
+        if (!address) return errorResponse('Missing address parameter');
+        if (!isValidAddress(address)) return errorResponse('Invalid address format');
+        return getAccountTokenList(address);
+      }
       if (action === 'getminedblocks') {
         const address = searchParams.get('address');
         if (!address) return errorResponse('Missing address parameter');
         if (!isValidAddress(address)) return errorResponse('Invalid address format');
-        const pagination = validatePagination(
-          searchParams.get('page'),
-          searchParams.get('offset'),
-          100
-        );
-        if (pagination.tooDeep) {
-          return errorResponse(
-            `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
-          );
-        }
-        return getMinedBlocks(address, pagination.page, pagination.limit);
+        const list = listOptions(request, searchParams);
+        if (list.response) return list.response;
+        return getMinedBlocks(address, list.options.page, list.options.offset);
       }
     }
 
@@ -204,26 +256,30 @@ export async function GET(request: NextRequest) {
         if (!blockno) return errorResponse('Missing blockno parameter');
         return getBlockReward(blockno);
       }
+      if (action === 'getblockcountdown') {
+        const blockno = searchParams.get('blockno');
+        if (!blockno) return errorResponse('Missing blockno parameter');
+        return getBlockCountdown(blockno);
+      }
       if (action === 'getblocknobytime') {
         const timestamp = searchParams.get('timestamp');
         if (!timestamp) return errorResponse('Missing timestamp parameter');
         const closest = searchParams.get('closest') || 'before';
         return getBlockNoByTime(timestamp, closest);
       }
+      if (action === 'eth_block_number') {
+        return getEthBlockNumber();
+      }
     }
 
     // Transaction module
     if (apiModule === 'transaction') {
-      if (action === 'gettxinfo' || action === 'getstatus') {
+      if (action === 'gettxinfo' || action === 'getstatus' || action === 'gettxreceiptstatus') {
         const txhash = searchParams.get('txhash');
         if (!txhash) return errorResponse('Missing txhash parameter');
         if (!isValidHash(txhash)) return errorResponse('Invalid txhash format');
-        return getTxInfo(txhash);
-      }
-      if (action === 'gettxreceiptstatus') {
-        const txhash = searchParams.get('txhash');
-        if (!txhash) return errorResponse('Missing txhash parameter');
-        if (!isValidHash(txhash)) return errorResponse('Invalid txhash format');
+        if (action === 'gettxinfo') return getTxInfo(txhash);
+        if (action === 'getstatus') return getTxStatus(txhash);
         return getTxReceiptStatus(txhash);
       }
     }
@@ -235,37 +291,28 @@ export async function GET(request: NextRequest) {
         if (!contractaddress) return errorResponse('Missing contractaddress parameter');
         if (!isValidAddress(contractaddress))
           return errorResponse('Invalid contractaddress format');
-        return getTokenInfo(contractaddress);
+        return action === 'tokeninfo'
+          ? getTokenInfoEtherscan(contractaddress)
+          : getTokenInfo(contractaddress);
       }
-      if (action === 'gettokenholders') {
+      if (action === 'gettokenholders' || action === 'tokenholderlist') {
         const contractaddress = searchParams.get('contractaddress');
         if (!contractaddress) return errorResponse('Missing contractaddress parameter');
         if (!isValidAddress(contractaddress))
           return errorResponse('Invalid contractaddress format');
-        const pagination = validatePagination(
-          searchParams.get('page'),
-          searchParams.get('offset'),
-          100
+        const list = listOptions(request, searchParams);
+        if (list.response) return list.response;
+        return getTokenHolders(
+          contractaddress,
+          list.options.page,
+          list.options.offset,
+          action === 'tokenholderlist' ? 'etherscan' : 'blockscout'
         );
-        if (pagination.tooDeep) {
-          return errorResponse(
-            `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
-          );
-        }
-        return getTokenHolders(contractaddress, pagination.page, pagination.limit);
       }
       if (action === 'tokenlist') {
-        const pagination = validatePagination(
-          searchParams.get('page'),
-          searchParams.get('offset'),
-          100
-        );
-        if (pagination.tooDeep) {
-          return errorResponse(
-            `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
-          );
-        }
-        return getTokenList(pagination.page, pagination.limit);
+        const list = listOptions(request, searchParams);
+        if (list.response) return list.response;
+        return getTokenList(list.options.page, list.options.offset);
       }
     }
 
@@ -281,8 +328,11 @@ export async function GET(request: NextRequest) {
           return errorResponse('Invalid contractaddress format');
         return getTokenSupply(contractaddress);
       }
-      if (action === 'ethprice' || action === 'coinprice') {
-        return getEthPrice();
+      if (action === 'ethprice') {
+        return getEthPrice('etherscan');
+      }
+      if (action === 'coinprice') {
+        return getEthPrice('blockscout');
       }
       if (action === 'chainsize') {
         return getChainSize();
@@ -292,6 +342,13 @@ export async function GET(request: NextRequest) {
         const enddate = searchParams.get('enddate') || undefined;
         const sort = searchParams.get('sort') || 'asc';
         return getDailyTx(startdate, enddate, sort);
+      }
+    }
+
+    // Gas tracker module
+    if (apiModule === 'gastracker') {
+      if (action === 'gasoracle') {
+        return getGasOracle();
       }
     }
 
@@ -333,12 +390,27 @@ export async function GET(request: NextRequest) {
     if (apiModule === 'logs') {
       if (action === 'getlogs') {
         const address = searchParams.get('address') || undefined;
+        if (address && !isValidAddress(address)) return errorResponse('Invalid address format');
         const fromBlock = searchParams.get('fromBlock') || undefined;
         const toBlock = searchParams.get('toBlock') || undefined;
         const topic0 = searchParams.get('topic0') || undefined;
         const topic1 = searchParams.get('topic1') || undefined;
         const topic2 = searchParams.get('topic2') || undefined;
         const topic3 = searchParams.get('topic3') || undefined;
+        // only the default `and` between topics can be expressed as one node filter
+        for (const operator of [
+          'topic0_1_opr',
+          'topic0_2_opr',
+          'topic0_3_opr',
+          'topic1_2_opr',
+          'topic1_3_opr',
+          'topic2_3_opr',
+        ]) {
+          const value = searchParams.get(operator);
+          if (value && value.toLowerCase() !== 'and') {
+            return errorResponse(`Unsupported ${operator}: only "and" is available`);
+          }
+        }
         const page = parseInt(searchParams.get('page') || '1');
         const offset = parseInt(searchParams.get('offset') || '1000');
         return getLogs(address, fromBlock, toBlock, topic0, topic1, topic2, topic3, page, offset);
@@ -351,14 +423,35 @@ export async function GET(request: NextRequest) {
         return proxyEthBlockNumber();
       }
       if (action === 'eth_getblockbynumber') {
-        const tag = searchParams.get('tag') || 'latest';
-        const boolean = searchParams.get('boolean') === 'true';
-        return proxyEthGetBlockByNumber(tag, boolean);
+        return proxyEthGetBlockByNumber(
+          searchParams.get('tag'),
+          searchParams.get('boolean') === 'true'
+        );
+      }
+      if (action === 'eth_getunclebyblocknumberandindex') {
+        return proxyEthGetUncleByBlockNumberAndIndex(
+          searchParams.get('tag'),
+          searchParams.get('index')
+        );
+      }
+      if (action === 'eth_getblocktransactioncountbynumber') {
+        return proxyEthGetBlockTransactionCountByNumber(searchParams.get('tag'));
       }
       if (action === 'eth_gettransactionbyhash') {
         const txhash = searchParams.get('txhash');
         if (!txhash) return errorResponse('Missing txhash parameter');
         return proxyEthGetTransactionByHash(txhash);
+      }
+      if (action === 'eth_gettransactionbyblocknumberandindex') {
+        return proxyEthGetTransactionByBlockNumberAndIndex(
+          searchParams.get('tag'),
+          searchParams.get('index')
+        );
+      }
+      if (action === 'eth_gettransactioncount') {
+        const address = searchParams.get('address');
+        if (!address) return errorResponse('Missing address parameter');
+        return proxyEthGetTransactionCount(address, searchParams.get('tag'));
       }
       if (action === 'eth_gettransactionreceipt') {
         const txhash = searchParams.get('txhash');
@@ -370,14 +463,17 @@ export async function GET(request: NextRequest) {
         const data = searchParams.get('data');
         if (!to) return errorResponse('Missing to parameter');
         if (!data) return errorResponse('Missing data parameter');
-        const tag = searchParams.get('tag') || 'latest';
-        return proxyEthCall(to, data, tag);
+        return proxyEthCall(to, data, searchParams.get('tag'));
       }
       if (action === 'eth_getcode') {
         const address = searchParams.get('address');
         if (!address) return errorResponse('Missing address parameter');
-        const tag = searchParams.get('tag') || 'latest';
-        return proxyEthGetCode(address, tag);
+        return proxyEthGetCode(address, searchParams.get('tag'));
+      }
+      if (action === 'eth_getstorageat') {
+        const address = searchParams.get('address');
+        if (!address) return errorResponse('Missing address parameter');
+        return proxyEthGetStorageAt(address, searchParams.get('position'), searchParams.get('tag'));
       }
       if (action === 'eth_gasprice') {
         return proxyEthGasPrice();
@@ -385,10 +481,14 @@ export async function GET(request: NextRequest) {
       if (action === 'eth_estimategas') {
         const to = searchParams.get('to');
         if (!to) return errorResponse('Missing to parameter');
-        const data = searchParams.get('data') || undefined;
-        const value = searchParams.get('value') || undefined;
-        const from = searchParams.get('from') || undefined;
-        return proxyEthEstimateGas(to, data, value, from);
+        return proxyEthEstimateGas(
+          to,
+          searchParams.get('data') || undefined,
+          searchParams.get('value') || undefined,
+          searchParams.get('from') || undefined,
+          searchParams.get('gas') || undefined,
+          searchParams.get('gasPrice') || undefined
+        );
       }
     }
 

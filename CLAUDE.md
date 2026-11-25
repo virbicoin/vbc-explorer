@@ -888,6 +888,21 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 ### トークン承認 API
 - `GET /api/address/[address]/approvals` - アクティブな ERC-20 allowance 一覧（`?refresh=1` でキャッシュ破棄）
 
+### Etherscan / Blockscout 形式 API（`/api?module=&action=`）
+`app/api/route.ts` が振り分け、処理は `lib/api/blockscout/`（`account.ts` / `handlers.ts` / `proxy.ts` / `shared.ts`）にある。対応している action の一覧は `app/api/route.ts` の先頭と README の「Etherscan API」節。
+
+設計ルール（2026-11 に、形だけ互換で中身が違っていた箇所を直したときのもの。必ず守る）:
+- **項目名と意味は Etherscan / Blockscout の公式に合わせる。データが無いものを別のデータで埋めない。** 内部取引（call trace）と ERC-1155 の移動は同期していないので、`txlistinternal` / `token1155tx` は `No transactions found`（通常の取引を返すと、利用側が同じ送金を二重に数える）
+- **成否は `Transaction.status`（数値 1 / 0、レシートなしは null）から `txStatusFields()` で求める。** 真偽値との比較（`status === false`）は常に成功になる
+- **トークン移動は `tokentransfers`、保有者は `tokenholders` から返す。** `Transaction` や `Account` から作らない。`tokenId` があるものが NFT（`tokennfttx`）、ないものが `tokentx`
+- **一覧は `listOptions()` を通す**（`page` / `offset` / `sort` / `startblock` / `endblock`）。Etherscan と同じく既定・上限とも 10000 行（利用側は「返った件数 < offset」で終端を判断するので、黙って少なく返すと取りこぼす）。1000 行を超えるページは `bulk` バケット（10 回/分）にも数える。空の一覧は `emptyListResponse()`
+- **`proxy` モジュールと `eth_*` action は `rpcResponse()`**（JSON-RPC の形に `status` / `message` を足したもの）。ノードの結果は加工せずに返し、パラメータは `toBlockParameter()` / `toQuantity()` で検証・正規化する。`eth_sendRawTransaction` は出さない（公開 RPC を使う）
+- トークン種別は `ercTokenType()`（`lib/api/token-standard.ts`）で ERC 名にする。hidden のトークンは一覧から外す（コントラクトを名指しした `tokentx` だけは返す）
+- `getLogs` はトピックを位置どおりにノードへ渡す（`and` のみ。`or` 演算子は拒否）。`address` もトピックも無い検索は受けない
+- テストは `tests/api/etherscan-compat.test.ts`（DB は mongodb-memory-server、ノードは `publicClient.request` のスパイ）。action を足す・直すときはここに足す
+
+既知の制約: ERC-20 の移動は 1 取引・1 トークンにつき 1 件しか保存されない（`tools/tokens.ts` の upsert キーが `transactionHash` + `tokenAddress` で、ログ番号を持たない）。同じ取引の中で同じトークンが複数回動くと（DEX のスワップや手数料付きトークンなど）履歴が欠ける。保有者の残高は全イベントから計算しているので正しい。直すには移動にログ番号を持たせてキーを変え、本番の `tokentransfers` を取り直す必要がある（未着手）。
+
 ### Blockscout v2 互換 API（`app/api/v2/`）
 実装しているのは Blockscout v2 の一部だけです。
 - `GET /api/v2/stats`、`/api/v2/blocks`、`/api/v2/blocks/[numberOrHash]`、`/api/v2/transactions`、`/api/v2/transactions/[hash]`
