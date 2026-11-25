@@ -1,5 +1,5 @@
 # Logs
-logs/
+/logs/
 *.log
 npm-debug.log*
 
@@ -82,7 +82,7 @@ core
 core.*
 
 # Logs
-logs/
+/logs/
 *.log
 *.bak
 .claude/
