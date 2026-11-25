@@ -69,6 +69,16 @@ export interface CurrencyConfig {
       enabled: boolean;
       symbol?: string;
     };
+    /**
+     * On-chain price from the wrapped native / stablecoin pool. Without
+     * `pairAddress` the pool is looked up among `dex.lpTokens` and
+     * `dex.farmPools`; without `stablecoinAddress` it is `dex.tokens.usdt`.
+     */
+    dex?: {
+      enabled?: boolean;
+      pairAddress?: string;
+      stablecoinAddress?: string;
+    };
   };
 }
 

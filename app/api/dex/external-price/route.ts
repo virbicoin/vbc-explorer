@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadConfig } from '@/lib/config';
-import { getNativePrice } from '@/lib/price-service';
+import { getNativePrice, priceSourceLabel } from '@/lib/price-service';
 import { connectDB } from '@/models/index';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 
@@ -57,11 +57,11 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get price from price service (uses Market DB first, then WikaEx)
+    // Get price from price service (Market DB first, then the enabled price APIs)
     const [priceData, totalTvlUsd] = await Promise.all([getNativePrice(), fetchDefiLlamaTvl()]);
 
     const nativePriceUsd = priceData?.priceUSD || 0;
-    const priceSource = priceData?.source === 'database' ? 'Market DB' : 'WikaEx';
+    const priceSource = priceSourceLabel(priceData);
 
     cachedData = {
       nativePriceUsd,

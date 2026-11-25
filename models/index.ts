@@ -187,6 +187,8 @@ export interface IMarket extends Document {
   timestamp: number;
   quoteBTC: number;
   quoteUSD: number;
+  /** Where tools/price.ts read the quote from (rows written before this field have none). */
+  source?: string;
 }
 
 // DEX Swap Event Interface
@@ -401,6 +403,7 @@ const MarketSchema = new Schema(
     timestamp: Number,
     quoteBTC: Number,
     quoteUSD: Number,
+    source: String,
   },
   { collection: 'Market' }
 );

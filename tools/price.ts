@@ -2,12 +2,12 @@
 /**
  * Price & DEX Swap Sync Tool (Optimized)
  *
- * Price sources (priority order):
- * 1. CoinGecko (if configured)
- * 2. CoinMarketCap (if configured)
- * 3. Coinpaprika (if configured)
- * 4. WikaEx Exchange API
- * 5. DEX on-chain price (fallback)
+ * Price sources (priority order, each switched in `currency.priceApi`):
+ * 1. CoinGecko (if enabled)
+ * 2. CoinMarketCap (if enabled)
+ * 3. Coinpaprika (if enabled)
+ * 4. WikaEx Exchange API (unless disabled)
+ * 5. DEX on-chain price (unless disabled): the wrapped native / stablecoin pool
  */
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
@@ -16,6 +16,12 @@ import mongoose from 'mongoose';
 import { connectDB, ensureIndexesOnStartup } from '../models/index';
 import { loadConfig, getCurrencyConfig, AppConfig, CurrencyConfig } from '../lib/config';
 import { ethers, EventLog } from 'ethers';
+import {
+  PAIR_VIEW_ABI,
+  configuredAddress,
+  isNativeStablePair,
+  nativePriceFromReserves,
+} from '../lib/dex/native-price';
 
 // Configuration
 const config: AppConfig = loadConfig();
@@ -30,9 +36,7 @@ const MEMORY_LIMIT_MB = parseInt(process.env.MEMORY_LIMIT_MB || '256');
 // ABIs (minimal)
 const PAIR_ABI = [
   'event Swap(address indexed sender, uint amount0In, uint amount1In, uint amount0Out, uint amount1Out, address indexed to)',
-  'function token0() view returns (address)',
-  'function token1() view returns (address)',
-  'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
+  ...PAIR_VIEW_ABI,
 ];
 const ERC20_ABI = ['function decimals() external view returns (uint8)'];
 
@@ -54,11 +58,18 @@ function getProvider(): ethers.JsonRpcProvider {
 // ============================================
 // Caches
 // ============================================
-interface PriceData {
+type PriceSource = 'coingecko' | 'cmc' | 'coinpaprika' | 'wikaex' | 'dex';
+
+interface Quote {
+  quoteUSD: number;
+  quoteBTC: number;
+}
+
+interface PriceData extends Quote {
   symbol: string;
   timestamp: number;
-  quoteBTC: number;
-  quoteUSD: number;
+  /** Where the quote was read from; stored with the Market row. */
+  source?: PriceSource;
 }
 
 interface PairInfo {
@@ -128,7 +139,7 @@ function getLPAddresses(): string[] {
 // ============================================
 
 // 1. CoinGecko API
-const fetchCoinGeckoPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } | null> => {
+const fetchCoinGeckoPrice = async (): Promise<Quote | null> => {
   if (!currencyConfig?.priceApi?.coingecko?.enabled) return null;
 
   try {
@@ -162,7 +173,7 @@ const fetchCoinGeckoPrice = async (): Promise<{ quoteUSD: number; quoteBTC: numb
 };
 
 // 2. CoinMarketCap API
-const fetchCMCPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } | null> => {
+const fetchCMCPrice = async (): Promise<Quote | null> => {
   if (!currencyConfig?.priceApi?.cmc?.enabled) return null;
 
   try {
@@ -213,7 +224,7 @@ const fetchCMCPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } |
 };
 
 // 3. Coinpaprika API
-const fetchCoinpaprikaPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } | null> => {
+const fetchCoinpaprikaPrice = async (): Promise<Quote | null> => {
   if (!currencyConfig?.priceApi?.coinpaprika?.enabled) return null;
 
   try {
@@ -249,9 +260,7 @@ const fetchCoinpaprikaPrice = async (): Promise<{ quoteUSD: number; quoteBTC: nu
 };
 
 // 4. WikaEx Exchange API (CoinGecko-compatible endpoint)
-const fetchWikaExPrice = async (
-  symbol: string
-): Promise<{ quoteUSD: number; quoteBTC: number } | null> => {
+const fetchWikaExPrice = async (symbol: string): Promise<Quote | null> => {
   // Check if explicitly disabled
   if (currencyConfig?.priceApi?.wikaex?.enabled === false) return null;
 
@@ -290,43 +299,48 @@ const fetchWikaExPrice = async (
   }
 };
 
-// 5. DEX on-chain price (fallback)
-const fetchDexPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } | null> => {
-  try {
-    const provider = getProvider();
-    const wrappedNative = config.dex?.wrappedNative?.address?.toLowerCase();
-    const usdt = config.dex?.tokens?.usdt?.address?.toLowerCase();
-    if (!wrappedNative || !usdt) return null;
+// 5. DEX on-chain price: the wrapped native / stablecoin pool
+const fetchDexPrice = async (): Promise<Quote | null> => {
+  const dexPrice = currencyConfig?.priceApi?.dex;
+  if (dexPrice?.enabled === false) return null;
 
-    for (const lpAddress of getLPAddresses()) {
-      try {
-        const pairInfo = await getPairInfo(lpAddress);
-        if (!pairInfo) continue;
+  const wrappedNative = configuredAddress(config.dex?.wrappedNative?.address);
+  const stablecoin =
+    configuredAddress(dexPrice?.stablecoinAddress) ??
+    configuredAddress(config.dex?.tokens?.usdt?.address);
+  if (!wrappedNative || !stablecoin) return null;
 
-        const { token0, token1, decimals0, decimals1 } = pairInfo;
-        const isVbcUsdt =
-          (token0 === wrappedNative && token1 === usdt) ||
-          (token1 === wrappedNative && token0 === usdt);
+  // The configured pair first, then every known pool
+  const configuredPair = configuredAddress(dexPrice?.pairAddress);
+  const candidates = new Set<string>(configuredPair ? [configuredPair] : []);
+  getLPAddresses().forEach((address) => candidates.add(address));
 
-        if (isVbcUsdt) {
-          const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
-          const reserves = await pairContract.getReserves();
-          const r0 = Number(ethers.formatUnits(reserves[0], decimals0));
-          const r1 = Number(ethers.formatUnits(reserves[1], decimals1));
-          const quoteUSD = token0 === usdt ? r0 / r1 : r1 / r0;
-          if (quoteUSD > 0) {
-            log(`✅ DEX: $${quoteUSD.toFixed(8)}`);
-            return { quoteUSD, quoteBTC: 0 };
-          }
-        }
-      } catch {
-        continue;
+  const provider = getProvider();
+  for (const lpAddress of candidates) {
+    try {
+      const pairInfo = await getPairInfo(lpAddress);
+      if (!pairInfo || !isNativeStablePair(pairInfo, wrappedNative, stablecoin)) continue;
+
+      const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
+      const reserves = await pairContract.getReserves();
+      const quoteUSD = nativePriceFromReserves(
+        { ...pairInfo, reserve0: reserves[0], reserve1: reserves[1] },
+        wrappedNative,
+        stablecoin
+      );
+      if (quoteUSD !== null) {
+        log(`✅ DEX: $${quoteUSD.toFixed(8)}`);
+        // the pool quotes the coin in the stablecoin only
+        return { quoteUSD, quoteBTC: 0 };
       }
+      console.warn(`⚠️ DEX price: pool ${lpAddress} holds no liquidity`);
+    } catch (error) {
+      // reported, not swallowed: a failure here leaves the explorer without a price
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️ DEX price: could not read pool ${lpAddress}: ${reason}`);
     }
-    return null;
-  } catch {
-    return null;
   }
+  return null;
 };
 
 /**
@@ -337,6 +351,17 @@ const fetchDexPrice = async (): Promise<{ quoteUSD: number; quoteBTC: number } |
  * 4. WikaEx
  * 5. DEX
  */
+const PRICE_SOURCES: Array<{
+  source: PriceSource;
+  fetch: (symbol: string) => Promise<Quote | null>;
+}> = [
+  { source: 'coingecko', fetch: () => fetchCoinGeckoPrice() },
+  { source: 'cmc', fetch: () => fetchCMCPrice() },
+  { source: 'coinpaprika', fetch: () => fetchCoinpaprikaPrice() },
+  { source: 'wikaex', fetch: (symbol) => fetchWikaExPrice(symbol) },
+  { source: 'dex', fetch: () => fetchDexPrice() },
+];
+
 const fetchCryptoPrice = async (): Promise<PriceData | null> => {
   const symbol = currencyConfig?.symbol;
   if (!symbol) return null;
@@ -346,36 +371,14 @@ const fetchCryptoPrice = async (): Promise<PriceData | null> => {
     return priceCache.data;
   }
 
-  let price: { quoteUSD: number; quoteBTC: number } | null = null;
-
-  // 1. Try CoinGecko first
-  price = await fetchCoinGeckoPrice();
-
-  // 2. Try CoinMarketCap
-  if (!price) {
-    price = await fetchCMCPrice();
-  }
-
-  // 3. Try Coinpaprika
-  if (!price) {
-    price = await fetchCoinpaprikaPrice();
-  }
-
-  // 4. Try WikaEx
-  if (!price) {
-    price = await fetchWikaExPrice(symbol);
-  }
-
-  // 5. Try DEX as final fallback
-  if (!price) {
-    price = await fetchDexPrice();
-  }
-
-  if (price && price.quoteUSD > 0) {
-    const result: PriceData = { symbol, timestamp: Date.now(), ...price };
-    priceCache.data = result;
-    priceCache.timestamp = Date.now();
-    return result;
+  for (const { source, fetch: fetchQuote } of PRICE_SOURCES) {
+    const quote = await fetchQuote(symbol);
+    if (quote && quote.quoteUSD > 0) {
+      const result: PriceData = { symbol, timestamp: Date.now(), ...quote, source };
+      priceCache.data = result;
+      priceCache.timestamp = Date.now();
+      return result;
+    }
   }
 
   return null;

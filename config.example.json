@@ -51,8 +51,7 @@
         "enabled": true,
         "pairAddress": "0x0000000000000000000000000000000000000000",
         "stablecoinAddress": "0x0000000000000000000000000000000000000000",
-        "stablecoinDecimals": 6,
-        "_comment": "DEX fallback: pairAddress is the LP pair with stablecoin, used when external APIs fail"
+        "_comment": "On-chain price from the wrapped native / stablecoin pool, used when no API above gives a price (disable the APIs to make it the only source). Needs dex.wrappedNative. pairAddress and stablecoinAddress are optional: left out or zero, the pool is looked up among dex.lpTokens / dex.farmPools and the stablecoin is dex.tokens.usdt. Decimals are read from the token contracts."
       }
     },
     "_comment": "For custom networks: name/symbol/unit/gasUnit can be customized (e.g., VirBiCoin/VBC/niku/Gniku)"

@@ -1,5 +1,5 @@
 import { loadConfig } from '@/lib/config';
-import { getNativePrice } from '@/lib/price-service';
+import { getNativePrice, priceSourceLabel } from '@/lib/price-service';
 import Web3 from 'web3';
 
 // Cache for external price data (5 minute TTL)
@@ -216,10 +216,10 @@ export async function getExternalPriceData(): Promise<ExternalPriceData> {
     return cachedData;
   }
 
-  // Get price from price service (uses Market DB first, then WikaEx)
+  // Get price from price service (Market DB first, then the enabled price APIs)
   const priceData = await getNativePrice();
   const nativePriceUsd = priceData?.priceUSD || 0;
-  const priceSource = priceData?.source === 'database' ? 'Market DB' : 'WikaEx';
+  const priceSource = priceSourceLabel(priceData);
 
   // Then calculate TVL from blockchain using the native price
   const totalTvlUsd = await calculateTvlFromBlockchain(nativePriceUsd);

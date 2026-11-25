@@ -10,18 +10,45 @@
  * 3. CoinMarketCap (CMC)
  * 4. Coinpaprika
  * 5. WikaEx
- * 6. DEX (not implemented in this service - handled by tools/price.ts)
+ *
+ * The DEX pool price is read by tools/price.ts only and reaches this service
+ * through the database.
  */
 
 import { Market } from '@/models/index';
 import { loadConfig, getCurrencyConfig } from '@/lib/config';
+
+export type PriceOrigin = 'coingecko' | 'cmc' | 'coinpaprika' | 'wikaex' | 'dex';
 
 export interface PriceData {
   symbol: string;
   priceUSD: number;
   priceBTC: number;
   timestamp: number;
-  source: 'database' | 'coingecko' | 'cmc' | 'coinpaprika' | 'wikaex' | 'dex';
+  source: 'database' | PriceOrigin;
+  /** For a price read from the database: where tools/price.ts had read it from. */
+  origin?: PriceOrigin;
+}
+
+const SOURCE_LABELS: Record<PriceOrigin, string> = {
+  coingecko: 'CoinGecko',
+  cmc: 'CoinMarketCap',
+  coinpaprika: 'Coinpaprika',
+  wikaex: 'WikaEx',
+  dex: 'DEX',
+};
+
+const isPriceOrigin = (value: unknown): value is PriceOrigin =>
+  typeof value === 'string' && Object.hasOwn(SOURCE_LABELS, value);
+
+/**
+ * Name of where a price came from, for API responses. A database row written
+ * before the origin was stored is reported as 'Market DB'.
+ */
+export function priceSourceLabel(price: PriceData | null): string {
+  if (!price) return 'unavailable';
+  if (price.source !== 'database') return SOURCE_LABELS[price.source];
+  return price.origin ? SOURCE_LABELS[price.origin] : 'Market DB';
 }
 
 // In-memory cache for API routes (short-lived)
@@ -52,6 +79,7 @@ export async function getPriceFromDatabase(): Promise<PriceData | null> {
       priceBTC: latestPrice.quoteBTC,
       timestamp: latestPrice.timestamp,
       source: 'database',
+      origin: isPriceOrigin(latestPrice.source) ? latestPrice.source : undefined,
     };
   } catch (error) {
     console.error('Error fetching price from database:', error);

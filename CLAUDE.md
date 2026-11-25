@@ -236,7 +236,7 @@ npm run sync            # ブロックチェーンデータを同期
 npm run tokens          # トークン（NFT/ERC20）データを同期
 npm run stats           # 統計を計算
 npm run richlist        # リッチリストを生成
-npm run price           # 価格 + DEX スワップデータを更新（WikaEx + オンチェーン）
+npm run price           # 価格 + DEX スワップデータを更新（価格 API / DEX プール）
 
 # データベース管理
 npm run optimize-indexes              # スキーマ定義のインデックスを作成（不足分のみ、削除なし）
@@ -269,19 +269,23 @@ pm2 monit               # リソースを監視
 2. **CoinMarketCap** - 環境変数 `CMC_API_KEY` が必要
 3. **Coinpaprika** - `https://api.coinpaprika.com/v1/tickers`
 4. **WikaEx** - `https://wikaex.com/api/spot/coingecko/tickers`
-5. **DEX フォールバック** - LP ペアのリザーブから算出するオンチェーン価格
+5. **DEX** - ラップドネイティブ / ステーブルコインのプールのリザーブから算出するオンチェーン価格（`lib/dex/native-price.ts`）
 
 `config.json` の `currency.priceApi` で設定します:
 ```json
 "priceApi": {
-  "coingecko": { "enabled": true, "id": "virbicoin" },
+  "coingecko": { "enabled": false, "id": "virbicoin" },
   "cmc": { "enabled": false, "id": "virbicoin" },
-  "coinpaprika": { "enabled": true, "id": "vbc-virbicoin" },
-  "wikaex": { "enabled": true, "symbol": "VBC" },
-  "dex": { "enabled": true, "pairAddress": "0x..." }
+  "coinpaprika": { "enabled": false, "id": "vbc-virbicoin" },
+  "wikaex": { "enabled": false },
+  "dex": { "enabled": true }
 }
 ```
 - **更新間隔**: 価格は 5 分ごと、DEX スワップは 15 秒ごと
+- **VBC は DEX が唯一の出どころ**: 外部 API には VBC の価格が無い（CoinGecko・Coinpaprika は未掲載、WikaEx は応答しない）ので、上の例のように API を止めて DEX だけにする。WikaEx は `enabled: false` と書かない限り毎回問い合わせる
+- **DEX 価格の前提**: `dex.wrappedNative` と `dex.tokens.usdt`（または `priceApi.dex.stablecoinAddress`）が設定されていること。プールは `priceApi.dex.pairAddress`、無ければ `dex.lpTokens` / `dex.farmPools` から探す。プールが空のときは価格を保存しない（0 や無限大を書かない）。BTC 建ては取れないので `quoteBTC` は 0
+- **`getReserves()` は 2 値で宣言する**: この DEX のペアは `(reserve0, reserve1)` の 2 値を返す。Uniswap V2 の 3 値（`uint112, uint112, uint32`）で宣言すると復号に失敗し、価格が一切取れなくなる（2026-10 から価格が 0 になっていた原因）。宣言は `PAIR_VIEW_ABI` を使う
+- **出どころの記録**: `Market` の各行に `source`（`dex` / `coingecko` など）を保存し、`/api/dex/external-price` の `source.price` は `priceSourceLabel()` で返す
 
 ### 価格サービス（lib/price-service.ts）
 すべての API ルートから価格データを取得するための共通モジュールです。

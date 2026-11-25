@@ -109,7 +109,7 @@ The explorer includes a built-in decentralized exchange (DEX) with the following
 - `/api/dex/defillama`, `/api/dex/defillama/tvl`, `/api/dex/defillama/pools`
 
 #### Price Data
-- `/api/dex/external-price` - WikaEx + DEX on-chain fallback
+- `/api/dex/external-price` - Native coin price (with its source) and DEX TVL
 
 ### Yield Farming
 - Stake LP tokens to earn reward tokens
@@ -1249,6 +1249,9 @@ All configuration is now centralized in `config.json`. The following settings ar
       "wikaex": {
         "enabled": true,
         "symbol": "ETH"
+      },
+      "dex": {
+        "enabled": true
       }
     }
   },
