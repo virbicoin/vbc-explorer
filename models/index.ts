@@ -154,7 +154,8 @@ export interface ITokenHolder extends Document {
 
 /**
  * ERC-20 / NFT Transfer event (collection `tokentransfers`, written by tools/tokens.ts).
- * `tokenId` is only set for NFT transfers; `timestamp` is a Date.
+ * `tokenId` is only set for NFT transfers, `logIndex` only for VRC-20 transfers (one
+ * document per event); `timestamp` is a Date.
  */
 export interface ITokenTransfer extends Document {
   tokenAddress: string;
@@ -163,6 +164,8 @@ export interface ITokenTransfer extends Document {
   to: string;
   value: string;
   tokenId?: number;
+  /** VRC-20 transfers: position of the event in its block; absent on documents stored before 2026-11. */
+  logIndex?: number;
   blockNumber: number;
   timestamp: Date;
 }
@@ -358,6 +361,7 @@ const TokenTransferSchema = new Schema(
     to: { type: String, lowercase: true },
     value: String,
     tokenId: Number, // NFT only
+    logIndex: Number, // VRC-20 only: position of the event in its block (lib/sync/token-transfers.ts)
     blockNumber: Number,
     timestamp: Date,
   },

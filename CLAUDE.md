@@ -413,7 +413,7 @@ NFT の所有者は次のように計算されます:
 - `transactions` - トランザクションデータ
 - `contracts` - 検証済みコントラクト（ERC フィールド: 0=コントラクト, 2=ERC20, 721=VRC-721, 1155=VRC-1155）
 - `tokens` - トークンメタデータ（モデル `Token`）
-- `tokentransfers` - トークン転送イベント（モデル `TokenTransfer`。フィールドは tokenAddress / transactionHash / from / to / value / tokenId / blockNumber / timestamp(Date)）
+- `tokentransfers` - トークン転送イベント（モデル `TokenTransfer`。フィールドは tokenAddress / transactionHash / from / to / value / tokenId（NFT のみ） / logIndex（VRC-20 のみ。イベント 1 件につき 1 文書） / blockNumber / timestamp(Date)）
 - `tokenholders` - トークン保有者残高（モデル `TokenHolder`）
 - `scan_progress` - 進捗マーカー（モデル `ScanProgress`）: `tokens`（tools/tokens.ts）、`sync`（リスナー位置）、`reorg-pending`（maxReorgDepth 超のリオーグ範囲。`meta` に from/to）、`repair`（repair-chain の再開位置）
 - `Account` - アカウント残高
@@ -901,7 +901,10 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 - `getLogs` はトピックを位置どおりにノードへ渡す（`and` のみ。`or` 演算子は拒否）。`address` もトピックも無い検索は受けない
 - テストは `tests/api/etherscan-compat.test.ts`（DB は mongodb-memory-server、ノードは `publicClient.request` のスパイ）。action を足す・直すときはここに足す
 
-既知の制約: ERC-20 の移動は 1 取引・1 トークンにつき 1 件しか保存されない（`tools/tokens.ts` の upsert キーが `transactionHash` + `tokenAddress` で、ログ番号を持たない）。同じ取引の中で同じトークンが複数回動くと（DEX のスワップや手数料付きトークンなど）履歴が欠ける。保有者の残高は全イベントから計算しているので正しい。直すには移動にログ番号を持たせてキーを変え、本番の `tokentransfers` を取り直す必要がある（未着手）。
+ERC-20 の移動は**イベント 1 件につき 1 文書**（キーは `transactionHash` + `logIndex`、`lib/sync/token-transfers.ts`）。2026-11 までは `transactionHash` + `tokenAddress` がキーで、同じ取引の中で同じトークンが複数回動くと（DEX のスワップ、流動性の出し入れ、手数料付きトークン）1 件しか残らず、`tokentx`・トークンページ・CSV 出力から漏れていた（保有者の残高は全イベントから計算しているので正しかった）。守ること:
+- 移動の文書は `erc20TransferFromLog()` で作り、`storeErc20Transfers()` で書く。キーを `transactionHash` + `tokenAddress` に戻さない
+- `logIndex` のない ERC-20 の文書は旧形式。`tools/tokens.ts` は、そのトークンの全履歴を読み切れた回にだけ、新形式を書いてから旧形式を消す（`legacyErc20TransferFilter()`。NFT の文書は `tokenId` があるので対象外）。読み切れなかった回は移動・保有者・供給量のどれも書かない（旧形式と新形式を混在させない、欠けた履歴から残高を作らない）
+- 本番反映時: 反映前に `tokentransfers` を mongodump。反映後の最初の VRC-20 更新（起動時と 5 分ごと。手動なら `npm run tokens -- --update-all-vrc20`）でトークンごとに置き換わる。確認は「`tokenId` がなく `logIndex` もない文書が 0 件」「置き換え前後で `tokentransfers` の件数が減っていない（増えるのが正常）」
 
 ### Blockscout v2 互換 API（`app/api/v2/`）
 共通の部品は `lib/api/v2/common.ts`（`v2Route()` = レート制限・DB 接続・エラー応答、`v2Page()` / `paginate()` = ページ送り、`addressParam()` / `tokenInfo()` / `transactionItem()` / `tokenTransferItem()` = 一覧に埋め込むオブジェクト）。新しい経路はこれらを使って書く。

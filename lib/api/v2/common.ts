@@ -349,8 +349,8 @@ export function tokenTransferItem(
     block_number: Number(transfer.blockNumber),
     from: addressParam(from, facts),
     to: addressParam(to, facts),
-    // the sync does not keep the position of the event in the block
-    log_index: null,
+    // stored for VRC-20 transfers since 2026-11; null for NFT transfers and older documents
+    log_index: typeof transfer.logIndex === 'number' ? transfer.logIndex : null,
     method: null,
     timestamp: Number.isNaN(time) ? null : new Date(time).toISOString(),
     token: info,

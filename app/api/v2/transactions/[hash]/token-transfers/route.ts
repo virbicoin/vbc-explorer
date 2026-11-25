@@ -20,7 +20,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const [tx, transfers] = (await Promise.all([
       Transaction.findOne({ hash }).select('hash').lean(),
-      TokenTransfer.find({ transactionHash: hash }).sort({ _id: 1 }).limit(500).lean(),
+      TokenTransfer.find({ transactionHash: hash }).sort({ logIndex: 1, _id: 1 }).limit(500).lean(),
     ])) as [Doc | null, Doc[]];
     if (!tx && transfers.length === 0) return notFound();
 

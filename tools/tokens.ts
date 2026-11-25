@@ -14,6 +14,12 @@ import humanStandardTokenAbi from 'human-standard-token-abi';
 import fs from 'fs';
 import path from 'path';
 import { requireDb } from '../lib/db/get-db';
+import {
+  TRANSFER_TOPIC,
+  erc20TransferFromLog,
+  storeErc20Transfers,
+  type Erc20TransferDoc,
+} from '../lib/sync/token-transfers';
 
 // Import NFT service for ownership calculation
 import {
@@ -399,15 +405,19 @@ async function retryWeb3Call<T>(
   throw lastError;
 }
 
-// Function to get VRC-20 token transfers from blockchain
-async function getErc20TokenTransfers(tokenAddress: string, fromBlock: number = 0): Promise<any[]> {
+/**
+ * Every Transfer event of a VRC-20 token from `fromBlock` on. `complete` is
+ * false when the logs could not be fetched or the block of one of them could
+ * not be read; callers must then not treat the list as the whole history.
+ */
+async function getErc20TokenTransfers(
+  tokenAddress: string,
+  fromBlock: number = 0
+): Promise<{ transfers: Erc20TransferDoc[]; complete: boolean }> {
   try {
     console.log(
       `🔄 Fetching VRC-20 Transfer events for token ${tokenAddress} from block ${fromBlock}...`
     );
-
-    // Transfer event signature (same for ERC20 and ERC721)
-    const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
     // Use retry logic for getPastLogs
     const logs = await retryWeb3Call(() =>
@@ -421,7 +431,8 @@ async function getErc20TokenTransfers(tokenAddress: string, fromBlock: number = 
 
     console.log(`🔍 Found ${logs.length} Transfer events for VRC-20 token ${tokenAddress}`);
 
-    const transfers = [];
+    const transfers: Erc20TransferDoc[] = [];
+    let failed = 0;
     const batchSize = 50; // Reduced batch size to avoid overwhelming RPC
 
     for (let i = 0; i < logs.length; i += batchSize) {
@@ -432,28 +443,17 @@ async function getErc20TokenTransfers(tokenAddress: string, fromBlock: number = 
           // Use retry logic for getBlock
           const block = await retryWeb3Call(() => web3.eth.getBlock(log.blockNumber));
 
-          // Decode transfer event (from, to in topics, value in data)
-          const from = '0x' + log.topics[1].slice(26);
-          const to = '0x' + log.topics[2].slice(26);
-          // VRC-20 transfers have value in data field
-          const value = log.data && log.data !== '0x' ? BigInt(log.data).toString() : '0';
-
-          return {
-            transactionHash: log.transactionHash,
-            blockNumber: log.blockNumber,
-            from: from.toLowerCase(),
-            to: to.toLowerCase(),
-            value: value,
-            tokenAddress: tokenAddress.toLowerCase(),
-            timestamp: new Date(Number(block.timestamp) * 1000),
-          };
+          // from / to are in the topics, the amount in the data; one document per event.
+          // null: not a VRC-20 transfer (fewer than three topics), which is skipped
+          return erc20TransferFromLog(log, tokenAddress, block.timestamp);
         } catch (error) {
+          failed += 1;
           console.error(`❌ Error processing VRC-20 transfer log:`, error);
           return null;
         }
       });
 
-      transfers.push(...batchTransfers.filter((t) => t !== null));
+      transfers.push(...(batchTransfers as Erc20TransferDoc[]));
 
       // Add delay between batches to reduce RPC load
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -463,10 +463,10 @@ async function getErc20TokenTransfers(tokenAddress: string, fromBlock: number = 
       }
     }
 
-    return transfers;
+    return { transfers, complete: failed === 0 };
   } catch (error) {
     console.error(`❌ Error fetching VRC-20 transfers for ${tokenAddress}:`, error);
-    return [];
+    return { transfers: [], complete: false };
   }
 }
 
@@ -532,40 +532,46 @@ async function updateErc20TokenWithRealData(tokenAddress: string) {
   console.log(`🔄 Updating VRC-20 token ${tokenAddress} with real blockchain data...`);
 
   try {
-    const transfers = await getErc20TokenTransfers(tokenAddress);
+    const { transfers, complete } = await getErc20TokenTransfers(tokenAddress);
     console.log(`🔍 Found ${transfers.length} transfers for VRC-20 token ${tokenAddress}`);
+
+    if (!complete) {
+      // Balances and supply are derived from the whole history, and the documents from
+      // before the log index was stored may only be replaced by the whole history. An
+      // incomplete list would write wrong figures or leave both kinds of document side
+      // by side, so nothing is written and the next run tries again.
+      console.warn(
+        `⚠️ Transfer history of VRC-20 token ${tokenAddress} could not be read completely; nothing updated in this run`
+      );
+      return;
+    }
 
     if (transfers.length === 0) {
       console.log(`📊 No transfers found for VRC-20 token ${tokenAddress}`);
       return;
     }
 
-    const holders = await calculateErc20TokenHolders(transfers, tokenAddress);
-    console.log(`📈 Calculated ${holders.length} holders for VRC-20 token ${tokenAddress}`);
-
     await connectDB();
 
     const db = requireDb();
 
-    // Upsert transfers in batches
-    const transferBatchSize = 200;
-    for (let i = 0; i < transfers.length; i += transferBatchSize) {
-      const batch = transfers.slice(i, i + transferBatchSize);
+    // One document per event (transaction hash + log index); the token's documents
+    // from before the log index was stored are replaced
+    const stored = await storeErc20Transfers(
+      db.collection('tokentransfers'),
+      tokenAddress,
+      transfers,
+      { complete }
+    );
+    console.log(
+      `✅ Upserted ${stored.stored} VRC-20 transfers` +
+        (stored.legacyRemoved > 0
+          ? ` (replaced ${stored.legacyRemoved} documents stored without a log index)`
+          : '')
+    );
 
-      const bulkOps = batch.map((transfer) => ({
-        updateOne: {
-          filter: {
-            transactionHash: transfer.transactionHash,
-            tokenAddress: transfer.tokenAddress,
-          },
-          update: { $set: transfer },
-          upsert: true,
-        },
-      }));
-
-      await db.collection('tokentransfers').bulkWrite(bulkOps);
-    }
-    console.log(`✅ Upserted ${transfers.length} VRC-20 transfers`);
+    const holders = await calculateErc20TokenHolders(transfers, tokenAddress);
+    console.log(`📈 Calculated ${holders.length} holders for VRC-20 token ${tokenAddress}`);
 
     // Upsert holders in batches
     const holderBatchSize = 200;
