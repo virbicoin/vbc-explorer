@@ -23,8 +23,8 @@
  *          eth_getTransactionReceipt, eth_call, eth_getCode, eth_getStorageAt,
  *          eth_gasPrice, eth_estimateGas
  *
- * txlistinternal and token1155tx answer "No transactions found": the explorer
- * indexes neither call traces nor ERC-1155 transfers.
+ * txlistinternal reads the internal transactions tools/internal-txs.ts indexes
+ * from call traces, token1155tx the VRC-1155 transfers tools/tokens.ts syncs.
  */
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -36,7 +36,7 @@ import {
   getEthGetBalance,
   getTxList,
   getTokenTransfers,
-  getUnindexedList,
+  getInternalTransactions,
   getAccountTokenList,
   getTokenBalance,
   getMinedBlocks,
@@ -197,14 +197,20 @@ export async function GET(request: NextRequest) {
         if (list.response) return list.response;
         return getTxList(address, list.options);
       }
-      if (action === 'txlistinternal' || action === 'token1155tx') {
-        const address = searchParams.get('address');
-        const txhash = searchParams.get('txhash');
+      if (action === 'txlistinternal') {
+        const address = searchParams.get('address') || undefined;
+        const txhash = searchParams.get('txhash') || undefined;
         if (address && !isValidAddress(address)) return errorResponse('Invalid address format');
         if (txhash && !isValidHash(txhash)) return errorResponse('Invalid txhash format');
-        return getUnindexedList();
+        const list = listOptions(request, searchParams);
+        if (list.response) return list.response;
+        const { startblock, endblock } = list.options;
+        if (!address && !txhash && startblock === undefined && endblock === undefined) {
+          return errorResponse('Missing address, txhash or startblock / endblock parameter');
+        }
+        return getInternalTransactions({ address, txhash }, list.options);
       }
-      if (action === 'tokentx' || action === 'tokennfttx') {
+      if (action === 'tokentx' || action === 'tokennfttx' || action === 'token1155tx') {
         const address = searchParams.get('address') || undefined;
         const contractaddress = searchParams.get('contractaddress') || undefined;
         if (!address && !contractaddress) {
@@ -217,7 +223,7 @@ export async function GET(request: NextRequest) {
         const list = listOptions(request, searchParams);
         if (list.response) return list.response;
         return getTokenTransfers(
-          action === 'tokennfttx' ? 'erc721' : 'erc20',
+          action === 'tokennfttx' ? 'erc721' : action === 'token1155tx' ? 'erc1155' : 'erc20',
           address,
           contractaddress,
           list.options

@@ -8,7 +8,15 @@
  */
 
 import { type Address } from 'viem';
-import { connectDB, Block, Transaction, Token, TokenHolder, TokenTransfer } from '@/models/index';
+import {
+  connectDB,
+  Block,
+  InternalTransaction,
+  Transaction,
+  Token,
+  TokenHolder,
+  TokenTransfer,
+} from '@/models/index';
 import { ercTokenType } from '@/lib/api/token-standard';
 import {
   publicClient,
@@ -138,14 +146,23 @@ export async function getTxList(address: string, options: ListOptions) {
   }
 }
 
+/** `tokentransfers` condition selecting one token standard. */
+export function transferKindFilter(kind: 'erc20' | 'erc721' | 'erc1155'): Record<string, unknown> {
+  // tokenId is only set on NFT transfers; VRC-1155 transfers are marked by tokenType
+  if (kind === 'erc1155') return { tokenType: 'VRC-1155' };
+  if (kind === 'erc721') return { tokenId: { $ne: null }, tokenType: { $ne: 'VRC-1155' } };
+  return { tokenId: null };
+}
+
 /**
  * Token transfer events of an address and/or a token contract, from the
- * `tokentransfers` collection: `tokentx` (fungible, `value`) and `tokennfttx`
- * (ERC-721, `tokenID`). Transfers of tokens hidden as spam are left out unless
- * that contract is asked for by address.
+ * `tokentransfers` collection: `tokentx` (fungible, `value`), `tokennfttx`
+ * (ERC-721, `tokenID`) and `token1155tx` (ERC-1155, `tokenID` + `tokenValue`).
+ * Transfers of tokens hidden as spam are left out unless that contract is
+ * asked for by address.
  */
 export async function getTokenTransfers(
-  kind: 'erc20' | 'erc721',
+  kind: 'erc20' | 'erc721' | 'erc1155',
   address: string | undefined,
   contractaddress: string | undefined,
   options: ListOptions
@@ -153,8 +170,7 @@ export async function getTokenTransfers(
   try {
     await connectDB();
     const direction = options.sort === 'asc' ? 1 : -1;
-    // tokenId is only set on NFT transfers
-    const filter: Record<string, unknown> = { tokenId: kind === 'erc721' ? { $ne: null } : null };
+    const filter: Record<string, unknown> = transferKindFilter(kind);
     if (address) {
       const account = address.toLowerCase();
       filter.$or = [{ from: account }, { to: account }];
@@ -198,7 +214,9 @@ export async function getTokenTransfers(
       const amount =
         kind === 'erc721'
           ? { tokenID: String(transfer.tokenId) }
-          : { value: transfer.value?.toString() || '0' };
+          : kind === 'erc1155'
+            ? { tokenID: String(transfer.tokenId), tokenValue: transfer.value?.toString() || '0' }
+            : { value: transfer.value?.toString() || '0' };
       return {
         blockNumber: String(transfer.blockNumber),
         timeStamp: toUnixSeconds(transfer.timestamp),
@@ -211,7 +229,9 @@ export async function getTokenTransfers(
         ...amount,
         tokenName: token?.name || '',
         tokenSymbol: token?.symbol || '',
-        tokenDecimal: kind === 'erc721' ? '0' : String(token?.decimals ?? 18),
+        ...(kind === 'erc1155'
+          ? {}
+          : { tokenDecimal: kind === 'erc721' ? '0' : String(token?.decimals ?? 18) }),
         transactionIndex: String(tx?.transactionIndex ?? 0),
         gas: String(tx?.gas ?? 0),
         gasPrice: tx?.gasPrice?.toString() || '0',
@@ -230,14 +250,77 @@ export async function getTokenTransfers(
   }
 }
 
+/** What `txlistinternal` is asked for: a transaction, an address, or only a block range. */
+export interface InternalListQuery {
+  txhash?: string;
+  address?: string;
+}
+
+/** Calls that moved value, and creations / selfdestructs of any value. */
+const VALUE_OR_CONTRACT = {
+  $or: [{ value: { $ne: '0' } }, { type: { $in: ['create', 'create2', 'selfdestruct'] } }],
+};
+
+/** Etherscan / Blockscout `txlistinternal` row of an `InternalTransaction` document. */
+function internalTransactionRow(doc: Record<string, unknown>) {
+  const traceAddress = Array.isArray(doc.traceAddress) ? (doc.traceAddress as number[]) : [];
+  return {
+    blockNumber: String(doc.blockNumber),
+    timeStamp: String(doc.timestamp ?? ''),
+    // Etherscan names the transaction `hash`, Blockscout `transactionHash`
+    hash: doc.transactionHash,
+    transactionHash: doc.transactionHash,
+    from: doc.from,
+    to: doc.to || '',
+    value: String(doc.value ?? '0'),
+    contractAddress: doc.createdContract || '',
+    // call data is not stored
+    input: '',
+    type: doc.type,
+    callType: doc.callType || '',
+    gas: String(doc.gas ?? '0'),
+    gasUsed: String(doc.gasUsed ?? '0'),
+    traceId: traceAddress.length > 0 ? traceAddress.join('_') : '0',
+    index: String(doc.index),
+    // also 1 below a failed call: the value did not move
+    isError: doc.reverted ? '1' : '0',
+    errCode: doc.error || '',
+  };
+}
+
 /**
- * Lists the explorer has no data for answer like an address without any:
- * internal transactions need call traces, and ERC-1155 transfers are not
- * synced. Returning ordinary transactions instead would make clients count
- * the same value twice.
+ * `txlistinternal`: internal transactions (tools/internal-txs.ts) of a
+ * transaction, of an address (sender, receiver or created contract) or of a
+ * block range. As on Etherscan and Blockscout only calls that moved value and
+ * contract creations / selfdestructs are listed; the v2 lists have every call.
  */
-export function getUnindexedList() {
-  return emptyListResponse();
+export async function getInternalTransactions(query: InternalListQuery, options: ListOptions) {
+  try {
+    await connectDB();
+    const conditions: Array<Record<string, unknown>> = [VALUE_OR_CONTRACT];
+    if (query.txhash) conditions.push({ transactionHash: query.txhash.toLowerCase() });
+    if (query.address) {
+      const account = query.address.toLowerCase();
+      conditions.push({ $or: [{ from: account }, { to: account }, { createdContract: account }] });
+    }
+    const range = blockRange(options);
+    if (range) conditions.push({ blockNumber: range });
+    const direction = options.sort === 'asc' ? 1 : -1;
+
+    const docs = (await InternalTransaction.find({ $and: conditions })
+      .sort(
+        query.txhash
+          ? { index: direction }
+          : { blockNumber: direction, transactionIndex: direction, index: direction }
+      )
+      .skip((options.page - 1) * options.offset)
+      .limit(options.offset)
+      .lean()) as Array<Record<string, unknown>>;
+    if (docs.length === 0) return emptyListResponse();
+    return successResponse(docs.map(internalTransactionRow));
+  } catch (error) {
+    return errorResponse('Error fetching internal transactions');
+  }
 }
 
 /** Blockscout `account/tokenlist`: the tokens an address holds. */

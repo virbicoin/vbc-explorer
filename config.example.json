@@ -171,6 +171,11 @@
     "confirmations": 12,
     "maxReorgDepth": 64
   },
+  "traces": {
+    "url": "",
+    "concurrency": 4,
+    "_comment": "Internal transactions (tools/internal-txs.ts, pm2 app internal-txs): IPC socket path or http(s)/ws(s) URL of a node that answers trace_transaction (OpenEthereum / Ovbc with --tracing on; Ovbc opens the trace API on its IPC socket, e.g. ~/.local/share/openvirbicoin/jsonrpc.ipc). Empty: internal transactions are not indexed. TRACE_RPC_URL overrides."
+  },
   "compiler": {
     "cacheDir": "~/.cache/vbc-solc",
     "concurrency": 1,

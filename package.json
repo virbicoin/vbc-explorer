@@ -53,6 +53,7 @@
     "richlist": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/richlist.ts",
     "tokens": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/tokens.ts",
     "price": "cross-env MEMORY_LIMIT_MB=256 NODE_OPTIONS='--max-old-space-size=384' tsx --tsconfig tsconfig.tools.json tools/price.ts",
+    "internal-txs": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/internal-txs.ts",
     "cleanup-accounts": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/cleanup-accounts.ts",
     "sync-tokens": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/sync-tokens-to-contracts.ts",
     "optimize-indexes": "cross-env NODE_OPTIONS='--max-old-space-size=512' tsx --tsconfig tsconfig.tools.json tools/optimize-indexes.ts",

@@ -118,7 +118,7 @@ const apiCategories: ApiCategory[] = [
         method: 'GET',
         path: '/api?module=account&action=tokentx&address=...',
         description:
-          'Token transfer events of fungible tokens (use action=tokennfttx for NFT transfers)',
+          'Token transfer events of fungible tokens (action=tokennfttx for ERC-721, action=token1155tx for ERC-1155 with tokenID and tokenValue)',
         params: [
           'address and/or contractaddress (one is required)',
           'startblock / endblock (optional)',
@@ -129,6 +129,21 @@ const apiCategories: ApiCategory[] = [
           '{"status":"1","message":"OK","result":[{"hash":"0x...","from":"0x...","to":"0x...","contractAddress":"0x...","value":"...","tokenName":"...","tokenSymbol":"...","tokenDecimal":"18"}]}',
         sampleUrl:
           '/api?module=account&action=tokentx&address=0x0000000000000000000000000000000000000000&page=1&offset=5',
+      },
+      {
+        method: 'GET',
+        path: '/api?module=account&action=txlistinternal&address=...',
+        description:
+          'Internal transactions (from call traces): calls that moved value, contract creations and selfdestructs. isError is 1 also below a failed call.',
+        params: [
+          'address, txhash or startblock / endblock (one is required)',
+          'page / offset (optional) - offset up to 10000',
+          'sort (optional) - "asc" or "desc" (default)',
+        ],
+        response:
+          '{"status":"1","message":"OK","result":[{"blockNumber":"...","timeStamp":"...","hash":"0x...","transactionHash":"0x...","from":"0x...","to":"0x...","value":"...","contractAddress":"","type":"call","callType":"call","gas":"...","gasUsed":"...","traceId":"0_1","index":"2","isError":"0","errCode":""}]}',
+        sampleUrl:
+          '/api?module=account&action=txlistinternal&address=0x0000000000000000000000000000000000000000&page=1&offset=5',
       },
       {
         method: 'GET',
@@ -248,8 +263,20 @@ const apiCategories: ApiCategory[] = [
       },
       {
         method: 'GET',
+        path: '/api/v2/addresses/[address]/internal-transactions',
+        description:
+          'Internal transactions of an address (sender, receiver or created contract), newest first; every call, also without value',
+        params: ['address (required)', 'filter (optional) - "to", "from"', 'page / limit'],
+        response:
+          '{"items":[{"transaction_hash":"0x...","index":1,"block_number":1,"type":"call","from":{...},"to":{...},"created_contract":null,"value":"...","gas_limit":"...","success":true,"error":null,"timestamp":"..."}],"next_page_params":{...}}',
+        sampleUrl:
+          '/api/v2/addresses/0x0000000000000000000000000000000000000000/internal-transactions',
+      },
+      {
+        method: 'GET',
         path: '/api/v2/addresses/[address]/token-balances',
-        description: 'Get the tokens held by an address (plain array, one row per token)',
+        description:
+          'Get the tokens held by an address (plain array, one row per token; one row per token id for ERC-1155)',
         params: ['address (required)'],
         response:
           '[{"token":{"address_hash":"0x...","name":"...","symbol":"...","decimals":"18","type":"ERC-20",...},"token_id":null,"value":"1000000000000000000"}]',
@@ -275,7 +302,7 @@ const apiCategories: ApiCategory[] = [
         params: [
           'address (required)',
           'filter (optional) - "to", "from"',
-          'type (optional) - ERC-20, ERC-721',
+          'type (optional) - ERC-20, ERC-721, ERC-1155 (comma separated)',
           'token (optional) - one token contract',
           'page / limit',
         ],
@@ -334,6 +361,14 @@ const apiCategories: ApiCategory[] = [
         path: '/api/v2/transactions/[hash]/token-transfers',
         description: 'Token transfers of one transaction (also /logs for its event logs)',
         params: ['hash (required)'],
+        response: '{"items":[{...}],"next_page_params":null}',
+      },
+      {
+        method: 'GET',
+        path: '/api/v2/transactions/[hash]/internal-transactions',
+        description:
+          'Internal transactions of one transaction in trace order (also /api/v2/blocks/[numberOrHash]/internal-transactions and /api/v2/internal-transactions)',
+        params: ['hash (required)', 'page / limit'],
         response: '{"items":[{...}],"next_page_params":null}',
       },
       {

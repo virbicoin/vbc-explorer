@@ -61,9 +61,22 @@ const minimalErc721Abi = [
   },
 ];
 
-import { connectDB, ensureIndexesOnStartup, Contract, Token, ScanProgress } from '../models/index';
+import {
+  connectDB,
+  ensureIndexesOnStartup,
+  Contract,
+  InternalTransaction,
+  Token,
+  ScanProgress,
+} from '../models/index';
 import { syncLaunchpadTokens } from '../lib/launchpad/sync';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
+import {
+  createErc1155Node,
+  syncErc1155ToConfirmedHead,
+  type Erc1155Node,
+} from '../lib/sync/erc1155';
+import { resolveSyncSettings } from '../lib/sync/reorg';
 import { hiddenFields } from '../lib/security/display-name';
 
 // LP Token configuration - loaded from environment or fetched from factory
@@ -790,6 +803,192 @@ async function updateTokenWithRealData(tokenAddress: string) {
   }
 }
 
+/**
+ * Register the token at `contractAddress` (VRC-20 or VRC-721) in `tokens` and
+ * `Contract` when it is one and not known yet. Used for contracts created by a
+ * transaction (scanForTokens) and by another contract (adoptContractsCreatedByContracts).
+ */
+async function registerTokenContract(
+  contractAddress: string,
+  blockNumber: number | bigint,
+  existingTokenAddresses: Set<string>
+): Promise<'created' | 'exists' | 'none'> {
+  // Skip if token already exists
+  if (existingTokenAddresses.has(contractAddress.toLowerCase())) {
+    return 'exists';
+  }
+
+  console.log(`🏗️ Potential contract found at address: ${contractAddress} in block ${blockNumber}`);
+
+  // Check if it's an ERC20 token
+  if (await isErc20Token(contractAddress)) {
+    // Check if token already exists in DB
+    const existingToken = await Token.findOne({
+      address: contractAddress.toLowerCase(),
+    }).lean();
+
+    if (existingToken) {
+      console.log(`⏭️ Skipping existing ERC20 token: ${contractAddress} (already in DB)`);
+      return 'exists';
+    }
+
+    if (!(await hasContractCode(contractAddress))) {
+      console.log(`⏭️ Skipping ${contractAddress}: no contract code at this address`);
+      return 'none';
+    }
+
+    const contract = new web3.eth.Contract(humanStandardTokenAbi, contractAddress);
+    const name = (await contract.methods.name().call()) as string;
+    const symbol = (await contract.methods.symbol().call()) as string;
+    const decimals = (await contract.methods.decimals().call()) as bigint;
+
+    // totalSupply might fail due to EVM opcode issues, default to 0
+    let totalSupply: bigint = 0n;
+    try {
+      totalSupply = (await contract.methods.totalSupply().call()) as bigint;
+    } catch (supplyError: any) {
+      console.log(`⚠️ Could not get totalSupply for ${name}: ${supplyError.message}`);
+      console.log(`  (Setting totalSupply to 0)`);
+    }
+
+    console.log(`🪙 Found ERC20 Token: ${name} (${symbol})`);
+
+    // Ensure DB connection before database operations
+    if (mongoose.connection.readyState !== 1) {
+      console.log('🔌 Reconnecting to database for ERC20 token...');
+      await connectDB();
+    }
+
+    // Add new token to the database
+    const newToken = new Token({
+      name,
+      symbol,
+      address: contractAddress.toLowerCase(),
+      decimals: Number(decimals),
+      totalSupply: totalSupply.toString(),
+      type: 'VRC-20',
+      holders: 0,
+      supply: totalSupply.toString(),
+      ...hiddenFields({ name, symbol }),
+    });
+    await newToken.save();
+
+    // Also add to Contract collection for consistency
+    try {
+      const existingContract = await Contract.findOne({
+        address: contractAddress.toLowerCase(),
+      });
+      if (!existingContract) {
+        const newContract = new Contract({
+          address: contractAddress.toLowerCase(),
+          contractName: name,
+          tokenName: name,
+          symbol: symbol,
+          ...hiddenFields({ name, symbol }),
+          decimals: Number(decimals),
+          totalSupply: Number(totalSupply),
+          ERC: 2, // ERC20 = 2
+          verified: false,
+          blockNumber: blockNumber,
+        });
+        await newContract.save();
+        console.log(`📝 Added contract ${contractAddress} to Contract collection`);
+      }
+    } catch (contractError) {
+      console.warn(
+        `⚠️ Failed to add contract ${contractAddress} to Contract collection:`,
+        contractError
+      );
+    }
+
+    existingTokenAddresses.add(contractAddress.toLowerCase());
+    return 'created';
+  } else if (await isErc721Token(contractAddress)) {
+    console.log(`🎨 Contract ${contractAddress} is a VRC-721 (ERC721 Compatible) token.`);
+
+    // Check if token already exists in DB
+    const existingToken = await Token.findOne({
+      address: contractAddress.toLowerCase(),
+    }).lean();
+
+    if (existingToken) {
+      console.log(`⏭️ Skipping existing VRC-721 token: ${contractAddress} (already in DB)`);
+      return 'exists';
+    }
+
+    if (!(await hasContractCode(contractAddress))) {
+      console.log(`⏭️ Skipping ${contractAddress}: no contract code at this address`);
+      return 'none';
+    }
+
+    const tokenContract = new web3.eth.Contract(minimalErc721Abi as any, contractAddress);
+    try {
+      const name = await tokenContract.methods.name().call();
+      const symbol = await tokenContract.methods.symbol().call();
+      const decimals = 0;
+      const totalSupply = 0;
+
+      // Ensure DB connection before database operations
+      if (mongoose.connection.readyState !== 1) {
+        console.log('🔌 Reconnecting to database for VRC-721 token...');
+        await connectDB();
+      }
+
+      // Add new token to the database
+      const newToken = new Token({
+        name,
+        symbol,
+        address: contractAddress.toLowerCase(),
+        decimals,
+        totalSupply: totalSupply.toString(),
+        type: 'VRC-721',
+        holders: 0,
+        supply: totalSupply.toString(),
+        ...hiddenFields({ name: String(name ?? ''), symbol: String(symbol ?? '') }),
+      });
+      await newToken.save();
+
+      // Also add to Contract collection for consistency
+      try {
+        const existingContract = await Contract.findOne({
+          address: contractAddress.toLowerCase(),
+        });
+        if (!existingContract) {
+          const newContract = new Contract({
+            address: contractAddress.toLowerCase(),
+            contractName: name,
+            tokenName: name,
+            symbol: symbol,
+            ...hiddenFields({
+              name: String(name ?? ''),
+              symbol: String(symbol ?? ''),
+            }),
+            decimals: 0,
+            totalSupply: 0,
+            ERC: 3, // VRC-721 = 3 (similar to ERC721)
+            verified: false,
+            blockNumber: blockNumber,
+          });
+          await newContract.save();
+          console.log(`📝 Added VRC-721 contract ${contractAddress} to Contract collection`);
+        }
+      } catch (contractError) {
+        console.warn(
+          `⚠️ Failed to add VRC-721 contract ${contractAddress} to Contract collection:`,
+          contractError
+        );
+      }
+
+      existingTokenAddresses.add(contractAddress.toLowerCase());
+      return 'created';
+    } catch (e) {
+      console.error(`❌ Error fetching details for VRC-721 token ${contractAddress}:`, e);
+      return 'none';
+    }
+  }
+  return 'none';
+}
+
 async function scanForTokens() {
   console.log('🔍 Starting incremental token scan...');
   try {
@@ -881,202 +1080,13 @@ async function scanForTokens() {
                 if (receipt && receipt.contractAddress) {
                   const contractAddress = receipt.contractAddress as string;
 
-                  // Skip if token already exists
-                  if (existingTokenAddresses.has(contractAddress.toLowerCase())) {
-                    existingTokensSkipped++;
-                    continue;
-                  }
-
-                  console.log(
-                    `🏗️ Potential contract found at address: ${contractAddress} in block ${block.number}`
+                  const status = await registerTokenContract(
+                    contractAddress,
+                    block.number,
+                    existingTokenAddresses
                   );
-
-                  // Check if it's an ERC20 token
-                  if (await isErc20Token(contractAddress)) {
-                    // Check if token already exists in DB
-                    const existingToken = await Token.findOne({
-                      address: contractAddress.toLowerCase(),
-                    }).lean();
-
-                    if (existingToken) {
-                      console.log(
-                        `⏭️ Skipping existing ERC20 token: ${contractAddress} (already in DB)`
-                      );
-                      continue;
-                    }
-
-                    if (!(await hasContractCode(contractAddress))) {
-                      console.log(
-                        `⏭️ Skipping ${contractAddress}: no contract code at this address`
-                      );
-                      continue;
-                    }
-
-                    const contract = new web3.eth.Contract(humanStandardTokenAbi, contractAddress);
-                    const name = (await contract.methods.name().call()) as string;
-                    const symbol = (await contract.methods.symbol().call()) as string;
-                    const decimals = (await contract.methods.decimals().call()) as bigint;
-
-                    // totalSupply might fail due to EVM opcode issues, default to 0
-                    let totalSupply: bigint = 0n;
-                    try {
-                      totalSupply = (await contract.methods.totalSupply().call()) as bigint;
-                    } catch (supplyError: any) {
-                      console.log(
-                        `⚠️ Could not get totalSupply for ${name}: ${supplyError.message}`
-                      );
-                      console.log(`  (Setting totalSupply to 0)`);
-                    }
-
-                    console.log(`🪙 Found ERC20 Token: ${name} (${symbol})`);
-
-                    // Ensure DB connection before database operations
-                    if (mongoose.connection.readyState !== 1) {
-                      console.log('🔌 Reconnecting to database for ERC20 token...');
-                      await connectDB();
-                    }
-
-                    // Add new token to the database
-                    const newToken = new Token({
-                      name,
-                      symbol,
-                      address: contractAddress.toLowerCase(),
-                      decimals: Number(decimals),
-                      totalSupply: totalSupply.toString(),
-                      type: 'VRC-20',
-                      holders: 0,
-                      supply: totalSupply.toString(),
-                      ...hiddenFields({ name, symbol }),
-                    });
-                    await newToken.save();
-
-                    // Also add to Contract collection for consistency
-                    try {
-                      const existingContract = await Contract.findOne({
-                        address: contractAddress.toLowerCase(),
-                      });
-                      if (!existingContract) {
-                        const newContract = new Contract({
-                          address: contractAddress.toLowerCase(),
-                          contractName: name,
-                          tokenName: name,
-                          symbol: symbol,
-                          ...hiddenFields({ name, symbol }),
-                          decimals: Number(decimals),
-                          totalSupply: Number(totalSupply),
-                          ERC: 2, // ERC20 = 2
-                          verified: false,
-                          blockNumber: block.number,
-                        });
-                        await newContract.save();
-                        console.log(`📝 Added contract ${contractAddress} to Contract collection`);
-                      }
-                    } catch (contractError) {
-                      console.warn(
-                        `⚠️ Failed to add contract ${contractAddress} to Contract collection:`,
-                        contractError
-                      );
-                    }
-
-                    newTokensFound++;
-                    existingTokenAddresses.add(contractAddress.toLowerCase());
-                  } else if (await isErc721Token(contractAddress)) {
-                    console.log(
-                      `🎨 Contract ${contractAddress} is a VRC-721 (ERC721 Compatible) token.`
-                    );
-
-                    // Check if token already exists in DB
-                    const existingToken = await Token.findOne({
-                      address: contractAddress.toLowerCase(),
-                    }).lean();
-
-                    if (existingToken) {
-                      console.log(
-                        `⏭️ Skipping existing VRC-721 token: ${contractAddress} (already in DB)`
-                      );
-                      continue;
-                    }
-
-                    if (!(await hasContractCode(contractAddress))) {
-                      console.log(
-                        `⏭️ Skipping ${contractAddress}: no contract code at this address`
-                      );
-                      continue;
-                    }
-
-                    const tokenContract = new web3.eth.Contract(
-                      minimalErc721Abi as any,
-                      contractAddress
-                    );
-                    try {
-                      const name = await tokenContract.methods.name().call();
-                      const symbol = await tokenContract.methods.symbol().call();
-                      const decimals = 0;
-                      const totalSupply = 0;
-
-                      // Ensure DB connection before database operations
-                      if (mongoose.connection.readyState !== 1) {
-                        console.log('🔌 Reconnecting to database for VRC-721 token...');
-                        await connectDB();
-                      }
-
-                      // Add new token to the database
-                      const newToken = new Token({
-                        name,
-                        symbol,
-                        address: contractAddress.toLowerCase(),
-                        decimals,
-                        totalSupply: totalSupply.toString(),
-                        type: 'VRC-721',
-                        holders: 0,
-                        supply: totalSupply.toString(),
-                        ...hiddenFields({ name: String(name ?? ''), symbol: String(symbol ?? '') }),
-                      });
-                      await newToken.save();
-
-                      // Also add to Contract collection for consistency
-                      try {
-                        const existingContract = await Contract.findOne({
-                          address: contractAddress.toLowerCase(),
-                        });
-                        if (!existingContract) {
-                          const newContract = new Contract({
-                            address: contractAddress.toLowerCase(),
-                            contractName: name,
-                            tokenName: name,
-                            symbol: symbol,
-                            ...hiddenFields({
-                              name: String(name ?? ''),
-                              symbol: String(symbol ?? ''),
-                            }),
-                            decimals: 0,
-                            totalSupply: 0,
-                            ERC: 3, // VRC-721 = 3 (similar to ERC721)
-                            verified: false,
-                            blockNumber: block.number,
-                          });
-                          await newContract.save();
-                          console.log(
-                            `📝 Added VRC-721 contract ${contractAddress} to Contract collection`
-                          );
-                        }
-                      } catch (contractError) {
-                        console.warn(
-                          `⚠️ Failed to add VRC-721 contract ${contractAddress} to Contract collection:`,
-                          contractError
-                        );
-                      }
-
-                      newTokensFound++;
-                      existingTokenAddresses.add(contractAddress.toLowerCase());
-                    } catch (e) {
-                      console.error(
-                        `❌ Error fetching details for VRC-721 token ${contractAddress}:`,
-                        e
-                      );
-                      continue;
-                    }
-                  }
+                  if (status === 'exists') existingTokensSkipped++;
+                  else if (status === 'created') newTokensFound++;
                 }
               }
             }
@@ -1423,6 +1433,96 @@ async function syncLPTokensFromFactory() {
 }
 
 /** Import Launchpad factory tokens the DB does not know yet (chain values only). */
+/** Contracts created by contracts that were checked and are no token (per process). */
+const probedCreatedContracts = new Set<string>();
+
+/**
+ * Tokens a contract (a factory) deployed: the block scan above only sees
+ * contracts a transaction created. The creations come from the internal
+ * transaction index (tools/internal-txs.ts). A created pair (token0 / token1)
+ * is registered as an LP token, as syncLPTokensFromFactory() does.
+ */
+async function adoptContractsCreatedByContracts(): Promise<number> {
+  const created = (await InternalTransaction.find({
+    createdContract: { $exists: true },
+    reverted: false,
+  })
+    .select('createdContract blockNumber')
+    .lean()) as Array<{ createdContract: string; blockNumber: number }>;
+  if (created.length === 0) return 0;
+  const existing = new Set(
+    (
+      (await Token.find({ address: { $in: created.map((c) => c.createdContract) } })
+        .select('address')
+        .lean()) as Array<{ address: string }>
+    ).map((token) => token.address.toLowerCase())
+  );
+
+  let registered = 0;
+  for (const { createdContract, blockNumber } of created) {
+    const address = createdContract.toLowerCase();
+    if (existing.has(address) || probedCreatedContracts.has(address)) continue;
+    probedCreatedContracts.add(address);
+    try {
+      if ((await registerTokenContract(address, blockNumber, existing)) !== 'created') continue;
+      registered++;
+      // a pair contract: LP token named after its tokens
+      const pair = new web3.eth.Contract(LP_TOKEN_ABI as any, address);
+      const isPair = await Promise.all([pair.methods.token0().call(), pair.methods.token1().call()])
+        .then(() => true)
+        .catch(() => false);
+      if (isPair) {
+        const pairInfo = await getLPPairInfo(address);
+        await Token.updateOne(
+          { address },
+          {
+            $set: {
+              type: 'LP',
+              name: pairInfo.name,
+              symbol: pairInfo.symbol,
+              ...hiddenFields({ name: pairInfo.name, symbol: pairInfo.symbol }),
+            },
+          }
+        );
+      }
+    } catch (error) {
+      console.warn(
+        `⚠️ Could not check ${address} (created by a contract):`,
+        error instanceof Error ? error.message : error
+      );
+    }
+  }
+  if (registered > 0) console.log(`🏭 Registered ${registered} token(s) created by contracts`);
+  return registered;
+}
+
+// ============================================
+// VRC-1155
+// ============================================
+
+const ERC1155_SYNC_INTERVAL = 60 * 1000; // 1 minute
+/** One JSON-RPC client for the process (the explorer's own node). */
+let erc1155Node: Erc1155Node | null = null;
+
+/** VRC-1155 transfers up to the confirmed head (lib/sync/erc1155.ts). */
+async function runErc1155Sync(): Promise<void> {
+  try {
+    const { confirmations } = resolveSyncSettings(
+      (loadConfig() as { sync?: { confirmations?: unknown; maxReorgDepth?: unknown } }).sync
+    );
+    erc1155Node ??= createErc1155Node(getWeb3ProviderURL());
+    const result = await syncErc1155ToConfirmedHead(erc1155Node, { confirmations });
+    if (result.ranges > 0) {
+      console.log(
+        `🧩 VRC-1155: ${result.transfers} transfer(s) in ${result.ranges} range(s), up to block ${result.lastScannedBlock}` +
+          (result.registered.length > 0 ? `; new tokens: ${result.registered.join(', ')}` : '')
+      );
+    }
+  } catch (error) {
+    console.error('❌ VRC-1155 sync failed:', error instanceof Error ? error.message : error);
+  }
+}
+
 const LAUNCHPAD_SYNC_INTERVAL = 60 * 60 * 1000; // 1 hour
 async function runLaunchpadSync(): Promise<void> {
   try {
@@ -1457,12 +1557,14 @@ Options:
   --update-all-vrc721 Update all VRC-721 token metadata
   --update-all-vrc20  Update all VRC-20 token supply data
   --sync-lp-tokens    Sync LP tokens from DEX factory and update their data
+  --sync-erc1155      Sync VRC-1155 transfers up to the confirmed head
   --update-single <address>  Update a single token by address
-  
+
 Without options, the scanner runs continuously and:
-  - Scans for new tokens every 15 minutes
+  - Scans for new tokens every 15 minutes (also tokens deployed by contracts)
   - Updates VRC-20 token data every 5 minutes
   - Updates VRC-721 token metadata every 15 minutes
+  - Syncs VRC-1155 transfers every minute
   - Syncs LP tokens from DEX factory every 1 hour
 `);
       await disconnect();
@@ -1485,8 +1587,9 @@ Without options, the scanner runs continuously and:
     }
 
     if (args.includes('--rescan')) {
-      console.log('🔄 Resetting scan progress to rescan from block 0...');
-      await ScanProgress.deleteMany({});
+      // only the token scan: the listener, repair and range indexers keep their markers
+      console.log('🔄 Resetting the token scan to rescan from block 0...');
+      await ScanProgress.deleteMany({ scanType: 'tokens' });
       console.log('✅ Scan progress reset. Starting fresh scan...');
     }
 
@@ -1515,6 +1618,12 @@ Without options, the scanner runs continuously and:
       return;
     }
 
+    if (args.includes('--sync-erc1155')) {
+      await runErc1155Sync();
+      await disconnect();
+      return;
+    }
+
     // Ensure initial DB connection
     await connectDB();
 
@@ -1527,6 +1636,8 @@ Without options, the scanner runs continuously and:
 
     // Default: regular token scan + periodic auto-update of VRC-721/VRC-20 tokens
     await scanForTokens(); // Run once on start
+    await adoptContractsCreatedByContracts();
+    await runErc1155Sync();
 
     // Initial update of VRC-20 tokens (includes LP tokens)
     console.log('🔄 Initial VRC-20/LP token update...');
@@ -1535,10 +1646,23 @@ Without options, the scanner runs continuously and:
     setInterval(async () => {
       try {
         await scanForTokens();
+        await adoptContractsCreatedByContracts();
       } catch (error) {
         console.error('❌ Error in scanForTokens interval:', error);
       }
     }, SCAN_INTERVAL_MS);
+
+    // VRC-1155 transfers (each run continues from its marker; overlapping runs are skipped)
+    let erc1155Running = false;
+    setInterval(async () => {
+      if (erc1155Running) return;
+      erc1155Running = true;
+      try {
+        await runErc1155Sync();
+      } finally {
+        erc1155Running = false;
+      }
+    }, ERC1155_SYNC_INTERVAL);
 
     // Auto-update VRC-721 tokens (at the same interval as scanForTokens)
     setInterval(async () => {

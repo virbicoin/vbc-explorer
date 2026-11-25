@@ -706,7 +706,7 @@ Stores native currency price data (updated via tools/price.ts):
 
 ### Database Indexes
 
-Indexes are declared on the Mongoose schemas in `models/index.ts` and created **explicitly**: `autoIndex` stays disabled, the Next.js app never touches indexes, and every data-writing tool (`sync` in all modes, `stats`, `richlist`, `tokens`, `price`, `rescan-contracts`, `register-contracts`, `add-token`) calls `ensureIndexes()` right after connecting. Existing indexes are never dropped, a unique index is skipped (and reported with the key and counts) when the collection holds duplicate keys, and a failure never stops the tool. Set `SKIP_INDEX_SYNC=1` to disable the startup check.
+Indexes are declared on the Mongoose schemas in `models/index.ts` and created **explicitly**: `autoIndex` stays disabled, the Next.js app never touches indexes, and every data-writing tool (`sync` in all modes, `stats`, `richlist`, `tokens`, `price`, `internal-txs`, `rescan-contracts`, `register-contracts`, `add-token`) calls `ensureIndexes()` right after connecting. Existing indexes are never dropped, a unique index is skipped (and reported with the key and counts) when the collection holds duplicate keys, and a failure never stops the tool. Set `SKIP_INDEX_SYNC=1` to disable the startup check.
 
 ```bash
 npm run optimize-indexes              # create every missing schema index (manual run)
@@ -736,17 +736,41 @@ Every index is backed by a real query:
 | VerificationJob | `{ guid: 1 }` unique | verification status polling |
 | tokens | `{ address: 1 }` unique | token pages, token sync upsert |
 | tokentransfers | `{ tokenAddress: 1, timestamp: -1 }`, `{ from: 1, timestamp: -1 }`, `{ to: 1, timestamp: -1 }`, `{ transactionHash: 1 }`, `{ tokenAddress: 1, tokenId: 1, blockNumber: 1, to: 1 }` | token transfer history, address token transfers, transaction details, NFT sync upsert key |
+| tokentransfers | `{ tokenType: 1, blockNumber: 1 }` sparse | ERC-1155 sync rewriting a block range |
+| InternalTransaction | `{ transactionHash: 1, index: 1 }` unique | internal transactions of a transaction (tx APIs, writer key) |
+| InternalTransaction | `{ blockNumber: -1, transactionIndex: -1, index: -1 }` | latest internal transactions, those of a block, block ranges (`txlistinternal`, indexer) |
+| InternalTransaction | `{ from: 1, blockNumber: -1, transactionIndex: -1, index: -1 }`, `{ to: 1, … }`, `{ createdContract: 1, blockNumber: -1 }` sparse | internal transactions of an address |
 | tokenholders | `{ tokenAddress: 1, holderAddress: 1 }` unique, `{ tokenAddress: 1, rank: 1 }`, `{ holderAddress: 1 }` | holder ranking, tokens held by an address, holder upsert |
-| scan_progress | `{ scanType: 1 }` unique | token scan progress |
+| scan_progress | `{ scanType: 1 }` unique | progress markers (token scan, listener, repair, internal transactions, ERC-1155) |
 
 Rules for contributors: define models only in `models/index.ts` (no inline `mongoose.model()`), set `collection` explicitly to the real collection name, declare indexes in the schema, keep `autoIndex: false`, query addresses and hashes with lowercase equality instead of `$regex`, and never call `syncIndexes()` (it drops indexes that are not in the schema).
+
+### Internal Transactions and ERC-1155 Transfers
+
+**Internal transactions** (calls, contract creations and selfdestructs made inside a transaction) come from the node's call traces. The pm2 app `internal-txs` (`tools/internal-txs.ts`) traces every stored transaction with `trace_transaction` and keeps the `InternalTransaction` collection in step with the chain:
+
+- Source: `traces.url` in `config.json` (or `TRACE_RPC_URL`) - the IPC socket path or an http(s) / ws(s) URL of a node that answers the Parity-style `trace_transaction` (OpenEthereum / Ovbc started with `--tracing on`, archive; Erigon and Nethermind work too). Ovbc usually opens the trace API on its IPC socket only (`~/.local/share/openvirbicoin/jsonrpc.ipc`), which needs no change to the public RPC. Without a source the app logs a warning and stays idle.
+- Every frame except the top-level call is stored, as on Blockscout (a top-level creation is kept: it names the created contract). `error` is the frame's own error; `reverted` is also true below a failed call, whose effects were undone.
+- It follows the confirmed part of the chain (stored head minus `sync.confirmations` minus one) block range by block range; each range is rewritten as a whole, so runs can be repeated. A frame is only written when the node traced it in the block the database holds. Deeper reorganisations rewind its marker (`scan_progress` `internal-transactions`) and the heights are indexed again.
+- Contracts created by contracts are registered in `Contract` (and, when they are tokens, in `tokens` by the `tokens` app), like the ones a transaction creates.
+
+```bash
+npm run internal-txs                    # follow the chain (what the pm2 app runs)
+npm run internal-txs -- --once          # index up to the confirmed head, then exit
+npm run internal-txs -- --from 0        # index everything again
+npm run internal-txs -- --status        # marker, stored documents, skipped transactions
+```
+
+On VirBiCoin the full history (about 46,000 transactions) is indexed in about a minute. The APIs: Etherscan / Blockscout `txlistinternal`, Blockscout v2 `/api/v2/transactions/{hash}/internal-transactions`, `/api/v2/addresses/{address}/internal-transactions`, `/api/v2/blocks/{numberOrHash}/internal-transactions`, `/api/v2/internal-transactions`, and `has_error_in_internal_transactions` on v2 transactions (null until the indexer has reached the transaction). The transaction page and the address page (tab "Internal Txns") show them.
+
+**ERC-1155 (VRC-1155) transfers** are synced by the `tokens` app every minute (`npm run tokens -- --sync-erc1155` once): every `TransferSingle` / `TransferBatch` log is read with a topic-filtered `eth_getLogs`, so collections deployed by factories are found too. An emitter is accepted when it answers ERC-165 `supportsInterface(0xd9b67a26)` and still has code; it is registered as a `VRC-1155` token. Each token id of an event is one `tokentransfers` document (`tokenType: 'VRC-1155'`, the id as a decimal string, the amount in `value`, `batchIndex` for TransferBatch). Holders are recomputed from the transfers (`tokenholders` keeps the sum over all ids per holder; the APIs list ERC-1155 holdings per token id). APIs: `token1155tx`, the v2 token transfer lists (`type=ERC-1155`, `total.token_id` + `total.value`), v2 `token-balances` / `tokens` of an address.
 
 ### Chain Integrity (Reorg Handling)
 
 The block listener (`tools/sync.ts`) is reorg-aware (`lib/sync/`):
 
 - Blocks are **upserted by `number`** and transactions **by `hash`** (`bulkWrite`); a transaction re-included in another block is moved, never dropped. `insertMany` with ignored duplicate-key errors is gone.
-- Before a new block N is stored its `parentHash` is compared with the stored block N-1. On a mismatch the listener walks back to the last height where DB and node agree (at most `maxReorgDepth`, default 64) and replaces every height above it: the orphan's transactions and token transfers are deleted, the canonical block and transactions are upserted, the `BlockStat` of the height is dropped (stats recompute it) and the token scan is rewound. A reorg deeper than `maxReorgDepth` is logged and recorded in `scan_progress` (`reorg-pending`) for the repair tool.
+- Before a new block N is stored its `parentHash` is compared with the stored block N-1. On a mismatch the listener walks back to the last height where DB and node agree (at most `maxReorgDepth`, default 64) and replaces every height above it: the orphan's transactions, token transfers and internal transactions are deleted, the canonical block and transactions are upserted, the `BlockStat` of the height is dropped (stats recompute it), and the token scan and the range indexers (internal transactions, ERC-1155) are rewound. A reorg deeper than `maxReorgDepth` is logged and recorded in `scan_progress` (`reorg-pending`) for the repair tool.
 - Every poll also re-verifies the last `confirmations` heights (default 12) against the node, so a reorg that happened between polls is caught too.
 - The listener position is persisted in `scan_progress` (`sync`) and restored on restart.
 - Configure in `config.json` (`"sync": { "confirmations": 12, "maxReorgDepth": 64 }`) or with `SYNC_CONFIRMATIONS` / `SYNC_MAX_REORG_DEPTH`.
@@ -1095,6 +1119,7 @@ pm2 start ecosystem.config.json --only stats    # Statistics calculation only
 pm2 start ecosystem.config.json --only richlist # Richlist calculation only
 pm2 start ecosystem.config.json --only tokens   # Token tracking only
 pm2 start ecosystem.config.json --only price    # Price monitoring only
+pm2 start ecosystem.config.json --only internal-txs # Internal transactions (call traces) only
 pm2 start ecosystem.config.json --only explorer # Web application only
 
 # Stop services
@@ -1114,6 +1139,7 @@ pm2 logs stats
 pm2 logs richlist
 pm2 logs tokens
 pm2 logs price
+pm2 logs internal-txs
 pm2 logs explorer
 
 # Monitor processes
@@ -1257,6 +1283,9 @@ All configuration is now centralized in `config.json`. The following settings ar
   },
   "web3Provider": {
     "url": "http://localhost:8545"
+  },
+  "traces": {
+    "url": "/home/explorer/.local/share/openvirbicoin/jsonrpc.ipc"
   },
   "miners": {
     "0x0000000000000000000000000000000000000000": "Unknown",
@@ -1476,14 +1505,17 @@ The explorer provides a Blockscout/Etherscan compatible API endpoint at `/api`. 
 | `txlist` | Transactions of an address | `address`, `startblock`, `endblock`, `page`, `offset`, `sort` |
 | `tokentx` | Token transfer events of fungible tokens (`value`) | `address` and/or `contractaddress`, `startblock`, `endblock`, `page`, `offset`, `sort` |
 | `tokennfttx` | NFT (ERC-721) transfer events (`tokenID`) | same as `tokentx` |
+| `token1155tx` | ERC-1155 transfer events, one row per token id (`tokenID`, `tokenValue`) | same as `tokentx` |
+| `txlistinternal` | Internal transactions: calls that moved value, contract creations and selfdestructs | `txhash`, `address` or `startblock` / `endblock`; `page`, `offset`, `sort` |
 | `tokenlist` | Tokens an address holds (Blockscout) | `address` |
 | `tokenbalance` | Get specific token balance | `address`, `contractaddress` |
 | `getminedblocks` | Get blocks mined by address | `address`, `page`, `offset` |
-| `txlistinternal`, `token1155tx` | Always answer `No transactions found`: call traces and ERC-1155 transfers are not indexed | - |
 
 The list actions follow Etherscan's paging: a call without `page` / `offset` returns up to 10000 rows, `offset` may be at most 10000 and `page × offset` at most 100000. Calls that ask for more than 1000 rows per page are additionally limited to 10 per minute per client. `sort` is `desc` unless `asc` is given. A list without rows is answered with `{"status":"0","message":"No transactions found","result":[]}`.
 
-`isError` / `txreceipt_status` come from the stored receipt (`txreceipt_status` is empty when a transaction was saved without one), `confirmations` from the newest stored block, and `contractAddress` is the contract a creation transaction deployed. `cumulativeGasUsed` is not stored and reported as `0`; `functionName` is always empty. Transfers of tokens hidden as spam are left out of `tokentx` / `tokennfttx` unless that contract is asked for with `contractaddress`.
+`isError` / `txreceipt_status` come from the stored receipt (`txreceipt_status` is empty when a transaction was saved without one), `confirmations` from the newest stored block, and `contractAddress` is the contract a creation transaction deployed. `cumulativeGasUsed` is not stored and reported as `0`; `functionName` is always empty. Transfers of tokens hidden as spam are left out of `tokentx` / `tokennfttx` / `token1155tx` unless that contract is asked for with `contractaddress`.
+
+`txlistinternal` reads the internal transactions indexed from call traces (see [Internal Transactions and ERC-1155 Transfers](#internal-transactions-and-erc-1155-transfers)). As on Etherscan and Blockscout it lists calls that moved value plus every contract creation and selfdestruct; zero-value calls are in the Blockscout v2 lists only. Rows carry both naming styles (`hash` / `transactionHash`, `traceId` / `index`, `type` / `callType`). `isError` is `1` when the call failed or a call around it failed (the value did not move); `errCode` is the call's own error. `input` is not stored and always empty.
 
 **Examples:**
 ```bash

@@ -7,16 +7,25 @@
  *   never "ignore E11000"): a transaction re-included in another block has its
  *   blockNumber / blockHash / transactionIndex / timestamp overwritten
  * - replaceBlock() swaps a height atomically enough for an explorer: delete
- *   the old block's transactions and their token transfers, upsert the block
- *   (with its uncle issuance, lib/sync/uncle-rewards.ts) and its canonical
- *   transactions, drop the BlockStat so stats recompute, and log the event.
- *   Same hash → nothing is written.
+ *   the old block's transactions, their token transfers and internal
+ *   transactions, upsert the block (with its uncle issuance,
+ *   lib/sync/uncle-rewards.ts) and its canonical transactions, drop the
+ *   BlockStat so stats recompute, rewind the range indexers that covered the
+ *   height (lib/sync/range-scan.ts), and log the event. Same hash → nothing is
+ *   written.
  * - findCommonAncestor() walks back (at most maxDepth) to the last height
  *   where DB and node hashes agree; when none is found the range is recorded
  *   in scan_progress ('reorg-pending') for the repair tool.
  */
 
-import { Block, BlockStat, ScanProgress, TokenTransfer, Transaction } from '../../models/index';
+import {
+  Block,
+  BlockStat,
+  InternalTransaction,
+  ScanProgress,
+  TokenTransfer,
+  Transaction,
+} from '../../models/index';
 import { logger } from '../logger';
 import {
   blockTransactionObjects,
@@ -30,6 +39,7 @@ import {
   type TransactionDoc,
 } from './normalize';
 import { fetchUncleReward } from './uncle-rewards';
+import { rewindRangeScans } from './range-scan';
 
 export const DEFAULT_CONFIRMATIONS = 12;
 export const DEFAULT_MAX_REORG_DEPTH = 64;
@@ -62,7 +72,10 @@ export interface ReplaceBlockResult {
   newHash: string;
   deletedTransactions: number;
   deletedTokenTransfers: number;
+  deletedInternalTransactions: number;
   addedTransactions: number;
+  /** Range indexers (internal transactions, VRC-1155) sent back below this height. */
+  rewoundScans: number;
 }
 
 function parseIntSetting(value: string | undefined, fallback: number): number {
@@ -219,7 +232,9 @@ export async function replaceBlock(
       newHash,
       deletedTransactions: 0,
       deletedTokenTransfers: 0,
+      deletedInternalTransactions: 0,
       addedTransactions: 0,
+      rewoundScans: 0,
     };
   }
 
@@ -228,12 +243,20 @@ export async function replaceBlock(
 
   let deletedTransactions = 0;
   let deletedTokenTransfers = 0;
+  let deletedInternalTransactions = 0;
   if (oldHash) {
     const hashes = await oldTransactionHashes(existing, oldHash);
     if (hashes.length > 0) {
       const transfers = await TokenTransfer.deleteMany({ transactionHash: { $in: hashes } });
       deletedTokenTransfers = transfers.deletedCount ?? 0;
     }
+    const internal = await InternalTransaction.deleteMany({
+      $or: [
+        { blockHash: oldHash },
+        ...(hashes.length > 0 ? [{ transactionHash: { $in: hashes } }] : []),
+      ],
+    });
+    deletedInternalTransactions = internal.deletedCount ?? 0;
     const txs = await Transaction.deleteMany({ blockHash: oldHash });
     deletedTransactions = txs.deletedCount ?? 0;
     // Token scan must revisit this height for the transfers of the canonical block
@@ -248,6 +271,9 @@ export async function replaceBlock(
   await upsertBlocks([block]);
   await upsertTransactions(transactions);
   await BlockStat.deleteOne({ number: height });
+  // A height the range indexers already covered (a reorg, or a gap filled by repair-chain)
+  // must be indexed again; the live head is above their ranges and leaves them alone
+  const rewoundScans = await rewindRangeScans(height);
 
   const result: ReplaceBlockResult = {
     height,
@@ -256,7 +282,9 @@ export async function replaceBlock(
     newHash,
     deletedTransactions,
     deletedTokenTransfers,
+    deletedInternalTransactions,
     addedTransactions: transactions.length,
+    rewoundScans,
   };
   if (oldHash) {
     logger.warn('Reorg: block replaced', { ...result });

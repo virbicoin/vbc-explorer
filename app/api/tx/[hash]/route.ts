@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ethers } from 'ethers';
-import { Transaction, Block, connectDB } from '../../../../models/index';
+import { Transaction, Block, InternalTransaction, connectDB } from '../../../../models/index';
 import { getTransactionTypeGlobal, METHOD_IDS } from '../../../../lib/transaction-utils';
 import { tryGetDb } from '../../../../lib/db/get-db';
 import {
@@ -360,6 +360,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Decode calldata against the verified contract ABI (Etherscan-style)
     const decodedInput = await decodeInputData(actualTransaction.input, actualTransaction.to);
 
+    // Calls, creations and selfdestructs inside the transaction (tools/internal-txs.ts)
+    const internalTransactions = (
+      (await InternalTransaction.find({
+        transactionHash: String(actualTransaction.hash).toLowerCase(),
+      })
+        .sort({ index: 1 })
+        .lean()) as Array<Record<string, unknown>>
+    ).map((doc) => ({
+      index: doc.index,
+      traceAddress: doc.traceAddress,
+      type: doc.type === 'call' ? String(doc.callType || 'call') : String(doc.type),
+      from: doc.from,
+      to: doc.to ?? doc.createdContract ?? null,
+      createdContract: doc.createdContract ?? null,
+      value: String(doc.value ?? '0'),
+      gas: doc.gas,
+      gasUsed: doc.gasUsed,
+      error: doc.error ?? null,
+      reverted: Boolean(doc.reverted),
+    }));
+
     // Transform the transaction data for frontend
     const transformedTransaction = {
       ...actualTransaction,
@@ -371,7 +392,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       inputData: actualTransaction.input || '0x',
       decodedInput,
       logs: [], // Empty array for now, can be populated later if needed
-      internalTransactions: [], // Empty array for now, can be populated later if needed
+      internalTransactions,
       // MetaMask compliant type info
       txType: typeInfo.type,
       txAction: typeInfo.action,

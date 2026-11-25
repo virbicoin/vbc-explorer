@@ -75,10 +75,17 @@ interface Transaction {
     blockNumber: number;
   }>;
   internalTransactions: Array<{
+    index?: number;
+    traceAddress?: number[];
     from: string;
-    to: string;
+    to: string | null;
+    createdContract?: string | null;
     value: string;
+    /** call, staticcall, delegatecall, create, create2, selfdestruct */
     type: string;
+    error?: string | null;
+    /** This call or one around it failed: nothing it did took effect. */
+    reverted?: boolean;
   }>;
   tokenTransfers?: TokenTransfer[];
   block?: {
@@ -111,6 +118,8 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
   const [config, setConfig] = useState<Config | null>(null);
 
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
+  // Internal transactions: value transfers, creations and selfdestructs unless all calls are asked for
+  const [showAllInternal, setShowAllInternal] = useState(false);
   const [currencySymbol, setCurrencySymbol] = useState<string>('');
 
   // Get token icon/color functions from config
@@ -992,32 +1001,104 @@ export default function TxPage({ params }: { params: Promise<{ hash: string }> }
           {/* Internal Transactions */}
           {transaction.internalTransactions && transaction.internalTransactions.length > 0 && (
             <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <DocumentTextIcon className="w-6 h-6 text-purple-400" />
-                <h2 className="text-xl font-semibold text-gray-100">
-                  Internal Transactions ({transaction.internalTransactions.length})
-                </h2>
-              </div>
-              <div className="space-y-4">
-                {transaction.internalTransactions.map((internalTx, index) => (
-                  <div key={index} className="bg-gray-700 rounded p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-400">From:</span>
-                        <div className="font-mono text-blue-400 break-all">{internalTx.from}</div>
+              {(() => {
+                const all = transaction.internalTransactions;
+                const moving = all.filter(
+                  (internalTx) =>
+                    internalTx.value !== '0' ||
+                    ['create', 'create2', 'selfdestruct'].includes(internalTx.type)
+                );
+                const shown = showAllInternal ? all : moving;
+                return (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                      <div className="flex items-center gap-3">
+                        <DocumentTextIcon className="w-6 h-6 text-purple-400" />
+                        <h2 className="text-xl font-semibold text-gray-100">
+                          Internal Transactions ({showAllInternal ? all.length : moving.length})
+                        </h2>
                       </div>
-                      <div>
-                        <span className="text-gray-400">To:</span>
-                        <div className="font-mono text-blue-400 break-all">{internalTx.to}</div>
-                      </div>
-                      <div>
-                        <span className="text-gray-400">Value:</span>
-                        <div className="text-green-400">{formatValue(internalTx.value)}</div>
-                      </div>
+                      {moving.length !== all.length && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAllInternal(!showAllInternal)}
+                          className="text-sm text-blue-400 hover:text-blue-300"
+                        >
+                          {showAllInternal
+                            ? 'Show value transfers only'
+                            : `Show all ${all.length} calls`}
+                        </button>
+                      )}
                     </div>
-                  </div>
-                ))}
-              </div>
+                    {shown.length === 0 ? (
+                      <p className="text-sm text-gray-400">
+                        No value moved inside this transaction ({all.length} calls without value).
+                      </p>
+                    ) : (
+                      <div className="space-y-4">
+                        {shown.map((internalTx, index) => (
+                          <div
+                            key={`${internalTx.index ?? index}`}
+                            className={`bg-gray-700 rounded p-4 ${internalTx.reverted ? 'opacity-70' : ''}`}
+                          >
+                            <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
+                              <span className="px-2 py-0.5 rounded bg-gray-600 text-gray-200 font-mono">
+                                {internalTx.type}
+                              </span>
+                              {internalTx.traceAddress && internalTx.traceAddress.length > 0 && (
+                                <span className="text-gray-400 font-mono">
+                                  trace {internalTx.traceAddress.join('_')}
+                                </span>
+                              )}
+                              {internalTx.reverted && (
+                                <span className="px-2 py-0.5 rounded bg-red-900/60 text-red-300">
+                                  {internalTx.error ? `Failed: ${internalTx.error}` : 'Reverted'}
+                                </span>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                              <div>
+                                <span className="text-gray-400">From:</span>
+                                <div className="font-mono break-all">
+                                  <Link
+                                    href={`/address/${internalTx.from}`}
+                                    className="text-blue-400 hover:text-blue-300"
+                                  >
+                                    {internalTx.from}
+                                  </Link>
+                                </div>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">
+                                  {internalTx.createdContract ? 'Created:' : 'To:'}
+                                </span>
+                                <div className="font-mono break-all">
+                                  {internalTx.to ? (
+                                    <Link
+                                      href={`/address/${internalTx.to}`}
+                                      className="text-blue-400 hover:text-blue-300"
+                                    >
+                                      {internalTx.to}
+                                    </Link>
+                                  ) : (
+                                    <span className="text-gray-500">—</span>
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <span className="text-gray-400">Value:</span>
+                                <div className="text-green-400">
+                                  {formatValue(internalTx.value)}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
         </main>

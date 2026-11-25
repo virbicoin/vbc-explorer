@@ -3,6 +3,7 @@ import { connectDB, Token, TokenHolder } from '@/models/index';
 import { sanitizeAddress, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { tokenInfo } from '@/lib/api/v2/common';
+import { erc1155HoldingsOf, isMultiTokenType } from '@/lib/api/erc1155';
 
 function isPositive(balance: string | null | undefined): boolean {
   try {
@@ -20,11 +21,12 @@ function isPositive(balance: string | null | undefined): boolean {
  * `token.address_hash`, `token.type`, `value`). Served from the token holder
  * collection, so no node call is made.
  *
- * Differences from Blockscout: an NFT collection is one row with the number of
- * items held in `value` (Blockscout lists one row per token id; the holder
+ * Differences from Blockscout: a VRC-721 collection is one row with the number
+ * of items held in `value` (Blockscout lists one row per token id; the holder
  * collection keeps no ids), tokens hidden as spam are left out, as in the
  * explorer's own holdings list, and `icon_url` is always null (icons are
- * resolved by `/api/tokens`).
+ * resolved by `/api/tokens`). VRC-1155 holdings are one row per token id, as on
+ * Blockscout (computed from the holder's transfers).
  */
 export async function GET(
   request: NextRequest,
@@ -58,18 +60,39 @@ export async function GET(
     }).lean();
     const tokenByAddress = new Map(tokens.map((token) => [token.address.toLowerCase(), token]));
 
-    const items = holdings
-      .filter((holding) => !tokenByAddress.get(holding.tokenAddress.toLowerCase())?.hidden)
-      .map((holding) => ({
-        token: tokenInfo(
+    const visible = holdings.filter(
+      (holding) => !tokenByAddress.get(holding.tokenAddress.toLowerCase())?.hidden
+    );
+    const perId = await erc1155HoldingsOf(
+      holder,
+      visible
+        .map((holding) => holding.tokenAddress.toLowerCase())
+        .filter((token) => isMultiTokenType(tokenByAddress.get(token)?.type))
+    );
+
+    type BalanceRow = {
+      token: ReturnType<typeof tokenInfo>;
+      token_id: string | null;
+      token_instance: null;
+      value: string;
+    };
+    const items = visible
+      .flatMap((holding): BalanceRow[] => {
+        const address = holding.tokenAddress.toLowerCase();
+        const token = tokenInfo(
           holding.tokenAddress,
-          tokenByAddress.get(holding.tokenAddress.toLowerCase()) as
-            Record<string, unknown> | undefined
-        ),
-        token_id: null,
-        token_instance: null,
-        value: holding.balance,
-      }))
+          tokenByAddress.get(address) as Record<string, unknown> | undefined
+        );
+        if (isMultiTokenType(tokenByAddress.get(address)?.type)) {
+          return (perId.get(address) ?? []).map(({ tokenId, value }) => ({
+            token,
+            token_id: tokenId,
+            token_instance: null,
+            value,
+          }));
+        }
+        return [{ token, token_id: null, token_instance: null, value: String(holding.balance) }];
+      })
       .sort((a, b) => a.token.address_hash.localeCompare(b.token.address_hash));
 
     return NextResponse.json(items, { headers: getSecurityHeaders() });

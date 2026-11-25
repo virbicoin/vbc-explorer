@@ -18,6 +18,7 @@ import {
   CodeBracketIcon,
   PlayIcon,
   ClockIcon,
+  ArrowsRightLeftIcon,
 } from '@heroicons/react/24/outline';
 import SummaryCard from '../../components/SummaryCard';
 import { getCurrencySymbol, initializeCurrencyConfig } from '../../../lib/client-config';
@@ -34,6 +35,7 @@ import {
   type AddressTransaction as Transaction,
 } from '../../../lib/address/format';
 import { getTransactionTypeBadge, formatTokenValue } from './components/transaction-display';
+import InternalTransactionsTab from './components/InternalTransactionsTab';
 
 interface Account {
   address: string;
@@ -106,7 +108,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
   const [copiedItem, setCopiedItem] = useState<string | null>(null);
   const [config, setConfig] = useState<Config | null>(null);
   const [activeTab, setActiveTab] = useState<
-    'transactions' | 'mining' | 'tokens' | 'transfers' | 'source'
+    'transactions' | 'internal' | 'mining' | 'tokens' | 'transfers' | 'source'
   >('transactions');
   const [tokenHoldings, setTokenHoldings] = useState<TokenHolding[]>([]);
   const [tokenTransfers, setTokenTransfers] = useState<Transaction[]>([]);
@@ -362,6 +364,7 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
   if (isContractAddress) {
     const tabs = [
       { id: 'transactions', label: 'Transactions', icon: ArrowPathIcon },
+      { id: 'internal', label: 'Internal Txns', icon: ArrowsRightLeftIcon },
       ...(miningCount > 0 ? [{ id: 'mining', label: 'Mining Rewards', icon: CubeIcon }] : []),
       { id: 'source', label: 'Contract Source', icon: CodeBracketIcon },
     ];
@@ -586,7 +589,9 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                   return (
                     <button
                       key={tab.id}
-                      onClick={() => setActiveTab(tab.id as 'transactions' | 'mining' | 'source')}
+                      onClick={() =>
+                        setActiveTab(tab.id as 'transactions' | 'internal' | 'mining' | 'source')
+                      }
                       className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors ${
                         activeTab === tab.id
                           ? 'bg-gray-700/50 text-blue-400 border-b-2 border-blue-400'
@@ -710,6 +715,13 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
               )}
 
               {/* Mining Tab */}
+              {activeTab === 'internal' && (
+                <InternalTransactionsTab
+                  address={resolvedParams.address}
+                  currencySymbol={currencySymbol}
+                />
+              )}
+
               {activeTab === 'mining' && (
                 <div className="space-y-4">
                   {miningRewards.length === 0 ? (
@@ -1137,6 +1149,17 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                 <span className="ml-1 px-2 py-0.5 bg-gray-700 rounded-full text-xs">
                   {regularCount.toLocaleString()}
                 </span>
+              </button>
+              <button
+                onClick={() => setActiveTab('internal')}
+                className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors whitespace-nowrap ${
+                  activeTab === 'internal'
+                    ? 'text-blue-400 border-b-2 border-blue-400'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                <ArrowsRightLeftIcon className="w-5 h-5" />
+                Internal Txns
               </button>
               <button
                 onClick={() => setActiveTab('tokens')}
@@ -1589,6 +1612,11 @@ export default function AddressPage({ params }: { params: Promise<{ address: str
                   </>
                 )}
               </>
+            ) : activeTab === 'internal' ? (
+              <InternalTransactionsTab
+                address={resolvedParams.address}
+                currencySymbol={currencySymbol}
+              />
             ) : activeTab === 'mining' ? (
               <>
                 {miningRewards.length === 0 ? (

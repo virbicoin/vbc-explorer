@@ -237,6 +237,7 @@ npm run tokens          # トークン（NFT/ERC20）データを同期
 npm run stats           # 統計を計算
 npm run richlist        # リッチリストを生成
 npm run price           # 価格 + DEX スワップデータを更新（価格 API / DEX プール）
+npm run internal-txs    # 内部取引をコールトレースから索引（--once / --from <block> / --status）
 
 # データベース管理
 npm run optimize-indexes              # スキーマ定義のインデックスを作成（不足分のみ、削除なし）
@@ -257,6 +258,7 @@ RESCAN_FROM=<height> npm run stats    # 指定高さから先端まで BlockStat
 pm2 restart explorer    # explorer を再起動
 pm2 logs explorer       # ログを表示
 pm2 logs price          # 価格同期のログを表示
+pm2 logs internal-txs   # 内部取引の索引のログを表示
 pm2 status              # サービス状態を確認
 pm2 monit               # リソースを監視
 ```
@@ -417,9 +419,10 @@ NFT の所有者は次のように計算されます:
 - `transactions` - トランザクションデータ
 - `contracts` - 検証済みコントラクト（ERC フィールド: 0=コントラクト, 2=ERC20, 721=VRC-721, 1155=VRC-1155）
 - `tokens` - トークンメタデータ（モデル `Token`）
-- `tokentransfers` - トークン転送イベント（モデル `TokenTransfer`。フィールドは tokenAddress / transactionHash / from / to / value / tokenId（NFT のみ） / logIndex（VRC-20 のみ。イベント 1 件につき 1 文書） / blockNumber / timestamp(Date)）
+- `tokentransfers` - トークン転送イベント（モデル `TokenTransfer`。フィールドは tokenAddress / transactionHash / from / to / value / tokenId（NFT のみ） / logIndex（VRC-20・VRC-1155。イベント 1 件につき 1 文書） / blockNumber / timestamp(Date)。VRC-1155 は `tokenType: 'VRC-1155'`・`batchIndex`・`operator` も持ち、`tokenId` は 10 進文字列）
+- `InternalTransaction` - 内部取引（コールトレースの各フレーム。`tools/internal-txs.ts` が書く）
 - `tokenholders` - トークン保有者残高（モデル `TokenHolder`）
-- `scan_progress` - 進捗マーカー（モデル `ScanProgress`）: `tokens`（tools/tokens.ts）、`sync`（リスナー位置）、`reorg-pending`（maxReorgDepth 超のリオーグ範囲。`meta` に from/to）、`repair`（repair-chain の再開位置）
+- `scan_progress` - 進捗マーカー（モデル `ScanProgress`）: `tokens`（tools/tokens.ts）、`sync`（リスナー位置）、`reorg-pending`（maxReorgDepth 超のリオーグ範囲。`meta` に from/to）、`repair`（repair-chain の再開位置）、`internal-transactions` と `erc1155`（範囲索引器。`generation` / `inFlightTo` / `skipped` を持つ）
 - `Account` - アカウント残高
 - `Market` - 複数ソースからの価格データ（price.ts が更新）
 - `DexSwap` - DEX スワップイベント（price.ts が更新）
@@ -508,6 +511,33 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 ### 耐障害性・汎用化
 - `proxy.ts` の `/address` タイプ判定 fetch に AbortController（2s）を追加 → DB 停止時も `/address` がハングしない（従来 ~15s）。
 - DEX サブシステム（`geckoterminal/info`・`pool`、`dex` ページ、`useFarming` のウォレット追加 `nativeCurrency`）の真のハードコード固有名を config 由来に。クライアントは `lib/client-config`（`getNetworkName`/`getCurrencyConfig`）または `useDexConfig`（`currency` フィールド追加）から取得。設定済みの本番では出力は不変。
+
+## 新機能（2026-11）: 内部取引と VRC-1155 の同期
+
+それまで `txlistinternal` / `token1155tx` / v2 の内部取引は常に空だった。本番（TK04）の全 46,470 取引をトレースした結果、内部取引は 11,059 件（値の移動 1,079 件、計約 4,628,000 VBC）、コントラクトが作ったコントラクトが 44 件（うち 23 件は Contract にも tokens にも無く、VRC-20 が 6 件・旧ファクトリーの LP が 2 件含まれていた）。VRC-1155 のイベントはチェーン上にまだ無い（2026-11-26 時点）。
+
+### 設計ルール（必ず守る）
+- **内部取引はノードのコールトレース（Parity 形式の `trace_transaction`）からだけ作る。** 取得先は `config.json` の `traces.url`（または `TRACE_RPC_URL`）。Ovbc は trace API を IPC ソケットにだけ開くので、TK04 では `/home/aoi/.local/share/openvirbicoin/jsonrpc.ipc` を指す。公開 RPC（8329）の `--jsonrpc-apis` は変えない（手引きのとおり）
+- **保存するのは最上位の call 以外の全フレーム**（Blockscout と同じ。最上位の create は作られたアドレスを持つので残す）。`index` はトレース内の位置、`error` はそのフレーム自身のエラー、`reverted` は自分か外側のフレームが失敗したら true（効果が残っていない）。v2 の `success` と Etherscan の `isError` は `reverted` から出す
+- **Etherscan / Blockscout 形式の `txlistinternal` は値が動いた call と create / create2 / selfdestruct だけ**（本家と同じ）。v2 の一覧は値 0 の staticcall / delegatecall も含む全フレーム
+- **書き込みはブロック範囲ごとの丸ごと置き換え**（`indexInternalTransactions()`）。DB の取引のブロックハッシュとトレースのブロックハッシュが違うブロックからは書かない。進捗は `lib/sync/range-scan.ts`（`claimRange()` → 書き込み → `completeRange()`、`generation` が変わっていたら記録しない）。`replaceBlock()` は孤児の内部取引を消し、`rewindRangeScans(height)` で範囲索引器を巻き戻す。この仕組みを迂回して `lastScannedBlock` を直接書き換えない（CLI の `--from` は `resetRangeScan()`）
+- 索引器は確定部分（DB の先端 − `sync.confirmations` − 1）までしか進まない。トレースできない取引は 3 回やり直してから `skipped` に記録して進む（接続エラーは記録せず待って再試行）
+- **VRC-1155 は TransferSingle / TransferBatch のログ（トピック指定の `eth_getLogs`）から見つける。** 受け入れるのは ERC-165 `supportsInterface(0xd9b67a26)` が true でコードがあるコントラクトだけ。別の規格で登録済みのトークンは混ぜない。移動は id ごとに 1 文書、`tokenId` は 10 進文字列（uint256）で、ドライバー経由で書く・読む（Mongoose の Number へのキャストを通さない）
+- **トークン登録の判定は `registerTokenContract()`（tools/tokens.ts）だけ**。取引が作ったコントラクト（ブロック走査）とコントラクトが作ったコントラクト（`adoptContractsCreatedByContracts()`、`InternalTransaction.createdContract` から）の両方がここを通る。ペア（token0 / token1 を返す）は LP として名前を付け直す
+- `tokens -- --rescan` は `tokens` の進捗だけを消す（以前は `ScanProgress.deleteMany({})` で sync などの進捗まで消していた）
+
+### 実装の要点
+- `lib/sync/internal-transactions.ts`: `internalTransactionsFromTraces()`（変換）、`createTraceSource(url)`（IPC / http / ws、30 秒でタイムアウト、失敗したら次回つなぎ直す）、`indexInternalTransactions(source, from, to, { concurrency, maxTransactions, skip })`
+- `lib/sync/range-scan.ts`: 範囲索引器の進捗（`internal-transactions` / `erc1155`）。`tools/internal-txs.ts`: `indexToConfirmedHead()`（常駐ループの本体、テスト可能）と CLI。作られたコントラクトは `lib/sync/contracts.ts` の `registerContract()`（tools/sync.ts から移した。取引が作ったコントラクトと同じ処理）で Contract に入る
+- `lib/sync/erc1155.ts`: `erc1155TransfersFromLog()`、`erc1155Balances()`、`syncErc1155Range()`（登録・置き換え・保有者の再計算）、`syncErc1155ToConfirmedHead()`。`tools/tokens.ts` が起動時と 1 分ごとに呼ぶ（`--sync-erc1155` で 1 回）
+- API: `getInternalTransactions()` / `transferKindFilter()`（account.ts）、v2 の `internalTransactionItem()` / `internalErrorFlags()`（common.ts）、`lib/api/erc1155.ts`。画面: 取引ページの Internal Transactions（既定は値の移動だけ、全件に切り替え可）、アドレスページの「Internal Txns」タブ（`components/InternalTransactionsTab.tsx`）
+- テスト: `tests/sync/internal-transactions.test.ts`（本番の実トレース `tests/fixtures/ovbc-traces.json`）、`tests/sync/erc1155.test.ts`、`tests/sync/reorg.test.ts`、`tests/api/internal-and-1155.test.ts`
+
+### 本番反映時の注意
+- 反映前に mongodump（`Contract`・`tokens`・`tokentransfers`・`tokenholders`・`scan_progress` に書く）。`config.json` に `"traces": { "url": "/home/aoi/.local/share/openvirbicoin/jsonrpc.ipc" }` を足す（ovbc の再起動・設定変更は不要）
+- `pm2 start ecosystem.config.json --only internal-txs && pm2 save`。`sync` は再起動する（`replaceBlock()` の内部取引の削除と巻き戻しを有効にするため）。`tokens` と `explorer` も再起動する
+- 確認: `npm run internal-txs -- --status` の `lastScannedBlock` が先端 − 13 付近、`documents` が約 11,000、`skipped` が空。`txlistinternal&txhash=<スワップの取引>` に値の移動が出る、`/api/v2/transactions/<hash>` の `has_error_in_internal_transactions` が true / false（null でない）
+- ロールバック: 前の commit に戻してビルドし、`pm2 delete internal-txs`。`InternalTransaction` コレクションは旧コードが読まないので残してよい
 
 ## 修正（2026-11）: アンクル報酬を含む供給量・Next.js 16.4.6（v0.8.9）
 
@@ -896,9 +926,9 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 `app/api/route.ts` が振り分け、処理は `lib/api/blockscout/`（`account.ts` / `handlers.ts` / `proxy.ts` / `shared.ts`）にある。対応している action の一覧は `app/api/route.ts` の先頭と README の「Etherscan API」節。
 
 設計ルール（2026-11 に、形だけ互換で中身が違っていた箇所を直したときのもの。必ず守る）:
-- **項目名と意味は Etherscan / Blockscout の公式に合わせる。データが無いものを別のデータで埋めない。** 内部取引（call trace）と ERC-1155 の移動は同期していないので、`txlistinternal` / `token1155tx` は `No transactions found`（通常の取引を返すと、利用側が同じ送金を二重に数える）
+- **項目名と意味は Etherscan / Blockscout の公式に合わせる。データが無いものを別のデータで埋めない。** `txlistinternal` は `InternalTransaction`（コールトレース由来）、`token1155tx` は VRC-1155 の移動だけを返す。通常の取引を内部取引として返さない（利用側が同じ送金を二重に数える）
 - **成否は `Transaction.status`（数値 1 / 0、レシートなしは null）から `txStatusFields()` で求める。** 真偽値との比較（`status === false`）は常に成功になる
-- **トークン移動は `tokentransfers`、保有者は `tokenholders` から返す。** `Transaction` や `Account` から作らない。`tokenId` があるものが NFT（`tokennfttx`）、ないものが `tokentx`
+- **トークン移動は `tokentransfers`、保有者は `tokenholders` から返す。** `Transaction` や `Account` から作らない。種別の絞り込みは `transferKindFilter()`（`lib/api/blockscout/account.ts`）だけを使う: `tokenId` なし = ERC-20（`tokentx`）、`tokenId` あり・`tokenType` なし = ERC-721（`tokennfttx`）、`tokenType: 'VRC-1155'` = ERC-1155（`token1155tx`）。`tokenId` の有無だけで NFT を判定しない（VRC-1155 が VRC-721 に混ざる）
 - **一覧は `listOptions()` を通す**（`page` / `offset` / `sort` / `startblock` / `endblock`）。Etherscan と同じく既定・上限とも 10000 行（利用側は「返った件数 < offset」で終端を判断するので、黙って少なく返すと取りこぼす）。1000 行を超えるページは `bulk` バケット（10 回/分）にも数える。空の一覧は `emptyListResponse()`
 - **`proxy` モジュールと `eth_*` action は `rpcResponse()`**（JSON-RPC の形に `status` / `message` を足したもの）。ノードの結果は加工せずに返し、パラメータは `toBlockParameter()` / `toQuantity()` で検証・正規化する。`eth_sendRawTransaction` は出さない（公開 RPC を使う）
 - トークン種別は `ercTokenType()`（`lib/api/token-standard.ts`）で ERC 名にする。hidden のトークンは一覧から外す（コントラクトを名指しした `tokentx` だけは返す）
@@ -914,8 +944,9 @@ ERC-20 の移動は**イベント 1 件につき 1 文書**（キーは `transac
 共通の部品は `lib/api/v2/common.ts`（`v2Route()` = レート制限・DB 接続・エラー応答、`v2Page()` / `paginate()` = ページ送り、`addressParam()` / `tokenInfo()` / `transactionItem()` / `tokenTransferItem()` = 一覧に埋め込むオブジェクト）。新しい経路はこれらを使って書く。
 
 - 統計・ブロック: `stats`、`blocks`、`blocks/[numberOrHash]`、`blocks/[numberOrHash]/transactions`
-- 取引: `transactions`、`transactions/[hash]`、`transactions/[hash]/token-transfers`、`transactions/[hash]/logs`（ノードのレシートから）、`transactions/[hash]/internal-transactions`（常に空）
-- アドレス: `addresses/[address]`、`…/transactions`、`…/tokens`（ページあり）、`…/token-balances`（配列、ページなし）、`…/token-transfers`、`…/counters`、`…/internal-transactions`（常に空）
+- 取引: `transactions`、`transactions/[hash]`（一覧と同じ項目＋トークン移動 50 件）、`transactions/[hash]/token-transfers`、`transactions/[hash]/logs`（ノードのレシートから）、`transactions/[hash]/internal-transactions`
+- アドレス: `addresses/[address]`、`…/transactions`、`…/tokens`（ページあり）、`…/token-balances`（配列、ページなし）、`…/token-transfers`、`…/counters`、`…/internal-transactions`
+- 内部取引: `internal-transactions`（チェーン全体、新しい順）、`blocks/[numberOrHash]/internal-transactions`
 - トークン: `tokens`、`tokens/[address]`、`…/holders`、`…/transfers`、`…/counters`
 - 検索: `search`、`search/check-redirect`
 - コントラクト: `smart-contracts`（検証済みの一覧）、`smart-contracts/[address]` と検証（`verification/via/flattened-code`、`verification/via/standard-input`）
@@ -923,9 +954,10 @@ ERC-20 の移動は**イベント 1 件につき 1 文書**（キーは `transac
 設計ルール（必ず守る）:
 - **項目名は Blockscout の現行のもの**（`block_number`、`transaction_types`、`transaction_hash`、`address_hash`、`holders_count` など）。Blockscout 7 より前の名前（`block`、`tx_types`、`tx_hash`、`address`、`holders`）は既存の利用者のために併記している。本家の応答（例: `https://eth.blockscout.com/api/v2/…`）と突き合わせて決める
 - **`next_page_params` は、そのまま次の要求のクエリにすると次ページが返る値にする。** Blockscout の利用側はこれを機械的に送り返す。この実装が読むのは `page` と `limit` なので、必ずその 2 つを入れる（`paginate()` が入れる）。`block_number` や `index` は位置の目安として併記するだけ。1 ページは 50 件（`limit` で小さくできる）。次ページの有無は 1 件多く取って判断し、件数を数えない
-- **持っていないデータは null か空にする。作らない。** 内部取引は空の一覧、トークン移動の `log_index` は null、アドレスの `is_contract` / `is_verified` / `name` は `loadAddressFacts()`（Contract・tokens・Account.type）から引く。hidden の名前は返さない
+- **持っていないデータは null か空にする。作らない。** 索引器がまだ届いていない取引の `has_error_in_internal_transactions` は null（`internalErrorFlags()`）、VRC-721 の移動の `log_index` は null、アドレスの `is_contract` / `is_verified` / `name` は `loadAddressFacts()`（Contract・tokens・Account.type）から引く。hidden の名前は返さない
+- ERC-1155 の保有は token id ごとに 1 行（`erc1155HoldingsOf()`、`lib/api/erc1155.ts`。`tokenholders` は全 id の合計しか持たない）。移動の `total` は `{ decimals: null, token_id, token_instance, value }`
 - トークン移動の並びは `timestamp` のみ（アドレス別・トークン別の索引で並ぶ）。全トークン横断の移動一覧（`/api/v2/token-transfers`）は、対応する索引が無いので作っていない
-- テストは `tests/api/v2-lists.test.ts`（一覧・検索・カウンター）、`tests/api/v2-token-balances.test.ts`、`tests/api/v2-blocks-stats.test.ts`
+- テストは `tests/api/v2-lists.test.ts`（一覧・検索・カウンター）、`tests/api/v2-token-balances.test.ts`、`tests/api/v2-blocks-stats.test.ts`、`tests/api/internal-and-1155.test.ts`（内部取引・VRC-1155）
 
 DefiLlama はこのエクスプローラーを VirBiCoin の Blockscout として登録しており（DefiLlama-Adapters の `projects/helper/utils/blockscout.js`）、アドレスのトークン自動検出で `token-balances` を呼んで `token.address_hash` / `token.type` / `value` を読む。2026-11 まではこの経路が無く 404 だった。
 

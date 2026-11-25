@@ -22,6 +22,8 @@ const PRODUCTION_COLLECTIONS = [
   'tokentransfers',
   'tokenholders',
   'scan_progress',
+  // created by tools/internal-txs.ts (2026-11)
+  'InternalTransaction',
 ];
 
 describe('model collection names', () => {
@@ -39,6 +41,7 @@ describe('model collection names', () => {
       TokenHolder: 'tokenholders',
       TokenTransfer: 'tokentransfers',
       ScanProgress: 'scan_progress',
+      InternalTransaction: 'InternalTransaction',
     });
   });
 

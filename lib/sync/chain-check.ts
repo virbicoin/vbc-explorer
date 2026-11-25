@@ -176,6 +176,7 @@ export interface RepairResult {
   deletedTransactions: number;
   addedTransactions: number;
   deletedTokenTransfers: number;
+  deletedInternalTransactions: number;
   minReplaced: number | null;
   maxReplaced: number | null;
   /** checkChain() after the repair (not run in dry-run). */
@@ -230,6 +231,7 @@ export async function repairChain(
     deletedTransactions: 0,
     addedTransactions: 0,
     deletedTokenTransfers: 0,
+    deletedInternalTransactions: 0,
     minReplaced: null,
     maxReplaced: null,
     verification: null,
@@ -270,6 +272,7 @@ export async function repairChain(
         result.deletedTransactions += replaced.deletedTransactions;
         result.addedTransactions += replaced.addedTransactions;
         result.deletedTokenTransfers += replaced.deletedTokenTransfers;
+        result.deletedInternalTransactions += replaced.deletedInternalTransactions;
       }
       result.replaced.push(height);
       result.minReplaced =

@@ -6,7 +6,15 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, Account, Block, Contract, Token } from '@/models/index';
+import {
+  connectDB,
+  Account,
+  Block,
+  Contract,
+  InternalTransaction,
+  ScanProgress,
+  Token,
+} from '@/models/index';
 import { getSecurityHeaders, validatePagination } from '@/lib/security';
 import { rejectDeepPagination } from '@/lib/security/pagination';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
@@ -267,8 +275,42 @@ export async function fillTimestamps(txs: Doc[]): Promise<void> {
   }
 }
 
+/**
+ * `has_error_in_internal_transactions` of transactions: whether a call inside
+ * failed, for transactions the internal transaction indexer has covered
+ * (tools/internal-txs.ts), null for the others.
+ */
+export async function internalErrorFlags(txs: Doc[]): Promise<Map<string, boolean | null>> {
+  const flags = new Map<string, boolean | null>();
+  if (txs.length === 0) return flags;
+  const marker = (await ScanProgress.findOne({ scanType: 'internal-transactions' })
+    .select('lastScannedBlock')
+    .lean()) as { lastScannedBlock?: number } | null;
+  const covered = typeof marker?.lastScannedBlock === 'number' ? marker.lastScannedBlock : -1;
+  const hashOf = (tx: Doc) => String(tx.hash).toLowerCase();
+  const indexed = txs.filter((tx) => Number(tx.blockNumber) <= covered).map(hashOf);
+  const failed = new Set(
+    indexed.length > 0
+      ? ((await InternalTransaction.distinct('transactionHash', {
+          transactionHash: { $in: indexed },
+          error: { $ne: null },
+        })) as string[])
+      : []
+  );
+  for (const tx of txs) {
+    flags.set(hashOf(tx), Number(tx.blockNumber) <= covered ? failed.has(hashOf(tx)) : null);
+  }
+  return flags;
+}
+
 /** Blockscout transaction object from a `Transaction` document. */
-export function transactionItem(tx: Doc, head: number, facts?: Map<string, AddressFacts>) {
+export function transactionItem(
+  tx: Doc,
+  head: number,
+  facts?: Map<string, AddressFacts>,
+  internalErrors?: Map<string, boolean | null>
+) {
+  const internalError = internalErrors?.get(String(tx.hash).toLowerCase()) ?? null;
   const input = typeof tx.input === 'string' && tx.input ? tx.input : '0x';
   const height = Number(tx.blockNumber);
   const types = tx.creates
@@ -305,7 +347,7 @@ export function transactionItem(tx: Doc, head: number, facts?: Map<string, Addre
     transaction_types: types,
     exchange_rate: null,
     historic_exchange_rate: null,
-    has_error_in_internal_transactions: null,
+    has_error_in_internal_transactions: internalError,
     actions: [],
     decoded_input: null,
     token_transfers: null,
@@ -326,7 +368,7 @@ export function transactionItem(tx: Doc, head: number, facts?: Map<string, Addre
     // names used before Blockscout 7, kept for existing clients
     block: tx.blockNumber,
     tx_types: types,
-    has_error_in_internal_txs: false,
+    has_error_in_internal_txs: internalError,
     tx_burnt_fee: null,
     tx_tag: null,
   };
@@ -339,6 +381,7 @@ export function tokenTransferItem(
   facts?: Map<string, AddressFacts>
 ) {
   const isNft = transfer.tokenId !== undefined && transfer.tokenId !== null;
+  const isMultiToken = transfer.tokenType === 'VRC-1155';
   const from = String(transfer.from || '').toLowerCase();
   const to = String(transfer.to || '').toLowerCase();
   const info = tokenInfo(transfer.tokenAddress, token);
@@ -348,15 +391,22 @@ export function tokenTransferItem(
     block_number: Number(transfer.blockNumber),
     from: addressParam(from, facts),
     to: addressParam(to, facts),
-    // stored for VRC-20 transfers since 2026-11; null for NFT transfers and older documents
+    // stored for VRC-20 (since 2026-11) and VRC-1155 transfers; null for VRC-721 and older documents
     log_index: typeof transfer.logIndex === 'number' ? transfer.logIndex : null,
     method: null,
     timestamp: Number.isNaN(time) ? null : new Date(time).toISOString(),
     token: info,
     token_type: info.type,
-    total: isNft
-      ? { token_id: String(transfer.tokenId), token_instance: null }
-      : { decimals: info.decimals, value: transfer.value?.toString() || '0' },
+    total: isMultiToken
+      ? {
+          decimals: null,
+          token_id: String(transfer.tokenId),
+          token_instance: null,
+          value: transfer.value?.toString() || '0',
+        }
+      : isNft
+        ? { token_id: String(transfer.tokenId), token_instance: null }
+        : { decimals: info.decimals, value: transfer.value?.toString() || '0' },
     transaction_hash: transfer.transactionHash,
     type:
       from === ZERO_ADDRESS
@@ -367,4 +417,47 @@ export function tokenTransferItem(
     // name used before Blockscout 7
     tx_hash: transfer.transactionHash,
   };
+}
+
+// ============================================
+// Internal transactions
+// ============================================
+
+/** v2 `type` of an internal transaction: the call type for calls (call, staticcall, ...). */
+export function internalTransactionType(doc: Doc): string {
+  return doc.type === 'call' ? String(doc.callType || 'call') : String(doc.type);
+}
+
+/** Blockscout internal transaction object from an `InternalTransaction` document. */
+export function internalTransactionItem(doc: Doc, facts?: Map<string, AddressFacts>) {
+  return {
+    block_number: doc.blockNumber,
+    created_contract: addressParam(doc.createdContract, facts, { isContract: true }),
+    error: (doc.error as string | null | undefined) ?? null,
+    from: addressParam(doc.from, facts),
+    gas_limit: String(doc.gas ?? '0'),
+    index: doc.index,
+    // false as well below a failed call: nothing the frame did took effect
+    success: !doc.reverted,
+    timestamp: isoTime(doc.timestamp),
+    to: addressParam(doc.to, facts),
+    transaction_hash: doc.transactionHash,
+    transaction_index: doc.transactionIndex,
+    type: internalTransactionType(doc),
+    value: String(doc.value ?? '0'),
+    // name used before Blockscout 7
+    block: doc.blockNumber,
+  };
+}
+
+/** Position keys Blockscout shows in `next_page_params` of internal transaction lists. */
+export const internalTransactionHint = (last: Doc) => ({
+  block_number: last.blockNumber,
+  transaction_index: last.transactionIndex,
+  index: last.index,
+});
+
+/** Address objects of a page of internal transactions. */
+export function internalTransactionAddresses(docs: Doc[]): unknown[] {
+  return docs.flatMap((doc) => [doc.from, doc.to, doc.createdContract]);
 }

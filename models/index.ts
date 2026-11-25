@@ -20,7 +20,7 @@ import { MongoUriConfigError, resolveMongoUri } from '../lib/db/uri';
  * - Every collection name is set explicitly via `{ collection }` and matches
  *   the production database (Block, Transaction, Account, Contract, BlockStat,
  *   Market, DexSwap, VerificationJob, tokens, tokentransfers, tokenholders,
- *   scan_progress).
+ *   scan_progress, InternalTransaction).
  * - Indexes are declared on the schemas below and nowhere else. They are
  *   created explicitly by `ensureIndexes()` (called by the data-writing CLI
  *   tools on startup and by `npm run optimize-indexes`), never by `autoIndex`
@@ -154,8 +154,13 @@ export interface ITokenHolder extends Document {
 
 /**
  * ERC-20 / NFT Transfer event (collection `tokentransfers`, written by tools/tokens.ts).
- * `tokenId` is only set for NFT transfers, `logIndex` only for VRC-20 transfers (one
- * document per event); `timestamp` is a Date.
+ * `tokenId` is only set for NFT transfers, `logIndex` for VRC-20 and VRC-1155 transfers
+ * (one document per event); `timestamp` is a Date.
+ *
+ * VRC-1155 transfers (lib/sync/erc1155.ts) carry `tokenType: 'VRC-1155'`, one document
+ * per token id of a TransferSingle / TransferBatch event (`batchIndex`), the amount in
+ * `value` and the id as a decimal string in `tokenId` (ids are uint256). They are written
+ * and filtered through the driver, so Mongoose never casts that string to a number.
  */
 export interface ITokenTransfer extends Document {
   tokenAddress: string;
@@ -163,23 +168,68 @@ export interface ITokenTransfer extends Document {
   from: string;
   to: string;
   value: string;
-  tokenId?: number;
-  /** VRC-20 transfers: position of the event in its block; absent on documents stored before 2026-11. */
+  tokenId?: number | string;
+  /** Position of the event in its block; absent on VRC-721 documents and on VRC-20 documents stored before 2026-11. */
   logIndex?: number;
   blockNumber: number;
   timestamp: Date;
+  /** 'VRC-1155' on VRC-1155 transfers, absent otherwise. */
+  tokenType?: string;
+  /** VRC-1155: position of the id inside a TransferBatch event (0 for TransferSingle). */
+  batchIndex?: number;
+  /** VRC-1155: the address that moved the tokens (`operator` of the event). */
+  operator?: string;
+}
+
+/**
+ * A call, contract creation or selfdestruct made inside a transaction (collection
+ * `InternalTransaction`, written by tools/internal-txs.ts from the node's call traces).
+ * Every frame of a trace except the top-level call is stored, as on Blockscout.
+ */
+export interface IInternalTransaction extends Document {
+  transactionHash: string;
+  /** Position of the frame in the transaction's trace (0 = the transaction itself). */
+  index: number;
+  traceAddress: number[];
+  blockNumber: number;
+  blockHash: string;
+  transactionIndex: number;
+  /** Block time, unix seconds (as Transaction.timestamp). */
+  timestamp: number;
+  /** call | create | create2 | selfdestruct */
+  type: string;
+  /** call | callcode | delegatecall | staticcall; null unless `type` is call. */
+  callType: string | null;
+  from: string;
+  /** Callee, or the beneficiary of a selfdestruct; null for a creation. */
+  to: string | null;
+  /** Address of the contract a successful creation made. */
+  createdContract?: string;
+  /** Wei, decimal string. */
+  value: string;
+  gas: string;
+  gasUsed: string | null;
+  /** The frame's own error ("Reverted", "Out of gas", ...). */
+  error: string | null;
+  /** True when this frame or one that encloses it failed, so nothing it did took effect. */
+  reverted: boolean;
 }
 
 /**
  * Progress markers (collection `scan_progress`): `tokens` (tools/tokens.ts),
  * `sync` (live listener position), `reorg-pending` (reorg deeper than
- * maxReorgDepth, with the range in `meta`), `repair` (tools/repair-chain.ts).
+ * maxReorgDepth, with the range in `meta`), `repair` (tools/repair-chain.ts),
+ * `internal-transactions` (tools/internal-txs.ts) and `erc1155` (tools/tokens.ts),
+ * the last two with the range fields of lib/sync/range-scan.ts.
  */
 export interface IScanProgress extends Document {
   scanType: string;
   lastScannedBlock: number;
   lastUpdateTime: Date;
   meta?: Record<string, unknown> | null;
+  generation?: number;
+  inFlightTo?: number | null;
+  skipped?: Array<{ blockNumber: number; transactionHash: string; reason: string; at?: Date }>;
 }
 
 export interface IMarket extends Document {
@@ -362,21 +412,56 @@ const TokenTransferSchema = new Schema(
     from: { type: String, lowercase: true },
     to: { type: String, lowercase: true },
     value: String,
-    tokenId: Number, // NFT only
-    logIndex: Number, // VRC-20 only: position of the event in its block (lib/sync/token-transfers.ts)
+    // NFT only. VRC-721 documents hold a number; VRC-1155 documents a decimal string, written
+    // and queried through the driver (lib/sync/erc1155.ts) so this cast never applies to them.
+    tokenId: Number,
+    logIndex: Number, // VRC-20 / VRC-1155: position of the event in its block (lib/sync/token-transfers.ts, erc1155.ts)
     blockNumber: Number,
     timestamp: Date,
+    tokenType: String, // 'VRC-1155' on VRC-1155 transfers only
+    batchIndex: Number, // VRC-1155: position of the id in a TransferBatch event
+    operator: { type: String, lowercase: true }, // VRC-1155: operator of the event
   },
   { collection: 'tokentransfers' }
+);
+
+// Internal transaction schema (collection `InternalTransaction`; tools/internal-txs.ts)
+const InternalTransactionSchema = new Schema(
+  {
+    transactionHash: { type: String, lowercase: true },
+    index: Number,
+    traceAddress: [Number],
+    blockNumber: Number,
+    blockHash: { type: String, lowercase: true },
+    transactionIndex: Number,
+    timestamp: Number,
+    type: String,
+    callType: { type: String, default: null },
+    from: { type: String, lowercase: true },
+    to: { type: String, lowercase: true, default: null },
+    createdContract: { type: String, lowercase: true },
+    value: String,
+    gas: String,
+    gasUsed: { type: String, default: null },
+    error: { type: String, default: null },
+    reverted: Boolean,
+  },
+  { collection: 'InternalTransaction' }
 );
 
 // Scan Progress Schema (collection `scan_progress`; tools/tokens.ts)
 const ScanProgressSchema = new Schema(
   {
-    scanType: { type: String, index: { unique: true } }, // 'tokens' | 'sync' | 'reorg-pending' | 'repair' | 'launchpad-sync'
+    scanType: { type: String, index: { unique: true } }, // 'tokens' | 'sync' | 'reorg-pending' | 'repair' | 'launchpad-sync' | 'internal-transactions' | 'erc1155'
     lastScannedBlock: { type: Number, default: 0 },
     lastUpdateTime: { type: Date, default: Date.now },
     meta: { type: Schema.Types.Mixed, default: null },
+    // Range indexers only (lib/sync/range-scan.ts): bumped by replaceBlock() when it rewrites
+    // a height the indexer covered or is working on, the end of that working range, and the
+    // transactions it gave up on.
+    generation: Number,
+    inFlightTo: Number,
+    skipped: { type: [Schema.Types.Mixed], default: undefined },
   },
   { collection: 'scan_progress' }
 );
@@ -503,6 +588,18 @@ TokenTransferSchema.index({ from: 1, timestamp: -1 });
 TokenTransferSchema.index({ to: 1, timestamp: -1 });
 TokenTransferSchema.index({ transactionHash: 1 });
 TokenTransferSchema.index({ tokenAddress: 1, tokenId: 1, blockNumber: 1, to: 1 });
+// tokentransfers: VRC-1155 sync rewrites a block range at a time (lib/sync/erc1155.ts).
+// Sparse: only VRC-1155 documents carry tokenType.
+TokenTransferSchema.index({ tokenType: 1, blockNumber: 1 }, { sparse: true });
+
+// InternalTransaction: the frames of a transaction in trace order (tx APIs, writer key),
+// newest-first lists of the chain and of a block, block ranges (Etherscan startblock /
+// endblock, the indexer's range rewrite), and per-address lists (from / to / created).
+InternalTransactionSchema.index({ transactionHash: 1, index: 1 }, { unique: true });
+InternalTransactionSchema.index({ blockNumber: -1, transactionIndex: -1, index: -1 });
+InternalTransactionSchema.index({ from: 1, blockNumber: -1, transactionIndex: -1, index: -1 });
+InternalTransactionSchema.index({ to: 1, blockNumber: -1, transactionIndex: -1, index: -1 });
+InternalTransactionSchema.index({ createdContract: 1, blockNumber: -1 }, { sparse: true });
 
 // tokenholders: holder upsert key (tools/tokens.ts, Launchpad), holder ranking of a token
 // (token API sorts by `rank`), tokens held by an address (address API `tokens`).
@@ -625,6 +722,9 @@ export const TokenHolder =
   mongoose.models.TokenHolder || mongoose.model<ITokenHolder>('TokenHolder', TokenHolderSchema);
 export const ScanProgress =
   mongoose.models.ScanProgress || mongoose.model<IScanProgress>('ScanProgress', ScanProgressSchema);
+export const InternalTransaction =
+  mongoose.models.InternalTransaction ||
+  mongoose.model<IInternalTransaction>('InternalTransaction', InternalTransactionSchema);
 
 /** Every model defined in this file (the set `ensureIndexes()` operates on). */
 export const ALL_MODELS: readonly AnyModel[] = [
@@ -640,6 +740,7 @@ export const ALL_MODELS: readonly AnyModel[] = [
   TokenHolder,
   TokenTransfer,
   ScanProgress,
+  InternalTransaction,
 ];
 
 /** Model name → real collection name (e.g. `TokenTransfer` → `tokentransfers`). */
@@ -728,6 +829,7 @@ const models = {
   Token,
   TokenHolder,
   ScanProgress,
+  InternalTransaction,
 };
 
 export default models;

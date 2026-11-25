@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { Transaction } from '@/models/index';
 import {
   fillTimestamps,
+  internalErrorFlags,
   headNumber,
   json,
   loadAddressFacts,
@@ -39,11 +40,15 @@ export async function GET(request: NextRequest) {
       block_number: last.blockNumber,
       index: last.transactionIndex,
     }));
-    const [facts] = await Promise.all([
+    const [facts, internalErrors] = await Promise.all([
       loadAddressFacts(items.flatMap((tx) => [tx.from, tx.to, tx.creates])),
+      internalErrorFlags(items),
       fillTimestamps(items),
     ]);
 
-    return json({ items: items.map((tx) => transactionItem(tx, head, facts)), next_page_params });
+    return json({
+      items: items.map((tx) => transactionItem(tx, head, facts, internalErrors)),
+      next_page_params,
+    });
   });
 }

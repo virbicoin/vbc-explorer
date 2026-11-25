@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { Token, TokenTransfer } from '@/models/index';
 import { sanitizeAddress } from '@/lib/security';
 import { ercTokenType } from '@/lib/api/token-standard';
+import { transferKindFilter } from '@/lib/api/blockscout/account';
 import {
   invalidParameter,
   json,
@@ -44,21 +45,24 @@ export async function GET(
       if (hidden.length > 0) query.tokenAddress = { $nin: hidden };
     }
 
-    // tokenId is only set on NFT transfers; ERC-1155 transfers are not synced
+    // ERC-20: no tokenId; ERC-721: tokenId; ERC-1155: tokenType (lib/sync/erc1155.ts)
     const types = new Set(
       (searchParams.get('type') || '')
         .split(',')
         .filter(Boolean)
         .map((type) => ercTokenType(type.trim()))
     );
-    if (types.size > 0) {
-      const fungible = types.has('ERC-20');
-      const nft = types.has('ERC-721');
-      if (!fungible && !nft) return json({ items: [], next_page_params: null });
-      if (fungible !== nft) query.tokenId = nft ? { $ne: null } : null;
+    let condition: Doc = query;
+    if (types.size > 0 && types.size < 3) {
+      const kinds = [...types].map((type) =>
+        transferKindFilter(
+          type === 'ERC-1155' ? 'erc1155' : type === 'ERC-721' ? 'erc721' : 'erc20'
+        )
+      );
+      condition = { $and: [query, kinds.length === 1 ? kinds[0] : { $or: kinds }] };
     }
 
-    const rows = (await TokenTransfer.find(query)
+    const rows = (await TokenTransfer.find(condition)
       .sort({ timestamp: -1 })
       .skip(paging.page.skip)
       .limit(paging.page.limit + 1)

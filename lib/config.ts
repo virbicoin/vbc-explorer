@@ -237,6 +237,18 @@ export interface SyncConfig {
   maxReorgDepth?: number;
 }
 
+/** Call traces for internal transactions (tools/internal-txs.ts). */
+export interface TracesConfig {
+  /**
+   * IPC socket path or http(s) / ws(s) URL of a node that answers the Parity-style
+   * `trace_transaction` (OpenEthereum / Ovbc with `--tracing on`). Empty: not indexed.
+   * The environment variable TRACE_RPC_URL takes precedence.
+   */
+  url?: string;
+  /** Transactions traced at the same time (default 4). */
+  concurrency?: number;
+}
+
 export interface ImagesConfig {
   /** Gateway used to rewrite `ipfs://` URIs before fetching (default https://ipfs.io/ipfs/). */
   ipfsGateway?: string;
@@ -297,6 +309,7 @@ export interface AppConfig {
   images?: ImagesConfig;
   sync?: SyncConfig;
   compiler?: CompilerConfig;
+  traces?: TracesConfig;
   [key: string]: unknown;
 }
 
@@ -489,6 +502,16 @@ export const getMongoDBOptions = (): Record<string, unknown> => {
 export const getWeb3ProviderURL = (): string => {
   const config = readConfig();
   return config.web3Provider.url || `http://${config.nodeAddr}:${config.port}`;
+};
+
+/** Where tools/internal-txs.ts reads call traces from; null when it is not configured. */
+export const getTraceSourceUrl = (
+  env: Record<string, string | undefined> = process.env
+): string | null => {
+  const fromEnv = env.TRACE_RPC_URL?.trim();
+  if (fromEnv) return fromEnv;
+  const url = readConfig().traces?.url;
+  return typeof url === 'string' && url.trim() ? url.trim() : null;
 };
 
 /**

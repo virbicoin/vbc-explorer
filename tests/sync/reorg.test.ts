@@ -5,7 +5,14 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import { Block, BlockStat, ScanProgress, TokenTransfer, Transaction } from '@/models/index';
+import {
+  Block,
+  BlockStat,
+  InternalTransaction,
+  ScanProgress,
+  TokenTransfer,
+  Transaction,
+} from '@/models/index';
 import {
   findCommonAncestor,
   processNewBlock,
@@ -100,6 +107,39 @@ describe('processNewBlock', () => {
       lastScannedBlock: number;
     };
     expect(scan.lastScannedBlock).toBe(9);
+  });
+
+  it('removes the internal transactions of an orphaned block and rewinds the range indexers', async () => {
+    const canonical = canonicalChain(11, { 10: ['0xcan10tx'] });
+    const orphan10 = block(10, 'orp', canonical[9].hash, ['0xorphantx']);
+    await seed([...canonical.slice(0, 10), orphan10]);
+    await InternalTransaction.collection.insertMany([
+      { transactionHash: '0xorphantx', index: 1, blockNumber: 10, blockHash: orphan10.hash },
+      { transactionHash: '0xolder', index: 1, blockNumber: 9, blockHash: canonical[9].hash },
+    ]);
+    await ScanProgress.collection.insertMany([
+      { scanType: 'internal-transactions', lastScannedBlock: 500, generation: 3 },
+      // still working on a range that holds height 10
+      { scanType: 'erc1155', lastScannedBlock: 5, inFlightTo: 20 },
+      // the live head only: nothing to rewind
+      { scanType: 'tokens', lastScannedBlock: 8 },
+    ]);
+
+    await processNewBlock(new FakeNode(canonical), 11, settings);
+
+    expect(await InternalTransaction.countDocuments({ transactionHash: '0xorphantx' })).toBe(0);
+    expect(await InternalTransaction.countDocuments({ transactionHash: '0xolder' })).toBe(1);
+    const markers = (await ScanProgress.find({}).lean()) as Array<{
+      scanType: string;
+      lastScannedBlock: number;
+      generation?: number;
+    }>;
+    const byType = Object.fromEntries(markers.map((marker) => [marker.scanType, marker]));
+    expect(byType['internal-transactions']).toMatchObject({ lastScannedBlock: 9, generation: 4 });
+    // below the rewritten heights the marker stays; heights 10 (reorg) and 11 (new block) both lie
+    // in the announced range, and each bump tells the indexer to redo its range
+    expect(byType.erc1155).toMatchObject({ lastScannedBlock: 5, generation: 2 });
+    expect(byType.tokens.lastScannedBlock).toBe(8);
   });
 
   it('(b) resolves a depth-3 reorg back to the common ancestor', async () => {

@@ -154,7 +154,7 @@ export async function run(argv: string[]): Promise<number> {
     if (result.planned.length > 200) console.log(`  … and ${result.planned.length - 200} more`);
   } else {
     console.log(
-      `   replaced ${result.replaced.length} block(s), transactions: -${result.deletedTransactions} +${result.addedTransactions}, token transfers removed: ${result.deletedTokenTransfers}`
+      `   replaced ${result.replaced.length} block(s), transactions: -${result.deletedTransactions} +${result.addedTransactions}, token transfers removed: ${result.deletedTokenTransfers}, internal transactions removed: ${result.deletedInternalTransactions}`
     );
   }
   for (const skipped of result.skippedSites) {
