@@ -6,6 +6,7 @@ import path from 'path';
 import { checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { countAll } from '@/lib/db/count';
+import { getPriceChange24h, getPriceFromDatabase } from '@/lib/price-service';
 import {
   SUPPLY_CONFIG,
   computeTotalSupplyWei,
@@ -120,6 +121,15 @@ export async function GET(request: NextRequest) {
       console.error('Error calculating avg block time:', error);
     }
 
+    // Price stored by tools/price.ts (no older than 10 minutes), its 24h change and the
+    // market cap of the circulating supply; null without a fresh price
+    const price = await getPriceFromDatabase();
+    const priceChange = await getPriceChange24h(price);
+    const marketCap =
+      price && price.priceUSD > 0
+        ? String(Math.round((Number(circulatingSupplyWei) / 1e18) * price.priceUSD * 100) / 100)
+        : null;
+
     // Get 24h transaction count
     const oneDayAgo = Math.floor(Date.now() / 1000) - 86400;
     const tx24h = await Transaction.countDocuments({
@@ -146,11 +156,11 @@ export async function GET(request: NextRequest) {
       total_verified_contracts: verifiedContracts.toString(),
 
       // Supply info
-      coin_price: null,
-      coin_price_change_percentage: null,
+      coin_price: price && price.priceUSD > 0 ? String(price.priceUSD) : null,
+      coin_price_change_percentage: priceChange,
       total_supply: totalSupplyWei.toString(),
       circulating_supply: circulatingSupplyWei.toString(),
-      market_cap: null,
+      market_cap: marketCap,
 
       // Gas info
       gas_prices: {

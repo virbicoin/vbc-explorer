@@ -88,6 +88,28 @@ export async function getPriceFromDatabase(): Promise<PriceData | null> {
 }
 
 /**
+ * Change of the stored price over the last 24 hours in percent, from the
+ * Market row closest to (and not after) 24 hours before `current`; null when
+ * there is no row between 23 and 25 hours back.
+ */
+export async function getPriceChange24h(current: PriceData | null): Promise<number | null> {
+  if (!current || !(current.priceUSD > 0)) return null;
+  try {
+    const dayAgo = current.timestamp - 24 * 60 * 60 * 1000;
+    const previous = (await Market.findOne({ timestamp: { $lte: dayAgo + 60 * 60 * 1000 } })
+      .sort({ timestamp: -1 })
+      .lean()) as { timestamp?: number; quoteUSD?: number } | null;
+    if (!previous?.quoteUSD || !(previous.quoteUSD > 0)) return null;
+    if (typeof previous.timestamp !== 'number' || previous.timestamp < dayAgo - 60 * 60 * 1000) {
+      return null;
+    }
+    return Math.round(((current.priceUSD - previous.quoteUSD) / previous.quoteUSD) * 10_000) / 100;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Fetch price from CoinGecko API
  */
 export async function getPriceFromCoinGecko(): Promise<PriceData | null> {

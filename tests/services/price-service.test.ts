@@ -7,7 +7,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Market } from '@/models/index';
-import { getPriceFromDatabase, priceSourceLabel, type PriceData } from '@/lib/price-service';
+import {
+  getPriceChange24h,
+  getPriceFromDatabase,
+  priceSourceLabel,
+  type PriceData,
+} from '@/lib/price-service';
 
 let mongod: MongoMemoryServer;
 
@@ -106,5 +111,30 @@ describe('getPriceFromDatabase', () => {
 
   it('returns null without any row', async () => {
     expect(await getPriceFromDatabase()).toBeNull();
+  });
+});
+
+describe('getPriceChange24h', () => {
+  const HOUR = 60 * MINUTE;
+
+  it('compares with the row closest to 24 hours earlier', async () => {
+    const now = Date.now();
+    await Market.create([
+      { symbol: 'VBC', timestamp: now - 30 * HOUR, quoteUSD: 0.002, quoteBTC: 0 },
+      { symbol: 'VBC', timestamp: now - 24 * HOUR - 5 * MINUTE, quoteUSD: 0.0005, quoteBTC: 0 },
+    ]);
+    expect(await getPriceChange24h(price({ priceUSD: 0.0008, timestamp: now }))).toBe(60);
+  });
+
+  it('gives no change without a row near 24 hours back or without a price', async () => {
+    const now = Date.now();
+    await Market.create({
+      symbol: 'VBC',
+      timestamp: now - 30 * HOUR,
+      quoteUSD: 0.002,
+      quoteBTC: 0,
+    });
+    expect(await getPriceChange24h(price({ timestamp: now }))).toBeNull();
+    expect(await getPriceChange24h(null)).toBeNull();
   });
 });

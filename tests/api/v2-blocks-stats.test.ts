@@ -8,7 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import mongoose from 'mongoose';
 import { NextRequest } from 'next/server';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import { Account, Block, Contract, Transaction } from '@/models/index';
+import { Account, Block, Contract, Market, Transaction } from '@/models/index';
 import { countAll } from '@/lib/db/count';
 import { GET as blocksGet } from '@/app/api/v2/blocks/route';
 
@@ -144,6 +144,47 @@ describe('GET /api/v2/stats', () => {
       total_verified_contracts: '1',
     });
     expect(typeof body.gas_prices).toBe('object');
+  });
+});
+
+describe('GET /api/v2/stats price fields', () => {
+  it('reports the stored price, its 24h change and the market cap', async () => {
+    await Block.collection.insertMany([1, 2, 3].map(block));
+    const now = Date.now();
+    await Market.collection.insertMany([
+      {
+        symbol: 'VBC',
+        timestamp: now - 24 * 60 * 60 * 1000,
+        quoteUSD: 0.001,
+        quoteBTC: 0,
+        source: 'dex',
+      },
+      { symbol: 'VBC', timestamp: now - 60_000, quoteUSD: 0.0008, quoteBTC: 0, source: 'dex' },
+    ]);
+    const body = await (await statsGet(request('/api/v2/stats'))).json();
+    expect(body.coin_price).toBe('0.0008');
+    expect(body.coin_price_change_percentage).toBe(-20);
+    expect(Number(body.market_cap)).toBeGreaterThan(0);
+    expect(Number(body.market_cap)).toBeCloseTo(
+      (Number(body.circulating_supply) / 1e18) * 0.0008,
+      1
+    );
+  });
+
+  it('reports no price without a fresh one', async () => {
+    await Block.collection.insertMany([1, 2, 3].map(block));
+    await Market.collection.insertOne({
+      symbol: 'VBC',
+      timestamp: Date.now() - 60 * 60 * 1000,
+      quoteUSD: 0.0008,
+      quoteBTC: 0,
+    });
+    const body = await (await statsGet(request('/api/v2/stats'))).json();
+    expect(body).toMatchObject({
+      coin_price: null,
+      coin_price_change_percentage: null,
+      market_cap: null,
+    });
   });
 });
 
