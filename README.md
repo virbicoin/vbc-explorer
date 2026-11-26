@@ -585,7 +585,6 @@ sequenceDiagram
 |    |-- config.ts            # Server-side config
 |    |-- db.ts                # Database connection
 |    |-- etherUnits.ts        # Unit conversion
-|    |-- launchpad-token-source.ts  # Launchpad token data
 |    |-- models.ts            # Model interfaces
 |    |-- price-service.ts     # Price data service
 |    |-- stats.ts             # Statistics utilities

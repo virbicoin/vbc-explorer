@@ -1,4 +1,5 @@
 import { defineChain, parseAbi, type Chain } from 'viem';
+import { ERC20ABI } from '@/abi/TokenFactoryABI';
 
 // Contract ABIs are interfaces (not coin/token-specific), so they live in code.
 // All chain / coin / token / address values are config-driven
@@ -24,13 +25,7 @@ export const LOCKSWAP_ABI = parseAbi([
 
 // Generic ERC-20 ABI, used both for the wrapped token on the remote chain and
 // for ERC-20 source assets on token routes.
-export const ERC20_ABI = parseAbi([
-  'function approve(address spender, uint256 amount) returns (bool)',
-  'function allowance(address owner, address spender) view returns (uint256)',
-  'function balanceOf(address account) view returns (uint256)',
-  'function totalSupply() view returns (uint256)',
-  'function decimals() view returns (uint8)',
-]);
+export const ERC20_ABI = ERC20ABI;
 
 // Backwards-compatible alias (the wrapped token is just an ERC-20).
 export const WRAPPED_ABI = ERC20_ABI;

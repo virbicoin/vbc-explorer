@@ -124,7 +124,6 @@ lib/                    # ユーティリティライブラリ
   db.ts                 # データベース接続
   env.ts                # .env / .env.local の読み込み（tools の最初の import。資格情報はログに出さない）
   etherUnits.ts         # 単位変換
-  launchpad-token-source.ts # Launchpad トークンデータ
   models.ts             # モデルインターフェース
   price-service.ts      # 価格データサービス
   reward-schedule.ts    # ブロック報酬スケジュールの計算（純粋モジュール、クライアント/サーバー共用。値は config.json の rewards、サーバーは getRewardSchedule()）
@@ -1093,7 +1092,6 @@ lib/
 
   services/                 # ✅ ビジネスロジックレイヤー
     nft.service.ts          # NFT 所有者計算（共有）
-    index.ts                # バレルエクスポート
 
   api/blockscout/           # ✅ Etherscan 互換 API のドメイン別モジュール
     shared.ts               # 共有シングルトン（config/client/Token/応答ヘルパー）
@@ -1153,7 +1151,7 @@ import { Token, Transaction, Block, ZERO_ADDRESS } from '@/lib/types';
 
 **NFT サービスを import:**
 ```typescript
-import { getNftOwnershipFromDb, calculateNftOwnership } from '@/lib/services';
+import { getNftOwnershipFromDb, calculateNftOwnership } from '@/lib/services/nft.service';
 ```
 
 **DB ハンドルを取得:**
