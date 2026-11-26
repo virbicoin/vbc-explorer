@@ -1,7 +1,15 @@
 import { NextRequest } from 'next/server';
 import { Contract } from '@/models/index';
 import { sanitizeSearchQuery, escapeRegex } from '@/lib/security';
-import { addressParam, json, paginate, v2Page, v2Route } from '@/lib/api/v2/common';
+import {
+  addressParam,
+  blockscoutCompilerVersion,
+  blockscoutLicenseType,
+  json,
+  paginate,
+  v2Page,
+  v2Route,
+} from '@/lib/api/v2/common';
 
 type Doc = Record<string, unknown>;
 
@@ -18,7 +26,7 @@ export async function GET(request: NextRequest) {
     if (q) query.contractName = { $regex: `^${escapeRegex(q)}`, $options: 'i' };
 
     const rows = (await Contract.find(query)
-      .select('address contractName compilerVersion optimization verifiedAt')
+      .select('address contractName compilerVersion optimization license verifiedAt')
       .sort({ verifiedAt: -1, address: 1 })
       .skip(paging.page.skip)
       .limit(paging.page.limit + 1)
@@ -35,10 +43,10 @@ export async function GET(request: NextRequest) {
           name: (contract.contractName as string) || null,
         }),
         coin_balance: null,
-        compiler_version: contract.compilerVersion ? `v${contract.compilerVersion}` : null,
+        compiler_version: blockscoutCompilerVersion(contract.compilerVersion),
         has_constructor_args: null,
         language: 'solidity',
-        license_type: 'none',
+        license_type: blockscoutLicenseType(contract.license),
         market_cap: null,
         optimization_enabled: Boolean(contract.optimization),
         transactions_count: null,

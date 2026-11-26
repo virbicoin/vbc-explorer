@@ -35,6 +35,7 @@ import { GET as blockTxsGet } from '@/app/api/v2/blocks/[numberOrHash]/transacti
 import { GET as searchGet } from '@/app/api/v2/search/route';
 import { GET as redirectGet } from '@/app/api/v2/search/check-redirect/route';
 import { GET as contractsGet } from '@/app/api/v2/smart-contracts/route';
+import { blockscoutCompilerVersion, blockscoutLicenseType } from '@/lib/api/v2/common';
 
 let mongod: MongoMemoryServer;
 let ipCounter = 0;
@@ -152,6 +153,7 @@ beforeEach(async () => {
       verified: true,
       compilerVersion: '0.8.28',
       optimization: true,
+      license: 'MIT',
       verifiedAt: new Date('2026-11-01T00:00:00Z'),
     },
     { address: FUNGIBLE, contractName: 'GoodToken', verified: false },
@@ -554,6 +556,21 @@ describe('search and contracts', () => {
       compiler_version: 'v0.8.28',
       optimization_enabled: true,
       language: 'solidity',
+      // Blockscout's value for the stored SPDX identifier (was always 'none')
+      license_type: 'mit',
     });
+  });
+
+  it('maps SPDX identifiers to Blockscout license types', () => {
+    expect(blockscoutLicenseType('MIT')).toBe('mit');
+    expect(blockscoutLicenseType('GPL-3.0-only')).toBe('gnu_gpl_v3');
+    expect(blockscoutLicenseType('LGPL-2.1-or-later')).toBe('gnu_lgpl_v2_1');
+    expect(blockscoutLicenseType('BUSL-1.1')).toBe('bsl_1_1');
+    expect(blockscoutLicenseType('MIT OR Apache-2.0')).toBe('none');
+    expect(blockscoutLicenseType('None')).toBe('none');
+    expect(blockscoutLicenseType(undefined)).toBe('none');
+    expect(blockscoutCompilerVersion('0.8.28')).toBe('v0.8.28');
+    expect(blockscoutCompilerVersion('v0.8.30+commit.73712a01')).toBe('v0.8.30+commit.73712a01');
+    expect(blockscoutCompilerVersion(undefined)).toBeNull();
   });
 });

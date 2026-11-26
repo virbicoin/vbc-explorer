@@ -972,6 +972,7 @@ ERC-20 の移動は**イベント 1 件につき 1 文書**（キーは `transac
 - **`next_page_params` は、そのまま次の要求のクエリにすると次ページが返る値にする。** Blockscout の利用側はこれを機械的に送り返す。この実装が読むのは `page` と `limit` なので、必ずその 2 つを入れる（`paginate()` が入れる）。`block_number` や `index` は位置の目安として併記するだけ。1 ページは 50 件（`limit` で小さくできる）。次ページの有無は 1 件多く取って判断し、件数を数えない
 - **持っていないデータは null か空にする。作らない。** 索引器がまだ届いていない取引の `has_error_in_internal_transactions` は null（`internalErrorFlags()`）、VRC-721 の移動の `log_index` は null、アドレスの `is_contract` / `is_verified` / `name` は `loadAddressFacts()`（Contract・tokens・Account.type）から引く。hidden の名前は返さない
 - ERC-1155 の保有は token id ごとに 1 行（`erc1155HoldingsOf()`、`lib/api/erc1155.ts`。`tokenholders` は全 id の合計しか持たない）。移動の `total` は `{ decimals: null, token_id, token_instance, value }`
+- `smart-contracts` の一覧と詳細は同じ形で返す: `license_type` は保存した SPDX を Blockscout の値にしたもの（`blockscoutLicenseType()`。`mit`・`gnu_gpl_v3` など、無ければ `none`。以前は一覧が常に `none`、詳細が `MIT` だった）、`compiler_version` は `v` 付き（`blockscoutCompilerVersion()`）
 - トークン移動の並びは `timestamp` のみ（アドレス別・トークン別の索引で並ぶ）。全トークン横断の移動一覧（`/api/v2/token-transfers`）は、対応する索引が無いので作っていない
 - テストは `tests/api/v2-lists.test.ts`（一覧・検索・カウンター）、`tests/api/v2-token-balances.test.ts`、`tests/api/v2-blocks-stats.test.ts`、`tests/api/internal-and-1155.test.ts`（内部取引・VRC-1155）
 

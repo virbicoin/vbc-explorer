@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { blockscoutCompilerVersion, blockscoutLicenseType } from '@/lib/api/v2/common';
 
 // Function to read config
 const readConfig = () => {
@@ -86,7 +87,7 @@ export async function GET(
 
       // Verification info
       name: contract?.contractName || null,
-      compiler_version: contract?.compilerVersion || null,
+      compiler_version: blockscoutCompilerVersion(contract?.compilerVersion),
       optimization_enabled: contract?.optimization || false,
       // null when the record predates storing them (see the Contract schema)
       optimization_runs:
@@ -103,7 +104,7 @@ export async function GET(
 
       // Additional info
       constructor_args: null,
-      license_type: contract?.license || null,
+      license_type: blockscoutLicenseType(contract?.license),
       verified_at: contract?.verifiedAt || null,
 
       // External verification

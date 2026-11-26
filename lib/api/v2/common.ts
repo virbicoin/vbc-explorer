@@ -461,3 +461,39 @@ export const internalTransactionHint = (last: Doc) => ({
 export function internalTransactionAddresses(docs: Doc[]): unknown[] {
   return docs.flatMap((doc) => [doc.from, doc.to, doc.createdContract]);
 }
+
+/**
+ * Blockscout's `license_type` for the SPDX identifier stored at verification. Blockscout answers
+ * with a fixed set of values and 'none' when no license was given; identifiers outside that set
+ * (expressions such as "MIT OR Apache-2.0") are also 'none'.
+ */
+const BLOCKSCOUT_LICENSES: Record<string, string> = {
+  unlicense: 'unlicense',
+  mit: 'mit',
+  'gpl-2.0': 'gnu_gpl_v2',
+  'gpl-3.0': 'gnu_gpl_v3',
+  'lgpl-2.1': 'gnu_lgpl_v2_1',
+  'lgpl-3.0': 'gnu_lgpl_v3',
+  'bsd-2-clause': 'bsd_2_clause',
+  'bsd-3-clause': 'bsd_3_clause',
+  'mpl-2.0': 'mpl_2_0',
+  'osl-3.0': 'osl_3_0',
+  'apache-2.0': 'apache_2_0',
+  'agpl-3.0': 'gnu_agpl_v3',
+  'busl-1.1': 'bsl_1_1',
+};
+
+export function blockscoutLicenseType(spdx: unknown): string {
+  if (typeof spdx !== 'string') return 'none';
+  const id = spdx
+    .trim()
+    .toLowerCase()
+    .replace(/-(only|or-later)$/, '');
+  return BLOCKSCOUT_LICENSES[id] ?? 'none';
+}
+
+/** Blockscout writes compiler versions with a leading "v" ("v0.8.28+commit.7893614a"). */
+export function blockscoutCompilerVersion(version: unknown): string | null {
+  if (typeof version !== 'string' || !version) return null;
+  return version.startsWith('v') ? version : `v${version}`;
+}
