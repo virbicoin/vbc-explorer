@@ -6,7 +6,7 @@ import path from 'path';
 import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
 import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
-import { LATEST_KNOWN_SOLC_VERSION } from '@/lib/contract/solc-utils';
+import { compileSettingsRecord, LATEST_KNOWN_SOLC_VERSION } from '@/lib/contract/solc-utils';
 
 // Function to read config
 const readConfig = () => {
@@ -291,16 +291,12 @@ export const POST = withRateLimit(
         }
         normalizedVersion = normalizedVersion.split('+')[0];
 
-        // Get optimizer settings
-        const optimizer = settings.optimizer as { enabled?: boolean; runs?: number } | undefined;
-
         // Save to database
         const contractData = {
           address: sanitizedAddress.toLowerCase(),
           contractName: actualContractName,
           compilerVersion: normalizedVersion,
-          optimization: optimizer?.enabled || false,
-          optimizationRuns: optimizer?.runs || 200,
+          ...compileSettingsRecord(standardInput),
           license,
           sourceCode: JSON.stringify(standardInput),
           abi: JSON.stringify(compiledContract.abi),

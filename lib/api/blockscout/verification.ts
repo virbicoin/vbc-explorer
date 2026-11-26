@@ -14,6 +14,7 @@ import { connectDB, Contract, VerificationJob } from '@/models/index';
 import { isValidAddress, getSecurityHeaders } from '@/lib/security';
 import { randomUUID } from 'crypto';
 import {
+  compileSettingsRecord,
   normalizeCompilerVersion,
   modernizeSyntax,
   removeMetadata,
@@ -72,7 +73,8 @@ export async function verifySourceCode(params: {
       optimizationUsed: optimizationUsed === '1',
       runs: parseInt(runs) || 200,
       constructorArguments: constructorArguements || '',
-      evmVersion: evmversion || 'paris',
+      // '' = not given (see processVerification)
+      evmVersion: evmversion || '',
       licenseType: licenseType || '',
     });
 
@@ -144,13 +146,16 @@ async function processVerification(guid: string) {
             '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode'],
           },
         };
-        if (optimizationUsed) {
+        // The input carries its own settings (Hardhat sends exactly what it compiled with).
+        // The separate request parameters only fill in what the input leaves out; they used
+        // to replace them, so every standard JSON input was compiled for paris.
+        if (optimizationUsed && !settings.optimizer) {
           settings.optimizer = {
             enabled: optimizationUsed,
             runs: runs || 200,
           };
         }
-        if (evmVersion) {
+        if (evmVersion && !settings.evmVersion) {
           settings.evmVersion = evmVersion;
         }
       } catch (parseError) {
@@ -353,8 +358,8 @@ async function processVerification(guid: string) {
         address: address.toLowerCase(),
         contractName: actualContractName,
         compilerVersion: normalizeCompilerVersion(compilerVersion),
-        optimization: optimizationUsed,
-        optimizationRuns: runs,
+        // The settings that were compiled, not the request parameters
+        ...compileSettingsRecord(inputJson),
         license,
         sourceCode: codeFormat === 'solidity-standard-json-input' ? sourceCode : compiledSourceCode,
         abi: JSON.stringify(compiledContract.abi),

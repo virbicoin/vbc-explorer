@@ -298,12 +298,17 @@ const LICENSE_TYPES = [
   { value: 'UNLICENSED', label: 'Unlicensed' },
 ];
 
+// The chain may run an older rule set than the newest compiler targets (VirBiCoin runs
+// Constantinople), so the older targets must be selectable to verify contracts built for them.
 const EVM_VERSIONS = [
   { value: 'paris', label: 'paris (default)' },
   { value: 'shanghai', label: 'shanghai' },
   { value: 'london', label: 'london' },
   { value: 'berlin', label: 'berlin' },
   { value: 'istanbul', label: 'istanbul' },
+  { value: 'petersburg', label: 'petersburg' },
+  { value: 'constantinople', label: 'constantinople' },
+  { value: 'byzantium', label: 'byzantium' },
 ];
 
 function useInitFormData(setFormData: React.Dispatch<React.SetStateAction<FormData>>) {

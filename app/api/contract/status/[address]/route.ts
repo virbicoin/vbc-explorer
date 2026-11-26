@@ -107,7 +107,8 @@ export async function GET(
       contractName: contractDoc.contractName,
       compilerVersion: contractDoc.compilerVersion,
       optimization: contractDoc.optimization,
-      optimizationRuns: (contractDoc as Record<string, unknown>).optimizationRuns || 200,
+      // null for records verified before the settings were stored (no guessed 200)
+      optimizationRuns: (contractDoc as Record<string, unknown>).optimizationRuns ?? null,
       evmVersion: (contractDoc as Record<string, unknown>).evmVersion || 'default',
       license: license || 'None',
       verifiedAt: contractDoc.verifiedAt,

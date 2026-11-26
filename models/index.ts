@@ -103,6 +103,12 @@ export interface IContract extends Document {
   totalSupply: number;
   compilerVersion: string;
   optimization: boolean;
+  /** solc `optimizer.runs` the verified source was compiled with (200 when the input left it out). */
+  optimizationRuns?: number;
+  /** solc `settings.evmVersion` of the verification; 'default' when the input left it to the compiler. */
+  evmVersion?: string;
+  /** SPDX identifier chosen at verification (or read from the source). */
+  license?: string;
   sourceCode: string;
   abi: string;
   byteCode: string;
@@ -330,6 +336,11 @@ const ContractSchema = new Schema(
     totalSupply: Number,
     compilerVersion: String,
     optimization: Boolean,
+    // Settings of the verification. They were not in the schema before 2026-11, so Mongoose
+    // dropped them on save and records verified earlier do not have them.
+    optimizationRuns: Number,
+    evmVersion: String,
+    license: String,
     sourceCode: String,
     abi: String,
     byteCode: String,
@@ -528,7 +539,8 @@ const VerificationJobSchema = new Schema(
     optimizationUsed: { type: Boolean, default: false },
     runs: { type: Number, default: 200 },
     constructorArguments: { type: String, default: '' },
-    evmVersion: { type: String, default: 'paris' },
+    // '' = not given: standard JSON input keeps its own settings, single files compile for paris
+    evmVersion: { type: String, default: '' },
     licenseType: { type: String, default: '' },
     libraries: { type: String, default: '' },
   },

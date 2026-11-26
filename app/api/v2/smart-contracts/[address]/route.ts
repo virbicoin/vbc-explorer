@@ -88,8 +88,10 @@ export async function GET(
       name: contract?.contractName || null,
       compiler_version: contract?.compilerVersion || null,
       optimization_enabled: contract?.optimization || false,
-      optimization_runs: contract?.optimizationRuns || 200,
-      evm_version: 'paris',
+      // null when the record predates storing them (see the Contract schema)
+      optimization_runs:
+        typeof contract?.optimizationRuns === 'number' ? contract.optimizationRuns : null,
+      evm_version: typeof contract?.evmVersion === 'string' ? contract.evmVersion : null,
 
       // Source code
       source_code: contract?.sourceCode || null,

@@ -8,7 +8,15 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import mongoose from 'mongoose';
 import { NextRequest } from 'next/server';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import { Block, Market, Token, TokenHolder, TokenTransfer, Transaction } from '@/models/index';
+import {
+  Block,
+  Contract,
+  Market,
+  Token,
+  TokenHolder,
+  TokenTransfer,
+  Transaction,
+} from '@/models/index';
 import { publicClient } from '@/lib/api/blockscout/shared';
 import { GET } from '@/app/api/route';
 
@@ -399,6 +407,59 @@ describe('token module', () => {
     const addresses = body.result.map((row: { contractAddress: string }) => row.contractAddress);
     expect(addresses).toHaveLength(3);
     expect(addresses).not.toContain(SPAM);
+  });
+});
+
+describe('contract module', () => {
+  const VERIFIED = pad('5ec', 40);
+  const VERIFIED_BEFORE = pad('01d', 40);
+
+  it('getsourcecode reports the settings stored at verification', async () => {
+    // Written the way the verification paths write it (findOneAndUpdate with upsert)
+    await Contract.findOneAndUpdate(
+      { address: VERIFIED },
+      {
+        address: VERIFIED,
+        contractName: 'Token',
+        compilerVersion: '0.8.28',
+        optimization: true,
+        optimizationRuns: 1000,
+        evmVersion: 'constantinople',
+        license: 'MIT',
+        sourceCode: 'contract Token {}',
+        abi: '[]',
+        verified: true,
+      },
+      { upsert: true }
+    );
+    const { body } = await api(`module=contract&action=getsourcecode&address=${VERIFIED}`);
+    expect(body.result[0]).toMatchObject({
+      ContractName: 'Token',
+      CompilerVersion: 'v0.8.28',
+      OptimizationUsed: '1',
+      Runs: '1000',
+      EVMVersion: 'constantinople',
+      LicenseType: 'MIT',
+    });
+  });
+
+  it('getsourcecode does not guess settings a record lacks', async () => {
+    await Contract.collection.insertOne({
+      address: VERIFIED_BEFORE,
+      contractName: 'Old',
+      compilerVersion: '0.8.20',
+      optimization: false,
+      sourceCode: 'contract Old {}',
+      abi: '[]',
+      verified: true,
+    });
+    const { body } = await api(`module=contract&action=getsourcecode&address=${VERIFIED_BEFORE}`);
+    expect(body.result[0]).toMatchObject({
+      ContractName: 'Old',
+      Runs: '',
+      EVMVersion: 'Default',
+      LicenseType: '',
+    });
   });
 });
 

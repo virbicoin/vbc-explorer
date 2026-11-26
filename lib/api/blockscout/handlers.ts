@@ -26,6 +26,7 @@ import {
 } from './shared';
 import { getNephewRewardWei, getUncleRewardWei } from '@/lib/reward-schedule';
 import { calculateTotalSupplyWei } from '@/lib/supply';
+import { etherscanEvmVersion } from '@/lib/contract/solc-utils';
 
 // ============================================
 // Block Module
@@ -824,9 +825,12 @@ export async function getSourceCode(address: string) {
         ContractName: contract.contractName || '',
         CompilerVersion: `v${contract.compilerVersion || ''}`,
         OptimizationUsed: contract.optimization ? '1' : '0',
-        Runs: String(contract.optimizationRuns || 200),
+        // Records verified before 2026-11 lack the settings (they were dropped on save): empty
+        // rather than a guessed 200, and 'Default' as Etherscan reports an unspecified version
+        Runs:
+          typeof contract.optimizationRuns === 'number' ? String(contract.optimizationRuns) : '',
         ConstructorArguments: contract.constructorArguments || '',
-        EVMVersion: 'Default',
+        EVMVersion: etherscanEvmVersion(contract.evmVersion),
         Library: '',
         LicenseType: contract.license || '',
         Proxy: '0',

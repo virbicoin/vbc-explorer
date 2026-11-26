@@ -115,3 +115,39 @@ export function removeMetadata(bytecode: string): string {
 
   return cleaned;
 }
+
+/** Compiler settings a verification compiled with, as stored on the Contract record. */
+export interface CompileSettingsRecord {
+  optimization: boolean;
+  /** `optimizer.runs`; solc uses 200 when the input leaves it out. */
+  optimizationRuns: number;
+  /** `settings.evmVersion`; 'default' when the input leaves it to the compiler. */
+  evmVersion: string;
+}
+
+/**
+ * Reads the optimizer and EVM settings from the solc standard JSON input that was actually
+ * compiled, so the stored record describes the compilation that matched the bytecode rather
+ * than the request parameters or a fixed value.
+ */
+export function compileSettingsRecord(input: { settings?: unknown }): CompileSettingsRecord {
+  const settings = (input.settings ?? {}) as {
+    optimizer?: { enabled?: unknown; runs?: unknown };
+    evmVersion?: unknown;
+  };
+  const optimizer = settings.optimizer ?? {};
+  return {
+    optimization: optimizer.enabled === true,
+    optimizationRuns:
+      typeof optimizer.runs === 'number' && Number.isFinite(optimizer.runs) ? optimizer.runs : 200,
+    evmVersion:
+      typeof settings.evmVersion === 'string' && settings.evmVersion
+        ? settings.evmVersion
+        : 'default',
+  };
+}
+
+/** Etherscan's `EVMVersion` value for a stored record ('Default' when unknown or the compiler default). */
+export function etherscanEvmVersion(stored: unknown): string {
+  return typeof stored === 'string' && stored && stored !== 'default' ? stored : 'Default';
+}

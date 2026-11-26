@@ -10,7 +10,10 @@ import {
   getSecurityHeaders,
   isValidContentType,
 } from '../../../../lib/security';
-import { normalizeCompilerVersion } from '../../../../lib/contract/solc-utils';
+import {
+  compileSettingsRecord,
+  normalizeCompilerVersion,
+} from '../../../../lib/contract/solc-utils';
 import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
 import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
 
@@ -850,8 +853,8 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
         address: address.toLowerCase(),
         contractName: actualContractName,
         compilerVersion: finalCompilerVersion,
-        optimization: optimization || false,
-        optimizationRuns: 200,
+        // The settings that were compiled (from the standard JSON input or the form)
+        ...compileSettingsRecord(input),
         license: license,
         sourceCode: cleanedSourceCode,
         abi: JSON.stringify(compiledContract.abi),
@@ -892,7 +895,10 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
             isVerified6,
             isVerified7,
           },
-          note: `Compiled with solc ${normalizeCompilerVersion(finalCompilerVersion)} (EVM: paris, optimizer: ${optimization ? 'enabled' : 'disabled'}, runs: 200). Original may have been compiled with different settings.`,
+          note: (() => {
+            const used = compileSettingsRecord(input);
+            return `Compiled with solc ${normalizeCompilerVersion(finalCompilerVersion)} (EVM: ${used.evmVersion}, optimizer: ${used.optimization ? 'enabled' : 'disabled'}, runs: ${used.optimizationRuns}). Original may have been compiled with different settings.`;
+          })(),
         },
       });
     }

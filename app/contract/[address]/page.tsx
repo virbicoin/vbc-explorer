@@ -25,7 +25,7 @@ interface ContractData {
   verified: boolean;
   compilerVersion?: string;
   optimization?: boolean;
-  optimizationRuns?: number;
+  optimizationRuns?: number | null;
   evmVersion?: string;
   license?: string;
   verifiedAt?: string;
@@ -164,7 +164,7 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
         verified: statusData.verified || false,
         compilerVersion: statusData.compilerVersion || null,
         optimization: statusData.optimization,
-        optimizationRuns: statusData.optimizationRuns || 200,
+        optimizationRuns: statusData.optimizationRuns ?? null,
         evmVersion: statusData.evmVersion || 'default',
         license: statusData.license || 'None',
         verifiedAt: statusData.verifiedAt,
@@ -909,7 +909,9 @@ export default function ContractPage({ params }: { params: Promise<{ address: st
                           <div className="text-gray-200 font-medium">
                             {contract.optimization !== undefined
                               ? contract.optimization
-                                ? `Enabled (${contract.optimizationRuns || 200} runs)`
+                                ? contract.optimizationRuns != null
+                                  ? `Enabled (${contract.optimizationRuns} runs)`
+                                  : 'Enabled'
                                 : 'Disabled'
                               : '-'}
                           </div>

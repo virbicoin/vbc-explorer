@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  compileSettingsRecord,
+  etherscanEvmVersion,
   normalizeCompilerVersion,
   SOLC_RELEASES,
   modernizeSyntax,
@@ -85,5 +87,48 @@ describe('removeMetadata', () => {
 
   it('returns the cleaned bytecode unchanged when no marker is present', () => {
     expect(removeMetadata('0x1234abcd')).toBe('1234abcd');
+  });
+});
+
+describe('compileSettingsRecord', () => {
+  it('records the optimizer and EVM version the input was compiled with', () => {
+    expect(
+      compileSettingsRecord({
+        settings: { optimizer: { enabled: true, runs: 1000 }, evmVersion: 'constantinople' },
+      })
+    ).toEqual({ optimization: true, optimizationRuns: 1000, evmVersion: 'constantinople' });
+  });
+
+  it("uses solc's defaults for what the input leaves out", () => {
+    expect(compileSettingsRecord({ settings: {} })).toEqual({
+      optimization: false,
+      optimizationRuns: 200,
+      evmVersion: 'default',
+    });
+    expect(compileSettingsRecord({})).toEqual({
+      optimization: false,
+      optimizationRuns: 200,
+      evmVersion: 'default',
+    });
+  });
+
+  it('keeps the runs of a disabled optimizer and ignores malformed values', () => {
+    expect(
+      compileSettingsRecord({ settings: { optimizer: { enabled: false, runs: 5 } } })
+    ).toMatchObject({ optimization: false, optimizationRuns: 5 });
+    expect(
+      compileSettingsRecord({
+        settings: { optimizer: { enabled: 'true', runs: '300' }, evmVersion: 42 },
+      })
+    ).toEqual({ optimization: false, optimizationRuns: 200, evmVersion: 'default' });
+  });
+});
+
+describe('etherscanEvmVersion', () => {
+  it('reports the stored version, or Default when it is unknown or the compiler default', () => {
+    expect(etherscanEvmVersion('constantinople')).toBe('constantinople');
+    expect(etherscanEvmVersion('default')).toBe('Default');
+    expect(etherscanEvmVersion(undefined)).toBe('Default');
+    expect(etherscanEvmVersion('')).toBe('Default');
   });
 });
