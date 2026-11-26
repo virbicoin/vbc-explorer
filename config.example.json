@@ -5,17 +5,8 @@
   "bulkSize": 100,
   "syncAll": true,
   "quiet": false,
-  "useRichList": true,
   "startBlock": 0,
   "endBlock": null,
-  "maxRetries": 3,
-  "retryDelay": 1000,
-  "logLevel": "info",
-  "enableNFT": true,
-  "enableContractVerification": true,
-  "enableTokenTracking": true,
-  "apiRateLimit": 100,
-  "webSocketEnabled": true,
   "web3Provider": {
     "url": "http://localhost:8545"
   },
@@ -56,14 +47,7 @@
     },
     "_comment": "For custom networks: name/symbol/unit/gasUnit can be customized (e.g., VirBiCoin/VBC/niku/Gniku)"
   },
-  "performance": {
-    "memoryLimitMB": 512,
-    "nodeOptions": "--max-old-space-size=512"
-  },
-  "caching": {
-    "enabled": true,
-    "duration": 300
-  },
+  "priceUpdateInterval": 300000,
   "miners": {
     "0x0000000000000000000000000000000000000001": "Example Pool 1",
     "0x0000000000000000000000000000000000000002": "Example Pool 2"
@@ -71,62 +55,6 @@
   "addressTags": {
     "_comment": "Public name tags shown next to addresses (Etherscan-style). DEX/Launchpad/Bridge/miners addresses are tagged automatically from their own config sections; entries here add to or override those.",
     "0x0000000000000000000000000000000000000003": "Team Treasury"
-  },
-  "features": {
-    "nft": {
-      "enabled": true,
-      "metadataProviders": ["ipfs", "http"],
-      "imageFallback": true,
-      "cacheEnabled": true
-    },
-    "contractVerification": {
-      "enabled": true,
-      "compilerVersions": [
-        "0.8.30",
-        "0.8.29",
-        "0.8.28",
-        "0.8.27",
-        "0.8.26",
-        "0.8.25",
-        "0.8.24",
-        "0.8.23",
-        "0.8.22",
-        "0.8.21",
-        "0.8.20",
-        "0.8.19",
-        "0.8.18",
-        "0.8.17",
-        "0.8.16",
-        "0.8.15",
-        "0.8.14",
-        "0.8.13",
-        "0.8.12",
-        "0.8.11",
-        "0.8.10"
-      ],
-      "optimizationEnabled": true,
-      "maxSourceSize": 50000
-    },
-    "richlist": {
-      "enabled": true,
-      "updateInterval": 3600,
-      "minBalance": "1000000000000000000"
-    },
-    "statistics": {
-      "enabled": true,
-      "updateInterval": 300,
-      "blockRange": 100
-    }
-  },
-  "api": {
-    "rateLimit": {
-      "windowMs": 900000,
-      "max": 100
-    },
-    "cors": {
-      "origin": ["https://explorer.example.com", "http://localhost:3000"],
-      "credentials": true
-    }
   },
   "database": {
     "uri": "${MONGODB_URI}",
@@ -140,18 +68,6 @@
       "autoCreate": false
     },
     "_comment": "Use environment variable MONGODB_URI for security. Example: mongodb://user:password@localhost:27017/explorerDB?authSource=explorerDB"
-  },
-  "logging": {
-    "level": "info",
-    "file": {
-      "enabled": true,
-      "maxSize": "10m",
-      "maxFiles": 5
-    },
-    "console": {
-      "enabled": true,
-      "colorize": true
-    }
   },
   "explorer": {
     "name": "Blockchain Explorer",
@@ -253,7 +169,11 @@
       {
         "id": "native-bsc",
         "label": "TOKEN → wTOKEN (BNB Smart Chain)",
-        "asset": { "kind": "native", "symbol": "TOKEN", "decimals": 18 },
+        "asset": {
+          "kind": "native",
+          "symbol": "TOKEN",
+          "decimals": 18
+        },
         "vault": "0x0000000000000000000000000000000000000000",
         "autoSwap": {
           "lockAndSwap": "0x0000000000000000000000000000000000000000",
@@ -274,7 +194,11 @@
             "router": "0x0000000000000000000000000000000000000000",
             "wrappedNative": "0x0000000000000000000000000000000000000000",
             "outputs": [
-              { "symbol": "BNB", "kind": "native", "decimals": 18 },
+              {
+                "symbol": "BNB",
+                "kind": "native",
+                "decimals": 18
+              },
               {
                 "symbol": "USDT",
                 "kind": "erc20",

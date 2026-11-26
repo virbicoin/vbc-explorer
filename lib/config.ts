@@ -99,6 +99,7 @@ export interface ExplorerConfig {
   legacyUrls?: string[];
 }
 
+/** @deprecated use the top-level `quiet`; `general.quiet` is still honoured by price / richlist. */
 export interface GeneralConfig {
   quiet: boolean;
 }
@@ -288,12 +289,8 @@ export interface AppConfig {
   bulkSize: number;
   syncAll: boolean;
   quiet: boolean;
-  useRichList: boolean;
   startBlock: number;
   endBlock: number | null;
-  maxRetries: number;
-  retryDelay: number;
-  logLevel: string;
   web3Provider: Web3ProviderConfig;
   database: DatabaseConfig;
   currency: CurrencyConfig;
@@ -349,12 +346,8 @@ export const readConfig = (): AppConfig => {
       bulkSize: 100,
       syncAll: true,
       quiet: false,
-      useRichList: true,
       startBlock: 0,
       endBlock: null,
-      maxRetries: 3,
-      retryDelay: 1000,
-      logLevel: 'info',
       web3Provider: {
         url: 'http://localhost:8545',
       },
@@ -440,12 +433,8 @@ export const readConfig = (): AppConfig => {
       bulkSize: 100,
       syncAll: true,
       quiet: false,
-      useRichList: true,
       startBlock: 0,
       endBlock: null,
-      maxRetries: 3,
-      retryDelay: 1000,
-      logLevel: 'info',
       web3Provider: {
         url: process.env.WEB3_PROVIDER_URL || 'http://localhost:8545',
       },

@@ -90,7 +90,7 @@ const TOKEN_PRICE_CACHE_TTL = 60000; // 1 minute
 // Utility Functions
 // ============================================
 const log = (msg: string) => {
-  if (!config.general?.quiet) console.log(msg);
+  if (!(config.quiet || config.general?.quiet)) console.log(msg);
 };
 
 const checkMemory = (): boolean => {

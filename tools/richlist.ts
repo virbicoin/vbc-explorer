@@ -263,7 +263,7 @@ const makeRichList = async (toBlock: number, blocks: number): Promise<void> => {
   const fromBlock = Math.max(0, toBlock - blocks);
   const isEnd = fromBlock === toBlock;
 
-  if (!config.general?.quiet && toBlock - fromBlock >= 100) {
+  if (!(config.quiet || config.general?.quiet) && toBlock - fromBlock >= 100) {
     console.log(`🔍 Processing blocks ${fromBlock} to ${toBlock}...`);
   }
 

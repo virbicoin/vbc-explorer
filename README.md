@@ -280,10 +280,7 @@ Edit `config.json` for your blockchain:
   },
   "web3Provider": {
     "url": "http://localhost:8545"
-  },
-  "enableNFT": true,
-  "enableContractVerification": true,
-  "enableTokenTracking": true
+  }
 }
 ```
 
@@ -1246,17 +1243,8 @@ All configuration is now centralized in `config.json`. The following settings ar
   "bulkSize": 50,
   "syncAll": true,
   "quiet": false,
-  "useRichList": true,
   "startBlock": 0,
   "endBlock": null,
-  "maxRetries": 3,
-  "retryDelay": 1000,
-  "logLevel": "info",
-  "enableNFT": true,
-  "enableContractVerification": true,
-  "enableTokenTracking": true,
-  "apiRateLimit": 100,
-  "webSocketEnabled": true,
   "currency": {
     "name": "Ethereum",
     "symbol": "ETH",
@@ -1285,6 +1273,7 @@ All configuration is now centralized in `config.json`. The following settings ar
       }
     }
   },
+  "priceUpdateInterval": 300000,
   "web3Provider": {
     "url": "http://localhost:8545"
   },
@@ -1294,40 +1283,6 @@ All configuration is now centralized in `config.json`. The following settings ar
   "miners": {
     "0x0000000000000000000000000000000000000000": "Unknown",
     "0x1111111111111111111111111111111111111111": "Example Pool"
-  },
-  "features": {
-    "nft": {
-      "enabled": true,
-      "metadataProviders": ["ipfs", "http"],
-      "imageFallback": true,
-      "cacheEnabled": true
-    },
-    "contractVerification": {
-      "enabled": true,
-      "compilerVersions": ["0.8.30", "0.8.29", "0.8.28", "0.8.27", "0.8.26", "0.8.25", "0.8.24", "0.8.23", "0.8.22", "0.8.21", "0.8.20", "0.8.19", "0.8.18", "0.8.17", "0.8.16", "0.8.15", "0.8.14", "0.8.13", "0.8.12", "0.8.11", "0.8.10", "0.8.9", "0.8.8", "0.8.7", "0.8.6", "0.8.5", "0.8.4", "0.8.3", "0.8.2", "0.8.1", "0.8.0"],
-      "optimizationEnabled": true,
-      "maxSourceSize": 50000
-    },
-    "richlist": {
-      "enabled": true,
-      "updateInterval": 3600,
-      "minBalance": "1000000000000000000"
-    },
-    "statistics": {
-      "enabled": true,
-      "updateInterval": 300,
-      "blockRange": 100
-    }
-  },
-  "api": {
-    "rateLimit": {
-      "windowMs": 900000,
-      "max": 100
-    },
-    "cors": {
-      "origin": ["https://your-explorer-domain.com", "http://localhost:3000"],
-      "credentials": true
-    }
   },
   "database": {
     "uri": "${MONGODB_URI}",
@@ -1349,18 +1304,6 @@ All configuration is now centralized in `config.json`. The following settings ar
     "maxOldGenerationSizeMb": 1024,
     "allowedVersions": null
   },
-  "logging": {
-    "level": "info",
-    "file": {
-      "enabled": true,
-      "maxSize": "10m",
-      "maxFiles": 5
-    },
-    "console": {
-      "enabled": true,
-      "colorize": true
-    }
-  },
   "explorer": {
     "name": "Blockchain Explorer",
     "description": "Real-time blockchain explorer",
@@ -1370,6 +1313,8 @@ All configuration is now centralized in `config.json`. The following settings ar
   }
 }
 ```
+
+Settings that used to appear here but were never read (`enableNFT`, `enableContractVerification`, `enableTokenTracking`, `apiRateLimit`, `webSocketEnabled`, `useRichList`, `maxRetries`, `retryDelay`, `logLevel`, `features`, `api`, `logging`, `performance`, `caching`) have been removed. The behaviour they suggested is configured elsewhere: rate limits in `lib/security/rate-limits.ts`, the log level with `LOG_LEVEL`, tool memory with `MEMORY_LIMIT_MB`, the solc versions with `compiler.allowedVersions`. `quiet` (or `--quiet` for `tools/sync.ts`) silences the progress logs; `priceUpdateInterval` is the price refresh interval in milliseconds (default 5 minutes).
 
 ## Database Setup
 
