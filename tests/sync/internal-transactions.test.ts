@@ -5,6 +5,8 @@
  * loop of tools/internal-txs.ts. mongodb-memory-server.
  */
 import fs from 'node:fs';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import mongoose from 'mongoose';
@@ -16,6 +18,10 @@ import {
   quantity,
   type ParityTrace,
   type TraceSource,
+  parityTracesFromGethCallTrace,
+  createTraceSource,
+  isMethodMissing,
+  type GethCallFrame,
 } from '@/lib/sync/internal-transactions';
 import {
   claimRange,
@@ -434,5 +440,159 @@ describe('indexToConfirmedHead (tools/internal-txs.ts)', () => {
       await InternalTransaction.countDocuments({ transactionHash: swap.transaction.hash })
     ).toBe(0);
     expect(await InternalTransaction.countDocuments({})).toBe(19 - 12);
+  });
+});
+
+describe('Geth call traces', () => {
+  const A = '0x' + 'a'.repeat(40);
+  const R = '0x' + 'b'.repeat(40);
+  const W = '0x' + 'c'.repeat(40);
+  const L = '0x' + 'd'.repeat(40);
+  const C = '0x' + 'e'.repeat(40);
+  const X = '0x' + '1'.repeat(40);
+  const Y = '0x' + '2'.repeat(40);
+  const B = '0x' + '3'.repeat(40);
+  const tree: GethCallFrame = {
+    type: 'CALL',
+    from: A,
+    to: R,
+    value: '0x10',
+    gas: '0x30000',
+    gasUsed: '0x20000',
+    input: '0x12345678',
+    calls: [
+      { type: 'CALL', from: R, to: W, value: '0x5', gas: '0x900', gasUsed: '0x0', input: '0x' },
+      {
+        type: 'DELEGATECALL',
+        from: R,
+        to: L,
+        value: '0x10',
+        gas: '0x8000',
+        gasUsed: '0x7000',
+        input: '0xabcdef01',
+        calls: [
+          {
+            type: 'CREATE',
+            from: R,
+            to: C,
+            value: '0x0',
+            gas: '0x6000',
+            gasUsed: '0x5000',
+            input: '0x6080',
+            output: '0x6000',
+          },
+        ],
+      },
+      {
+        type: 'CALL',
+        from: R,
+        to: X,
+        value: '0x0',
+        gas: '0x1000',
+        gasUsed: '0x1000',
+        input: '0x',
+        error: 'execution reverted',
+        calls: [
+          { type: 'CALL', from: X, to: Y, value: '0x1', gas: '0x800', gasUsed: '0x0', input: '0x' },
+        ],
+      },
+      {
+        type: 'SELFDESTRUCT',
+        from: R,
+        to: B,
+        value: '0x7',
+        gas: '0x0',
+        gasUsed: '0x0',
+        input: '0x',
+      },
+    ],
+  };
+
+  it('lists the frames depth first with Parity paths and subtrace counts', () => {
+    const frames = parityTracesFromGethCallTrace(tree);
+    expect(frames.map((frame) => [frame.type, frame.traceAddress, frame.subtraces])).toEqual([
+      ['call', [], 4],
+      ['call', [0], 0],
+      ['call', [1], 1],
+      ['create', [1, 0], 0],
+      ['call', [2], 1],
+      ['call', [2, 0], 0],
+      ['suicide', [3], 0],
+    ]);
+    // value only moves in CALL / CALLCODE
+    expect(frames[2].action).toMatchObject({ callType: 'delegatecall', value: '0x0' });
+    expect(frames[3].result).toMatchObject({ address: C });
+    expect(frames[4]).toMatchObject({ error: 'execution reverted', result: null });
+  });
+
+  it('becomes the same internal transactions as a Parity trace', () => {
+    const docs = internalTransactionsFromTraces(parityTracesFromGethCallTrace(tree), {
+      transactionHash: '0x' + 'f'.repeat(64),
+      blockNumber: 10,
+      blockHash: '0x' + '9'.repeat(64),
+      transactionIndex: 0,
+      timestamp: 1_760_000_000,
+    });
+    expect(docs.map((doc) => [doc.type, doc.callType, doc.to, doc.value, doc.reverted])).toEqual([
+      ['call', 'call', W, '5', false],
+      ['call', 'delegatecall', L, '0', false],
+      ['create', null, null, '0', false],
+      ['call', 'call', X, '0', true],
+      ['call', 'call', Y, '1', true],
+      ['selfdestruct', null, B, '7', false],
+    ]);
+    expect(docs[2]).toMatchObject({ createdContract: C });
+  });
+
+  it('switches to debug_traceTransaction on a node without trace_transaction', async () => {
+    const seen: string[] = [];
+    const node = http.createServer((req, res) => {
+      let raw = '';
+      req.on('data', (chunk) => (raw += chunk));
+      req.on('end', () => {
+        const call = JSON.parse(raw) as { id: number; method: string };
+        seen.push(call.method);
+        res.setHeader('content-type', 'application/json');
+        res.end(
+          JSON.stringify(
+            call.method === 'trace_transaction'
+              ? {
+                  jsonrpc: '2.0',
+                  id: call.id,
+                  error: {
+                    code: -32601,
+                    message: 'the method trace_transaction does not exist/is not available',
+                  },
+                }
+              : { jsonrpc: '2.0', id: call.id, result: tree }
+          )
+        );
+      });
+    });
+    await new Promise<void>((resolve) => node.listen(0, '127.0.0.1', resolve));
+    const source = createTraceSource(`http://127.0.0.1:${(node.address() as AddressInfo).port}`);
+    try {
+      const first = await source.traceTransaction('0x' + 'f'.repeat(64));
+      const second = await source.traceTransaction('0x' + 'e'.repeat(64));
+      expect(first).toHaveLength(7);
+      expect(second).toHaveLength(7);
+      // asked once, then remembered (ethers also sends eth_chainId once on connecting)
+      expect(seen.filter((method) => method !== 'eth_chainId')).toEqual([
+        'trace_transaction',
+        'debug_traceTransaction',
+        'debug_traceTransaction',
+      ]);
+    } finally {
+      source.close();
+      await new Promise((resolve) => node.close(resolve));
+    }
+  });
+
+  it('recognises missing-method errors', () => {
+    expect(isMethodMissing({ error: { code: -32601, message: 'x' } })).toBe(true);
+    expect(
+      isMethodMissing(new Error('the method trace_transaction does not exist/is not available'))
+    ).toBe(true);
+    expect(isMethodMissing(new Error('execution timeout'))).toBe(false);
   });
 });

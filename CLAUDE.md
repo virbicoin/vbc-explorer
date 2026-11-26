@@ -519,7 +519,7 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 それまで `txlistinternal` / `token1155tx` / v2 の内部取引は常に空だった。本番（TK04）の全 46,470 取引をトレースした結果、内部取引は 11,059 件（値の移動 1,079 件、計約 4,628,000 VBC）、コントラクトが作ったコントラクトが 44 件（うち 23 件は Contract にも tokens にも無く、VRC-20 が 6 件・旧ファクトリーの LP が 2 件含まれていた）。VRC-1155 のイベントはチェーン上にまだ無い（2026-11-26 時点）。
 
 ### 設計ルール（必ず守る）
-- **内部取引はノードのコールトレース（Parity 形式の `trace_transaction`）からだけ作る。** 取得先は `config.json` の `traces.url`（または `TRACE_RPC_URL`）。Ovbc は trace API を IPC ソケットにだけ開くので、TK04 では `/home/aoi/.local/share/openvirbicoin/jsonrpc.ipc` を指す。公開 RPC（8329）の `--jsonrpc-apis` は変えない（手引きのとおり）
+- **内部取引はノードのコールトレースからだけ作る。** Parity 形式の `trace_transaction`（Ovbc・OpenEthereum・Erigon・Nethermind）を先に試し、ノードが -32601（メソッドなし）と答えたら Geth 系（Gvbc・geth・core-geth）として `debug_traceTransaction` の `callTracer` に切り替える（`parityTracesFromGethCallTrace()` で同じフレームに変換。値が動くのは CALL / CALLCODE だけで、DELEGATECALL / STATICCALL の値は 0。Geth 系は `debug` 名前空間と、古いブロックには archive ノードが要る）。取得先は `config.json` の `traces.url`（または `TRACE_RPC_URL`）。Ovbc は trace API を IPC ソケットにだけ開くので、TK04 では `/home/aoi/.local/share/openvirbicoin/jsonrpc.ipc` を指す。公開 RPC（8329）の `--jsonrpc-apis` は変えない（手引きのとおり）
 - **保存するのは最上位の call 以外の全フレーム**（Blockscout と同じ。最上位の create は作られたアドレスを持つので残す）。`index` はトレース内の位置、`error` はそのフレーム自身のエラー、`reverted` は自分か外側のフレームが失敗したら true（効果が残っていない）。v2 の `success` と Etherscan の `isError` は `reverted` から出す
 - **Etherscan / Blockscout 形式の `txlistinternal` は値が動いた call と create / create2 / selfdestruct だけ**（本家と同じ）。v2 の一覧は値 0 の staticcall / delegatecall も含む全フレーム
 - **書き込みはブロック範囲ごとの丸ごと置き換え**（`indexInternalTransactions()`）。DB の取引のブロックハッシュとトレースのブロックハッシュが違うブロックからは書かない。進捗は `lib/sync/range-scan.ts`（`claimRange()` → 書き込み → `completeRange()`、`generation` が変わっていたら記録しない）。`replaceBlock()` は孤児の内部取引を消し、`rewindRangeScans(height)` で範囲索引器を巻き戻す。この仕組みを迂回して `lastScannedBlock` を直接書き換えない（CLI の `--from` は `resetRangeScan()`）
@@ -1183,7 +1183,7 @@ VirBiCoin エコシステムは以下のリポジトリで構成されていま�
 ### 依存関係
 
 - **go-virbicoin** と **open-virbicoin**: 同じ VirBiCoin ネットワーク（chainId 329）の 2 つのクライアント実装（Gvbc は Go、Ovbc は Rust）。報酬・フォークブロックなどコンセンサスに関わる変更は必ず両方に同時に入れる
-- **vbc-explorer** → ノードの JSON-RPC（Gvbc / Ovbc）。内部取引の索引は Parity 形式の `trace_transaction` を使うため Ovbc が必要（本番の explorer は Ovbc の IPC ソケットを読む）
+- **vbc-explorer** → ノードの JSON-RPC（Gvbc / Ovbc）。内部取引の索引は Ovbc の `trace_transaction` か、Gvbc の `debug_traceTransaction`（callTracer。`debug` 名前空間と archive が要る）を使う（本番の explorer は Ovbc の IPC ソケットを読む）
 - **vbc-stats** ← Gvbc は組み込みの ethstats レポーター（`--ethstats`）で直接報告し、Ovbc は **vbc-stats-api** を介して報告する
 - **vbc-pool** → ノードの JSON-RPC（Gvbc / Ovbc。本番は両方）から作業を取得し、ブロックの確定と支払いを行う。シェアの検証は `proxy/miner.go` の純 Go 実装で、vbc-hash には依存しない
 - **vbc-rpc** → 各ノードの JSON-RPC（8329）に状態を問い合わせるだけ。公開 RPC（rpc.virbicoin.com）への POST は nginx がノードへ中継し、このアプリを通らない

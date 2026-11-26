@@ -6,6 +6,11 @@
  * - The source is the Parity-style `trace_transaction` (OpenEthereum / Ovbc with
  *   `--tracing on`; Erigon and Nethermind answer it too). On Ovbc the trace API is
  *   usually only open on the IPC socket, which `createTraceSource()` accepts.
+ *   A node without it (Geth and its forks: Gvbc, core-geth) is traced with
+ *   `debug_traceTransaction` and the built-in `callTracer` (needs the `debug`
+ *   namespace and, for old blocks, an archive node); `parityTracesFromGethCallTrace()`
+ *   turns the call tree into the same frames, so everything after the source is
+ *   the same for both kinds of node.
  * - Every frame except the top-level call is stored, as on Blockscout: the
  *   top-level call is the transaction itself, a top-level creation is kept
  *   because it names the created contract. Block rewards are not internal
@@ -166,6 +171,106 @@ export function internalTransactionsFromTraces(
 }
 
 // ---------------------------------------------------------------------------
+// Geth call traces
+
+/** One frame of Geth's `callTracer` (debug_traceTransaction with `{ tracer: 'callTracer' }`). */
+export interface GethCallFrame {
+  type: string;
+  from?: string;
+  to?: string;
+  value?: string;
+  gas?: string;
+  gasUsed?: string;
+  input?: string;
+  output?: string;
+  error?: string;
+  calls?: GethCallFrame[];
+}
+
+/**
+ * Parity-style frames, depth first as `trace_transaction` lists them, from a Geth call tree:
+ * `traceAddress` is the path of child indices and `subtraces` the number of children. Value is
+ * only moved by CALL / CALLCODE frames, so DELEGATECALL and STATICCALL get 0 whatever the tracer
+ * repeats from the caller.
+ */
+export function parityTracesFromGethCallTrace(root: GethCallFrame): ParityTrace[] {
+  const frames: ParityTrace[] = [];
+  const walk = (frame: GethCallFrame, traceAddress: number[]) => {
+    const kind = (frame.type || 'CALL').toUpperCase();
+    const calls = frame.calls ?? [];
+    const base = {
+      subtraces: calls.length,
+      traceAddress,
+      ...(frame.error ? { error: frame.error } : {}),
+    };
+    if (kind === 'CREATE' || kind === 'CREATE2') {
+      frames.push({
+        ...base,
+        type: 'create',
+        action: {
+          from: frame.from,
+          value: frame.value ?? '0x0',
+          gas: frame.gas,
+          init: frame.input,
+          creationMethod: kind.toLowerCase(),
+        },
+        result: frame.error
+          ? null
+          : { gasUsed: frame.gasUsed, address: frame.to, code: frame.output ?? '0x' },
+      });
+    } else if (kind === 'SELFDESTRUCT') {
+      frames.push({
+        ...base,
+        type: 'suicide',
+        action: { address: frame.from, refundAddress: frame.to, balance: frame.value ?? '0x0' },
+        result: null,
+      });
+    } else {
+      const movesValue = kind === 'CALL' || kind === 'CALLCODE';
+      frames.push({
+        ...base,
+        type: 'call',
+        action: {
+          callType: kind.toLowerCase(),
+          from: frame.from,
+          to: frame.to,
+          value: movesValue ? (frame.value ?? '0x0') : '0x0',
+          gas: frame.gas,
+          input: frame.input ?? '0x',
+        },
+        result: frame.error
+          ? null
+          : { gasUsed: frame.gasUsed ?? '0x0', output: frame.output ?? '0x' },
+      });
+    }
+    calls.forEach((child, index) => walk(child, [...traceAddress, index]));
+  };
+  walk(root, []);
+  return frames;
+}
+
+/** True when the node says it has no such method (JSON-RPC -32601 or the usual wording). */
+export function isMethodMissing(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  const visit = (value: unknown): boolean => {
+    if (!value || typeof value !== 'object' || seen.has(value)) return false;
+    seen.add(value);
+    const record = value as { code?: unknown; message?: unknown; error?: unknown; info?: unknown };
+    if (record.code === -32601) return true;
+    if (
+      typeof record.message === 'string' &&
+      /method .*(does not exist|not available|not found|not supported)|unknown method/i.test(
+        record.message
+      )
+    ) {
+      return true;
+    }
+    return visit(record.error) || visit(record.info);
+  };
+  return visit(error);
+}
+
+// ---------------------------------------------------------------------------
 // Trace source
 
 export interface TraceSource {
@@ -220,15 +325,28 @@ export function createTraceSource(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): 
     }
     provider = null;
   };
+  // 'parity' once trace_transaction answered, 'geth' once the node said it has no such method
+  let flavor: 'parity' | 'geth' | null = null;
+  const send = (method: string, params: unknown[]) =>
+    withTimeout(open().send(method, params), timeoutMs, method);
   return {
     async traceTransaction(hash) {
       try {
-        const result = await withTimeout(
-          open().send('trace_transaction', [hash]),
-          timeoutMs,
-          'trace_transaction'
-        );
-        return Array.isArray(result) ? (result as ParityTrace[]) : null;
+        if (flavor !== 'geth') {
+          try {
+            const result = await send('trace_transaction', [hash]);
+            flavor = 'parity';
+            return Array.isArray(result) ? (result as ParityTrace[]) : null;
+          } catch (error) {
+            if (flavor !== null || !isMethodMissing(error)) throw error;
+            flavor = 'geth';
+          }
+        }
+        const tree = (await send('debug_traceTransaction', [
+          hash,
+          { tracer: 'callTracer', timeout: `${Math.ceil(timeoutMs / 1000)}s` },
+        ])) as GethCallFrame | null;
+        return tree && typeof tree === 'object' ? parityTracesFromGethCallTrace(tree) : null;
       } catch (error) {
         close(); // the next call opens a new connection
         throw error;
