@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { loadConfig } from '@/lib/config';
+import { loadConfig, getNetworkName } from '@/lib/config';
 import { getExternalPriceData } from '@/lib/dex/external-price';
 
 /**
@@ -24,7 +24,7 @@ export async function GET() {
   try {
     const config = loadConfig();
     const nativeSymbol = config.currency?.symbol || 'ETH';
-    const chainName = config.network?.name || 'Virbicoin';
+    const chainName = getNetworkName();
 
     // Get external price data
     const priceData = await getExternalPriceData();

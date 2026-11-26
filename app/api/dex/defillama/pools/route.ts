@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
-import { loadConfig } from '@/lib/config';
+import {
+  loadConfig,
+  getNetworkName,
+  getCurrencySymbol,
+  getWrappedNativeSymbol,
+} from '@/lib/config';
 import { getExternalPriceData } from '@/lib/dex/external-price';
 import { headers } from 'next/headers';
 import { getCachedPoolStats } from '@/lib/dex/cache-service';
@@ -110,7 +115,7 @@ interface Pool {
   pool: string; // unique pool id
   chain: string; // chain name
   project: string; // project name
-  symbol: string; // pool symbol (e.g., "VBC-USDT")
+  symbol: string; // pool symbol (e.g., "WETH-USDT")
   tvlUsd: number; // TVL in USD
   apyBase?: number; // base APY from trading fees
   apyReward?: number; // reward APY from farming
@@ -128,7 +133,7 @@ interface Pool {
 export async function GET() {
   try {
     const config = loadConfig();
-    const chainName = config.network?.name || 'Virbicoin';
+    const chainName = getNetworkName();
 
     // Get external price data
     const priceData = await getExternalPriceData();
@@ -164,8 +169,8 @@ export async function GET() {
         const blockTime = config.network?.blockTime || 12;
 
         // Get symbol mappings from config
-        const nativeSymbol = config.currency?.symbol || 'VBC';
-        const wrappedNativeSymbol = config.dex?.wrappedNative?.symbol || 'WVBC';
+        const nativeSymbol = getCurrencySymbol();
+        const wrappedNativeSymbol = getWrappedNativeSymbol();
 
         // Get reward token price (calculated from native/stablecoin pool)
         // Default to native price

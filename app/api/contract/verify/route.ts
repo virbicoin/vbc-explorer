@@ -19,6 +19,7 @@ import { compileStandardJson, describeCompileError } from '@/lib/contract/compil
 import { matchRuntimeBytecode } from '@/lib/contract/bytecode-match';
 import { isAlreadyVerified } from '@/lib/contract/verified';
 import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
+import { getCompilerConfig } from '@/lib/config';
 
 // Function to read config
 const readConfig = () => {
@@ -38,7 +39,7 @@ const readConfig = () => {
   // Default configuration
   return {
     nodeAddr: 'localhost',
-    port: 8329,
+    port: 8545,
   };
 };
 
@@ -524,7 +525,7 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
       }
     } else {
       // Single file mode - build the input JSON
-      // Use EVM version 'paris' for better compatibility with VirBiCoin network
+      // EVM version: the request's, else config.json compiler.defaultEvmVersion, else the compiler's
       // Match Hardhat's default settings exactly for bytecode compatibility
       input = {
         language: 'Solidity',
@@ -543,7 +544,7 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
             enabled: optimization || false,
             runs: body.optimizationRuns || 200,
           },
-          evmVersion: body.evmVersion || 'paris',
+          evmVersion: body.evmVersion || getCompilerConfig().defaultEvmVersion || undefined,
           // Match Hardhat's default metadata settings
           metadata: {
             bytecodeHash: 'ipfs', // Hardhat default

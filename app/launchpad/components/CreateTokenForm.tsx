@@ -514,7 +514,7 @@ export function CreateTokenForm() {
     }
 
     // Handle native payment
-    console.log('[CreateToken] Using NATIVE payment method (VBC)');
+    console.log('[CreateToken] Using NATIVE payment method (native coin)');
     try {
       const supplyWithDecimals = parseUnits(totalSupply, parseInt(decimals));
       console.log(
@@ -1108,7 +1108,7 @@ export function CreateTokenForm() {
               onClick={() => config?.chainId && switchChain({ chainId: config.chainId })}
               className="w-full py-4 bg-yellow-500 hover:bg-yellow-600 text-black font-bold rounded-xl transition-colors"
             >
-              Switch to {config?.networkName || 'VirBiCoin'}
+              Switch to {config?.networkName || 'the configured network'}
             </button>
           ) : paymentMethod === 'native' && !hasEnoughBalance && creationFee && creationFee > 0n ? (
             <button

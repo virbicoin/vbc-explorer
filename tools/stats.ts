@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
-Tool for calculating VirBiCoin block statistics
+Tool for calculating block statistics
 */
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
@@ -107,7 +107,7 @@ const config = loadConfig();
 // The database connection is opened by main() (standalone) or by tools/sync.ts (stats mode);
 // connecting at import time made sync.ts run the stats initializer for every mode.
 
-console.log(`🔌 Connecting to VirBiCoin node ${getWeb3ProviderURL()}...`);
+console.log(`🔌 Connecting to node ${getWeb3ProviderURL()}...`);
 
 // Web3 connection
 const web3 = new Web3(new Web3.providers.HttpProvider(getWeb3ProviderURL()));
@@ -509,11 +509,11 @@ const main = async (): Promise<void> => {
     try {
       await web3.eth.getBlockNumber();
     } catch (connectionError) {
-      console.log('Error: Cannot connect to VirBiCoin node');
+      console.log('Error: Cannot connect to the node');
       process.exit(1);
     }
 
-    console.log('🔗 Connected to VirBiCoin node successfully');
+    console.log('🔗 Connected to the node successfully');
     console.log('📊 Starting statistics calculation...');
 
     // Run statistics update

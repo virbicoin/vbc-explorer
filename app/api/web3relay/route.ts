@@ -25,8 +25,8 @@ const readConfig = () => {
   // Default configuration
   return {
     nodeAddr: 'localhost',
-    port: 8329,
-    wsPort: 8330,
+    port: 8545,
+    wsPort: 8546,
     miners: {},
   };
 };

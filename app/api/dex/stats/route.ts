@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { loadConfig } from '@/lib/config';
+import { loadConfig, getNetworkName, getChainId } from '@/lib/config';
 import { getLPAddresses, getCachedPoolInfo, getCachedPoolStats } from '@/lib/dex/cache-service';
 import {
   getNativePriceFromDex,
@@ -23,8 +23,8 @@ export const revalidate = 0;
 export async function GET() {
   try {
     const config = loadConfig();
-    const chainName = config.network?.name || 'Virbicoin';
-    const chainId = config.network?.chainId || 329;
+    const chainName = getNetworkName();
+    const chainId = getChainId();
 
     // Get prices from DEX
     const [nativePriceUsd, secondaryPriceUsd] = await Promise.all([
@@ -156,9 +156,9 @@ export async function GET() {
         factory: config.dex?.factory || ADDRESSES.FACTORY,
         router: config.dex?.router || ADDRESSES.ROUTER,
         masterChef: ADDRESSES.MASTERCHEF,
-        wvbc: ADDRESSES.WVBC,
-        vbcg: ADDRESSES.VBCG,
-        usdt: ADDRESSES.USDT,
+        wrappedNative: ADDRESSES.WRAPPED_NATIVE,
+        rewardToken: ADDRESSES.SECONDARY,
+        stablecoin: ADDRESSES.STABLECOIN,
       },
     };
 

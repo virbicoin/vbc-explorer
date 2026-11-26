@@ -398,7 +398,7 @@ export async function GET(request: NextRequest) {
     symbol: nativeTokenSymbol,
     type: 'Native',
     holders: chainStats.activeAddresses || 0, // Real wallet count
-    supply: chainStats.totalSupply || 'unlimited', // Real total supply
+    supply: chainStats.totalSupply === null ? 'N/A' : String(chainStats.totalSupply), // issued supply (lib/supply)
     logoUrl: getIconUrl(nativeTokenSymbol),
   };
 

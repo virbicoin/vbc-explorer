@@ -1633,7 +1633,7 @@ curl "https://explorer.example.com/api?module=contract&action=checkverifystatus&
 | `compilerversion` | Yes | Compiler version (e.g., `v0.8.30+commit.73712a01`) |
 | `optimizationUsed` | No | `1` for enabled, `0` for disabled (default: `0`) |
 | `runs` | No | Optimization runs (default: `200`) |
-| `evmversion` | No | EVM version (default: `paris`) |
+| `evmversion` | No | EVM version (default: `compiler.defaultEvmVersion` in config.json, else the compiler's default) |
 | `constructorArguements` | No | ABI-encoded constructor arguments |
 | `licenseType` | No | SPDX license identifier |
 
@@ -1866,7 +1866,7 @@ This endpoint provides a direct REST API for contract verification, supporting b
 | `contractName` | No | Contract name (auto-detected if not provided) |
 | `optimization` | No | Enable optimization (default: `false`) |
 | `optimizationRuns` | No | Optimization runs (default: `200`) |
-| `evmVersion` | No | EVM version (default: `paris`) |
+| `evmVersion` | No | EVM version (default: `compiler.defaultEvmVersion` in config.json, else the compiler's default) |
 | `constructorArguments` | No | ABI-encoded constructor arguments |
 
 *Either `sourceCode` or `standardJsonInput` is required.

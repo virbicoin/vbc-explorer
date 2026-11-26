@@ -329,7 +329,7 @@ const TransactionList = ({
                   {tx.hash.slice(0, 10)}...{tx.hash.slice(-8)}
                 </Link>
                 <span className="text-sm text-green-400 font-bold">
-                  {tx.value ? formatVBC(tx.value) : '0 VBC'}
+                  {formatVBC(tx.value || '0')}
                 </span>
               </div>
               <div className="flex-1 text-center">

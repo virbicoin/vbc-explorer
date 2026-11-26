@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { loadConfig } from '@/lib/config';
+import { loadConfig, getNetworkName, getChainId } from '@/lib/config';
 import { getLPAddresses, getCachedPoolInfo, getCachedPoolStats } from '@/lib/dex/cache-service';
 import { getNativePriceFromDex, calculatePoolTvlUsd, ADDRESSES } from '@/lib/dex/priceUtils';
 import { ethers } from 'ethers';
@@ -19,8 +19,8 @@ export const revalidate = 0;
 export async function GET() {
   try {
     const config = loadConfig();
-    const chainName = config.network?.name || 'Virbicoin';
-    const chainId = config.network?.chainId || 329;
+    const chainName = getNetworkName();
+    const chainId = getChainId();
 
     // Get native price from DEX
     const nativePriceUsd = await getNativePriceFromDex();
@@ -62,7 +62,7 @@ export async function GET() {
       name: `${chainName} DEX`,
       address: config.dex?.factory || ADDRESSES.FACTORY,
       symbol: config.currency?.symbol || 'ETH',
-      url: config.network?.explorer || 'https://explorer.virbicoin.com',
+      url: config.network?.explorer || config.explorer?.url || '',
       description: `Decentralized Exchange on ${chainName} Network`,
       chain: chainName,
       logo: null,

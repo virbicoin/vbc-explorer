@@ -270,6 +270,11 @@ export interface CompilerConfig {
   maxOldGenerationSizeMb?: number;
   /** Optional allow-list of short versions ("0.8.30"); empty = every release build. Nightlies are always refused. */
   allowedVersions?: string[];
+  /**
+   * EVM version for verifications that do not name one (e.g. "paris" on a chain whose contracts
+   * are built for an older rule set). Unset: the compiler's own default.
+   */
+  defaultEvmVersion?: string;
 }
 
 export interface ResolvedCompilerConfig {
@@ -279,6 +284,19 @@ export interface ResolvedCompilerConfig {
   timeoutMs: number;
   maxOldGenerationSizeMb: number;
   allowedVersions: string[] | null;
+  defaultEvmVersion: string | null;
+}
+
+export interface DexInfoConfig {
+  name?: string;
+  description?: string;
+  logo?: string;
+  url?: string;
+  docsUrl?: string;
+  /** DefiLlama protocol slug whose TVL /api/dex/external-price reports (api.llama.fi/tvl/<slug>) */
+  defillamaSlug?: string;
+  stablePoolAddress?: string;
+  [key: string]: unknown;
 }
 
 export interface AppConfig {
@@ -304,6 +322,8 @@ export interface AppConfig {
   /** Block reward schedule (lib/reward-schedule.ts); Ethereum's when missing */
   rewards?: RewardScheduleConfig;
   social?: SocialConfig;
+  /** Public DEX description (GeckoTerminal / DefiLlama endpoints) */
+  dexInfo?: DexInfoConfig;
   images?: ImagesConfig;
   sync?: SyncConfig;
   compiler?: CompilerConfig;
@@ -515,6 +535,26 @@ export const getCurrencySymbol = (): string => {
 /**
  * Get currency name from config
  */
+/** Network name from config.json (Ethereum's by default). */
+export const getNetworkName = (): string => readConfig().network?.name || 'Ethereum';
+
+/** Chain id from config.json (1 by default). */
+export const getChainId = (): number => readConfig().network?.chainId || 1;
+
+/** URL-friendly network id: `network.slug`, else the network name in lower case with dashes. */
+export const getNetworkSlug = (): string => {
+  const network = readConfig().network;
+  const fromName = (network?.name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return network?.slug || fromName || 'ethereum';
+};
+
+/** Symbol of the wrapped native token: `dex.wrappedNative.symbol`, else "W" + the currency symbol. */
+export const getWrappedNativeSymbol = (): string =>
+  readConfig().dex?.wrappedNative?.symbol || `W${getCurrencySymbol()}`;
+
 export const getCurrencyName = (): string => {
   const config = readConfig();
   return config.currency?.name || 'Ethereum';
@@ -630,5 +670,9 @@ export const getCompilerConfig = (): ResolvedCompilerConfig => {
       COMPILER_DEFAULTS.maxOldGenerationSizeMb
     ),
     allowedVersions: allowed.length > 0 ? allowed : null,
+    defaultEvmVersion:
+      typeof raw.defaultEvmVersion === 'string' && raw.defaultEvmVersion.trim() !== ''
+        ? raw.defaultEvmVersion.trim()
+        : null,
   };
 };

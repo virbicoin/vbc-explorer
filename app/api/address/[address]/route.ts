@@ -176,13 +176,17 @@ export async function GET(
     // DEX contracts
     if (cfg.dex) {
       if (cfg.dex.factory?.toLowerCase() === lowerAddr)
-        return { name: 'SimpleFactoryV2', type: 'DEX Factory' };
+        return { name: 'DEX Factory', type: 'DEX Factory' };
       if (cfg.dex.router?.toLowerCase() === lowerAddr)
-        return { name: 'SimpleRouterV2', type: 'DEX Router' };
+        return { name: 'DEX Router', type: 'DEX Router' };
       if (cfg.dex.masterChef?.toLowerCase() === lowerAddr)
-        return { name: 'MasterChefV2', type: 'Staking' };
+        return { name: 'MasterChef', type: 'Staking' };
       if (cfg.dex.wrappedNative?.address?.toLowerCase() === lowerAddr)
-        return { name: cfg.dex.wrappedNative.name || 'WVBC', type: 'Wrapped Token' };
+        return {
+          name:
+            cfg.dex.wrappedNative.name || cfg.dex.wrappedNative.symbol || 'Wrapped native token',
+          type: 'Wrapped Token',
+        };
       if (cfg.dex.rewardToken?.address?.toLowerCase() === lowerAddr)
         return { name: cfg.dex.rewardToken.name || 'Reward Token', type: 'ERC20' };
 

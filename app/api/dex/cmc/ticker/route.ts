@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
-import { loadConfig } from '@/lib/config';
+import { loadConfig, getCurrencySymbol, getWrappedNativeSymbol } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,8 +66,8 @@ export async function GET() {
         const lastPrice = reserve1 / reserve0;
 
         // Format display symbols (wrapped native -> native symbol)
-        const wrappedSymbol = config.dex?.wrappedNative?.symbol || 'WVBC';
-        const nativeSymbol = config.currency?.symbol || 'VBC';
+        const wrappedSymbol = getWrappedNativeSymbol();
+        const nativeSymbol = getCurrencySymbol();
         const displaySymbol0 = symbol0 === wrappedSymbol ? nativeSymbol : symbol0;
         const displaySymbol1 = symbol1 === wrappedSymbol ? nativeSymbol : symbol1;
         const pairId = `${displaySymbol0}_${displaySymbol1}`;

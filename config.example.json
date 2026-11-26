@@ -92,7 +92,7 @@
     "timeoutMs": 60000,
     "maxOldGenerationSizeMb": 1024,
     "allowedVersions": [],
-    "_comment": "Solidity compilers for contract verification run in a worker thread. Release builds are downloaded from binaries.soliditylang.org, verified against the sha256 published in list.json and cached as <version>.js + <version>.sha256 in cacheDir (~ expands to the home directory; SOLC_CACHE_DIR overrides). allowedVersions is an optional allow-list such as [\"0.8.30\"] (empty = every release); nightly builds are always refused."
+    "_comment": "Solidity compilers for contract verification run in a worker thread. Release builds are downloaded from binaries.soliditylang.org, verified against the sha256 published in list.json and cached as <version>.js + <version>.sha256 in cacheDir (~ expands to the home directory; SOLC_CACHE_DIR overrides). allowedVersions is an optional allow-list such as [\"0.8.30\"] (empty = every release); nightly builds are always refused. defaultEvmVersion (optional, e.g. \"paris\") is used when a verification request names no EVM version; unset = the compiler's default."
   },
   "network": {
     "chainId": 1,
@@ -308,7 +308,7 @@
     "swapFee": "0.3%",
     "protocolFee": "0.05%",
     "lpReward": "0.25%",
-    "_comment": "DEX metadata for GeckoTerminal/CoinGecko listing applications"
+    "_comment": "DEX metadata for GeckoTerminal/CoinGecko listing applications. Optional defillamaSlug: the DefiLlama protocol whose TVL /api/dex/external-price reports (api.llama.fi/tvl/<slug>); without it no TVL is fetched."
   },
   "supply": {
     "premineAmount": 0,

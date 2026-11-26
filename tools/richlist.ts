@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
-Tool for calculating VirBiCoin richlist - Optimized and simplified
+Tool for calculating the richlist - Optimized and simplified
 */
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
@@ -394,7 +394,7 @@ const startSync = async (): Promise<void> => {
 
 // Main execution
 if (require.main === module) {
-  console.log('💎 VirBiCoin Richlist Calculator - Optimized');
+  console.log('💎 Richlist Calculator - Optimized');
   startSync().catch((error) => {
     console.error('❌ Fatal error:', error);
     process.exit(1);

@@ -298,11 +298,15 @@ const LICENSE_TYPES = [
   { value: 'UNLICENSED', label: 'Unlicensed' },
 ];
 
-// The chain may run an older rule set than the newest compiler targets (VirBiCoin runs
-// Constantinople), so the older targets must be selectable to verify contracts built for them.
+// A chain may run an older rule set than the newest compiler targets, so the older targets must be
+// selectable to verify contracts built for them. '' leaves the choice to the compiler; the
+// preselected value is config.json compiler.defaultEvmVersion when set.
 const EVM_VERSIONS = [
-  { value: 'paris', label: 'paris (default)' },
+  { value: '', label: 'default (compiler)' },
+  { value: 'prague', label: 'prague' },
+  { value: 'cancun', label: 'cancun' },
   { value: 'shanghai', label: 'shanghai' },
+  { value: 'paris', label: 'paris' },
   { value: 'london', label: 'london' },
   { value: 'berlin', label: 'berlin' },
   { value: 'istanbul', label: 'istanbul' },
@@ -357,6 +361,13 @@ function ContractVerifyPageInner() {
         if (response.ok) {
           const data = await response.json();
           setNetworkConfig(data.network);
+          const defaultEvmVersion: string | null = data.verification?.defaultEvmVersion ?? null;
+          if (defaultEvmVersion) {
+            // Preselect the chain's EVM version unless a value was already chosen
+            setFormData((prev) =>
+              prev.evmVersion === '' ? { ...prev, evmVersion: defaultEvmVersion } : prev
+            );
+          }
         }
       } catch (error) {
         console.error('Failed to fetch config:', error);
@@ -373,7 +384,7 @@ function ContractVerifyPageInner() {
     optimizationRuns: 200,
     sourceCode: '',
     constructorArgs: '',
-    evmVersion: 'paris',
+    evmVersion: '',
     licenseType: '',
   });
 

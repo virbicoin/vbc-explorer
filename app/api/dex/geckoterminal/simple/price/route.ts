@@ -2,7 +2,7 @@
 // Format: https://docs.geckoterminal.com/reference/get_simple-networks-network-token_prices-addresses
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
-import { loadConfig } from '@/lib/config';
+import { loadConfig, getNetworkSlug } from '@/lib/config';
 import { connectDB } from '@/models/index';
 import { getNativePrice } from '@/lib/price-service';
 
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
     const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';
     const usdtAddress = config.dex?.tokens?.usdt?.address?.toLowerCase() || '';
-    const networkSlug = config.network?.slug || 'virbicoin';
+    const networkSlug = getNetworkSlug();
 
     // Connect to database
     await connectDB();
@@ -163,7 +163,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         data: {
-          id: `virbicoin_${addresses.join(',')}`,
+          id: `${networkSlug}_${addresses.join(',')}`,
           type: 'simple_token_price',
           attributes: {
             token_prices: tokenPrices,

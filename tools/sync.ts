@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
-Name: VirBiCoin Blockchain syncer
-Description: This file will start syncing the blockchain from the VirBiCoin node
+Name: Blockchain syncer
+Description: This file will start syncing the blockchain from the configured node
 */
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
@@ -162,7 +162,8 @@ const registerKnownContracts = async (web3Instance: Web3): Promise<void> => {
     if (cfg.dex.wrappedNative?.address) {
       contracts.push({
         address: cfg.dex.wrappedNative.address.toLowerCase(),
-        contractName: cfg.dex.wrappedNative.name || 'WVBC',
+        contractName:
+          cfg.dex.wrappedNative.name || cfg.dex.wrappedNative.symbol || 'Wrapped native token',
         symbol: cfg.dex.wrappedNative.symbol,
         tokenName: cfg.dex.wrappedNative.name,
         decimals: cfg.dex.wrappedNative.decimals || 18,
@@ -319,7 +320,7 @@ if (args.length >= 2 && !isNaN(parseInt(args[0])) && !isNaN(parseInt(args[1]))) 
 
 // Use unified Web3 provider URL
 const providerUrl = getWeb3ProviderURL();
-console.log(`🔌 Connecting to VirBiCoin node at ${providerUrl}...`);
+console.log(`🔌 Connecting to node at ${providerUrl}...`);
 
 // Web3 connection using unified config
 const web3 = new Web3(new Web3.providers.HttpProvider(providerUrl));
@@ -831,11 +832,11 @@ const main = async (): Promise<void> => {
     try {
       await web3.eth.getBlockNumber();
     } catch (connectionError) {
-      console.log('❌ Error: Cannot connect to VirBiCoin node');
+      console.log('❌ Error: Cannot connect to the node');
       process.exit(1);
     }
 
-    console.log('🔗 Connected to VirBiCoin node successfully');
+    console.log('🔗 Connected to the node successfully');
 
     // Run initial sync if requested
     if (config.syncAll) {

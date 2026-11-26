@@ -81,7 +81,10 @@ async function registerContracts() {
     if (config.dex.wrappedNative) {
       contracts.push({
         address: config.dex.wrappedNative.address.toLowerCase(),
-        contractName: config.dex.wrappedNative.name || 'WVBC',
+        contractName:
+          config.dex.wrappedNative.name ||
+          config.dex.wrappedNative.symbol ||
+          'Wrapped native token',
         symbol: config.dex.wrappedNative.symbol,
         tokenName: config.dex.wrappedNative.name,
         decimals: config.dex.wrappedNative.decimals || 18,

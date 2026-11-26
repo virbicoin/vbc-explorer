@@ -32,8 +32,6 @@ describe('dexAddresses', () => {
       STABLECOIN: A(6),
       NATIVE_SECONDARY_PAIR: A(7),
       NATIVE_STABLECOIN_PAIR: A(8),
-      WVBC: A(4),
-      USDT_VBC_PAIR: A(8),
     });
   });
 

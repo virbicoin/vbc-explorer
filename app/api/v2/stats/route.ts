@@ -31,7 +31,7 @@ const readConfig = () => {
 
   return {
     nodeAddr: 'localhost',
-    port: 8329,
+    port: 8545,
   };
 };
 

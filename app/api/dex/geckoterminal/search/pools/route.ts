@@ -3,7 +3,7 @@
 // Optimized with centralized caching
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
-import { loadConfig } from '@/lib/config';
+import { loadConfig, getNetworkSlug } from '@/lib/config';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import {
   getCachedNativePrice,
@@ -64,7 +64,7 @@ export async function GET(request: Request) {
     }
 
     const wrappedNativeAddress = getWrappedNativeAddress();
-    const networkSlug = config.network?.slug || 'virbicoin';
+    const networkSlug = getNetworkSlug();
 
     // Get native currency price (cached)
     const nativePriceUsd = await getCachedNativePrice();

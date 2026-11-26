@@ -704,7 +704,7 @@ export async function GET(
         symbol: config.currency?.symbol || 'ETH',
         type: 'Native',
         decimals: config.currency?.decimals || 18,
-        supply: chainStats.totalSupply || 'N/A',
+        supply: chainStats.totalSupply ?? 'N/A',
         holders: chainStats.activeAddresses || 0,
         createdAt: new Date('1970-01-01T00:00:00Z'), // Set a more realistic genesis date
         updatedAt: new Date(),

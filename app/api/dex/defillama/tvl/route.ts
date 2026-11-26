@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { loadConfig } from '@/lib/config';
+import { loadConfig, getNetworkName } from '@/lib/config';
 import { getLPAddresses, getCachedPoolInfo } from '@/lib/dex/cache-service';
 import { calculatePoolTvlUsd } from '@/lib/dex/priceUtils';
 
@@ -16,7 +16,7 @@ export const revalidate = 0;
 export async function GET() {
   try {
     const config = loadConfig();
-    const chainName = config.network?.name || 'Virbicoin';
+    const chainName = getNetworkName();
 
     // Calculate total TVL from all pools using DEX prices
     const lpAddresses = await getLPAddresses();

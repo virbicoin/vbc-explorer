@@ -2,7 +2,7 @@
 /// <reference path="../types/human-standard-token-abi.d.ts" />
 
 /*
-Name: VirBiCoin Token Scanner
+Name: Token Scanner
 Version: 1.0.0
 This file will scan the blockchain for new token contracts and update the database.
 */

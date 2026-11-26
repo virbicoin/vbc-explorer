@@ -62,7 +62,7 @@ const apiCategories: ApiCategory[] = [
           'constructorArguements (optional) - ABI-encoded constructor arguments',
         ],
         response: '{"status":"1","message":"OK","result":"guid-for-tracking"}',
-        example: 'npx hardhat verify --network virbicoin 0xYourContract "arg1" "arg2"',
+        example: 'npx hardhat verify --network <network> 0xYourContract "arg1" "arg2"',
       },
       {
         method: 'GET',
@@ -870,7 +870,7 @@ const apiCategories: ApiCategory[] = [
         method: 'GET',
         path: '/api/dex/defillama/prices',
         description: 'Token prices in USD',
-        response: '{"coins":{"virbicoin:0x...":{"price":...,"symbol":"...","timestamp":...}}}',
+        response: '{"coins":{"<chain>:0x...":{"price":...,"symbol":"...","timestamp":...}}}',
         sampleUrl: '/api/dex/defillama/prices',
       },
       {
@@ -1018,7 +1018,7 @@ const apiCategories: ApiCategory[] = [
         path: '/api/config/client',
         description: 'Client-side configuration (currency, network, explorer)',
         response:
-          '{"currency":{"symbol":"VBC","name":"VirBiCoin"},"network":{"name":"...","chainId":...},"explorer":{"name":"..."}}',
+          '{"currency":{"symbol":"...","name":"..."},"network":{"name":"...","chainId":...},"rewards":{"blockReward":{...}},"explorer":{"name":"..."}}',
         sampleUrl: '/api/config/client',
       },
       {

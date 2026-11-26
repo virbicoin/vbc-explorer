@@ -1,7 +1,7 @@
 // GeckoTerminal Dexes API - Returns list of DEXes on the network
 // Format: https://docs.geckoterminal.com/reference/get_networks-network-dexes
 import { NextResponse } from 'next/server';
-import { loadConfig } from '@/lib/config';
+import { loadConfig, getNetworkSlug, getNetworkName } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -32,8 +32,8 @@ export async function GET() {
       return errorResponse(404, 'DEX feature is not enabled');
     }
 
-    const networkSlug = config.network?.slug || 'virbicoin';
-    const dexName = config.dex?.name || 'VirBiCoin DEX';
+    const networkSlug = getNetworkSlug();
+    const dexName = config.dex?.name || config.dexInfo?.name || `${getNetworkName()} DEX`;
 
     return NextResponse.json(
       {

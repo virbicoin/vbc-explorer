@@ -23,6 +23,7 @@ import { matchRuntimeBytecode, type CompiledRuntimeCode } from '@/lib/contract/b
 import { isAlreadyVerified } from '@/lib/contract/verified';
 import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
 import { publicClient, successResponse, errorResponse } from './shared';
+import { getCompilerConfig } from '@/lib/config';
 
 export async function verifySourceCode(params: {
   contractaddress: string;
@@ -194,7 +195,7 @@ async function processVerification(guid: string) {
             enabled: optimizationUsed,
             runs: runs || 200,
           },
-          evmVersion: evmVersion || 'paris',
+          evmVersion: evmVersion || getCompilerConfig().defaultEvmVersion || undefined,
           // Match Hardhat's default metadata settings
           metadata: {
             bytecodeHash: 'ipfs', // Hardhat default

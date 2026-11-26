@@ -32,7 +32,7 @@ export { Token };
 
 // RPC Client
 const RPC_URL =
-  configJson.network?.rpcUrl || configJson.web3Provider?.url || 'http://localhost:8329';
+  configJson.network?.rpcUrl || configJson.web3Provider?.url || 'http://localhost:8545';
 
 export const publicClient = createPublicClient({
   transport: http(RPC_URL, { timeout: 30000 }),

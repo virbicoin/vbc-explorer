@@ -1,6 +1,6 @@
 // GeckoTerminal DEX Info API - Returns DEX metadata
 import { NextResponse } from 'next/server';
-import { loadConfig } from '@/lib/config';
+import { loadConfig, getNetworkName, getChainId } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,33 +41,35 @@ interface DexInfo {
 export async function GET() {
   try {
     const config = loadConfig();
-    const networkName = config.network?.name || config.currency?.name || 'Blockchain';
+    const networkName = getNetworkName();
+    const explorerUrl = config.explorer?.url || '';
 
     const dexInfo: DexInfo = {
-      name: config.dex?.name || `${networkName} DEX`,
-      logo: 'https://i.imgur.com/PrvGDTu.png',
-      website: `${config.explorer?.url || 'https://explorer.virbicoin.com'}/dex`,
+      name: config.dex?.name || config.dexInfo?.name || `${networkName} DEX`,
+      logo: config.dexInfo?.logo || '',
+      website: config.dexInfo?.url || (explorerUrl ? `${explorerUrl}/dex` : ''),
       description: `Decentralized exchange on ${networkName} network. Swap tokens, provide liquidity, and earn rewards through yield farming.`,
       network: {
-        name: config.network?.name || 'VirBiCoin',
-        chain_id: config.network?.chainId || 329,
+        name: networkName,
+        chain_id: getChainId(),
         native_currency: {
-          name: config.currency?.name || 'VirBiCoin',
+          name: config.currency?.name || 'Ether',
           symbol: config.currency?.symbol || 'ETH',
           decimals: config.currency?.decimals || 18,
         },
-        rpc_url: config.network?.rpcUrl || 'https://rpc.virbicoin.com',
-        explorer_url: config.explorer?.url || 'https://explorer.virbicoin.com',
+        rpc_url: config.network?.rpcUrl || '',
+        explorer_url: explorerUrl,
       },
       contracts: {
         factory: config.dex?.factory || '',
         router: config.dex?.router || '',
       },
       social: {
-        twitter: config.social?.x || 'https://x.com/VirBiCoin',
+        twitter: config.social?.x,
         telegram: config.social?.telegram,
         discord: config.social?.discord,
-        documentation: `${config.explorer?.url || 'https://explorer.virbicoin.com'}/dex/docs`,
+        documentation:
+          config.dexInfo?.docsUrl || (explorerUrl ? `${explorerUrl}/dex/docs` : undefined),
       },
       features: {
         swap: true,

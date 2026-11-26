@@ -13,6 +13,7 @@ import {
 } from '@/lib/contract/solc-utils';
 import { matchRuntimeBytecode, type CompiledRuntimeCode } from '@/lib/contract/bytecode-match';
 import { isAlreadyVerified } from '@/lib/contract/verified';
+import { getCompilerConfig } from '@/lib/config';
 
 // Function to read config
 const readConfig = () => {
@@ -31,7 +32,7 @@ const readConfig = () => {
 
   return {
     nodeAddr: 'localhost',
-    port: 8329,
+    port: 8545,
   };
 };
 
@@ -192,7 +193,7 @@ export const POST = withRateLimit(
             enabled: is_optimization_enabled === 'true' || is_optimization_enabled === '1',
             runs: parseInt(optimization_runs) || 200,
           },
-          evmVersion: evm_version || 'paris',
+          evmVersion: evm_version || getCompilerConfig().defaultEvmVersion || undefined,
         },
       };
 

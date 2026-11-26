@@ -1,6 +1,7 @@
 import { connectDB as connectDBFromModels } from '../models/index';
 import { countAll } from './db/count';
 import { requireDb } from './db/get-db';
+import { calculateTotalSupply } from './supply';
 
 // Use the connectDB function from models/index.ts
 async function connectDB() {
@@ -248,7 +249,9 @@ export async function getChainStats() {
     activeAddresses = 0; // Fallback to 0 if calculation fails
   }
 
-  const totalSupply = 'unlimited'; // VBC has unlimited supply
+  // Issued supply (pre-mine + block and uncle rewards, config.json supply / rewards); null if the
+  // node or the database cannot answer
+  const totalSupply = await calculateTotalSupply().catch(() => null);
   const totalTransactions = await getCachedData(
     'totalTransactions',
     async () => {

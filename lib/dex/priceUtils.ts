@@ -78,12 +78,6 @@ export function dexAddresses(source: unknown = loadConfig()) {
     ROUTER: lower(dex.router),
     // Native token (zero address)
     NATIVE: '0x0000000000000000000000000000000000000000',
-    // Legacy aliases (for backward compatibility)
-    WVBC: wrappedNative,
-    USDT: stablecoin,
-    VBCG: secondary,
-    USDT_VBC_PAIR: nativeStablePair,
-    VBC_VBCG_PAIR: nativeSecondaryPair,
   };
 }
 

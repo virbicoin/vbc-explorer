@@ -851,7 +851,7 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 | `contractname` / `contractName` | いいえ | コントラクト名（未指定の場合は自動検出） |
 | `optimizationUsed` / `optimization` | いいえ | 最適化を有効化（`1`/`0` または `true`/`false`） |
 | `runs` / `optimizationRuns` | いいえ | 最適化の runs（デフォルト: 200） |
-| `evmversion` / `evmVersion` | いいえ | EVM バージョン（デフォルト: `paris`） |
+| `evmversion` / `evmVersion` | いいえ | EVM バージョン（デフォルト: config.json の `compiler.defaultEvmVersion`、無ければコンパイラの既定。VirBiCoin の本番は `paris`） |
 | `constructorArguements` / `constructorArguments` | いいえ | ABI エンコードされたコンストラクタ引数 |
 
 *`sourceCode` または `standardJsonInput` のいずれかが必須です。

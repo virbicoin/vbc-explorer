@@ -18,9 +18,11 @@ let cachedData: {
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-async function fetchDefiLlamaTvl(): Promise<number> {
+/** TVL of the DEX's DefiLlama protocol (config.json dexInfo.defillamaSlug); 0 when none is set. */
+async function fetchDefiLlamaTvl(slug: string | undefined): Promise<number> {
+  if (!slug) return 0;
   try {
-    const response = await fetch('https://api.llama.fi/tvl/virbicoin-dex', {
+    const response = await fetch(`https://api.llama.fi/tvl/${encodeURIComponent(slug)}`, {
       next: { revalidate: 300 },
     });
 
@@ -58,7 +60,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Get price from price service (Market DB first, then the enabled price APIs)
-    const [priceData, totalTvlUsd] = await Promise.all([getNativePrice(), fetchDefiLlamaTvl()]);
+    const defillamaSlug = config.dexInfo?.defillamaSlug;
+    const [priceData, totalTvlUsd] = await Promise.all([
+      getNativePrice(),
+      fetchDefiLlamaTvl(defillamaSlug),
+    ]);
 
     const nativePriceUsd = priceData?.priceUSD || 0;
     const priceSource = priceSourceLabel(priceData);
@@ -70,7 +76,7 @@ export async function GET(request: NextRequest) {
       lastUpdated: Date.now(),
       source: {
         price: priceSource,
-        tvl: 'DefiLlama',
+        tvl: defillamaSlug ? 'DefiLlama' : 'none',
       },
     };
 

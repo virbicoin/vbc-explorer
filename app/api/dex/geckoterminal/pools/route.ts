@@ -2,7 +2,7 @@
 // Optimized version with centralized caching to reduce RPC calls
 import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
-import { loadConfig } from '@/lib/config';
+import { loadConfig, getNetworkSlug } from '@/lib/config';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import {
   getCachedPoolInfo,
@@ -103,7 +103,7 @@ export async function GET() {
     }
 
     const config = loadConfig();
-    const networkSlug = config.network?.slug || 'ethereum';
+    const networkSlug = getNetworkSlug();
     const wrappedNativeAddress = getWrappedNativeAddress();
     const usdtAddress = getUSDTAddress();
     const lpAddresses = await getLPAddresses();
@@ -355,7 +355,7 @@ export async function GET() {
                 },
                 dex: {
                   data: {
-                    id: 'virbicoin_dex',
+                    id: `${networkSlug}_dex`,
                     type: 'dex',
                   },
                 },

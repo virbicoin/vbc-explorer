@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { ethers } from 'ethers';
 import dbConnect from '@/lib/db';
 import { requireDb, tryGetDb } from '@/lib/db/get-db';
-import { loadConfig } from '@/lib/config';
+import { loadConfig, getCurrencySymbol, getWrappedNativeSymbol } from '@/lib/config';
 
 interface LpToken {
   address: string;
@@ -52,8 +52,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ pair
     // Find the matching LP token
     const config = loadConfig();
     const lpTokens = (config.dex?.lpTokens || {}) as Record<string, LpToken>;
-    const wrappedSymbol = config.dex?.wrappedNative?.symbol || 'WVBC';
-    const nativeSymbol = config.currency?.symbol || 'VBC';
+    const wrappedSymbol = getWrappedNativeSymbol();
+    const nativeSymbol = getCurrencySymbol();
     let matchedPair: { address: string; token0: string; token1: string } | null = null;
 
     for (const [, lpToken] of Object.entries(lpTokens)) {
