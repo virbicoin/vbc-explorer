@@ -199,7 +199,8 @@ const vbcPrice = await getCachedVBCPrice();
 ```
 
 ### Next.js 最適化（`next.config.ts`）
-- `output: 'standalone'` - デプロイサイズを縮小
+- `output: 'standalone'` は使っていない（本番はチェックアウトで `next start`）。`outputFileTracingIncludes` は standalone / サーバーレスで出力するときのための設定
+- `env` ブロックは置かない（`MONGODB_URI` がビルド成果物に平文で埋め込まれていた。サーバーは実行時の `process.env` を読む）
 - `optimizePackageImports` - 大きなパッケージのツリーシェイキング
 - `serverExternalPackages` - 重いサーバー依存のバンドルを防止
 - `compress: true` - Gzip 圧縮を有効化
@@ -296,7 +297,8 @@ import { getNativePrice, getPriceFromDatabase } from '@/lib/price-service';
 
 // ソース情報付きの現在価格を取得
 const priceData = await getNativePrice();
-// 戻り値: { price: 0.000217, source: 'Market DB', timestamp: Date }
+// 戻り値: PriceData | null — { symbol: 'VBC', priceUSD: 0.000809, priceBTC: 0, timestamp: <ms>, source: 'database', origin: 'dex' }
+// 表示用の出どころ名は priceSourceLabel(priceData)（'DEX' / 'CoinGecko' / 'Market DB' など）
 ```
 
 ### DEX スワップ同期
@@ -747,7 +749,7 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 - ソーシャルリンク
 
 動的設定を使用するコンポーネント:
-- `AddVBCButton.tsx` - MetaMask へのネットワーク追加
+- `app/components/AddNetworkButton.tsx` - MetaMask へのネットワーク追加
 - `api-docs/page.tsx` - API ドキュメント
 - `dex/docs/page.tsx` - DEX ドキュメント
 - `contract/verify/page.tsx` - Hardhat 設定例
@@ -822,6 +824,13 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 - `GET /api?module=contract&action=getabi&address=...` - コントラクト ABI を取得
 - `GET /api?module=contract&action=getsourcecode&address=...` - 検証済みソースコードを取得
 
+**検証の設定の保存（2026-11）:**
+- Contract に保存する optimizer の有無・runs・`evmVersion` は、照合に使った standard JSON から `compileSettingsRecord()`（`lib/contract/solc-utils.ts`）で求める。要求パラメータや固定値（以前は runs 200・paris）を保存しない。`evmVersion` を指定しない入力は `'default'`（getsourcecode では `Default`）
+- standard JSON の `settings` を要求パラメータ（`evmversion` / `optimizationUsed` / `runs`）で上書きしない。パラメータは入力に無い項目を補うだけ（以前は必ず paris で上書きしていた）
+- `optimizationRuns` / `evmVersion` / `license` は 2026-11 までスキーマに無く、保存時に Mongoose が捨てていた。本番の検証済み 25 件には無いので、getsourcecode の `Runs` は空、v2 の `optimization_runs` / `evm_version` は null で返す（推測で埋めない）
+- コンストラクター引数は照合していないので保存しない（クライアントの申告値を事実として出さない）
+- VirBiCoin の EVM は Constantinople。検証画面の EVM バージョンには petersburg / constantinople / byzantium も選べる（sugarnft の OsatoNFT は constantinople でコンパイルされている）
+
 **対応コンパイラバージョン:**
 - 0.8.15 - 0.8.33（完全な commit ハッシュマッピング付き）
 - 0.6.12（レガシーサポート）
@@ -864,7 +873,7 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 - `GET /api/dex/pairs` - 取引ペア一覧
 - `GET /api/dex/tokens` - トークン一覧
 - `GET /api/dex/chart/[pair]` - 価格チャートデータ
-- `GET /api/dex/external-price` - 外部価格（WikaEx + DEX フォールバック）
+- `GET /api/dex/external-price` - ネイティブコインの価格（出どころ付き。VBC は DEX）と DEX の TVL
 
 ### DEX API - GeckoTerminal 互換（フル V2 API）
 どのエンドポイントも、アドレスパラメータを `ethers.isAddress()` で検証し、クエリパラメータをサニタイズします。
@@ -989,7 +998,7 @@ DefiLlama はこのエクスプローラーを VirBiCoin の Blockscout とし�
    - ~~複数の接続関数が並存~~ → ✅ `lib/db.ts` の `dbConnect` を `models/index.ts` の `connectDB` へ委譲し一本化
 
 4. **テスト不足**
-   - ~~自動テストが存在しない~~ → ✅ Vitest を導入し 235 テストを整備（純粋ロジック中心＋mongodb-memory-server による DB/CLI テスト）
+   - ~~自動テストが存在しない~~ → ✅ Vitest を導入（純粋ロジック中心＋mongodb-memory-server による DB/CLI テスト）
    - CI（`.github/workflows/lint.yml`）で `npm run check` の後に `npm run test` を実行
 
 5. **型の不整合**
@@ -1149,19 +1158,23 @@ VirBiCoin エコシステムは以下のリポジトリで構成されていま�
 
 | リポジトリ | 役割 | ローカルパス | URL |
 |-----------|------|-------------|-----|
-| **virbicoin.com** | 公式 Web サイト（メインサイト） | `../virbicoin.com` | [github.com/virbicoin/virbicoin.com](https://github.com/virbicoin/virbicoin.com) |
+| **virbicoin.com** | 公式 Web サイト（メインサイト。private） | `../virbicoin.com` | [github.com/virbicoin/virbicoin.com](https://github.com/virbicoin/virbicoin.com) |
 | **go-virbicoin** | メインクライアント（Gvbc, Go 実装） | `../go-virbicoin` | [github.com/virbicoin/go-virbicoin](https://github.com/virbicoin/go-virbicoin) |
 | **open-virbicoin** | Rust クライアント（Ovbc, OpenEthereum フォーク） | `../open-virbicoin` | [github.com/virbicoin/open-virbicoin](https://github.com/virbicoin/open-virbicoin) |
+| **vbc-explorer** ← 本リポジトリ | ブロックチェーンエクスプローラー（DEX・Launchpad・ブリッジ画面を含む） | `../vbc-explorer` | [github.com/virbicoin/vbc-explorer](https://github.com/virbicoin/vbc-explorer) |
 | **vbc-stats** | ネットワーク統計ダッシュボード | `../vbc-stats` | [github.com/virbicoin/vbc-stats](https://github.com/virbicoin/vbc-stats) |
-| **vbc-explorer** ← 本リポジトリ | ブロックチェーンエクスプローラー | `../vbc-explorer` | [github.com/virbicoin/vbc-explorer](https://github.com/virbicoin/vbc-explorer) |
+| **vbc-stats-api** | VBC Stats 用ノードレポーター（組み込みレポーターのない Ovbc 向け） | `../vbc-stats-api` | [github.com/virbicoin/vbc-stats-api](https://github.com/virbicoin/vbc-stats-api) |
 | **vbc-pool** | マイニングプール | `../vbc-pool` | [github.com/virbicoin/vbc-pool](https://github.com/virbicoin/vbc-pool) |
-| **vbc-rpc** | RPC ノードステータス & JSON-RPC プロキシ | `../vbc-rpc` | [github.com/virbicoin/vbc-rpc](https://github.com/virbicoin/vbc-rpc) |
+| **vbc-rpc** | RPC ノードステータスページ（公開 RPC・WebSocket の案内） | `../vbc-rpc` | [github.com/virbicoin/vbc-rpc](https://github.com/virbicoin/vbc-rpc) |
 | **vbc-hash** | Ethash アルゴリズム実装（C/Go バインディング） | `../vbc-hash` | [github.com/virbicoin/vbc-hash](https://github.com/virbicoin/vbc-hash) |
 
 ### 依存関係
 
-- **open-virbicoin**: go-virbicoin（Gvbc）と同じ VirBiCoin ネットワーク（chainId 329）に接続する代替クライアント（Ovbc, Rust 実装）
-- **vbc-explorer** → **go-virbicoin**: JSON-RPC 経由でブロックチェーンデータを取得
-- **vbc-stats** → **go-virbicoin**: Gvbc ノードが eth-netstats-client プロトコルでブロック/統計データを送信
-- **vbc-pool** → **go-virbicoin**: マイニングプールが Gvbc ノードから作業を取得
-- **vbc-rpc** → **go-virbicoin**: RPC プロキシが Gvbc ノードにリクエストを中継
+- **go-virbicoin** と **open-virbicoin**: 同じ VirBiCoin ネットワーク（chainId 329）の 2 つのクライアント実装（Gvbc は Go、Ovbc は Rust）。報酬・フォークブロックなどコンセンサスに関わる変更は必ず両方に同時に入れる
+- **vbc-explorer** → ノードの JSON-RPC（Gvbc / Ovbc）。内部取引の索引は Parity 形式の `trace_transaction` を使うため Ovbc が必要（本番の explorer は Ovbc の IPC ソケットを読む）
+- **vbc-stats** ← Gvbc は組み込みの ethstats レポーター（`--ethstats`）で直接報告し、Ovbc は **vbc-stats-api** を介して報告する
+- **vbc-pool** → ノードの JSON-RPC（Gvbc / Ovbc。本番は両方）から作業を取得し、ブロックの確定と支払いを行う。シェアの検証は `proxy/miner.go` の純 Go 実装で、vbc-hash には依存しない
+- **vbc-rpc** → 各ノードの JSON-RPC（8329）に状態を問い合わせるだけ。公開 RPC（rpc.virbicoin.com）への POST は nginx がノードへ中継し、このアプリを通らない
+- **vbc-hash**: このワークスペースのどのリポジトリも import していない（Gvbc は `consensus/ethash`、vbc-pool は `proxy/miner.go` の自前実装）
+- **virbicoin.com**: 静的サイト（他リポジトリへのリンクのみ）
+- 公開リポジトリなので、private のリポジトリはこの表に載せていない（virbicoin.com は公開 Web サイトのソースとして載せる）。公開 README からは virbicoin.com の GitHub ではなく Web サイト（https://www.virbicoin.com）にリンクする

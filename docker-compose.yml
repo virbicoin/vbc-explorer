@@ -1,46 +1,53 @@
-version: '3'
+# Explorer, sync tools and MongoDB.
+#
+#   cp config.example.json config.json   # then point web3Provider.url at your node
+#   docker compose up -d --build
+#
+# A node running on the Docker host is reachable as http://host.docker.internal:<port>.
+# MongoDB is only reachable inside this project's network (no published port).
+
+x-explorer: &explorer
+  image: vbc-explorer
+  build: .
+  restart: unless-stopped
+  environment:
+    MONGODB_URI: mongodb://db:27017/explorerDB
+  extra_hosts:
+    - host.docker.internal:host-gateway
+  depends_on:
+    - db
+
 services:
-  app:
-    build: .
+  explorer:
+    <<: *explorer
     command: npm start
-    restart: always
-    environment:
-      MONGODB_URI: 'mongodb://db/explorerDB'
     ports:
       - '3000:3000'
-    depends_on:
-      - db
   sync:
-    build: .
+    <<: *explorer
     command: npm run sync
-    restart: always
-    environment:
-      MONGODB_URI: 'mongodb://db/explorerDB'
-    depends_on:
-      - db
   stats:
-    build: .
+    <<: *explorer
     command: npm run stats
-    restart: always
-    environment:
-      MONGODB_URI: 'mongodb://db/explorerDB'
-    depends_on:
-      - db
-  price:
-    build: .
-    command: npm run price
-    restart: always
-    environment:
-      MONGODB_URI: 'mongodb://db/explorerDB'
-    depends_on:
-      - db
   richlist:
-    build: .
-    command: npm run rich
-    restart: 'no'
-    environment:
-      MONGODB_URI: 'mongodb://db/explorerDB'
-    depends_on:
-      - db
+    <<: *explorer
+    command: npm run richlist
+  tokens:
+    <<: *explorer
+    command: npm run tokens
+  price:
+    <<: *explorer
+    command: npm run price
+  # Indexes internal transactions only when config.json `traces.url` (or TRACE_RPC_URL) names a
+  # node that answers trace_transaction; otherwise it waits and checks again every hour
+  internal-txs:
+    <<: *explorer
+    command: npm run internal-txs
   db:
-    image: mongo
+    image: mongo:8.0
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:

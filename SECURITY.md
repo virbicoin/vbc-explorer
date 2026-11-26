@@ -121,7 +121,7 @@ sanitizeImageUrl(url: string): string | null
 
 ### Security Headers
 
-The following security headers are automatically applied via `middleware.ts`:
+The following security headers are automatically applied via `proxy.ts` (Next.js 16 replaced `middleware.ts` with it):
 
 | Header | Value | Purpose |
 |--------|-------|---------|
@@ -193,7 +193,7 @@ npm audit --json
 
 - ✅ Input validation and sanitization
 - ✅ Rate limiting on sensitive endpoints
-- ✅ Security headers via middleware
+- ✅ Security headers via `proxy.ts`
 - ✅ Safe RegExp patterns (ReDoS protection)
 - ✅ Pagination limits
 - ✅ Environment variable support for secrets

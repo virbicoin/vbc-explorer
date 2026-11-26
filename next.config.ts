@@ -65,7 +65,8 @@ const nextConfig: NextConfig = {
 
   // Solidity is compiled in worker_threads (lib/contract/solc-worker.cjs). The worker is started
   // by path and requires solc/wrapper itself, so the bundler never sees it; list both explicitly
-  // so the standalone output traces and includes them
+  // so output file tracing includes them (matters only for a standalone / serverless build;
+  // production runs `next start` from the full checkout)
   outputFileTracingIncludes: {
     '/api/**/*': ['./lib/contract/solc-worker.cjs', './node_modules/solc/**/*'],
   },
@@ -88,11 +89,9 @@ const nextConfig: NextConfig = {
   // No browser source maps in production
   productionBrowserSourceMaps: false,
 
-  env: {
-    MONGODB_URI: process.env.MONGODB_URI,
-    PORT: process.env.PORT,
-    WEB3_PROVIDER_URL: process.env.WEB3_PROVIDER_URL,
-  },
+  // No `env` block: it inlined MONGODB_URI (with the database password) into the server
+  // bundles and .next/required-server-files.json at build time. Server code reads
+  // process.env at run time, where `next start` loads .env / .env.local itself.
   webpack: (config, { isServer, webpack }) => {
     // Avoid native-module errors from lightningcss in the browser bundle
     if (!isServer) {

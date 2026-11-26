@@ -1098,12 +1098,15 @@ The explorer will be available at `http://localhost:3000`
 ### Alternative: Docker Setup
 
 ```bash
-# Start with Docker Compose
-docker-compose up -d
+cp config.example.json config.json   # point web3Provider.url at your node
+docker compose up -d --build
 
 # The explorer will be available at http://localhost:3000
-# MongoDB will be accessible on localhost:27017
 ```
+
+One image runs the web app and every sync tool (`docker-compose.yml`). A node on the Docker
+host is reachable from the containers as `http://host.docker.internal:<port>`. MongoDB runs in
+the `db` service and is not published on the host; its data is kept in the `mongo-data` volume.
 
 ## Data Management Tools
 
@@ -1166,6 +1169,7 @@ npm run stats        # Network statistics
 npm run richlist     # Rich list calculation
 npm run tokens       # Token and NFT tracking
 npm run price        # Price monitoring
+npm run internal-txs # Internal transactions from call traces (--once / --from <block> / --status)
 
 # Database indexes (defined in models/index.ts, created automatically by the tools above)
 npm run optimize-indexes              # Create missing indexes
@@ -1180,20 +1184,19 @@ npm run flag-spam-tokens -- --dry-run # Classify token/contract names (URL-like 
 npm run flag-spam-tokens -- --audit-launchpad # Launchpad tokens no factory knows → factoryVerified: false
 npm run flag-spam-tokens -- --audit-code      # Hide token/contract records whose address has no code
 
-# PM2 management
-npm run pm2:start
-npm run pm2:stop
-npm run pm2:restart
-npm run pm2:status
-npm run pm2:logs
-npm run pm2:monitor
+# PM2 management (the apps are defined in ecosystem.config.json)
+pm2 start ecosystem.config.json
+pm2 restart explorer
+pm2 status
+pm2 logs <app>
+pm2 monit
 
 # Development
 npm run dev
 npm run build
 npm run lint
 npm run lint:fix
-npm run type-check
+npm run typecheck
 ```
 
 ### Direct Execution
@@ -1468,14 +1471,14 @@ pm2 monit
 ### Docker Deployment
 
 ```bash
-# Build and run with Docker
-docker-compose up -d
+# Build and start the web app, the sync tools and MongoDB (create config.json first)
+docker compose up -d --build
 
 # View logs
-docker-compose logs -f
+docker compose logs -f explorer sync
 
-# Stop services
-docker-compose down
+# Stop services (the mongo-data volume is kept)
+docker compose down
 ```
 
 ## API Endpoints
@@ -2002,20 +2005,15 @@ Smart contract verification system:
 - Verification status tracking
 
 ### Data Export
-Export functionality for backup and analysis:
+The transactions and token transfers of an address can be downloaded as Etherscan-compatible
+CSV (UTF-8 with BOM, oldest first, up to 5,000 rows), from the address page or directly:
+
 ```bash
-# Export blocks
-npm run export:blocks -- --start=1000 --end=2000
-
-# Export transactions
-npm run export:transactions -- --date=2024-01-01
-
-# Export statistics
-npm run export:stats -- --format=csv
-
-# Export tokens
-npm run export:tokens -- --type=ERC-721
+curl -o txs.csv "http://localhost:3000/api/address/0x.../export?type=txs&startblock=0&endblock=99999999"
+curl -o tokentxs.csv "http://localhost:3000/api/address/0x.../export?type=tokentxs"
 ```
+
+Database backups are taken with `mongodump` (see [Backup and Restore](#backup-and-restore)).
 
 
 
