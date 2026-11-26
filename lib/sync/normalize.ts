@@ -31,6 +31,8 @@ export interface RawBlock {
   gasLimit?: unknown;
   gasUsed?: unknown;
   timestamp?: unknown;
+  /** London (EIP-1559) and later only. */
+  baseFeePerGas?: unknown;
   transactions?: ReadonlyArray<RawTransaction | string>;
   uncles?: ReadonlyArray<unknown>;
 }
@@ -102,6 +104,8 @@ export interface BlockDoc {
    * (lib/sync/uncle-rewards.ts) or by `npm run backfill-uncle-rewards`.
    */
   uncleReward?: string;
+  /** Base fee in wei as a decimal string; only on blocks of chains with London (EIP-1559). */
+  baseFeePerGas?: string;
 }
 
 export interface TransactionDoc {
@@ -178,6 +182,9 @@ export function normalizeBlock(raw: RawBlock): BlockDoc {
     timestamp: toNumber(raw.timestamp),
     transactions: blockTransactionHashes(raw),
     uncles: (raw.uncles ?? []).map(toText),
+    ...(raw.baseFeePerGas !== undefined && raw.baseFeePerGas !== null
+      ? { baseFeePerGas: BigInt(toText(raw.baseFeePerGas)).toString() }
+      : {}),
   };
 }
 

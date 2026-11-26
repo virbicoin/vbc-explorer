@@ -14,8 +14,11 @@ import {
   InternalTransaction,
   ScanProgress,
   Token,
+  Transaction,
 } from '@/models/index';
-import { getSecurityHeaders, validatePagination } from '@/lib/security';
+import { getSecurityHeaders, sanitizeHash, validatePagination } from '@/lib/security';
+import { getRewardSchedule } from '@/lib/config';
+import { minerRewardWei, transactionFeesWei } from '@/lib/reward-schedule';
 import { rejectDeepPagination } from '@/lib/security/pagination';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { ercTokenType } from '@/lib/api/token-standard';
@@ -283,10 +286,7 @@ export async function fillTimestamps(txs: Doc[]): Promise<void> {
 export async function internalErrorFlags(txs: Doc[]): Promise<Map<string, boolean | null>> {
   const flags = new Map<string, boolean | null>();
   if (txs.length === 0) return flags;
-  const marker = (await ScanProgress.findOne({ scanType: 'internal-transactions' })
-    .select('lastScannedBlock')
-    .lean()) as { lastScannedBlock?: number } | null;
-  const covered = typeof marker?.lastScannedBlock === 'number' ? marker.lastScannedBlock : -1;
+  const covered = await internalIndexHead();
   const hashOf = (tx: Doc) => String(tx.hash).toLowerCase();
   const indexed = txs.filter((tx) => Number(tx.blockNumber) <= covered).map(hashOf);
   const failed = new Set(
@@ -301,6 +301,28 @@ export async function internalErrorFlags(txs: Doc[]): Promise<Map<string, boolea
     flags.set(hashOf(tx), Number(tx.blockNumber) <= covered ? failed.has(hashOf(tx)) : null);
   }
   return flags;
+}
+
+/** Highest block the internal transaction indexer has covered; -1 before its first range. */
+export async function internalIndexHead(): Promise<number> {
+  const marker = (await ScanProgress.findOne({ scanType: 'internal-transactions' })
+    .select('lastScannedBlock')
+    .lean()) as { lastScannedBlock?: number } | null;
+  return typeof marker?.lastScannedBlock === 'number' ? marker.lastScannedBlock : -1;
+}
+
+/**
+ * Blockscout transaction objects for a page of `Transaction` documents: the address
+ * objects, internal error flags and missing timestamps are loaded for the whole page.
+ */
+export async function transactionItems(txs: Doc[], head?: number) {
+  const [facts, internalErrors, tip] = await Promise.all([
+    loadAddressFacts(txs.flatMap((tx) => [tx.from, tx.to, tx.creates])),
+    internalErrorFlags(txs),
+    head ?? headNumber(),
+    fillTimestamps(txs),
+  ]);
+  return txs.map((tx) => transactionItem(tx, tip, facts, internalErrors));
 }
 
 /** Blockscout transaction object from a `Transaction` document. */
@@ -496,4 +518,149 @@ export function blockscoutLicenseType(spdx: unknown): string {
 export function blockscoutCompilerVersion(version: unknown): string | null {
   if (typeof version !== 'string' || !version) return null;
   return version.startsWith('v') ? version : `v${version}`;
+}
+
+// ============================================
+// Blocks
+// ============================================
+
+/** Query for a block given by height or hash in a path; null when it is neither. */
+export function blockCondition(numberOrHash: string): Doc | null {
+  if (/^\d{1,15}$/.test(numberOrHash)) return { number: Number(numberOrHash) };
+  const hash = sanitizeHash(numberOrHash);
+  return hash ? { hash } : null;
+}
+
+export interface BlockTotals {
+  transactions: number;
+  /** Sum of gasUsed × gasPrice over the block's transactions, in wei. */
+  fees: bigint;
+}
+
+/** Transaction count and fees of each of the given heights, from the stored transactions. */
+export async function loadBlockTotals(heights: number[]): Promise<Map<number, BlockTotals>> {
+  const totals = new Map(heights.map((height) => [height, { transactions: 0, fees: 0n }]));
+  if (heights.length === 0) return totals;
+  const txs = (await Transaction.find({ blockNumber: { $in: heights } })
+    .select('blockNumber gasUsed gasPrice')
+    .lean()) as Array<{ blockNumber: number; gasUsed?: number; gasPrice?: string }>;
+  for (const tx of txs) {
+    const total = totals.get(tx.blockNumber);
+    if (!total) continue;
+    total.transactions += 1;
+    try {
+      total.fees += transactionFeesWei([tx]);
+    } catch {
+      // a gas price that is not an integer string adds nothing
+    }
+  }
+  return totals;
+}
+
+/** Internal transactions stored for a block; null while the indexer has not reached it. */
+export async function blockInternalTransactionCount(height: number): Promise<number | null> {
+  if ((await internalIndexHead()) < height) return null;
+  return InternalTransaction.countDocuments({ blockNumber: height });
+}
+
+/** A percentage as Blockscout writes it: a number, without float noise. */
+const percentage = (value: number) => Number(value.toFixed(10));
+
+/** The 8-byte PoW nonce as Blockscout writes it, 16 hex digits (the sync stores a decimal string). */
+function nonceHex(nonce: unknown): string | null {
+  if (typeof nonce !== 'string' || !/^(0x[0-9a-f]+|\d+)$/i.test(nonce)) return null;
+  return `0x${BigInt(nonce).toString(16).padStart(16, '0')}`;
+}
+
+/**
+ * Blockscout block object from a `Block` document.
+ *
+ * `rewards`: the miner's reward is what consensus credits it (block reward from the
+ * configured schedule, the fees not burnt, 1/32 per included uncle), the uncle reward is
+ * the stored uncle issuance without that nephew part (absent until it is backfilled).
+ * Blockscout names the types on the block page ("Miner Reward", "Uncle Reward") and lists
+ * the raw ones ("validator", "uncle"); `single` selects the block page form, which also
+ * carries `burnt_fees_percentage` and `internal_transactions_count`.
+ */
+export function blockItem(
+  block: Doc,
+  totals: BlockTotals | undefined,
+  options: {
+    single?: boolean;
+    facts?: Map<string, AddressFacts>;
+    internalTransactions?: number | null;
+  } = {}
+) {
+  const single = options.single === true;
+  const height = Number(block.number);
+  const gasUsed = Number(block.gasUsed ?? 0);
+  const gasLimit = Number(block.gasLimit ?? 0);
+  const fees = totals?.fees ?? 0n;
+  const uncles = Array.isArray(block.uncles) ? (block.uncles as string[]) : [];
+  const baseFee = typeof block.baseFeePerGas === 'string' ? BigInt(block.baseFeePerGas) : null;
+  const burnt = baseFee === null ? 0n : baseFee * BigInt(gasUsed);
+  const tips = fees > burnt ? fees - burnt : 0n;
+
+  const rewards: Array<{ reward: string; type: string }> = [];
+  if (height > 0) {
+    const miner = minerRewardWei(getRewardSchedule(), height, uncles.length, tips);
+    rewards.push({ reward: miner.total.toString(), type: single ? 'Miner Reward' : 'validator' });
+    if (uncles.length > 0 && typeof block.uncleReward === 'string') {
+      const uncleReward = BigInt(block.uncleReward) - miner.uncleInclusionReward;
+      if (uncleReward > 0n) {
+        rewards.push({ reward: uncleReward.toString(), type: single ? 'Uncle Reward' : 'uncle' });
+      }
+    }
+  }
+
+  return {
+    height,
+    hash: block.hash,
+    parent_hash: block.parentHash,
+    timestamp: isoTime(block.timestamp),
+    miner: addressParam(block.miner, options.facts),
+    size: block.size ?? null,
+    nonce: nonceHex(block.nonce),
+    difficulty: String(block.difficulty ?? '0'),
+    total_difficulty: block.totalDifficulty ? String(block.totalDifficulty) : null,
+    gas_limit: String(gasLimit),
+    gas_used: String(gasUsed),
+    gas_used_percentage: gasLimit > 0 ? percentage((gasUsed / gasLimit) * 100) : 0,
+    // against half the limit, as Blockscout computes it whether or not the chain has London
+    gas_target_percentage: gasLimit > 0 ? percentage((gasUsed / (gasLimit / 2) - 1) * 100) : null,
+    base_fee_per_gas: baseFee === null ? null : baseFee.toString(),
+    burnt_fees: burnt.toString(),
+    burnt_fees_percentage: single
+      ? fees > 0n
+        ? percentage(Number((burnt * 10n ** 12n) / fees) / 1e10)
+        : 0
+      : null,
+    priority_fee: (baseFee === null ? 0n : tips).toString(),
+    transaction_fees: fees.toString(),
+    transactions_count: totals?.transactions ?? 0,
+    internal_transactions_count: single ? (options.internalTransactions ?? null) : null,
+    uncles_hashes: uncles,
+    rewards,
+    type: 'block',
+    // withdrawals are not indexed
+    withdrawals_count: null,
+    is_pending_update: false,
+    extra_data: block.extraData || '0x',
+    state_root: block.stateRoot ?? null,
+    transactions_root: block.transactionsRoot ?? null,
+    receipts_root: block.receiptRoot ?? null,
+    sha3_uncles: block.sha3Uncles ?? null,
+    // names used before Blockscout 7, kept for existing clients
+    tx_count: totals?.transactions ?? 0,
+    tx_fees: fees.toString(),
+  };
+}
+
+/** Blockscout block objects (list form) for a page of `Block` documents. */
+export async function blockListItems(blocks: Doc[]) {
+  const [totals, facts] = await Promise.all([
+    loadBlockTotals(blocks.map((block) => Number(block.number))),
+    loadAddressFacts(blocks.map((block) => block.miner)),
+  ]);
+  return blocks.map((block) => blockItem(block, totals.get(Number(block.number)), { facts }));
 }

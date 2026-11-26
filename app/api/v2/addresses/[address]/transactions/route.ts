@@ -2,14 +2,11 @@ import { NextRequest } from 'next/server';
 import { Transaction } from '@/models/index';
 import { sanitizeAddress } from '@/lib/security';
 import {
-  fillTimestamps,
-  internalErrorFlags,
   headNumber,
   invalidParameter,
   json,
-  loadAddressFacts,
   paginate,
-  transactionItem,
+  transactionItems,
   v2Page,
   v2Route,
 } from '@/lib/api/v2/common';
@@ -49,14 +46,8 @@ export async function GET(
       block_number: last.blockNumber,
       index: last.transactionIndex,
     }));
-    const [facts, internalErrors] = await Promise.all([
-      loadAddressFacts(items.flatMap((tx) => [tx.from, tx.to, tx.creates])),
-      internalErrorFlags(items),
-      fillTimestamps(items),
-    ]);
-
     return json({
-      items: items.map((tx) => transactionItem(tx, head, facts, internalErrors)),
+      items: await transactionItems(items, head),
       next_page_params,
     });
   });

@@ -1,16 +1,6 @@
 import { NextRequest } from 'next/server';
 import { Transaction } from '@/models/index';
-import {
-  fillTimestamps,
-  internalErrorFlags,
-  headNumber,
-  json,
-  loadAddressFacts,
-  paginate,
-  transactionItem,
-  v2Page,
-  v2Route,
-} from '@/lib/api/v2/common';
+import { headNumber, json, paginate, transactionItems, v2Page, v2Route } from '@/lib/api/v2/common';
 
 type Doc = Record<string, unknown>;
 
@@ -40,14 +30,8 @@ export async function GET(request: NextRequest) {
       block_number: last.blockNumber,
       index: last.transactionIndex,
     }));
-    const [facts, internalErrors] = await Promise.all([
-      loadAddressFacts(items.flatMap((tx) => [tx.from, tx.to, tx.creates])),
-      internalErrorFlags(items),
-      fillTimestamps(items),
-    ]);
-
     return json({
-      items: items.map((tx) => transactionItem(tx, head, facts, internalErrors)),
+      items: await transactionItems(items, head),
       next_page_params,
     });
   });

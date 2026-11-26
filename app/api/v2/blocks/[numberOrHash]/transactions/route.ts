@@ -1,16 +1,13 @@
 import { NextRequest } from 'next/server';
 import { Block, Transaction } from '@/models/index';
-import { sanitizeHash } from '@/lib/security';
 import {
-  fillTimestamps,
-  internalErrorFlags,
+  blockCondition,
   headNumber,
   invalidParameter,
   json,
-  loadAddressFacts,
   notFound,
   paginate,
-  transactionItem,
+  transactionItems,
   v2Page,
   v2Route,
 } from '@/lib/api/v2/common';
@@ -27,13 +24,8 @@ export async function GET(
     const paging = v2Page(new URL(request.url).searchParams);
     if (paging.response) return paging.response;
 
-    let condition: Doc;
-    if (/^\d{1,15}$/.test(numberOrHash)) condition = { number: Number(numberOrHash) };
-    else {
-      const hash = sanitizeHash(numberOrHash);
-      if (!hash) return invalidParameter('Invalid block number or hash');
-      condition = { hash };
-    }
+    const condition = blockCondition(numberOrHash);
+    if (!condition) return invalidParameter('Invalid block number or hash');
     const block = (await Block.findOne(condition).select('number').lean()) as {
       number: number;
     } | null;
@@ -51,14 +43,8 @@ export async function GET(
       block_number: block.number,
       index: last.transactionIndex,
     }));
-    const [facts, internalErrors] = await Promise.all([
-      loadAddressFacts(items.flatMap((tx) => [tx.from, tx.to, tx.creates])),
-      internalErrorFlags(items),
-      fillTimestamps(items),
-    ]);
-
     return json({
-      items: items.map((tx) => transactionItem(tx, head, facts, internalErrors)),
+      items: await transactionItems(items, head),
       next_page_params,
     });
   });

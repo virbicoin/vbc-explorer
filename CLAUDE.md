@@ -961,20 +961,23 @@ ERC-20 の移動は**イベント 1 件につき 1 文書**（キーは `transac
 - 本番反映時: 反映前に `tokentransfers` を mongodump。反映後の最初の VRC-20 更新（起動時と 5 分ごと。手動なら `npm run tokens -- --update-all-vrc20`）でトークンごとに置き換わる。確認は「`tokenId` がなく `logIndex` もない文書が 0 件」「置き換え前後で `tokentransfers` の件数が減っていない（増えるのが正常）」
 
 ### Blockscout v2 互換 API（`app/api/v2/`）
-共通の部品は `lib/api/v2/common.ts`（`v2Route()` = レート制限・DB 接続・エラー応答、`v2Page()` / `paginate()` = ページ送り、`addressParam()` / `tokenInfo()` / `transactionItem()` / `tokenTransferItem()` = 一覧に埋め込むオブジェクト）。新しい経路はこれらを使って書く。
+共通の部品は `lib/api/v2/common.ts`（`v2Route()` = レート制限・DB 接続・エラー応答、`v2Page()` / `paginate()` = ページ送り、`addressParam()` / `tokenInfo()` / `transactionItem()` / `tokenTransferItem()` / `blockItem()` = 一覧に埋め込むオブジェクト、`transactionItems()` / `blockListItems()` = 1 ページ分の組み立て、`blockCondition()` = パスの高さ / ハッシュの解釈）。新しい経路はこれらを使って書く（2026-11 まではブロックの項目が 2 つの経路に直書きで、手数料は常に `'0'`、`rewards` は空、マイナーは常に `is_contract: false`、`?type=uncle` も通常のブロックを返していた）。
 
-- 統計・ブロック: `stats`、`blocks`、`blocks/[numberOrHash]`、`blocks/[numberOrHash]/transactions`
+- ホーム: `main-page/blocks`（最新 4 件の配列）、`main-page/transactions`（最新 6 件の配列）、`main-page/indexing-status`
+- 統計・ブロック: `stats`、`stats/charts/transactions`、`stats/charts/market`、`blocks`、`blocks/[numberOrHash]`、`blocks/[numberOrHash]/transactions`
 - 取引: `transactions`、`transactions/[hash]`（一覧と同じ項目＋トークン移動 50 件）、`transactions/[hash]/token-transfers`、`transactions/[hash]/logs`（ノードのレシートから）、`transactions/[hash]/internal-transactions`
-- アドレス: `addresses/[address]`、`…/transactions`、`…/tokens`（ページあり）、`…/token-balances`（配列、ページなし）、`…/token-transfers`、`…/counters`、`…/internal-transactions`
+- アドレス: `addresses/[address]`、`…/transactions`、`…/tokens`（ページあり）、`…/token-balances`（配列、ページなし）、`…/token-transfers`、`…/counters`、`…/tabs-counters`（各 51 で打ち切り）、`…/blocks-validated`、`…/internal-transactions`
 - 内部取引: `internal-transactions`（チェーン全体、新しい順）、`blocks/[numberOrHash]/internal-transactions`
 - トークン: `tokens`、`tokens/[address]`、`…/holders`、`…/transfers`、`…/counters`
 - 検索: `search`、`search/check-redirect`
-- コントラクト: `smart-contracts`（検証済みの一覧）、`smart-contracts/[address]` と検証（`verification/via/flattened-code`、`verification/via/standard-input`）
+- コントラクト: `smart-contracts`（検証済みの一覧）、`smart-contracts/counters`、`smart-contracts/[address]` と検証（`verification/via/flattened-code`、`verification/via/standard-input`）
 
 設計ルール（必ず守る）:
 - **項目名は Blockscout の現行のもの**（`block_number`、`transaction_types`、`transaction_hash`、`address_hash`、`holders_count` など）。Blockscout 7 より前の名前（`block`、`tx_types`、`tx_hash`、`address`、`holders`）は既存の利用者のために併記している。本家の応答（例: `https://eth.blockscout.com/api/v2/…`）と突き合わせて決める
 - **`next_page_params` は、そのまま次の要求のクエリにすると次ページが返る値にする。** Blockscout の利用側はこれを機械的に送り返す。この実装が読むのは `page` と `limit` なので、必ずその 2 つを入れる（`paginate()` が入れる）。`block_number` や `index` は位置の目安として併記するだけ。1 ページは 50 件（`limit` で小さくできる）。次ページの有無は 1 件多く取って判断し、件数を数えない
 - **持っていないデータは null か空にする。作らない。** 索引器がまだ届いていない取引の `has_error_in_internal_transactions` は null（`internalErrorFlags()`）、VRC-721 の移動の `log_index` は null、アドレスの `is_contract` / `is_verified` / `name` は `loadAddressFacts()`（Contract・tokens・Account.type）から引く。hidden の名前は返さない
+- **ブロックの項目は `blockItem()` だけが作る。** `transaction_fees` は保存済み取引の gasUsed × gasPrice の合計、`burnt_fees` は `baseFeePerGas`（London 以降のチェーンでノードが返したときだけ同期が保存する）× gasUsed。`rewards` の採掘者分は報酬スケジュール＋燃やされなかった手数料＋アンクル 1 つにつき報酬の 1/32（Etherscan の `getblockreward` と同じ値）、アンクル分は保存済みの `uncleReward` からネフュー分を引いたもの（埋め戻し前は出さない）。種別名はブロックページが `Miner Reward` / `Uncle Reward`、一覧が `validator` / `uncle`（本家と同じ）。`gas_used_percentage` は数値、`nonce` は 16 桁の 16 進。`withdrawals_count` は null（索引していない）。本家の実例は ETC の Blockscout（`https://etc.blockscout.com/api/v2/blocks/20000000`）
+- `main-page/indexing-status` のブロックは保存数 ÷ ノードの高さ、内部取引は索引器の位置 ÷（保存済みの先端 − `sync.confirmations` − 1）。トレース元が未設定なら内部取引は `"1.00"`（本家で fetcher を止めたときと同じ）。`tabs-counters` は `countDocuments(...).limit(51)` で数え、索引していないもの（logs・withdrawals、トレース元が無いときの内部取引）は null
 - ERC-1155 の保有は token id ごとに 1 行（`erc1155HoldingsOf()`、`lib/api/erc1155.ts`。`tokenholders` は全 id の合計しか持たない）。移動の `total` は `{ decimals: null, token_id, token_instance, value }`
 - `smart-contracts` の一覧と詳細は同じ形で返す: `license_type` は保存した SPDX を Blockscout の値にしたもの（`blockscoutLicenseType()`。`mit`・`gnu_gpl_v3` など、無ければ `none`。以前は一覧が常に `none`、詳細が `MIT` だった）、`compiler_version` は `v` 付き（`blockscoutCompilerVersion()`）
 - トークン移動の並びは `timestamp` のみ（アドレス別・トークン別の索引で並ぶ）。全トークン横断の移動一覧（`/api/v2/token-transfers`）は、対応する索引が無いので作っていない

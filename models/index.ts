@@ -50,6 +50,8 @@ export interface IBlock extends Document {
   uncles: string[];
   /** Wei created for the block's uncles (uncle + nephew rewards); only on blocks with uncles. */
   uncleReward?: string;
+  /** Base fee in wei (decimal string); only on blocks of chains with London (EIP-1559). */
+  baseFeePerGas?: string;
 }
 
 export interface ITransaction extends Document {
@@ -308,6 +310,7 @@ const BlockSchema = new Schema(
     blockTime: Number,
     uncles: [String],
     uncleReward: String,
+    baseFeePerGas: String,
   },
   { collection: 'Block' }
 );

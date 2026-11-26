@@ -1727,6 +1727,30 @@ curl "https://explorer.example.com/api?module=proxy&action=eth_gasPrice"
 curl "https://explorer.example.com/api?module=proxy&action=eth_estimateGas&to=0x...&value=0x0"
 ```
 
+### Blockscout API v2
+
+`/api/v2/` answers with Blockscout's current field names (older names are kept next to them for existing clients). Lists return 50 rows per page; `next_page_params` can be sent back as the query of the next request as it is.
+
+| Area | Routes |
+|------|--------|
+| Home page | `main-page/blocks` (4 newest, an array), `main-page/transactions` (6 newest, an array), `main-page/indexing-status` |
+| Stats | `stats`, `stats/charts/transactions` (per UTC day, the 31 days before today), `stats/charts/market` (last stored USD quote of each day, 30 days, and `available_supply`) |
+| Blocks | `blocks` (`type=uncle` and `type=reorg` are empty: only consensus blocks are stored), `blocks/{numberOrHash}`, `…/transactions`, `…/internal-transactions` |
+| Transactions | `transactions`, `transactions/{hash}`, `…/token-transfers`, `…/logs`, `…/internal-transactions`, `internal-transactions` |
+| Addresses | `addresses/{hash}`, `…/transactions`, `…/token-transfers`, `…/internal-transactions`, `…/tokens`, `…/token-balances`, `…/counters`, `…/tabs-counters` (each capped at 51, as on Blockscout), `…/blocks-validated` |
+| Tokens | `tokens`, `tokens/{hash}`, `…/holders`, `…/transfers`, `…/counters` |
+| Contracts | `smart-contracts`, `smart-contracts/counters`, `smart-contracts/{hash}`, verification via `flattened-code` and `standard-input` |
+| Search | `search`, `search/check-redirect` |
+
+Block objects carry what the explorer can derive, as Blockscout does on PoW chains:
+
+- `transaction_fees` is the sum of gasUsed × gasPrice of the block's transactions. `burnt_fees` is base fee × gas used on chains with London (the sync stores `baseFeePerGas` when the node returns it), else `"0"`.
+- `rewards`: the miner's reward is what consensus credits it: the block reward from the `rewards` schedule, plus the fees not burnt, plus 1/32 of the reward per included uncle (Etherscan's `getblockreward` uses the same figure). The uncle reward is the stored uncle issuance without that nephew part; it is absent until `backfill-uncle-rewards` has filled the block. The block page names the types `Miner Reward` / `Uncle Reward`; lists use the raw types `validator` / `uncle`, as Blockscout does.
+- `gas_used_percentage` and `gas_target_percentage` are numbers. `nonce` is 16 hex digits.
+- `internal_transactions_count` is only on the block page, and null until the internal transaction indexer has reached the block. `withdrawals_count` is null (withdrawals are not indexed).
+
+`main-page/indexing-status` compares the stored blocks with the node's height. Internal transactions are compared with the stored height, which the indexer follows `sync.confirmations` + 1 blocks behind. The internal transaction ratio is `"1.00"` when no trace source is configured, as Blockscout reports with that fetcher disabled.
+
 ### Supply APIs (CoinGecko / CoinMarketCap Compatible)
 
 These endpoints return plain text numbers only, as required by CoinGecko and CoinMarketCap.

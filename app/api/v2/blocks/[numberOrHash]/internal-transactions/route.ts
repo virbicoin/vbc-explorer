@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { Block, InternalTransaction } from '@/models/index';
-import { sanitizeHash } from '@/lib/security';
 import {
+  blockCondition,
   internalTransactionAddresses,
   internalTransactionHint,
   internalTransactionItem,
@@ -26,13 +26,8 @@ export async function GET(
     const paging = v2Page(new URL(request.url).searchParams);
     if (paging.response) return paging.response;
 
-    let condition: Doc;
-    if (/^\d{1,15}$/.test(numberOrHash)) condition = { number: Number(numberOrHash) };
-    else {
-      const hash = sanitizeHash(numberOrHash);
-      if (!hash) return invalidParameter('Invalid block number or hash');
-      condition = { hash };
-    }
+    const condition = blockCondition(numberOrHash);
+    if (!condition) return invalidParameter('Invalid block number or hash');
     const block = (await Block.findOne(condition).select('number').lean()) as {
       number: number;
     } | null;
