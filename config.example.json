@@ -24,8 +24,6 @@
       },
       "dex": {
         "enabled": true,
-        "pairAddress": "0x0000000000000000000000000000000000000000",
-        "stablecoinAddress": "0x0000000000000000000000000000000000000000",
         "_comment": "On-chain price from the wrapped native / stablecoin pool, used when no API above gives a price (disable the APIs to make it the only source). Needs dex.wrappedNative. pairAddress and stablecoinAddress are optional: left out or zero, the pool is looked up among dex.lpTokens / dex.farmPools and the stablecoin is dex.tokens.usdt. Decimals are read from the token contracts."
       }
     },
@@ -221,8 +219,6 @@
     "url": "https://explorer.example.com/dex",
     "analyticsUrl": "https://explorer.example.com/dex/analytics",
     "docsUrl": "https://explorer.example.com/dex/docs",
-    "stablePoolAddress": "0x0000000000000000000000000000000000000000",
-    "stablePoolName": "USDT-WETH LP",
     "swapFee": "0.3%",
     "protocolFee": "0.05%",
     "lpReward": "0.25%",

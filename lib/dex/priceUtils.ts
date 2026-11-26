@@ -6,6 +6,7 @@
  */
 
 import { formatUnits } from 'viem';
+import { configuredAddress } from './native-price';
 import { loadConfig } from '@/lib/config';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import { getCachedPoolInfo, getCachedTokenInfo, getLPAddresses } from './cache-service';
@@ -20,7 +21,8 @@ type DexConfigLike = {
   lpTokens?: Record<string, { address?: string; token0?: string; token1?: string } | undefined>;
 };
 
-const lower = (value: unknown): string => (typeof value === 'string' ? value.toLowerCase() : '');
+/** A written address in lower case; '' when it is left out, malformed or the zero placeholder. */
+const address = (value: unknown): string => configuredAddress(value) ?? '';
 
 /**
  * Contract addresses of the DEX, from config.json (`dex`, `currency.priceApi.dex`, `dexInfo`).
@@ -50,16 +52,17 @@ export function dexAddresses(source: unknown = loadConfig()) {
         want.has(lp.token1.toUpperCase()) &&
         lp.token0.toUpperCase() !== lp.token1.toUpperCase()
     );
-    return lower(pair?.address);
+    return address(pair?.address);
   };
-  const wrappedNative = lower(dex.wrappedNative?.address);
-  const stablecoin = lower(priceDex.stablecoinAddress || stable?.address);
-  const secondary = lower(dex.rewardToken?.address);
+  const wrappedNative = address(dex.wrappedNative?.address);
+  const stablecoin = address(priceDex.stablecoinAddress) || address(stable?.address);
+  const secondary = address(dex.rewardToken?.address);
   const nativeStablePair =
-    lower(priceDex.pairAddress || config.dexInfo?.stablePoolAddress) ||
+    address(priceDex.pairAddress) ||
+    address(config.dexInfo?.stablePoolAddress) ||
     pairOf(dex.wrappedNative?.symbol, stable?.symbol);
   const nativeSecondaryPair = pairOf(dex.wrappedNative?.symbol, dex.rewardToken?.symbol);
-  const masterChef = lower(
+  const masterChef = address(
     typeof dex.masterChef === 'string' ? dex.masterChef : dex.masterChef?.address
   );
   return {
@@ -69,8 +72,8 @@ export function dexAddresses(source: unknown = loadConfig()) {
     NATIVE_STABLECOIN_PAIR: nativeStablePair,
     NATIVE_SECONDARY_PAIR: nativeSecondaryPair,
     MASTERCHEF: masterChef,
-    FACTORY: lower(dex.factory),
-    ROUTER: lower(dex.router),
+    FACTORY: address(dex.factory),
+    ROUTER: address(dex.router),
     // Native token (zero address)
     NATIVE: '0x0000000000000000000000000000000000000000',
   };

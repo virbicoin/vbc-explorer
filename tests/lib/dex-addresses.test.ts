@@ -48,6 +48,17 @@ describe('dexAddresses', () => {
     });
   });
 
+  it('takes a zero placeholder for an address that is not set', () => {
+    // config.example.json used to ship these zero addresses; the pool then is found among lpTokens
+    const ZERO = A(0);
+    const addresses = dexAddresses({
+      ...config,
+      currency: { priceApi: { dex: { pairAddress: ZERO, stablecoinAddress: ZERO } } },
+      dexInfo: { stablePoolAddress: ZERO },
+    });
+    expect(addresses).toMatchObject({ NATIVE_STABLECOIN_PAIR: A(8), STABLECOIN: A(6) });
+  });
+
   it('leaves what is not configured empty instead of using another chain contract', () => {
     expect(dexAddresses({})).toMatchObject({
       FACTORY: '',
