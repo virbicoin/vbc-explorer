@@ -16,7 +16,6 @@ import { randomUUID } from 'crypto';
 import {
   compileSettingsRecord,
   normalizeCompilerVersion,
-  modernizeSyntax,
   spdxLicense,
 } from '@/lib/contract/solc-utils';
 import { matchRuntimeBytecode, type CompiledRuntimeCode } from '@/lib/contract/bytecode-match';
@@ -137,7 +136,6 @@ async function processVerification(guid: string) {
       return;
     }
 
-    let compiledSourceCode = sourceCode;
     let inputJson: Record<string, unknown>;
 
     // Handle different code formats
@@ -175,14 +173,13 @@ async function processVerification(guid: string) {
         return;
       }
     } else {
-      // Single file format
-      compiledSourceCode = modernizeSyntax(sourceCode);
-
+      // Single file format: compile exactly what was submitted (rewriting it changed the metadata
+      // hash, string literals and comments, and the stored source was not the developer's)
       inputJson = {
         language: 'Solidity',
         sources: {
           [contractName.includes(':') ? contractName.split(':')[0] : `${contractName}.sol`]: {
-            content: compiledSourceCode,
+            content: sourceCode,
           },
         },
         settings: {
@@ -310,7 +307,7 @@ async function processVerification(guid: string) {
         // The settings that were compiled, not the request parameters
         ...compileSettingsRecord(inputJson),
         license,
-        sourceCode: codeFormat === 'solidity-standard-json-input' ? sourceCode : compiledSourceCode,
+        sourceCode,
         abi: JSON.stringify(compiledContract.abi),
         byteCode: onchainBytecode,
         verified: true,

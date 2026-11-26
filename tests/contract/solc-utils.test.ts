@@ -4,7 +4,6 @@ import {
   etherscanEvmVersion,
   normalizeCompilerVersion,
   SOLC_RELEASES,
-  modernizeSyntax,
   removeMetadata,
 } from '@/lib/contract/solc-utils';
 
@@ -36,37 +35,6 @@ describe('SOLC_RELEASES', () => {
     for (const [version, release] of Object.entries(SOLC_RELEASES)) {
       expect(normalizeCompilerVersion(release)).toBe(version);
     }
-  });
-});
-
-describe('modernizeSyntax', () => {
-  it('removes NatSpec block comments', () => {
-    const src = '/** @param x the value */\nfunction f() {}';
-    expect(modernizeSyntax(src)).not.toContain('@param');
-  });
-
-  it('rewrites suicide to selfdestruct', () => {
-    expect(modernizeSyntax('suicide(owner);')).toContain('selfdestruct(owner);');
-  });
-
-  it('rewrites throw to revert()', () => {
-    expect(modernizeSyntax('if (x) throw;')).toContain('revert()');
-  });
-
-  it('rewrites var declarations to uint256', () => {
-    expect(modernizeSyntax('var amount = 5;')).toContain('uint256 amount =');
-  });
-
-  it('preserves strict 0.8.x pragma unchanged (no rewriting)', () => {
-    expect(modernizeSyntax('pragma solidity 0.8.20;')).toContain('pragma solidity 0.8.20;');
-  });
-
-  it('preserves strict equals 0.8.x pragma unchanged', () => {
-    expect(modernizeSyntax('pragma solidity =0.8.19;')).toContain('pragma solidity =0.8.19;');
-  });
-
-  it('does not rewrite non-0.8 pragmas', () => {
-    expect(modernizeSyntax('pragma solidity 0.6.12;')).toContain('0.6.12');
   });
 });
 

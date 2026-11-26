@@ -826,6 +826,7 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 
 **照合と上書きの禁止（2026-11、必ず守る）:**
 - 検証が通るのは、コンパイルした runtime コードがチェーン上のコードと一致するときだけ（`matchRuntimeBytecode()`、`lib/contract/bytecode-match.ts`）。違ってよいのは immutable の位置（`immutableReferences` で 0 にそろえる）、リンクしたライブラリのアドレス（`linkReferences`）、partial match のときの末尾の CBOR メタデータだけ。4 つの検証経路（`/api/contract/verify`、Etherscan 形式、v2 の flattened-code / standard-input）はすべてこれを使う。部分文字列・先頭一致・類似度・先頭 80% 一致で通す判定を戻さない（以前はそれで偽のソースを検証済みにできた）
+- **送られたソースをそのままコンパイルし、そのまま保存する**（単一ファイルは送られた文字列、standard JSON は入力全体）。2026-11 まではどの経路も NatSpec や最初の contract 以外の部分・非 ASCII 文字を削り、`throw` / `var` / pragma を書き換えてからコンパイルしていた。そのため完全一致（full match）にならず、`unicode"…"` の文字列を含むコントラクトは通らず、保存される「検証済みソース」が開発者の書いたものではなかった。画面の standard JSON は入力の最初のファイル（依存ファイル）だけを保存していた（テスト: `tests/api/contract-verify-source.test.ts`）
 - 検証済みのコントラクトは検証し直さない（`isAlreadyVerified()`、`lib/contract/verified.ts`。Etherscan 形式は `Contract source code already verified`、画面は 409、v2 は 400）。2026-11-09 に検証済みの OsatoNFT（0xdd0b…）の名前とソースが別のソースで上書きされた
 - `POST /api/contract/[address]` は置かない。リクエストの本文をそのまま Contract に upsert していたため、記録のないアドレスに「検証済み」の偽の名前・ソースを誰でも作れた（2026-10〜11 に 5 件。「Official VirBiCoin Bridge (Verified)」を名乗るものを含む）。Contract は同期ツールと検証経路だけが書く
 

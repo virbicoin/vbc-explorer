@@ -72,51 +72,6 @@ const SUPPORTED_COMPILER_VERSIONS = [
   '0.6.12', // Legacy support
 ];
 
-// Helper function to strip NatSpec comments to avoid DocstringParsingError
-// NatSpec comments (/** ... */) can cause compilation errors if @param doesn't match
-function stripNatSpecComments(sourceCode: string): string {
-  // Replace /** ... */ style comments with empty string
-  // Use non-greedy match to handle multiple comment blocks
-  return sourceCode.replace(/\/\*\*[\s\S]*?\*\//g, '');
-}
-
-// Helper function to modernize old Solidity syntax
-// NOTE: We no longer modify pragma statements to preserve exact compiler version matching
-function modernizeSyntax(sourceCode: string, targetVersion?: string): string {
-  let modernized = sourceCode;
-
-  // NOTE: Do NOT replace := with = - := is the correct assignment operator in assembly blocks
-
-  // Strip NatSpec comments to avoid DocstringParsingError
-  modernized = stripNatSpecComments(modernized);
-
-  // Replace var with appropriate types where possible (very old Solidity syntax)
-  modernized = modernized.replace(/var\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=/g, 'uint256 $1 =');
-
-  // Replace suicide with selfdestruct (deprecated in newer Solidity)
-  modernized = modernized.replace(/suicide\(/g, 'selfdestruct(');
-
-  // Replace throw with revert (deprecated in newer Solidity)
-  modernized = modernized.replace(/\bthrow\b/g, 'revert()');
-
-  // If a target version is specified, update the pragma to match
-  // This ensures the exact compiler version is used
-  if (targetVersion) {
-    // Replace strict pragma with the target version
-    modernized = modernized.replace(
-      /pragma\s+solidity\s+[=^~>=<]*\s*(\d+\.\d+\.\d+)\s*;/g,
-      `pragma solidity ^${targetVersion};`
-    );
-    // Also handle range pragmas like ">=0.8.0 <0.9.0"
-    modernized = modernized.replace(
-      /pragma\s+solidity\s+>=?\s*\d+\.\d+\.\d+\s*<?=?\s*\d*\.?\d*\.?\d*\s*;/g,
-      `pragma solidity ^${targetVersion};`
-    );
-  }
-
-  return modernized;
-}
-
 // Helper function to get available compiler versions (0.8.x only - matches installed solc)
 function getAvailableCompilerVersions(): string[] {
   return [
@@ -391,99 +346,14 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
       );
     }
 
-    // Clean up source code - remove any trailing garbage
-    // For Standard JSON Input mode, cleanedSourceCode will be set later from the input
-    let cleanedSourceCode = '';
-
-    if (!isStandardJsonInput && sourceCode) {
-      cleanedSourceCode = sourceCode.trim();
-    }
-
-    // Check if this is a flattened contract (contains multiple contracts) - only for single file mode
-    const isFlattened =
-      !isStandardJsonInput &&
-      cleanedSourceCode &&
-      (cleanedSourceCode.match(/contract\s+[A-Za-z0-9_]+/g) || []).length > 1;
-
-    if (isFlattened) {
-      // For flattened contracts (like Hardhat flattened), use the original source as-is
-      // This preserves all dependencies, interfaces, libraries, and abstract contracts
-      console.log('📦 Detected flattened contract - using original source code as-is');
-      // cleanedSourceCode remains unchanged for flattened contracts
-    } else {
-      // Original logic for single contracts
-      const lines = cleanedSourceCode.split('\n');
-      const cleanedLines = [];
-      let inContract = false;
-      let braceCount = 0;
-      let inCommentBlock = false;
-
-      for (const line of lines) {
-        const trimmedLine = line.trim();
-
-        // Handle comment blocks
-        if (trimmedLine.startsWith('/**') || trimmedLine.startsWith('/*')) {
-          inCommentBlock = true;
-        }
-        if (inCommentBlock && trimmedLine.includes('*/')) {
-          inCommentBlock = false;
-          continue; // Skip the comment block entirely
-        }
-        if (inCommentBlock) {
-          continue; // Skip lines within comment blocks
-        }
-
-        // Start of contract
-        if (
-          trimmedLine.startsWith('contract ') ||
-          trimmedLine.startsWith('interface ') ||
-          trimmedLine.startsWith('library ') ||
-          trimmedLine.startsWith('abstract contract ')
-        ) {
-          inContract = true;
-        }
-
-        if (inContract) {
-          // Count braces to track contract structure
-          braceCount += (trimmedLine.match(/{/g) || []).length;
-          braceCount -= (trimmedLine.match(/}/g) || []).length;
-
-          cleanedLines.push(line);
-
-          // End of contract when brace count reaches 0
-          if (braceCount === 0 && inContract) {
-            inContract = false;
-            break;
-          }
-        } else if (
-          trimmedLine.startsWith('pragma ') ||
-          trimmedLine.startsWith('import ') ||
-          trimmedLine.startsWith('//') ||
-          trimmedLine === ''
-        ) {
-          cleanedLines.push(line);
-        }
-      }
-
-      cleanedSourceCode = cleanedLines.join('\n');
-    }
-
-    // Additional cleanup: remove any remaining problematic content
-    cleanedSourceCode = cleanedSourceCode.replace(/\n\s*\n\s*\n/g, '\n\n'); // Remove excessive newlines
-    cleanedSourceCode = cleanedSourceCode.replace(/[^\x00-\x7F]/g, ''); // Remove non-ASCII characters
-
-    // Modernize old Solidity syntax (for 0.8.x compilation)
-    cleanedSourceCode = modernizeSyntax(cleanedSourceCode);
-
-    console.log(
-      '📏 Original source code length:',
-      isStandardJsonInput ? standardJsonInput.length : sourceCode?.length || 0
-    );
-    console.log('📏 Cleaned source code length:', cleanedSourceCode.length);
+    // The source that is compiled and stored: exactly what was submitted. Trimming, dropping
+    // comments, other contracts or non-ASCII characters and rewriting old syntax changed the
+    // metadata hash (no full match), broke unicode string literals and stored a source the
+    // developer never wrote. A standard JSON input is stored whole, as the other paths do.
+    const submittedSource = isStandardJsonInput ? standardJsonInput : sourceCode || '';
 
     // Prepare compilation input
     let input: Record<string, unknown>;
-    let sourceCodeForStorage = cleanedSourceCode;
 
     if (isStandardJsonInput) {
       // Standard JSON Input mode - parse and use the provided JSON directly
@@ -501,18 +371,6 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
             '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode', 'evm.methodIdentifiers'],
           },
         };
-
-        // Store the original Standard JSON Input for reference
-        sourceCodeForStorage = standardJsonInput;
-
-        // Extract source code from the first file for license detection
-        if (input.sources && typeof input.sources === 'object') {
-          const sources = input.sources as Record<string, { content?: string }>;
-          const firstSourceKey = Object.keys(sources)[0];
-          if (firstSourceKey && sources[firstSourceKey].content) {
-            cleanedSourceCode = sources[firstSourceKey].content;
-          }
-        }
       } catch (parseError) {
         console.error('Failed to parse Standard JSON Input:', parseError);
         return NextResponse.json(
@@ -531,7 +389,7 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
         language: 'Solidity',
         sources: {
           [detectedContractName]: {
-            content: cleanedSourceCode,
+            content: submittedSource,
           },
         },
         settings: {
@@ -707,7 +565,7 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
     if (isVerified) {
       // The SPDX identifier of the contract's own file (the first file of a standard JSON input
       // is usually a dependency)
-      const license = spdxLicense(sourceCodeForStorage, actualContractName) || 'None';
+      const license = spdxLicense(submittedSource, actualContractName) || 'None';
 
       // Save to database
       const contractData = {
@@ -717,7 +575,7 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
         // The settings that were compiled (from the standard JSON input or the form)
         ...compileSettingsRecord(input),
         license: license,
-        sourceCode: cleanedSourceCode,
+        sourceCode: submittedSource,
         abi: JSON.stringify(compiledContract.abi),
         byteCode: onchainBytecode,
         verified: true,

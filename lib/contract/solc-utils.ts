@@ -52,34 +52,6 @@ export const SOLC_RELEASES: Record<string, string> = {
 export const LATEST_KNOWN_SOLC_VERSION = Object.keys(SOLC_RELEASES)[0];
 
 /**
- * Modernize old Solidity syntax so legacy sources compile under newer compilers.
- * Strips NatSpec block comments, rewrites `var`, `suicide`, `throw`.
- *
- * NOTE: We intentionally do NOT modify pragma statements. Changing a strict pragma
- * (e.g. `pragma solidity 0.8.30;`) to a caret range (`^0.8.0`) causes the compiler
- * to embed a different version in the metadata hash, resulting in bytecode mismatches
- * during verification. The loaded solc version must match the pragma naturally, or
- * `^0.8.x` style pragmas already allow any compatible minor version.
- */
-export function modernizeSyntax(sourceCode: string): string {
-  let modernized = sourceCode;
-
-  // Strip NatSpec comments to avoid DocstringParsingError
-  modernized = modernized.replace(/\/\*\*[\s\S]*?\*\//g, '');
-
-  // Replace var with appropriate types where possible
-  modernized = modernized.replace(/var\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=/g, 'uint256 $1 =');
-
-  // Replace suicide with selfdestruct
-  modernized = modernized.replace(/suicide\(/g, 'selfdestruct(');
-
-  // Replace throw with revert
-  modernized = modernized.replace(/\bthrow\b/g, 'revert()');
-
-  return modernized;
-}
-
-/**
  * Strip trailing compiler-emitted metadata from bytecode so on-chain and
  * recompiled bytecode can be compared. Returns lowercased, 0x-stripped hex.
  */

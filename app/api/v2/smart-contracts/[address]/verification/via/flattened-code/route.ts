@@ -41,45 +41,6 @@ const WEB3_PROVIDER_URL =
   process.env.WEB3_PROVIDER_URL || `http://${config.nodeAddr}:${config.port}`;
 const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
 
-// Helper function to modernize old Solidity syntax
-function modernizeSyntax(sourceCode: string): string {
-  let modernized = sourceCode;
-
-  // Strip NatSpec comments
-  modernized = modernized.replace(/\/\*\*[\s\S]*?\*\//g, '');
-
-  // Replace var with uint256
-  modernized = modernized.replace(/var\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*=/g, 'uint256 $1 =');
-
-  // Replace suicide with selfdestruct
-  modernized = modernized.replace(/suicide\(/g, 'selfdestruct(');
-
-  // Replace throw with revert
-  modernized = modernized.replace(/\bthrow\b/g, 'revert()');
-
-  // Convert strict pragma to flexible pragma for 0.8.x versions
-  modernized = modernized.replace(/pragma\s+solidity\s+(\d+\.\d+\.\d+)\s*;/g, (match, version) => {
-    const parts = version.split('.');
-    if (parts[0] === '0' && parts[1] === '8') {
-      return 'pragma solidity ^0.8.0;';
-    }
-    return match;
-  });
-
-  modernized = modernized.replace(
-    /pragma\s+solidity\s+=\s*(\d+\.\d+\.\d+)\s*;/g,
-    (match, version) => {
-      const parts = version.split('.');
-      if (parts[0] === '0' && parts[1] === '8') {
-        return 'pragma solidity ^0.8.0;';
-      }
-      return match;
-    }
-  );
-
-  return modernized;
-}
-
 // Blockscout API v2 - Verify via flattened source code
 export const POST = withRateLimit(
   'verify',
@@ -172,15 +133,15 @@ export const POST = withRateLimit(
         }
       }
 
-      // Prepare source code
-      const cleanedSourceCode = modernizeSyntax(source_code);
+      // Compile exactly what was submitted: rewriting it (NatSpec, pragma, throw / var) changed the
+      // metadata hash and string literals, and the stored source was not the developer's
 
       // Compile
       const input = {
         language: 'Solidity',
         sources: {
           [detectedContractName]: {
-            content: cleanedSourceCode,
+            content: source_code,
           },
         },
         settings: {
@@ -300,7 +261,7 @@ export const POST = withRateLimit(
           compilerVersion: normalizedVersion,
           ...compileSettingsRecord(input),
           license,
-          sourceCode: cleanedSourceCode,
+          sourceCode: source_code,
           abi: JSON.stringify(compiledContract.abi),
           byteCode: onchainBytecode,
           verified: true,
