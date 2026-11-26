@@ -387,6 +387,16 @@ describe('range scan marker', () => {
     await recordSkipped(SCAN, { blockNumber: 5, transactionHash: '0xaa', reason: 'test' });
     expect([...(await loadSkipped(SCAN))]).toEqual(['0xaa']);
   });
+
+  it('forgets the skipped transactions a restart covers, so they are tried again', async () => {
+    await loadRangeScan(SCAN);
+    await recordSkipped(SCAN, { blockNumber: 5, transactionHash: '0xaa', reason: 'test' });
+    await recordSkipped(SCAN, { blockNumber: 50, transactionHash: '0xbb', reason: 'test' });
+    await resetRangeScan(SCAN, 10);
+    expect([...(await loadSkipped(SCAN))]).toEqual(['0xaa']);
+    await resetRangeScan(SCAN, 0);
+    expect([...(await loadSkipped(SCAN))]).toEqual([]);
+  });
 });
 
 describe('indexToConfirmedHead (tools/internal-txs.ts)', () => {

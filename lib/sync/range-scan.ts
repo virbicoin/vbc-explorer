@@ -115,7 +115,10 @@ export async function rewindRangeScans(height: number): Promise<number> {
   return result.modifiedCount;
 }
 
-/** Start the next run at `fromBlock` (CLI `--from`). */
+/**
+ * Start the next run at `fromBlock` (CLI `--from`). Transactions given up on at or after that
+ * block are forgotten too, so the run tries them again (they would otherwise stay excluded).
+ */
 export async function resetRangeScan(scanType: RangeScanType, fromBlock: number): Promise<void> {
   await markers().updateOne(
     { scanType },
@@ -125,6 +128,12 @@ export async function resetRangeScan(scanType: RangeScanType, fromBlock: number)
           lastScannedBlock: fromBlock - 1,
           inFlightTo: null,
           generation: { $add: [{ $ifNull: ['$generation', 0] }, 1] },
+          skipped: {
+            $filter: {
+              input: { $ifNull: ['$skipped', []] },
+              cond: { $lt: ['$$this.blockNumber', fromBlock] },
+            },
+          },
           lastUpdateTime: '$$NOW',
         },
       },
