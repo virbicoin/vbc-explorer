@@ -15,7 +15,7 @@ VBC Explorer は、VirBiCoin 向けのモダンなブロックチェーンエク
 
 ## 技術スタック
 
-- **ランタイム**: Node.js 22.18+ または 24.11+（`.nvmrc` は 24 LTS、本番は 24.22.1。Node 20 は 2026-04-30 に EOL で、Vitest 5 / Babel 8 の engines も満たさない）
+- **ランタイム**: Node.js 22.18+ または 24.11+（`.nvmrc` は 24 LTS、本番 TK04 は 24.22.3（2026-11-26 時点、MongoDB 8.0.38）。Node 20 は 2026-04-30 に EOL で、Vitest 5 / Babel 8 の engines も満たさない）
 - **フレームワーク**: Next.js 16+（App Router）
 - **言語**: TypeScript 7+（Go ネイティブ版 tsc。JS コンパイラ API は同梱されない）
 - **データベース**: MongoDB（Mongoose 9）
