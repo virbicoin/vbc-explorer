@@ -583,18 +583,9 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
 
   console.log(`🔄 Syncing blocks from ${startBlock} to ${endBlock}...`);
 
-  // Check which blocks already exist in database with timeout
-  const existingBlocks = await Block.find({
-    number: { $gte: startBlock, $lte: endBlock },
-  })
-    .select('number')
-    .lean()
-    .maxTimeMS(120000);
-
-  const existingBlockNumbers = new Set(existingBlocks.map((b) => b.number));
-  console.log(
-    `🔍 Found ${existingBlocks.length} existing blocks in range ${startBlock}-${endBlock}`
-  );
+  // Which blocks are stored is asked per batch (an indexed range of BATCH_SIZE numbers). It used
+  // to load every stored number of the whole range at once: 3.4 million objects on a synced
+  // chain, a few hundred MB at every start.
 
   let processedCount = 0;
   let skippedCount = 0;
@@ -611,6 +602,14 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
   // Process blocks in parallel batches
   for (let batchStart = startBlock; batchStart <= endBlock; batchStart += BATCH_SIZE) {
     const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, endBlock);
+    const stored = (await Block.find({ number: { $gte: batchStart, $lte: batchEnd } })
+      .select({ number: 1, _id: 0 })
+      .lean()) as Array<{ number: number }>;
+    if (stored.length === batchEnd - batchStart + 1) {
+      skippedCount += stored.length;
+      continue; // every block of this batch is stored
+    }
+    const existingBlockNumbers = new Set(stored.map((block) => block.number));
     const batchNumbers = [];
 
     // Collect block numbers that need processing
