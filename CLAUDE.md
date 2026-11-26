@@ -232,11 +232,15 @@ npm run test            # Vitest でユニットテストを実行
 npm run test:watch      # ウォッチモードでテストを実行
 npm run test:coverage   # カバレッジ付きでテストを実行
 
-# ブロックチェーン同期ツール
+# バックグラウンドのジョブ（本番は explorer が自分で起動する。手で動かすのは調べるとき）
+npm run worker -- --plan  # この config.json で動くジョブと理由を表示
+npm run worker            # 有効なジョブを前面で実行（--only sync,tokens で一部だけ）
+
+# 各ジョブを単独で / 一回だけのメンテナンス
 npm run sync            # ブロックチェーンデータを同期
 npm run tokens          # トークン（NFT/ERC20）データを同期
 npm run stats           # 統計を計算
-npm run richlist        # リッチリストを生成
+npm run richlist        # 残高を差分で 1 回更新（-- --from 0 で全部やり直し）
 npm run price           # 価格 + DEX スワップデータを更新（価格 API / DEX プール）
 npm run internal-txs    # 内部取引をコールトレースから索引（--once / --from <block> / --status）
 
@@ -256,13 +260,10 @@ npm run flag-spam-tokens -- --audit-code --dry-run # コードのないアドレ
 umask 077; printf 'uri: %s\n' "$(sed -n 's/^MONGODB_URI=//p' .env)" > /tmp/md.yaml && mongodump --config /tmp/md.yaml --gzip --out "$HOME/backup/explorerDB-$(date +%F)"; rm -f /tmp/md.yaml
 RESCAN_FROM=<height> npm run stats    # 指定高さから先端まで BlockStat を再計算（repair-chain が案内する形）
 
-# PM2 プロセス管理
-pm2 restart explorer    # explorer を再起動
-pm2 logs explorer       # ログを表示
-pm2 logs price          # 価格同期のログを表示
-pm2 logs internal-txs   # 内部取引の索引のログを表示
-pm2 status              # サービス状態を確認
-pm2 monit               # リソースを監視
+# PM2（アプリは explorer の 1 つだけ。画面とジョブの両方）
+pm2 restart explorer    # 画面とジョブを再起動
+pm2 logs explorer       # ログを表示（ジョブの行は [sync] [tokens] などで始まる）
+pm2 status              # 状態を確認
 ```
 
 ## 価格 & DEX データアーキテクチャ
@@ -514,6 +515,18 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 - `proxy.ts` の `/address` タイプ判定 fetch に AbortController（2s）を追加 → DB 停止時も `/address` がハングしない（従来 ~15s）。
 - DEX サブシステム（`geckoterminal/info`・`pool`、`dex` ページ、`useFarming` のウォレット追加 `nativeCurrency`）の真のハードコード固有名を config 由来に。クライアントは `lib/client-config`（`getNetworkName`/`getCurrencyConfig`）または `useDexConfig`（`currency` フィールド追加）から取得。設定済みの本番では出力は不変。
 
+## 新機能（2026-11）: バックグラウンド処理を explorer 1 つに
+
+2026-11-27 まで、同期・統計・トークン・richlist・価格・内部取引は pm2 の別アプリ 6 つで、どれを起動するかは `ecosystem.config.json` の固定の一覧が決めていた（`config.json` の切り替えとは別管理。本番は 7 プロセス・428 MB）。richlist は計算を 1 回しかせず（本番で残高が 2 日古かった）、`tools/sync.ts` は stats / richlist / tokens / all のモードも持ち、`npm run all` は price と内部取引を含まない半端な重複だった。ユーザーの指示（「単純化」「ファイルを増やさない」）で次の形にした。
+
+### 設計ルール（必ず守る）
+- **pm2 のアプリは `explorer` だけ。** `npm start`（`next start`）が起動すると `instrumentation.ts` が `tools/worker.ts` を子プロセスで起動する（本番のみ。`EXPLORER_WORKER=off` で止め、別のホストで `npm run worker` を動かせる。`npm run dev` では `EXPLORER_WORKER=on` のときだけ）。子プロセスにするのは、同期の重い処理で画面を遅くしないためと、ジョブの失敗でサイトを止めないため。子が終わったら 60 秒後に起動し直し、サーバーが止まると一緒に止まる（IPC が切れたら自分で止まる）
+- **どのジョブを動かすかは `lib/features.ts` の `planJobs()` だけが決める**（`config.json` の機能の切り替え、`traces.url` / `TRACE_RPC_URL`、`currency.priceApi`）。`npm run worker -- --plan` で一覧と理由が出る。pm2 の構成にジョブを並べない
+- ジョブのログは AsyncLocalStorage で `[job名]` を付ける。ジョブの起動が失敗したらそのジョブだけ 1 分（最大 10 分まで倍）後にやり直す
+- **ツールのジョブの経路で `process.exit` しない**（エラーは throw。exit とシグナル処理は各ツールの `require.main === module` のブロックだけ）。ワーカーはツールを `require` で読み、有効なジョブのツールしか読み込まない。ツール同士を import しない（sync.ts が stats / richlist / tokens を読み込んでいた）
+- richlist（`tools/richlist.ts`）は差分方式: `scan_progress` の `richlist` の位置から保存済みの先端までに出てきたアドレス（取引の from / to / creates、ブロックの miner、内部取引）の残高を `latest` で読む。ワーカーでは 5 分ごと。`Account.percentage` は誰も読まないので書かない
+- 本番の切り替えは `pm2 delete sync stats richlist tokens price internal-txs`（ecosystem から消えたアプリ）→ ビルド → `pm2 restart explorer` → `pm2 save`
+
 ## 新機能（2026-11）: 単純なブロックエクスプローラーとしての構成
 
 DEX・Token Launchpad・ブリッジ・richlist は任意の機能で、すべて切ると単純なブロックエクスプローラー（ブロック・取引・アドレス・トークン / NFT・コントラクトと検証・内部取引・統計・Etherscan / Blockscout API）になる。設定例と pm2 の起動は README の「Plain block explorer」。
@@ -522,7 +535,7 @@ DEX・Token Launchpad・ブリッジ・richlist は任意の機能で、すべ�
 - **機能の有無は `resolveFeatures()`（`lib/features.ts`）だけが決める。** サーバーは `getFeatures()`（lib/config.ts）、画面は `/api/config/client` の `features` を使う。`config.dex?.enabled` などを個別に読まない。DEX・Launchpad・ブリッジは各セクションの `enabled: true` で有効、richlist は `richlist.enabled: false` で無効（本番の config.json を変えずに済むよう、既定は有効）
 - **無効な機能のページと API は `proxy.ts` がまとめて 404 にする**（API は `{ error: { code: 'FEATURE_DISABLED' } }`、`/api/dex/geckoterminal` は JSON:API の `errors`、ページは存在しないパスへの rewrite で not-found ページ）。ルートごとに有効かを確かめない（2026-11-27 までは DEX の 14 ルートが個別に確かめ、CMC・DefiLlama などは確かめていなかった）。機能のページや API を足すときは `FEATURE_PATHS` に足す
 - リンクも同じ判定で隠す: ヘッダー（`Header.tsx` → `HeaderNav` の `features`）、stats ページの Rich List カード、`sitemap.ts`。ヘッダーとサイトマップはビルド時に静的に作られるので、切り替えを変えたら `npm run build` と再起動が要る（404 は再起動だけで新しい設定に従う。2026-11-27 に TK01 で確認）
-- ツールは `getFeatures()` で処理を飛ばす: `tokens` の Launchpad 同期と LP 同期、`price` の DEX 価格とスワップ同期、`sync.ts richlist`（何もせず終わる。pm2 では起動しない）
+- ジョブも同じ判定に従う: 切った機能のジョブ（richlist、DEX だけの価格）はワーカーが起動しない（`planJobs()`）。動いているジョブの中では `getFeatures()` で処理を飛ばす（`tokens` の Launchpad 同期と LP 同期、`price` の DEX 価格とスワップ同期）
 - richlist を切ると `Account`（残高）が作られない。`/api/v2/stats` の `total_addresses` は null、`listaccounts` は空、ホームの集計（`lib/stats.ts`）は最近の取引から数える。`loadAddressFacts()` のコントラクト判定は Contract と tokens で足りる
 - テスト: `tests/lib/features.test.ts`（判定、proxy の 404 と通過、サイトマップ）、`tests/api/v2-blocks-stats.test.ts`（richlist なしの `total_addresses`）
 

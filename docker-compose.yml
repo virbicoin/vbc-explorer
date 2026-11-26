@@ -1,4 +1,5 @@
-# Explorer, sync tools and MongoDB.
+# Explorer and MongoDB. The explorer starts its background jobs itself; config.json decides which
+# (npm run worker -- --plan lists them).
 #
 #   cp config.example.json config.json   # then point web3Provider.url at your node
 #   docker compose up -d --build
@@ -23,26 +24,6 @@ services:
     command: npm start
     ports:
       - '3000:3000'
-  sync:
-    <<: *explorer
-    command: npm run sync
-  stats:
-    <<: *explorer
-    command: npm run stats
-  richlist:
-    <<: *explorer
-    command: npm run richlist
-  tokens:
-    <<: *explorer
-    command: npm run tokens
-  price:
-    <<: *explorer
-    command: npm run price
-  # Indexes internal transactions only when config.json `traces.url` (or TRACE_RPC_URL) names a
-  # node that answers trace_transaction; otherwise it waits and checks again every hour
-  internal-txs:
-    <<: *explorer
-    command: npm run internal-txs
   db:
     image: mongo:8.0
     restart: unless-stopped

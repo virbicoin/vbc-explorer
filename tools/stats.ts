@@ -46,7 +46,7 @@ const initDB = async () => {
     await ensureIndexesOnStartup('stats');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);
-    process.exit(1);
+    throw error;
   }
 };
 
@@ -338,10 +338,10 @@ const getStats = async function (
     try {
       await web3.eth.getBlockNumber();
     } catch (connectionError) {
+      // the pass stops here; the next one (statInterval) starts again from the head
       console.log(
         `❌ Error: Aborted due to web3 not connected when trying to get block ${blockNumber}`
       );
-      process.exit(9);
       return;
     }
 
@@ -433,7 +433,6 @@ const checkBlockDBExistsThenWrite = async function (
     console.log(
       `💥 Error: Aborted due to error on block number ${toNumber(blockData.number)}: ${errorMessage}`
     );
-    process.exit(9);
   }
 };
 
@@ -509,8 +508,7 @@ const main = async (): Promise<void> => {
     try {
       await web3.eth.getBlockNumber();
     } catch (connectionError) {
-      console.log('Error: Cannot connect to the node');
-      process.exit(1);
+      throw new Error('Cannot connect to the node', { cause: connectionError });
     }
 
     console.log('🔗 Connected to the node successfully');
@@ -538,12 +536,12 @@ const main = async (): Promise<void> => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.log(`💥 Fatal error: ${errorMessage}`);
-    process.exit(1);
+    throw error;
   }
 };
 
 export { main };
 
 if (require.main === module) {
-  main();
+  main().catch(() => process.exit(1));
 }

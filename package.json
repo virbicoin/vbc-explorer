@@ -54,12 +54,12 @@
     "tokens": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/tokens.ts",
     "price": "cross-env MEMORY_LIMIT_MB=256 NODE_OPTIONS='--max-old-space-size=384' tsx --tsconfig tsconfig.tools.json tools/price.ts",
     "internal-txs": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/internal-txs.ts",
+    "worker": "tsx --tsconfig tsconfig.tools.json tools/worker.ts",
     "optimize-indexes": "cross-env NODE_OPTIONS='--max-old-space-size=512' tsx --tsconfig tsconfig.tools.json tools/optimize-indexes.ts",
     "flag-spam-tokens": "cross-env NODE_OPTIONS='--max-old-space-size=512' tsx --tsconfig tsconfig.tools.json tools/flag-spam-tokens.ts",
     "repair-chain": "cross-env NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/repair-chain.ts",
     "backfill-uncle-rewards": "cross-env NODE_OPTIONS='--max-old-space-size=512' tsx --tsconfig tsconfig.tools.json tools/backfill-uncle-rewards.ts",
-    "backfill-verification-settings": "cross-env NODE_OPTIONS='--max-old-space-size=512' tsx --tsconfig tsconfig.tools.json tools/backfill-verification-settings.ts",
-    "all": "cross-env MEMORY_LIMIT_MB=1024 NODE_OPTIONS='--max-old-space-size=1200' tsx --tsconfig tsconfig.tools.json tools/sync.ts all"
+    "backfill-verification-settings": "cross-env NODE_OPTIONS='--max-old-space-size=512' tsx --tsconfig tsconfig.tools.json tools/backfill-verification-settings.ts"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

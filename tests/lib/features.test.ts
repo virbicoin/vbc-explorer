@@ -1,11 +1,21 @@
 /**
  * Optional parts (lib/features.ts): which are on for a config, which paths belong to them, and
- * how proxy.ts, the sitemap and /api/v2/stats treat a part that is off. A plain block explorer
- * runs with all of them off.
+ * how proxy.ts and the sitemap treat a part that is off, which background jobs a config runs
+ * (tools/worker.ts) and when the web server starts them. A plain block explorer runs with all
+ * of the parts off.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { featureOfPath, resolveFeatures, type Features } from '@/lib/features';
+import {
+  featureOfPath,
+  planJobs,
+  priceSources,
+  resolveFeatures,
+  selectJobs,
+  workerWanted,
+  type Features,
+  type JobPlan,
+} from '@/lib/features';
 
 const features = vi.hoisted(() => ({
   current: { dex: false, launchpad: false, bridge: false, richlist: false } as Features,
@@ -104,5 +114,79 @@ describe('sitemap', () => {
     expect(paths()).toContain('/blocks');
     features.current = { ...features.current, richlist: true };
     expect(paths()).toContain('/richlist');
+  });
+});
+
+const enabled = (plan: JobPlan[]) => plan.filter((job) => job.enabled).map((job) => job.name);
+
+describe('planJobs', () => {
+  it('runs only the core jobs for a plain block explorer', () => {
+    const plan = planJobs({ config: { richlist: { enabled: false } }, traceUrl: null });
+    expect(enabled(plan)).toEqual(['sync', 'stats', 'tokens']);
+    expect(plan.find((job) => job.name === 'richlist')?.reason).toBe('richlist.enabled is false');
+    expect(plan.find((job) => job.name === 'price')?.reason).toContain('no price source');
+    expect(plan.find((job) => job.name === 'internal-transactions')?.reason).toContain(
+      'traces.url'
+    );
+  });
+
+  it('adds internal transactions with a trace source, the richlist unless it is off', () => {
+    const plan = planJobs({ config: {}, traceUrl: '/node/jsonrpc.ipc' });
+    expect(enabled(plan)).toEqual(['sync', 'stats', 'tokens', 'internal-transactions', 'richlist']);
+  });
+
+  it('names the DEX and Launchpad work of the token job when they are on', () => {
+    const plan = planJobs({
+      config: { dex: { enabled: true }, launchpad: { enabled: true } },
+      traceUrl: null,
+    });
+    expect(plan.find((job) => job.name === 'tokens')?.reason).toBe(
+      'token discovery and updates (always); DEX LP pairs; Launchpad factories'
+    );
+  });
+});
+
+describe('priceSources', () => {
+  it('lists the sources tools/price.ts would ask', () => {
+    const priceApi = {
+      coingecko: { enabled: true },
+      cmc: { enabled: true },
+      coinpaprika: { enabled: false },
+      dex: { enabled: true },
+    };
+    // CMC needs its key, the DEX source the DEX
+    expect(priceSources({ currency: { priceApi } })).toEqual(['coingecko']);
+    expect(
+      priceSources({ currency: { priceApi }, dex: { enabled: true } }, { CMC_API_KEY: 'k' })
+    ).toEqual(['coingecko', 'cmc', 'dex']);
+    // the DEX source is on by default once the DEX is
+    expect(priceSources({ dex: { enabled: true } })).toEqual(['dex']);
+    expect(
+      priceSources({ dex: { enabled: true }, currency: { priceApi: { dex: { enabled: false } } } })
+    ).toEqual([]);
+  });
+});
+
+describe('selectJobs', () => {
+  const plan = planJobs({ config: { richlist: { enabled: false } }, traceUrl: null });
+
+  it('takes the enabled jobs, or exactly the ones named', () => {
+    expect(selectJobs(plan)).toEqual(['sync', 'stats', 'tokens']);
+    // in start order, also a job the config switches off
+    expect(selectJobs(plan, ['richlist', 'sync'])).toEqual(['sync', 'richlist']);
+  });
+
+  it('refuses an unknown job name', () => {
+    expect(() => selectJobs(plan, ['sync', 'rich-list'])).toThrow('Unknown job: rich-list');
+  });
+});
+
+describe('workerWanted', () => {
+  it('starts the jobs with the server in production unless EXPLORER_WORKER is off', async () => {
+    expect(workerWanted({ NODE_ENV: 'production' })).toBe(true);
+    expect(workerWanted({ NODE_ENV: 'production', EXPLORER_WORKER: 'off' })).toBe(false);
+    expect(workerWanted({ NODE_ENV: 'development' })).toBe(false);
+    expect(workerWanted({ NODE_ENV: 'development', EXPLORER_WORKER: 'on' })).toBe(true);
+    expect(workerWanted({})).toBe(false);
   });
 });

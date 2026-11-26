@@ -308,16 +308,11 @@ For a plain block explorer, leave the `dex`, `launchpad` and `bridge` sections o
 }
 ```
 
-A part that is off has no pages and no API: its paths answer 404 (`proxy.ts`; JSON in the API's error format, the not-found page for pages), the header hides its link, the sitemap leaves it out, and the tools skip its work. `/api/v2/stats` reports `total_addresses` as null without the richlist, which is what keeps the account balances.
+A part that is off has no pages and no API: its paths answer 404 (`proxy.ts`; JSON in the API's error format, the not-found page for pages), the header hides its link, the sitemap leaves it out, and the worker does not run its jobs (`npm run worker -- --plan`). `/api/v2/stats` reports `total_addresses` as null without the richlist, which is what keeps the account balances.
 
-Pages are prerendered when the app is built, so after changing a switch run `npm run build` and restart the explorer, as for any `config.json` value shown on pages (the 404s follow the running config after a restart; the header and the sitemap follow the build). Then start only the apps it needs:
+Pages are prerendered when the app is built, so after changing a switch run `npm run build` and restart the explorer, as for any `config.json` value shown on pages (the 404s follow the running config after a restart; the header and the sitemap follow the build). The background jobs follow the same switches: a part that is off has no job running (see "Background jobs").
 
-```bash
-pm2 start ecosystem.config.json --only explorer,sync,stats,tokens
-# with a trace node (traces.url): add internal-txs; with a price API (currency.priceApi): add price
-```
-
-Checked on a fresh install (2026-11-27): with all four parts off, their pages and API routes answer 404, the header and the sitemap list none of them, the stats page has no Rich List card, `tokens` skips the LP and Launchpad syncs, and the `richlist` app exits at once.
+Checked on a fresh install (2026-11-27): with all four parts off, their pages and API routes answer 404, the header and the sitemap list none of them, the stats page has no Rich List card, `tokens` skips the LP and Launchpad syncs, and the worker does not start the richlist job.
 
 ### Supported Networks
 - ✅ Your Chain (native support)
@@ -787,7 +782,7 @@ Rules for contributors: define models only in `models/index.ts` (no inline `mong
 - Contracts created by contracts are registered in `Contract` (and, when they are tokens, in `tokens` by the `tokens` app), like the ones a transaction creates.
 
 ```bash
-npm run internal-txs                    # follow the chain (what the pm2 app runs)
+npm run internal-txs                    # follow the chain (what the worker's job runs)
 npm run internal-txs -- --once          # index up to the confirmed head, then exit
 npm run internal-txs -- --from 0        # index everything again
 npm run internal-txs -- --status        # marker, stored documents, skipped transactions
@@ -795,7 +790,7 @@ npm run internal-txs -- --status        # marker, stored documents, skipped tran
 
 On VirBiCoin the full history (about 46,000 transactions) is indexed in about a minute. The APIs: Etherscan / Blockscout `txlistinternal`, Blockscout v2 `/api/v2/transactions/{hash}/internal-transactions`, `/api/v2/addresses/{address}/internal-transactions`, `/api/v2/blocks/{numberOrHash}/internal-transactions`, `/api/v2/internal-transactions`, and `has_error_in_internal_transactions` on v2 transactions (null until the indexer has reached the transaction). The transaction page and the address page (tab "Internal Txns") show them.
 
-**ERC-1155 (VRC-1155) transfers** are synced by the `tokens` app every minute (`npm run tokens -- --sync-erc1155` once): every `TransferSingle` / `TransferBatch` log is read with a topic-filtered `eth_getLogs`, so collections deployed by factories are found too. An emitter is accepted when it answers ERC-165 `supportsInterface(0xd9b67a26)` and still has code; it is registered as a `VRC-1155` token. Each token id of an event is one `tokentransfers` document (`tokenType: 'VRC-1155'`, the id as a decimal string, the amount in `value`, `batchIndex` for TransferBatch). Holders are recomputed from the transfers (`tokenholders` keeps the sum over all ids per holder; the APIs list ERC-1155 holdings per token id). APIs: `token1155tx`, the v2 token transfer lists (`type=ERC-1155`, `total.token_id` + `total.value`), v2 `token-balances` / `tokens` of an address.
+**ERC-1155 (VRC-1155) transfers** are synced by the `tokens` job every minute (`npm run tokens -- --sync-erc1155` once): every `TransferSingle` / `TransferBatch` log is read with a topic-filtered `eth_getLogs`, so collections deployed by factories are found too. An emitter is accepted when it answers ERC-165 `supportsInterface(0xd9b67a26)` and still has code; it is registered as a `VRC-1155` token. Each token id of an event is one `tokentransfers` document (`tokenType: 'VRC-1155'`, the id as a decimal string, the amount in `value`, `batchIndex` for TransferBatch). Holders are recomputed from the transfers (`tokenholders` keeps the sum over all ids per holder; the APIs list ERC-1155 holdings per token id). APIs: `token1155tx`, the v2 token transfer lists (`type=ERC-1155`, `total.token_id` + `total.value`), v2 `token-balances` / `tokens` of an address.
 
 ### Chain Integrity (Reorg Handling)
 
@@ -984,18 +979,37 @@ vi config.json
 npm run build
 ```
 
-4. **Start all services with PM2**
+4. **Start the explorer with PM2**
 ```bash
-# Start all services (Web + Data sync) from the project root: the processes read .env themselves.
-# Do not run this from a shell that has sourced .env (pm2 would keep MONGODB_URI in its saved env).
+# One app: the website, which also starts the background jobs. Run it from the project root:
+# the processes read .env themselves. Do not run this from a shell that has sourced .env
+# (pm2 would keep MONGODB_URI in its saved env).
 pm2 start ecosystem.config.json
 
-# Check status
+# Check status and logs
 pm2 status
-
-# View logs
-pm2 logs
+pm2 logs explorer
 ```
+
+### Background jobs
+
+`npm start` (the pm2 app `explorer`) runs the website and starts the background jobs next to it, in a child process (`tools/worker.ts`, started by `instrumentation.ts`), so a sync catching up does not slow down the pages and no job can stop the website. `config.json` decides which jobs run; there is no second app to start or to keep in step with it:
+
+| Job | Runs | Work |
+|-----|------|------|
+| `sync` | always | blocks and transactions (catch-up, then each new block; reorgs) |
+| `stats` | always | block statistics |
+| `tokens` | always | token discovery and updates, NFTs, ERC-1155; DEX LP pairs and Launchpad factories when those are on |
+| `internal-transactions` | with a trace source (`traces.url` or `TRACE_RPC_URL`) | internal transactions from call traces |
+| `richlist` | unless `richlist.enabled` is false | account balances, read again every five minutes for the addresses touched since the last pass |
+| `price` | with a price source (`currency.priceApi`, or the DEX) | coin price and DEX swaps |
+
+```bash
+npm run worker -- --plan        # which jobs run with this config.json, and why
+npm run worker -- --only sync   # run jobs in the foreground (e.g. to debug one; stop the explorer's first)
+```
+
+Each log line of a job starts with its name (`[sync] ...`). The child is started again a minute after it ends and stops with the website. To run the jobs elsewhere (several web servers on one database, or a separate machine), set `EXPLORER_WORKER=off` for the website and run `npm run worker` on one host. In development (`npm run dev`) the jobs start only with `EXPLORER_WORKER=on`. One-off maintenance still uses the separate commands (`npm run sync -- --start`, `npm run tokens -- --rescan`, `npm run internal-txs -- --from`, `RESCAN_FROM=<height> npm run stats`, `npm run richlist -- --from 0`).
 
 Indexes are created automatically the first time the sync tools start (`Block.number` and `Block.hash` take a few minutes on a large chain). To create or verify them by hand:
 
@@ -1024,10 +1038,8 @@ pm2 restart ecosystem.config.json
 # View status
 pm2 status
 
-# View logs
-pm2 logs                    # All logs
-pm2 logs explorer           # Web service only
-pm2 logs sync               # Sync service only
+# View logs (the website and the background jobs)
+pm2 logs explorer
 
 # Monitor resources
 pm2 monit
@@ -1040,21 +1052,7 @@ pm2 startup
 pm2 save
 ```
 
-Credentials are not part of `ecosystem.config.json` and must not be added to pm2's environment: every app reads `.env` from the project root on start. `pm2 restart <app> --update-env` is never needed for `MONGODB_URI`; after changing `.env`, `pm2 restart <app>` is enough.
-
-### Individual Service Management
-
-```bash
-# Start specific services only
-pm2 start ecosystem.config.json --only explorer
-pm2 start ecosystem.config.json --only sync
-pm2 start ecosystem.config.json --only stats
-
-# Restart specific service
-pm2 restart explorer
-pm2 restart sync
-pm2 restart stats
-```
+Credentials are not part of `ecosystem.config.json` and must not be added to pm2's environment: the explorer and its jobs read `.env` from the project root on start. `pm2 restart explorer --update-env` is never needed for `MONGODB_URI`; after changing `.env`, `pm2 restart explorer` is enough.
 
 ## Local Installation (Development)
 
@@ -1120,13 +1118,13 @@ npm run dev
 
 8. **Initialize blockchain data** (in a separate terminal)
 ```bash
-# Start all data synchronization services
-npm run all
+# The background jobs (npm run dev does not start them unless EXPLORER_WORKER=on)
+npm run worker
 
-# Or start services individually
+# Or one job alone
 npm run sync    # Blockchain synchronization
 npm run stats   # Network statistics
-npm run richlist # Account richlist
+npm run richlist # Account balances (one pass)
 npm run tokens  # Token tracking
 npm run price   # Price tracking
 ```
@@ -1151,57 +1149,22 @@ the `db` service and is not published on the host; its data is kept in the `mong
 ### PM2 Management
 
 ```bash
-# Start all services
-pm2 start ecosystem.config.json
-
-# Start individual services
-pm2 start ecosystem.config.json --only sync     # Blockchain sync only
-pm2 start ecosystem.config.json --only stats    # Statistics calculation only
-pm2 start ecosystem.config.json --only richlist # Richlist calculation only
-pm2 start ecosystem.config.json --only tokens   # Token tracking only
-pm2 start ecosystem.config.json --only price    # Price monitoring only
-pm2 start ecosystem.config.json --only internal-txs # Internal transactions (call traces) only
-pm2 start ecosystem.config.json --only explorer # Web application only
-
-# Stop services
-pm2 stop all
-pm2 stop sync
-
-# Restart services
-pm2 restart all
-pm2 restart sync
-
-# Check service status
+pm2 start ecosystem.config.json   # the explorer: website and background jobs
+pm2 restart explorer              # also restarts the jobs
+pm2 logs explorer                 # job lines start with the job's name: [sync], [tokens], ...
 pm2 status
+npm run worker -- --plan          # which background jobs this config.json runs, and why
 
-# View logs
-pm2 logs sync
-pm2 logs stats
-pm2 logs richlist
-pm2 logs tokens
-pm2 logs price
-pm2 logs internal-txs
-pm2 logs explorer
-
-# Monitor processes
-pm2 monit
-
-# Delete services
-pm2 delete all
-pm2 delete sync
-
-# Perform initial sync
-SYNCALL=true pm2 start ecosystem.config.json --only sync
-
-# Rescan statistics
-RESCAN=100:10000 pm2 start ecosystem.config.json --only stats
+# One-off maintenance (the commands, not pm2)
+npm run sync -- --sync-all              # sync everything again from startBlock
+RESCAN=100:10000 npm run stats          # recompute statistics
 ```
 
 ### NPM Script Usage
 
 ```bash
-# Data service management
-npm run all          # Start all services
+# Background jobs (the explorer starts them itself in production)
+npm run worker       # all jobs config.json enables (--plan: list them, --only: some of them)
 npm run sync         # Blockchain synchronization
 npm run stats        # Network statistics
 npm run richlist     # Rich list calculation
@@ -1241,17 +1204,20 @@ npm run typecheck
 ### Direct Execution
 
 ```bash
+# All background jobs (what the explorer starts)
+npx tsx --tsconfig tsconfig.tools.json tools/worker.ts
+
 # Blockchain synchronization
-npx tsx --tsconfig tsconfig.tools.json tools/sync.ts sync
+npx tsx --tsconfig tsconfig.tools.json tools/sync.ts
 
 # Statistics calculation
-npx tsx --tsconfig tsconfig.tools.json tools/sync.ts stats
+npx tsx --tsconfig tsconfig.tools.json tools/stats.ts
 
 # Richlist calculation
-npx tsx --tsconfig tsconfig.tools.json tools/sync.ts richlist
+npx tsx --tsconfig tsconfig.tools.json tools/richlist.ts
 
 # Token tracking
-npx tsx --tsconfig tsconfig.tools.json tools/sync.ts tokens
+npx tsx --tsconfig tsconfig.tools.json tools/tokens.ts
 
 # Price tracking
 npx tsx --tsconfig tsconfig.tools.json tools/price.ts
@@ -1264,8 +1230,8 @@ npx tsx --tsconfig tsconfig.tools.json tools/repair-chain.ts --check
 npx tsx --tsconfig tsconfig.tools.json tools/flag-spam-tokens.ts --dry-run
 
 # Environment variable configuration
-RESCAN=100:10000 npx tsx --tsconfig tsconfig.tools.json tools/sync.ts stats  # Statistics rescan
-SYNCALL=true npx tsx --tsconfig tsconfig.tools.json tools/sync.ts sync       # Full block sync
+RESCAN=100:10000 npx tsx --tsconfig tsconfig.tools.json tools/stats.ts  # Statistics rescan
+SYNCALL=true npx tsx --tsconfig tsconfig.tools.json tools/sync.ts            # Full block sync
 ```
 
 ## Configuration
@@ -1423,8 +1389,8 @@ pm2 start sync stats tokens
 # Start the development server
 npm run dev
 
-# Start data services (in separate terminals or background)
-npm run all          # Start all services
+# Background jobs (npm run dev does not start them; EXPLORER_WORKER=on npm run dev does)
+npm run worker       # all jobs config.json enables
 npm run sync         # Blockchain synchronization
 npm run stats        # Network statistics calculation  
 npm run richlist     # Rich list calculation
@@ -2194,7 +2160,7 @@ RESCAN=100:10000 npm run stats
 RESCAN_FROM=2298155 npm run stats
 
 # Check sync status
-pm2 logs sync | tail -50
+pm2 logs explorer --lines 200 | grep '\[sync\]'
 ```
 
 9. **Orphaned blocks (parentHash mismatches, stale transactions)**

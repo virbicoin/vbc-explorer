@@ -126,7 +126,7 @@ const initDB = async (): Promise<void> => {
     await ensureIndexesOnStartup('price');
   } catch (error) {
     console.error('❌ DB connection failed:', error);
-    process.exit(1);
+    throw error;
   }
 };
 
@@ -694,10 +694,10 @@ const showCurrentPrice = async (): Promise<void> => {
 };
 
 // Main
-const main = async (): Promise<void> => {
+/** Price monitoring, or a one-off with a flag; the worker calls it with no arguments. */
+const main = async (args: string[] = process.argv.slice(2)): Promise<void> => {
   await initDB();
 
-  const args = process.argv.slice(2);
   if (args.includes('--once') || args.includes('-o')) {
     await runOnce();
   } else if (args.includes('--show') || args.includes('-s')) {
@@ -719,13 +719,12 @@ Usage:
 };
 
 export { main };
-if (require.main === module) main();
-
-process.on('SIGINT', () => {
-  console.log('\n🛑 Stopped');
-  process.exit(0);
-});
-process.on('SIGTERM', () => {
-  console.log('\n🛑 Stopped');
-  process.exit(0);
-});
+if (require.main === module) {
+  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+    process.on(signal, () => {
+      console.log('\n🛑 Stopped');
+      process.exit(0);
+    });
+  }
+  main().catch(() => process.exit(1));
+}

@@ -10,10 +10,7 @@ import Web3 from 'web3';
 import fs from 'fs';
 import path from 'path';
 import { connectDB, ensureIndexesOnStartup, Block, Transaction, Contract } from '../models/index';
-import { main as statsMain } from './stats';
-import { makeRichList } from './richlist';
-import { main as tokensMain } from './tokens';
-import { readConfig as loadConfig, getFeatures, getWeb3ProviderURL } from '../lib/config';
+import { readConfig as loadConfig, getWeb3ProviderURL } from '../lib/config';
 import { registerContract } from '../lib/sync/contracts';
 import {
   attachUncleReward,
@@ -873,91 +870,28 @@ const main = async (): Promise<void> => {
   }
 };
 
-// Handle process termination
-process.on('SIGINT', async () => {
-  console.log('\n🛑 Shutting down gracefully...');
-  // Flush any remaining data
+/** Writes the blocks and transactions still buffered (the worker calls it when it stops). */
+export async function flushPendingWrites(): Promise<void> {
   await writeBlockToDB(null, true);
   await writeTransactionsToDB(null, true);
-  process.exit(0);
-});
+}
 
-// Richlist wrapper function
-const runRichlist = async () => {
-  if (!getFeatures().richlist) {
-    // a plain block explorer: keep this app out of pm2 (see README, "Plain block explorer")
-    console.log('Richlist is switched off (richlist.enabled: false in config.json); nothing to do');
-    return;
-  }
-  console.log('🚀 Starting richlist calculation...');
+export { main };
 
-  // Ensure database connection first
-  await initDB();
-
-  const web3 = new Web3(new Web3.providers.HttpProvider(getWeb3ProviderURL()));
-  const latestBlock = await web3.eth.getBlockNumber();
-  const blockNumber = Number(latestBlock);
-  const BATCH_SIZE = 50;
-
-  console.log(`📦 Processing richlist for block ${blockNumber}`);
-  await makeRichList(blockNumber, BATCH_SIZE);
-};
-
-const runAll = async () => {
-  // Establish the database connection first
-  console.log('🔗 Initializing database connection for all tasks...');
-  await initDB();
-
-  // Wait until the connection is established
-  let retries = 0;
-  const maxRetries = 10;
-  while (mongoose.connection.readyState !== 1 && retries < maxRetries) {
-    console.log('⌛ Waiting for database connection...');
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    retries++;
-  }
-
-  if (mongoose.connection.readyState !== 1) {
-    console.error('❌ Failed to establish database connection');
+// `npm run sync` (alone; the worker runs the same main). Stats, the richlist and tokens are not
+// modes of this file any more: the worker (npm run worker) runs them, or npm run stats|richlist|tokens.
+if (require.main === module) {
+  const mode = process.argv[2];
+  if (mode && !mode.startsWith('-') && mode !== 'sync') {
+    console.error(
+      `"${mode}" is not a mode of tools/sync.ts any more: run the worker (npm run worker) or npm run ${mode}`
+    );
     process.exit(1);
   }
-
-  console.log('✅ Database connection established, starting all tasks...');
-
-  // Run each main sequentially (to avoid database connection contention)
-  try {
-    // First run stats and richlist in parallel
-    await Promise.all([statsMain(), runRichlist()]);
-
-    // Then run sync and tokens
-    await Promise.all([main(), tokensMain()]);
-  } catch (error) {
-    console.error('❌ Error in runAll:', error);
-  }
-};
-
-if (require.main === module) {
-  const mode = process.argv[2] || 'sync';
-  (async () => {
-    switch (mode) {
-      case 'sync':
-        await main();
-        break;
-      case 'stats':
-        await statsMain();
-        break;
-      case 'richlist':
-        await runRichlist();
-        break;
-      case 'tokens':
-        await tokensMain();
-        break;
-      case 'all':
-        await runAll();
-        break;
-      default:
-        console.log('📖 Usage: node tools/sync.js [sync|stats|richlist|tokens|all]');
-        process.exit(1);
-    }
-  })();
+  process.on('SIGINT', async () => {
+    console.log('\n🛑 Shutting down gracefully...');
+    await flushPendingWrites();
+    process.exit(0);
+  });
+  main();
 }

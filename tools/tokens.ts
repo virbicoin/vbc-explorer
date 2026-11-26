@@ -113,7 +113,7 @@ const initDB = async () => {
     await ensureIndexesOnStartup('tokens');
   } catch (error) {
     console.error('❌ Failed to connect to database:', error);
-    process.exit(1);
+    throw error;
   }
 };
 
@@ -1477,13 +1477,17 @@ async function runLaunchpadSync(): Promise<void> {
   }
 }
 
-async function main() {
+/**
+ * The token jobs: one-off maintenance with a flag, else the token scan and periodic updates. The
+ * worker calls it with no arguments; errors are thrown to the caller (the worker retries the
+ * job, the command line exits with 1).
+ */
+async function main(args: string[] = process.argv.slice(2)) {
   try {
     // Initialize database connection first
     await initDB();
 
     // Check command line arguments
-    const args = process.argv.slice(2);
 
     if (args.includes('--help')) {
       console.log(`
@@ -1638,22 +1642,19 @@ Without options, the scanner runs continuously and:
     setInterval(async () => {
       await runLaunchpadSync();
     }, LAUNCHPAD_SYNC_INTERVAL);
-
-    // Graceful shutdown
-    process.on('SIGINT', async () => {
-      console.log('🛑 Caught interrupt signal. Shutting down gracefully.');
-      await disconnect();
-      console.log('🔌 Database disconnected.');
-      process.exit(0);
-    });
   } catch (error) {
     console.error('💥 Error in main function:', error);
-    process.exit(1);
+    throw error;
   }
 }
 
 export { main };
 
 if (require.main === module) {
-  main();
+  process.on('SIGINT', async () => {
+    console.log('🛑 Caught interrupt signal. Shutting down gracefully.');
+    await disconnect();
+    process.exit(0);
+  });
+  main().catch(() => process.exit(1));
 }

@@ -210,8 +210,8 @@ function argValue(args: string[], name: string): string | undefined {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+/** The indexer (follows the chain), or a one-off with a flag; the worker calls it with no arguments. */
+export async function main(args: string[] = process.argv.slice(2)): Promise<void> {
   if (args.includes('--help') || args.includes('-h')) {
     console.log(`
 Internal transaction indexer
