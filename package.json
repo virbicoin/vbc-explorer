@@ -67,8 +67,7 @@
     "react-icons": "^5.7.0",
     "solc": "^0.8.38",
     "viem": "^2.57.12",
-    "wagmi": "^3.7.9",
-    "web3": "^4.16.0"
+    "wagmi": "^3.7.9"
   },
   "devDependencies": {
     "@babel/core": "^8.0.9",

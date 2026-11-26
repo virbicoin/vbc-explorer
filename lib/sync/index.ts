@@ -1,5 +1,5 @@
 export * from './normalize';
 export * from './reorg';
-export { createWeb3Node } from './web3-node';
+export { createChainNode } from './chain-node';
 export * from './chain-check';
 export * from './uncle-rewards';

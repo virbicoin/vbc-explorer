@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Web3 from 'web3';
+import { createPublicClient, http } from 'viem';
 import { getProviderUrl } from '@/lib/web3/provider';
 import { loadConfig } from '@/lib/config';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
@@ -29,73 +29,49 @@ export async function GET(request: NextRequest) {
     // Display the configured public RPC URL and query that same node so the
     // shown URL and the reported version/height always come from one source.
     const rpcUrl = config.network?.rpcUrl || getProviderUrl();
-    const web3 = new Web3(rpcUrl);
+    const node = createPublicClient({ transport: http(rpcUrl, { timeout: 10_000 }) });
+    const ask = <T>(method: string) => node.request({ method, params: [] } as never) as Promise<T>;
 
     const startTime = Date.now();
 
-    // Get node version using web3_clientVersion
     let version = 'Unknown';
     try {
-      version = await web3.eth.getNodeInfo();
+      version = await ask<string>('web3_clientVersion');
     } catch {
-      // Fallback: try direct RPC call
-      try {
-        const response = await fetch(rpcUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            jsonrpc: '2.0',
-            method: 'web3_clientVersion',
-            params: [],
-            id: 1,
-          }),
-        });
-        const data = await response.json();
-        if (data.result) {
-          version = data.result;
-        }
-      } catch {
-        console.log('Could not get node version');
-      }
+      console.log('Could not get node version');
     }
 
-    // Get block height
     let blockHeight = 0;
     try {
-      blockHeight = Number(await web3.eth.getBlockNumber());
+      blockHeight = Number(await node.getBlockNumber());
     } catch {
       console.log('Could not get block height');
     }
 
-    // Get network ID
     let networkId = 0;
     try {
-      networkId = Number(await web3.eth.net.getId());
+      networkId = Number(await ask<string>('net_version'));
     } catch {
       console.log('Could not get network ID');
     }
 
-    // Get chain ID
     let chainId = 0;
     try {
-      chainId = Number(await web3.eth.getChainId());
+      chainId = await node.getChainId();
     } catch {
       console.log('Could not get chain ID');
     }
 
-    // Get peer count
     let peerCount = 0;
     try {
-      peerCount = Number(await web3.eth.net.getPeerCount());
+      peerCount = Number(await ask<string>('net_peerCount'));
     } catch {
       console.log('Could not get peer count');
     }
 
-    // Check if syncing
     let isSyncing = false;
     try {
-      const syncStatus = await web3.eth.isSyncing();
-      isSyncing = syncStatus !== false;
+      isSyncing = (await ask<unknown>('eth_syncing')) !== false;
     } catch {
       console.log('Could not get sync status');
     }

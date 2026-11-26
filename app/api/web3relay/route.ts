@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getWeb3 } from '@/lib/web3/provider';
+import { getClient, getCode } from '@/lib/web3/provider';
 import { loadConfig } from '@/lib/config';
 import { Transaction, Market } from '@/lib/models';
 import { connectToDatabase } from '@/lib/db';
@@ -12,7 +12,6 @@ import { enforceRateLimit } from '@/lib/security/rate-limits';
 const config = loadConfig() as { settings?: { useFiat?: boolean } };
 
 // The shared node connection (lib/web3/provider.ts)
-const web3 = getWeb3();
 
 export async function POST(request: NextRequest) {
   const limited = enforceRateLimit(request, 'relay');
@@ -38,10 +37,14 @@ export async function POST(request: NextRequest) {
       if (!doc) {
         // Try to get from blockchain
         try {
-          const tx = await web3.eth.getTransaction(txHash);
+          const tx = await getClient()
+            .getTransaction({ hash: txHash as `0x${string}` })
+            .catch(() => null);
           if (!tx) {
             // Try as block hash
-            const block = await web3.eth.getBlock(txHash);
+            const block = await getClient()
+              .getBlock({ blockHash: txHash as `0x${string}` })
+              .catch(() => null);
             if (!block) {
               return NextResponse.json({ error: true });
             } else {
@@ -53,11 +56,13 @@ export async function POST(request: NextRequest) {
           txResponse.value = toEther(BigInt(tx.value), 'wei');
 
           // Get transaction receipt
-          const receipt = await web3.eth.getTransactionReceipt(txHash);
+          const receipt = await getClient()
+            .getTransactionReceipt({ hash: txHash as `0x${string}` })
+            .catch(() => null);
           if (receipt) {
             txResponse.gasUsed = receipt.gasUsed;
             if (receipt.status !== undefined) {
-              txResponse.status = receipt.status;
+              txResponse.status = receipt.status === 'success' ? 1 : 0;
             }
             if (!tx.to && receipt.contractAddress) {
               txResponse.creates = receipt.contractAddress;
@@ -65,7 +70,11 @@ export async function POST(request: NextRequest) {
           }
 
           // Get timestamp from block
-          const block = await web3.eth.getBlock(tx.blockNumber);
+          const block = tx.blockNumber
+            ? await getClient()
+                .getBlock({ blockNumber: tx.blockNumber })
+                .catch(() => null)
+            : null;
           if (block) {
             txResponse.timestamp = block.timestamp;
           }
@@ -79,7 +88,7 @@ export async function POST(request: NextRequest) {
         txResponse = docData as Record<string, unknown>;
       }
 
-      const latestBlock = (await web3.eth.getBlockNumber()) + 1n;
+      const latestBlock = (await getClient().getBlockNumber()) + 1n;
       txResponse.confirmations = latestBlock - BigInt(String(txResponse.blockNumber || 0));
 
       if (txResponse.confirmations === latestBlock) {
@@ -107,7 +116,7 @@ export async function POST(request: NextRequest) {
 
       if (options.indexOf('balance') > -1) {
         try {
-          const balance = await web3.eth.getBalance(addr);
+          const balance = await getClient().getBalance({ address: addr as `0x${string}` });
           addrData.balance = toEther(balance, 'wei');
         } catch {
           return NextResponse.json({ error: true });
@@ -116,7 +125,9 @@ export async function POST(request: NextRequest) {
 
       if (options.indexOf('count') > -1) {
         try {
-          addrData.count = await web3.eth.getTransactionCount(addr);
+          addrData.count = await getClient().getTransactionCount({
+            address: addr as `0x${string}`,
+          });
         } catch {
           return NextResponse.json({ error: true });
         }
@@ -124,7 +135,7 @@ export async function POST(request: NextRequest) {
 
       if (options.indexOf('bytecode') > -1) {
         try {
-          const code = await web3.eth.getCode(addr);
+          const code = await getCode(addr);
           addrData.bytecode = code;
         } catch {
           return NextResponse.json({ error: true });
@@ -136,7 +147,9 @@ export async function POST(request: NextRequest) {
       const blockNumber = body.block;
 
       try {
-        const block = await web3.eth.getBlock(blockNumber, true);
+        const block = await getClient()
+          .getBlock({ blockNumber: BigInt(blockNumber), includeTransactions: true })
+          .catch(() => null);
         if (!block) {
           return NextResponse.json({ error: true });
         }

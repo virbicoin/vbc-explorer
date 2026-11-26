@@ -2,7 +2,7 @@
 // Configuration is loaded from config.json via API or directly on server
 // This module can be used on both server and client side
 
-import Web3 from 'web3';
+import { createPublicClient, http, type Abi, type PublicClient } from 'viem';
 import { ERC20ABI } from '@/abi/TokenFactoryABI';
 
 // Configuration type definition
@@ -302,20 +302,33 @@ let cachedConfig: DexConfig | null = null;
 let cacheTimestamp = 0;
 const CACHE_TTL = 60 * 1000; // 1 minute cache
 
-// Get Web3 instance
-function getWeb3(): Web3 {
-  const config = getMinimalConfig();
-  return new Web3(config.rpcUrl);
+// A client for the configured RPC URL (this module also runs in the browser)
+function getClient(): PublicClient {
+  return createPublicClient({ transport: http(getMinimalConfig().rpcUrl) });
+}
+
+/** A view function's result (several outputs come back as an array). */
+function read(
+  client: PublicClient,
+  address: string,
+  abi: unknown,
+  functionName: string,
+  args: unknown[] = []
+): Promise<any> {
+  return client.readContract({
+    address: address as `0x${string}`,
+    abi: abi as Abi,
+    functionName,
+    args,
+  });
 }
 
 // Fetch token info from blockchain
-async function fetchTokenInfo(web3: Web3, address: string): Promise<TokenInfo> {
-  const contract = new web3.eth.Contract(ERC20ABI, address);
-
+async function fetchTokenInfo(client: PublicClient, address: string): Promise<TokenInfo> {
   const [name, symbol, decimals] = await Promise.all([
-    contract.methods.name().call() as Promise<string>,
-    contract.methods.symbol().call() as Promise<string>,
-    contract.methods.decimals().call() as Promise<number>,
+    read(client, address, ERC20ABI, 'name') as Promise<string>,
+    read(client, address, ERC20ABI, 'symbol') as Promise<string>,
+    read(client, address, ERC20ABI, 'decimals') as Promise<number>,
   ]);
 
   return {
@@ -334,19 +347,18 @@ export async function fetchDexConfig(forceRefresh = false): Promise<DexConfig> {
   }
 
   const config = getMinimalConfig();
-  const web3 = getWeb3();
+  const client = getClient();
 
   // Get Router contract
-  const router = new web3.eth.Contract(ROUTER_ABI, config.routerV2);
 
   // Fetch Factory address from Router
-  const factoryAddress = (await router.methods.factory().call()) as string;
+  const factoryAddress = (await read(client, config.routerV2, ROUTER_ABI, 'factory')) as string;
 
   // Try to get wrapped native token address from router
   // Standard Uniswap V2 uses WETH(), but some forks use custom names like WVBC(), WBNB()
   let wrappedNativeAddress: string;
   try {
-    wrappedNativeAddress = (await router.methods.WETH().call()) as string;
+    wrappedNativeAddress = (await read(client, config.routerV2, ROUTER_ABI, 'WETH')) as string;
   } catch {
     // Fallback: try WVBC for VirBiCoin-based routers
     try {
@@ -359,8 +371,7 @@ export async function fetchDexConfig(forceRefresh = false): Promise<DexConfig> {
           type: 'function',
         },
       ];
-      const routerWithWVBC = new web3.eth.Contract(wvbcAbi, config.routerV2);
-      wrappedNativeAddress = (await routerWithWVBC.methods.WVBC().call()) as string;
+      wrappedNativeAddress = (await read(client, config.routerV2, wvbcAbi, 'WVBC')) as string;
     } catch {
       // If all methods fail, use config value or zero address
       wrappedNativeAddress =
@@ -369,17 +380,16 @@ export async function fetchDexConfig(forceRefresh = false): Promise<DexConfig> {
   }
 
   // Get MasterChef contract
-  const masterChef = new web3.eth.Contract(MASTERCHEF_ABI, config.masterChefV2);
 
   // Fetch MasterChef info
   const [rewardTokenAddress, rewardPerBlockRaw, poolLength] = await Promise.all([
-    masterChef.methods.rewardToken().call() as Promise<string>,
-    masterChef.methods.rewardPerBlock().call() as Promise<string>,
-    masterChef.methods.poolLength().call() as Promise<string>,
+    read(client, config.masterChefV2, MASTERCHEF_ABI, 'rewardToken') as Promise<string>,
+    read(client, config.masterChefV2, MASTERCHEF_ABI, 'rewardPerBlock').then(String),
+    read(client, config.masterChefV2, MASTERCHEF_ABI, 'poolLength').then(String),
   ]);
 
   // Fetch reward token info
-  const rewardToken = await fetchTokenInfo(web3, rewardTokenAddress);
+  const rewardToken = await fetchTokenInfo(client, rewardTokenAddress);
 
   // Format reward per block
   const rewardPerBlockBN = BigInt(rewardPerBlockRaw);
@@ -392,7 +402,20 @@ export async function fetchDexConfig(forceRefresh = false): Promise<DexConfig> {
   for (let pid = 0; pid < numPools; pid++) {
     try {
       // Use getPoolInfo for MasterChef V2
-      const poolInfoRaw = (await masterChef.methods.getPoolInfo(pid).call()) as {
+      const poolInfo = await read(client, config.masterChefV2, MASTERCHEF_ABI, 'getPoolInfo', [
+        pid,
+      ]);
+      // several outputs come back as an array, one struct as an object
+      const poolInfoRaw = (
+        Array.isArray(poolInfo)
+          ? {
+              lpToken: poolInfo[0],
+              allocPoint: poolInfo[1],
+              lastRewardBlock: poolInfo[2],
+              totalStaked: poolInfo[3],
+            }
+          : poolInfo
+      ) as {
         lpToken: string;
         allocPoint: string;
         lastRewardBlock: string;
@@ -403,16 +426,15 @@ export async function fetchDexConfig(forceRefresh = false): Promise<DexConfig> {
       const allocPoint = Number(poolInfoRaw.allocPoint);
 
       // Get LP token pair info
-      const pair = new web3.eth.Contract(PAIR_ABI, lpTokenAddress);
       const [token0Address, token1Address] = await Promise.all([
-        pair.methods.token0().call() as Promise<string>,
-        pair.methods.token1().call() as Promise<string>,
+        read(client, lpTokenAddress, PAIR_ABI, 'token0') as Promise<string>,
+        read(client, lpTokenAddress, PAIR_ABI, 'token1') as Promise<string>,
       ]);
 
       // Fetch token info
       const [token0, token1] = await Promise.all([
-        fetchTokenInfo(web3, token0Address),
-        fetchTokenInfo(web3, token1Address),
+        fetchTokenInfo(client, token0Address),
+        fetchTokenInfo(client, token1Address),
       ]);
 
       pools.push({

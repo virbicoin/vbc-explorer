@@ -10,7 +10,7 @@ import {
   getExcludedBalances,
   getUncleIssuanceWei,
 } from '@/lib/supply';
-import { getWeb3 } from '@/lib/web3/provider';
+import { getClient } from '@/lib/web3/provider';
 import { getFeatures } from '@/lib/config';
 
 // Function to read config
@@ -29,7 +29,6 @@ async function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
     clearTimeout(timer);
   }
 }
-const web3 = getWeb3();
 
 // Blockscout API v2 - Get stats
 export async function GET(request: NextRequest) {
@@ -74,7 +73,7 @@ export async function GET(request: NextRequest) {
     // Get gas price
     let gasPrice = '1000000000'; // 1 gwei default
     try {
-      gasPrice = (await web3.eth.getGasPrice()).toString();
+      gasPrice = (await getClient().getGasPrice()).toString();
     } catch (error) {
       console.error('Error fetching gas price:', error);
     }

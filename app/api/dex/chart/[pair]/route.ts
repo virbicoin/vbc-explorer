@@ -1,7 +1,8 @@
 // API endpoint to get historical swap data for chart display
 import { NextRequest, NextResponse } from 'next/server';
-import Web3 from 'web3';
+import { isAddress } from 'viem';
 import { loadConfig } from '@/lib/config';
+import { callContract, getClient } from '@/lib/web3/provider';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -175,33 +176,38 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const intervalSeconds = TIMEFRAME_SECONDS[timeframe] || 3600;
 
     const appConfig = loadConfig();
-
+    // the public RPC URL: it also goes to the browser through the DEX settings
     const RPC_URL =
       appConfig.network?.rpcUrl || appConfig.web3Provider?.url || 'http://localhost:8545';
-    const web3 = new Web3(RPC_URL);
 
     // Get wrapped native token address from config
     const wrappedNativeAddress = appConfig.dex?.wrappedNative?.address?.toLowerCase() || '';
 
     // Validate pair address
-    if (!web3.utils.isAddress(pairAddress)) {
+    if (!isAddress(pairAddress)) {
       return NextResponse.json({ success: false, error: 'Invalid pair address' }, { status: 400 });
     }
 
-    const pairContract = new web3.eth.Contract(PAIR_ABI, pairAddress);
+    const pairContract = { abi: PAIR_ABI as readonly unknown[], address: pairAddress as string };
 
     // Get token addresses and decimals
     const [token0Address, token1Address] = await Promise.all([
-      pairContract.methods.token0().call() as Promise<string>,
-      pairContract.methods.token1().call() as Promise<string>,
+      callContract(pairContract.abi, pairContract.address, 'token0', []) as Promise<string>,
+      callContract(pairContract.abi, pairContract.address, 'token1', []) as Promise<string>,
     ]);
 
-    const token0Contract = new web3.eth.Contract(ERC20_ABI, token0Address);
-    const token1Contract = new web3.eth.Contract(ERC20_ABI, token1Address);
+    const token0Contract = {
+      abi: ERC20_ABI as readonly unknown[],
+      address: token0Address as string,
+    };
+    const token1Contract = {
+      abi: ERC20_ABI as readonly unknown[],
+      address: token1Address as string,
+    };
 
     const [decimals0Result, decimals1Result] = await Promise.all([
-      token0Contract.methods.decimals().call(),
-      token1Contract.methods.decimals().call(),
+      callContract(token0Contract.abi, token0Contract.address, 'decimals', []),
+      callContract(token1Contract.abi, token1Contract.address, 'decimals', []),
     ]);
 
     const decimals0 = Number(decimals0Result);
@@ -221,7 +227,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const totalSeconds = count * intervalSeconds;
     const blocksToFetch = Math.ceil(totalSeconds / blockTime);
 
-    const currentBlock = await web3.eth.getBlockNumber();
+    const currentBlock = await getClient().getBlockNumber();
     const fromBlock = Math.max(0, Number(currentBlock) - blocksToFetch);
 
     // Fetch Swap events using eth_getLogs RPC call
@@ -286,7 +292,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 typeof log.blockNumber === 'string'
                   ? parseInt(log.blockNumber, 16)
                   : Number(log.blockNumber);
-              const block = await web3.eth.getBlock(blockNum);
+              const block = await getClient().getBlock({ blockNumber: BigInt(blockNum) });
               timestamp = Number(block.timestamp);
               blockTimestampCache.set(blockHash, timestamp);
             }
@@ -336,7 +342,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     if (swaps.length === 0) {
       // Get current price from reserves as fallback
-      const reservesResult = (await pairContract.methods.getReserves().call()) as {
+      const reservesResult = (await callContract(
+        pairContract.abi,
+        pairContract.address,
+        'getReserves',
+        []
+      )) as {
         reserve0: string;
         reserve1: string;
       };

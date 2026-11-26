@@ -18,7 +18,6 @@
  */
 import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
-import Web3 from 'web3';
 import {
   connectDB,
   ensureIndexesOnStartup,
@@ -28,7 +27,7 @@ import {
   ScanProgress,
   Transaction,
 } from '../models/index';
-import { getWeb3ProviderURL } from '../lib/config';
+import { getClient, getCode } from '../lib/web3/provider';
 
 const SCAN = 'richlist';
 /** Stored blocks whose addresses are read at once. */
@@ -42,9 +41,6 @@ const SEEN_LIMIT = 1_000_000;
 
 const ZERO = '0x0000000000000000000000000000000000000000';
 const ADDRESS = /^0x[0-9a-f]{40}$/;
-
-let web3: Web3 | null = null;
-const node = () => (web3 ??= new Web3(new Web3.providers.HttpProvider(getWeb3ProviderURL())));
 
 async function storedHead(): Promise<number> {
   const head = (await Block.findOne().sort({ number: -1 }).select('number').lean()) as {
@@ -84,8 +80,8 @@ async function refreshBalances(addresses: string[], head: number): Promise<numbe
       chunk.map(async (address) => {
         try {
           const [balance, code] = await Promise.all([
-            node().eth.getBalance(address),
-            node().eth.getCode(address),
+            getClient().getBalance({ address: address as `0x${string}` }),
+            getCode(address),
           ]);
           return { address, balance: balance.toString(), type: code.length > 2 ? 1 : 0 };
         } catch (error) {

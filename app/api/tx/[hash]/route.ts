@@ -11,14 +11,12 @@ import {
   getSecurityHeaders,
 } from '../../../../lib/security';
 import { loadConfig, getRewardSchedule } from '../../../../lib/config';
-import { getWeb3 } from '../../../../lib/web3';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { createWeb3FactoryClient, resolveFactoryToken } from '@/lib/launchpad/factory';
 import { minerRewardWei, transactionFeesWei } from '@/lib/reward-schedule';
 
 // Load configuration
 const config = loadConfig();
-const web3 = getWeb3();
 
 /** Render a decoded calldata argument as a display string (bigints, arrays, tuples). */
 function stringifyDecodedValue(value: unknown): string {

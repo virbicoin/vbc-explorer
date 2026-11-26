@@ -5,7 +5,7 @@ import { normalizeCompilerVersion } from '@/lib/contract/solc-utils';
 import { verifiedMessage, verifySubmission, type VerificationOutcome } from '@/lib/contract/verify';
 import { withRateLimit } from '@/lib/security/rate-limits';
 import { getCompilerConfig } from '@/lib/config';
-import { getWeb3 } from '@/lib/web3/provider';
+import { getCode } from '@/lib/web3/provider';
 
 export const POST = withRateLimit('verify', async (request: NextRequest) => {
   try {
@@ -151,7 +151,7 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
         contractName: contractName || undefined,
         source: submittedSource,
       },
-      { getCode: (target) => getWeb3().eth.getCode(target) }
+      { getCode: (target) => getCode(target) }
     );
     return verificationResponse(outcome);
   } catch (error) {

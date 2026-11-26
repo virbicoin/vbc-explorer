@@ -5,7 +5,7 @@ import { withRateLimit } from '@/lib/security/rate-limits';
 import { LATEST_KNOWN_SOLC_VERSION } from '@/lib/contract/solc-utils';
 import { verifySubmission } from '@/lib/contract/verify';
 import { getCompilerConfig } from '@/lib/config';
-import { getWeb3 } from '@/lib/web3/provider';
+import { getCode } from '@/lib/web3/provider';
 import {
   isTrue,
   readVerificationBody,
@@ -48,7 +48,7 @@ export const POST = withRateLimit(
           source: body.source_code,
           license: body.license_type,
         },
-        { getCode: (target) => getWeb3().eth.getCode(target) }
+        { getCode: (target) => getCode(target) }
       );
       return v2VerificationResponse(outcome);
     } catch (error) {

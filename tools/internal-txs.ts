@@ -22,7 +22,6 @@
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
-import Web3 from 'web3';
 import {
   connectDB,
   ensureIndexesOnStartup,
@@ -164,14 +163,12 @@ export async function indexToConfirmedHead(
 }
 
 function contractRegistrar(): IndexToHeadOptions['onContractCreated'] {
-  const web3 = new Web3(new Web3.providers.HttpProvider(getWeb3ProviderURL()));
   return (created) =>
     registerContract(
       created.address,
       created.creator,
       created.transactionHash,
-      created.blockNumber,
-      web3
+      created.blockNumber
     );
 }
 

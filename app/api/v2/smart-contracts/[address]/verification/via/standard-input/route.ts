@@ -4,7 +4,7 @@ import { sanitizeAddress } from '@/lib/security';
 import { withRateLimit } from '@/lib/security/rate-limits';
 import { LATEST_KNOWN_SOLC_VERSION } from '@/lib/contract/solc-utils';
 import { verifySubmission } from '@/lib/contract/verify';
-import { getWeb3 } from '@/lib/web3/provider';
+import { getCode } from '@/lib/web3/provider';
 import { readVerificationBody, v2Reply, v2VerificationResponse } from '@/lib/api/v2/verification';
 
 // Blockscout API v2 - verify a contract from a standard JSON input, compiled with its own
@@ -54,7 +54,7 @@ export const POST = withRateLimit(
           source: text,
           license: body.license_type,
         },
-        { getCode: (target) => getWeb3().eth.getCode(target) }
+        { getCode: (target) => getCode(target) }
       );
       return v2VerificationResponse(outcome);
     } catch (error) {

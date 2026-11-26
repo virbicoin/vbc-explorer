@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getWeb3 } from '../../../../lib/web3';
 import dbConnect from '../../../../lib/db';
 import { tryGetDb } from '../../../../lib/db/get-db';
 import { getGasUnitServer } from '../../../../lib/config';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { getClient } from '@/lib/web3/provider';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,10 +34,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(gasStatsCache);
     }
 
-    const web3 = getWeb3();
-
     // Get latest block
-    const latestBlock = await web3.eth.getBlock('latest');
+    const latestBlock = await getClient().getBlock();
     if (!latestBlock) {
       throw new Error('Failed to get latest block');
     }
@@ -81,7 +79,10 @@ export async function GET(request: NextRequest) {
         blockPromises.push(
           (async () => {
             try {
-              const block = await web3.eth.getBlock(blockNumber - i, true);
+              const block = await getClient().getBlock({
+                blockNumber: BigInt(blockNumber - i),
+                includeTransactions: true,
+              });
               if (block && block.transactions) {
                 for (const tx of block.transactions) {
                   if (typeof tx === 'object' && tx.gasPrice) {

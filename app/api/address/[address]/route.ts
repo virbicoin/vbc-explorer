@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Account, Transaction, Contract, Block } from '../../../../models/index';
 import { tryGetDb } from '../../../../lib/db/get-db';
-import { getWeb3 } from '../../../../lib/web3';
+import { getClient, getCode } from '@/lib/web3/provider';
 import { loadConfig, getRewardSchedule } from '../../../../lib/config';
 import { calculateTotalSupply } from '../../../../lib/supply';
 import {
@@ -19,7 +19,6 @@ import { weiToFixed8 } from '@/lib/bigint-utils';
 const config = loadConfig();
 
 // Get shared Web3 instance
-const web3 = getWeb3();
 
 // Determine MetaMask-compliant transaction type
 const METHOD_IDS: Record<string, { type: string; action: string }> = {
@@ -221,7 +220,7 @@ export async function GET(
   let isContract = false;
   let contractCode = '0x';
   try {
-    contractCode = await web3.eth.getCode(address);
+    contractCode = await getCode(address);
     isContract = Boolean(contractCode && contractCode !== '0x' && contractCode !== '0x0');
   } catch {
     // ignore
@@ -230,7 +229,7 @@ export async function GET(
   // Get real-time balance from Web3 (display only)
   let realBalance = '0';
   try {
-    const balanceWei = await web3.eth.getBalance(address);
+    const balanceWei = await getClient().getBalance({ address: address as `0x${string}` });
     // Convert BigInt to string
     realBalance = balanceWei.toString();
   } catch {

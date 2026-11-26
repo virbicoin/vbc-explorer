@@ -24,11 +24,10 @@
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
-import Web3 from 'web3';
 import { formatEther } from 'viem';
 import { connectDB, ensureIndexesOnStartup } from '../models/index';
-import { getWeb3ProviderURL } from '../lib/config';
-import { createWeb3Node } from '../lib/sync/web3-node';
+import { createChainNode } from '../lib/sync/chain-node';
+import { getProviderUrl } from '../lib/web3/provider';
 import { backfillUncleRewards } from '../lib/sync/uncle-rewards';
 
 export interface CliOptions {
@@ -83,9 +82,9 @@ export async function run(argv: string[]): Promise<number> {
   }
   await ensureIndexesOnStartup('backfill-uncle-rewards');
 
-  const providerUrl = getWeb3ProviderURL();
+  const providerUrl = getProviderUrl();
   console.log(`🔌 Node: ${providerUrl}`);
-  const node = createWeb3Node(new Web3(new Web3.providers.HttpProvider(providerUrl)));
+  const node = createChainNode();
 
   console.log(
     `⛏️  Backfilling uncle rewards${options.dryRun ? ' (dry run: nothing is written)' : ''}`

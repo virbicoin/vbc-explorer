@@ -1,5 +1,8 @@
-/**
- * Web3 Module Exports
- */
-
-export { getWeb3, getProviderUrl, resetWeb3, isWeb3Connected } from './provider';
+export {
+  callContract,
+  getClient,
+  getCode,
+  getProviderUrl,
+  isNodeConnected,
+  resetClient,
+} from './provider';

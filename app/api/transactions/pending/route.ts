@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getWeb3 } from '@/lib/web3/provider';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { getClient } from '@/lib/web3/provider';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -21,15 +21,15 @@ export async function GET(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const web3 = getWeb3();
-
     // Get pending transactions from txpool
     // Note: This requires txpool API to be enabled on the node
     let pendingTxs: PendingTransaction[] = [];
 
     try {
       // Try to get pending transactions using eth_pendingTransactions (if supported)
-      const pending = await web3.eth.getPendingTransactions();
+      const pending = (await getClient().request({
+        method: 'eth_pendingTransactions',
+      } as never)) as Array<Record<string, unknown>>;
 
       pendingTxs = pending.map((tx) => ({
         hash: (tx as { hash?: string }).hash || '',
@@ -44,10 +44,12 @@ export async function GET(request: NextRequest) {
     } catch {
       // If getPendingTransactions is not supported, try txpool_content
       try {
-        const txpool = await web3.eth.requestManager.send({
+        const txpool = (await getClient().request({
           method: 'txpool_content',
           params: [],
-        });
+        } as never)) as {
+          pending?: Record<string, Record<string, Record<string, string | undefined>>>;
+        };
 
         if (txpool && txpool.pending) {
           for (const address of Object.keys(txpool.pending)) {

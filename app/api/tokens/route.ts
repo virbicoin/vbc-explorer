@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getChainStats } from '../../../lib/stats';
 import { Contract, Token, TokenHolder, TokenTransfer, connectDB } from '../../../models/index';
 import { loadConfig } from '../../../lib/config';
-import { getWeb3 } from '../../../lib/web3';
+import { callContract } from '@/lib/web3/provider';
 import { apiCache, CACHE_TTL } from '../../../lib/cache';
 import { paginatedResponse, ContractTypes } from '../../../lib/api-response';
 import { logger } from '../../../lib/logger';
@@ -13,7 +13,6 @@ import { validatePagination } from '@/lib/security/validation';
 import { rejectDeepPagination } from '@/lib/security/pagination';
 
 // Get shared Web3 instance
-const web3 = getWeb3();
 
 // Load configuration for blacklist
 const config = loadConfig();
@@ -96,8 +95,11 @@ const ERC20_META_ABI = [
 // Function to fetch logoUrl from Launchpad V2 token contract
 async function fetchLaunchpadLogoUrl(tokenAddress: string): Promise<string | null> {
   try {
-    const contract = new web3.eth.Contract(LAUNCHPAD_V2_ABI, tokenAddress);
-    const logoUrl = await contract.methods.logoUrl().call();
+    const contract = {
+      abi: LAUNCHPAD_V2_ABI as readonly unknown[],
+      address: tokenAddress as string,
+    };
+    const logoUrl = await callContract(contract.abi, contract.address, 'logoUrl', []);
     return logoUrl && logoUrl !== '' ? (logoUrl as string) : null;
   } catch {
     // Token doesn't have logoUrl method (not a Launchpad V2 token)
@@ -220,8 +222,8 @@ export async function GET(request: NextRequest) {
     // Try to get real-time supply from blockchain
     let actualSupply = '0';
     try {
-      const contract = new web3.eth.Contract(ERC20_ABI, ct.address);
-      const rawSupply = await contract.methods.totalSupply().call();
+      const contract = { abi: ERC20_ABI as readonly unknown[], address: ct.address as string };
+      const rawSupply = await callContract(contract.abi, contract.address, 'totalSupply', []);
       if (rawSupply) {
         const value = BigInt(String(rawSupply));
         const divisor = BigInt(10 ** ct.decimals);
@@ -294,8 +296,16 @@ export async function GET(request: NextRequest) {
 
   for (const factoryAddress of uniqueFactoryAddresses) {
     try {
-      const factory = new web3.eth.Contract(TokenFactoryV2ABI, factoryAddress);
-      const factoryTokens = (await factory.methods.getAllTokens().call()) as string[];
+      const factory = {
+        abi: TokenFactoryV2ABI as readonly unknown[],
+        address: factoryAddress as string,
+      };
+      const factoryTokens = (await callContract(
+        factory.abi,
+        factory.address,
+        'getAllTokens',
+        []
+      )) as string[];
 
       const missingFactoryTokens = (factoryTokens || []).filter((addr) => {
         const lower = addr?.toLowerCase();
@@ -304,7 +314,10 @@ export async function GET(request: NextRequest) {
 
       for (const tokenAddress of missingFactoryTokens) {
         const lower = tokenAddress.toLowerCase();
-        const tokenContract = new web3.eth.Contract(ERC20_META_ABI, tokenAddress);
+        const tokenContract = {
+          abi: ERC20_META_ABI as readonly unknown[],
+          address: tokenAddress as string,
+        };
 
         let name = 'Unknown';
         let symbol = 'UNKNOWN';
@@ -312,22 +325,36 @@ export async function GET(request: NextRequest) {
         let totalSupply = '0';
 
         try {
-          name = (await tokenContract.methods.name().call()) as string;
+          name = (await callContract(
+            tokenContract.abi,
+            tokenContract.address,
+            'name',
+            []
+          )) as string;
         } catch {
           /* ignore */
         }
         try {
-          symbol = (await tokenContract.methods.symbol().call()) as string;
+          symbol = (await callContract(
+            tokenContract.abi,
+            tokenContract.address,
+            'symbol',
+            []
+          )) as string;
         } catch {
           /* ignore */
         }
         try {
-          decimals = Number(await tokenContract.methods.decimals().call());
+          decimals = Number(
+            await callContract(tokenContract.abi, tokenContract.address, 'decimals', [])
+          );
         } catch {
           /* ignore */
         }
         try {
-          totalSupply = String(await tokenContract.methods.totalSupply().call());
+          totalSupply = String(
+            await callContract(tokenContract.abi, tokenContract.address, 'totalSupply', [])
+          );
         } catch {
           /* ignore */
         }
@@ -448,8 +475,11 @@ export async function GET(request: NextRequest) {
         // For VRC-20 tokens, fetch real-time totalSupply and holder count
         if (type === 'VRC-20' && token.address && typeof token.address === 'string') {
           try {
-            const contract = new web3.eth.Contract(ERC20_ABI, token.address as string);
-            const rawSupply = await contract.methods.totalSupply().call();
+            const contract = {
+              abi: ERC20_ABI as readonly unknown[],
+              address: token.address as string as string,
+            };
+            const rawSupply = await callContract(contract.abi, contract.address, 'totalSupply', []);
             if (rawSupply) {
               // Format with decimals
               const value = BigInt(String(rawSupply));
@@ -588,8 +618,8 @@ export async function GET(request: NextRequest) {
   const nftOnchainSupplies = new Map<string, bigint>();
   for (const addr of nftAddresses) {
     try {
-      const contract = new web3.eth.Contract(ERC20_ABI, addr);
-      const totalSupply = await contract.methods.totalSupply().call();
+      const contract = { abi: ERC20_ABI as readonly unknown[], address: addr as string };
+      const totalSupply = await callContract(contract.abi, contract.address, 'totalSupply', []);
       nftOnchainSupplies.set(addr, BigInt(totalSupply?.toString() || '0'));
     } catch {
       // Keep it visible if we can't check

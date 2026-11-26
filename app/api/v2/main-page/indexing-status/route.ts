@@ -3,7 +3,7 @@ import { Block } from '@/models/index';
 import { countAll } from '@/lib/db/count';
 import { getTraceSourceUrl, readConfig } from '@/lib/config';
 import { resolveSyncSettings } from '@/lib/sync/reorg';
-import { getWeb3 } from '@/lib/web3/provider';
+import { getClient } from '@/lib/web3/provider';
 import { headNumber, internalIndexHead, json, v2Route } from '@/lib/api/v2/common';
 
 /** A ratio as Blockscout writes it: at most 1, rounded down to two decimals. */
@@ -23,8 +23,8 @@ const allowedLag = (total: number) => Math.min(1000, Math.floor(total / 1000));
 /** The node's height, or null when it does not answer within 3 s. */
 async function nodeHead(): Promise<number | null> {
   const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000).unref());
-  const answer = getWeb3()
-    .eth.getBlockNumber()
+  const answer = getClient()
+    .getBlockNumber()
     .then(Number)
     .catch(() => null);
   return Promise.race([answer, timeout]);

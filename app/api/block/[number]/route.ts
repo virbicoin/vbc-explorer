@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTransactionTypeGlobal } from '../../../../lib/transaction-utils';
-import { getWeb3 } from '../../../../lib/web3';
 import { apiCache, CACHE_TTL } from '../../../../lib/cache';
 import {
   isValidBlockNumber,
@@ -9,6 +8,7 @@ import {
   getSecurityHeaders,
 } from '../../../../lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { getClient } from '@/lib/web3/provider';
 
 // Utility: recursively converts BigInt values inside unknown structures to string while preserving shape
 function convertBigIntToString(obj: unknown): unknown {
@@ -55,8 +55,6 @@ export async function GET(
     const limited = enforceRateLimit(request, 'api');
     if (limited) return limited;
 
-    const web3 = getWeb3();
-
     const resolvedParams = await params;
     const blockNumber = resolvedParams.number;
 
@@ -69,7 +67,9 @@ export async function GET(
     }
 
     // Get block information
-    const block = await web3.eth.getBlock(blockNumber, true);
+    const block = await getClient()
+      .getBlock({ blockNumber: BigInt(blockNumber), includeTransactions: true })
+      .catch(() => null);
 
     if (!block) {
       return NextResponse.json(
@@ -111,8 +111,10 @@ export async function GET(
         // default to success, so the page showed unknown transactions as successful)
         let status: number | null = null;
         try {
-          const receipt = await web3.eth.getTransactionReceipt(tx.hash);
-          status = receipt ? Number(receipt.status) : null;
+          const receipt = await getClient()
+            .getTransactionReceipt({ hash: tx.hash as `0x${string}` })
+            .catch(() => null);
+          status = receipt ? (receipt.status === 'success' ? 1 : 0) : null;
         } catch (error) {
           console.warn(`Failed to get receipt for tx ${tx.hash}:`, error);
         }

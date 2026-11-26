@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Token, TokenHolder } from '../../../../../models/index';
-import { getWeb3 } from '../../../../../lib/web3';
+import { callContract } from '@/lib/web3/provider';
 import {
   sanitizeAddress,
   checkRateLimit,
@@ -10,7 +10,6 @@ import {
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 // Get shared Web3 instance
-const web3 = getWeb3();
 
 // Launchpad V2 Token ABI for logoUrl
 const LAUNCHPAD_V2_ABI = [
@@ -26,8 +25,11 @@ const LAUNCHPAD_V2_ABI = [
 // Function to fetch logoUrl from Launchpad V2 token contract
 async function fetchLaunchpadLogoUrl(tokenAddress: string): Promise<string | null> {
   try {
-    const contract = new web3.eth.Contract(LAUNCHPAD_V2_ABI, tokenAddress);
-    const logoUrl = await contract.methods.logoUrl().call();
+    const contract = {
+      abi: LAUNCHPAD_V2_ABI as readonly unknown[],
+      address: tokenAddress as string,
+    };
+    const logoUrl = await callContract(contract.abi, contract.address, 'logoUrl', []);
     return logoUrl && logoUrl !== '' ? (logoUrl as string) : null;
   } catch {
     // Token doesn't have logoUrl method (not a Launchpad V2 token)

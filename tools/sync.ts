@@ -6,7 +6,7 @@ Description: This file will start syncing the blockchain from the configured nod
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
-import Web3 from 'web3';
+import { bytesToHex } from 'viem';
 import fs from 'fs';
 import path from 'path';
 import { connectDB, ensureIndexesOnStartup, Block, Transaction, Contract } from '../models/index';
@@ -14,7 +14,7 @@ import { readConfig as loadConfig, getWeb3ProviderURL } from '../lib/config';
 import { registerContract } from '../lib/sync/contracts';
 import {
   attachUncleReward,
-  createWeb3Node,
+  createChainNode,
   dbHeadNumber,
   loadSyncState,
   normalizeBlock,
@@ -29,6 +29,7 @@ import {
   type ContractCreation,
   type TransactionDoc,
 } from '../lib/sync';
+import { getClient, getCode, getProviderUrl } from '../lib/web3/provider';
 
 // Use unified config loader
 
@@ -115,14 +116,14 @@ const toNumber = (value: any): number => {
 const toString = (value: any): string => {
   if (value === null || value === undefined) return '';
   if (typeof value === 'bigint') return value.toString();
-  if (value instanceof Uint8Array) return Web3.utils.bytesToHex(value);
+  if (value instanceof Uint8Array) return bytesToHex(value);
   return String(value);
 };
 
 /**
  * Register known contracts from config.json
  */
-const registerKnownContracts = async (web3Instance: Web3): Promise<void> => {
+const registerKnownContracts = async (): Promise<void> => {
   const cfg = config as any;
   const contracts: Array<{
     address: string;
@@ -228,7 +229,7 @@ const registerKnownContracts = async (web3Instance: Web3): Promise<void> => {
       const existing = await Contract.findOne({ address: contract.address });
       if (!existing) {
         // Verify it's actually a contract on-chain
-        const bytecode = await web3Instance.eth.getCode(contract.address);
+        const bytecode = await getCode(contract.address);
         if (bytecode && bytecode !== '0x' && bytecode !== '0x0') {
           await Contract.create({
             address: contract.address,
@@ -312,14 +313,10 @@ if (args.length >= 2 && !isNaN(parseInt(args[0])) && !isNaN(parseInt(args[1]))) 
   console.log(`Command line override: syncing blocks ${config.startBlock} to ${config.endBlock}`);
 }
 
-// Use unified Web3 provider URL
-const providerUrl = getWeb3ProviderURL();
-console.log(`🔌 Connecting to node at ${providerUrl}...`);
+console.log(`🔌 Connecting to node at ${getProviderUrl()}...`);
 
-// Web3 connection using unified config
-const web3 = new Web3(new Web3.providers.HttpProvider(providerUrl));
 // Uncle headers for Block.uncleReward (bulk writers below)
-const uncleNode = createWeb3Node(web3);
+const uncleNode = createChainNode();
 
 /**
  * Write block to database with improved performance
@@ -389,7 +386,9 @@ const writeTransactionsToDB: WriteTransactionsToDB = async function (
       if (typeof txData === 'string') continue; // Skip if only hash
 
       try {
-        const receipt = await web3.eth.getTransactionReceipt(toString(txData.hash));
+        const receipt = await getClient()
+          .getTransactionReceipt({ hash: toString(txData.hash) as `0x${string}` })
+          .catch(() => null);
         const tx = normalizeTransaction(txData, receipt, blockData);
         self.bulkOps.push(tx);
 
@@ -401,7 +400,7 @@ const writeTransactionsToDB: WriteTransactionsToDB = async function (
           const blockNum = toNumber(blockData.number);
 
           // Register contract asynchronously (don't wait)
-          registerContract(contractAddr, creatorAddr, txHash, blockNum, web3).catch(() => {});
+          registerContract(contractAddr, creatorAddr, txHash, blockNum).catch(() => {});
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -455,7 +454,7 @@ const listenBlocks = function (): void {
   const pollInterval = 5000; // Poll every 5 seconds
   const MAX_BLOCKS_PER_POLL = 20;
   const RESUME_WINDOW = 1000; // resume from the saved position only when it is this close to the head
-  const node = createWeb3Node(web3);
+  const node = createChainNode();
   const settings = resolveSyncSettings((config as { sync?: Record<string, unknown> }).sync);
   const deps = {
     quiet: config.quiet,
@@ -464,8 +463,7 @@ const listenBlocks = function (): void {
         creation.address,
         creation.creator,
         creation.transactionHash,
-        creation.blockNumber,
-        web3
+        creation.blockNumber
       ).catch(() => {}),
   };
   let lastProcessedBlock = 0;
@@ -572,7 +570,7 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
     startBlock = config.startBlock;
   }
   if (!endBlock) {
-    const latestBlockBigInt = await web3.eth.getBlockNumber();
+    const latestBlockBigInt = await getClient().getBlockNumber();
     endBlock = config.endBlock
       ? Math.min(config.endBlock, toNumber(latestBlockBigInt))
       : toNumber(latestBlockBigInt);
@@ -639,7 +637,9 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
         // Fetch blocks in parallel within each chunk
         const blockPromises = chunk.map(async (blockNum) => {
           try {
-            const blockData = await web3.eth.getBlock(blockNum, true);
+            const blockData = await getClient()
+              .getBlock({ blockNumber: BigInt(blockNum), includeTransactions: true })
+              .catch(() => null);
             return { blockNum, blockData };
           } catch (error) {
             console.log(`❌ Error fetching block ${blockNum}: ${error}`);
@@ -673,7 +673,9 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
               .filter((tx: any) => typeof tx === 'object' && tx !== null)
               .map(async (tx: any) => {
                 try {
-                  const receipt = await web3.eth.getTransactionReceipt(toString(tx.hash));
+                  const receipt = await getClient()
+                    .getTransactionReceipt({ hash: toString(tx.hash) as `0x${string}` })
+                    .catch(() => null);
                   return { tx, receipt };
                 } catch (error) {
                   console.log(
@@ -696,7 +698,7 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
                 const blockNum = toNumber(blockData.number);
 
                 // Register contract asynchronously (don't block sync)
-                registerContract(contractAddr, creatorAddr, txHash, blockNum, web3).catch(() => {});
+                registerContract(contractAddr, creatorAddr, txHash, blockNum).catch(() => {});
               }
             }
           }
@@ -752,7 +754,7 @@ const prepareSync = async (): Promise<void> => {
 
     if (latestBlockDoc) {
       const dbLatestBlock = latestBlockDoc.number;
-      const nodeLatestBlockBigInt = await web3.eth.getBlockNumber();
+      const nodeLatestBlockBigInt = await getClient().getBlockNumber();
       const nodeLatestBlock = toNumber(nodeLatestBlockBigInt);
 
       console.log(`📊 Database latest block: ${dbLatestBlock}`);
@@ -826,11 +828,11 @@ const main = async (): Promise<void> => {
     await initDB();
 
     // Register known contracts from config.json
-    await registerKnownContracts(web3);
+    await registerKnownContracts();
 
     // Test connection by getting latest block number
     try {
-      await web3.eth.getBlockNumber();
+      await getClient().getBlockNumber();
     } catch (connectionError) {
       console.log('❌ Error: Cannot connect to the node');
       process.exit(1);

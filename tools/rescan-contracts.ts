@@ -17,10 +17,10 @@
  */
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
-import Web3 from 'web3';
 import mongoose from 'mongoose';
 import { connectDB, ensureIndexesOnStartup, Contract } from '../models/index';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
+import { callContract, getClient, getCode } from '@/lib/web3/provider';
 
 // ERC-165 interface IDs
 const ERC721_INTERFACE_ID = '0x80ac58cd';
@@ -75,7 +75,7 @@ interface ContractInfo {
   decimals: number;
 }
 
-async function detectContractType(web3: Web3, address: string): Promise<ContractInfo> {
+async function detectContractType(address: string): Promise<ContractInfo> {
   const result: ContractInfo = {
     tokenType: 'Contract',
     name: null,
@@ -85,17 +85,22 @@ async function detectContractType(web3: Web3, address: string): Promise<Contract
 
   try {
     // Check if address has bytecode
-    const code = await web3.eth.getCode(address);
+    const code = await getCode(address);
     if (!code || code === '0x' || code === '0x0') {
       return result;
     }
 
     // Check for ERC-165 (NFT detection)
-    const erc165Contract = new web3.eth.Contract(ERC165_ABI as any, address);
+    const erc165Contract = { abi: ERC165_ABI as readonly unknown[], address: address as string };
 
     // Check for ERC-721
     try {
-      const isERC721 = await erc165Contract.methods.supportsInterface(ERC721_INTERFACE_ID).call();
+      const isERC721 = await callContract(
+        erc165Contract.abi,
+        erc165Contract.address,
+        'supportsInterface',
+        [ERC721_INTERFACE_ID]
+      );
       if (isERC721) {
         result.tokenType = 'ERC721';
       }
@@ -106,9 +111,12 @@ async function detectContractType(web3: Web3, address: string): Promise<Contract
     // Check for ERC-1155
     if (result.tokenType === 'Contract') {
       try {
-        const isERC1155 = await erc165Contract.methods
-          .supportsInterface(ERC1155_INTERFACE_ID)
-          .call();
+        const isERC1155 = await callContract(
+          erc165Contract.abi,
+          erc165Contract.address,
+          'supportsInterface',
+          [ERC1155_INTERFACE_ID]
+        );
         if (isERC1155) {
           result.tokenType = 'ERC1155';
         }
@@ -118,22 +126,13 @@ async function detectContractType(web3: Web3, address: string): Promise<Contract
     }
 
     // Try to get token metadata (works for both ERC-20 and NFTs)
-    const erc20Contract = new web3.eth.Contract(ERC20_ABI as any, address);
+    const erc20Contract = { abi: ERC20_ABI as readonly unknown[], address: address as string };
 
     try {
       const [name, symbol, decimals] = await Promise.all([
-        erc20Contract.methods
-          .name()
-          .call()
-          .catch(() => null),
-        erc20Contract.methods
-          .symbol()
-          .call()
-          .catch(() => null),
-        erc20Contract.methods
-          .decimals()
-          .call()
-          .catch(() => null),
+        callContract(erc20Contract.abi, erc20Contract.address, 'name', []).catch(() => null),
+        callContract(erc20Contract.abi, erc20Contract.address, 'symbol', []).catch(() => null),
+        callContract(erc20Contract.abi, erc20Contract.address, 'decimals', []).catch(() => null),
       ]);
 
       if (name) result.name = String(name);
@@ -170,11 +169,10 @@ async function rescanContracts(options: {
   // Connect to Web3
   const web3Url = getWeb3ProviderURL();
   console.log(`🔌 Connecting to: ${web3Url}`);
-  const web3 = new Web3(web3Url);
 
   // Test connection
   try {
-    await web3.eth.getBlockNumber();
+    await getClient().getBlockNumber();
     console.log('✅ Web3 connected');
   } catch (error: any) {
     console.error('❌ Failed to connect to Web3:', error.message);
@@ -215,7 +213,7 @@ async function rescanContracts(options: {
       `   Current: ERC=${contract.ERC}, type=${contract.type}, name=${contract.contractName}`
     );
 
-    const info = await detectContractType(web3, address);
+    const info = await detectContractType(address);
     console.log(`   Detected: ${info.tokenType}, name=${info.name}, symbol=${info.symbol}`);
 
     // Determine if update is needed

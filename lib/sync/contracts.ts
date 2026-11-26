@@ -6,7 +6,6 @@
  * record, or has no code, is left alone.
  */
 
-import type Web3 from 'web3';
 import { Contract } from '../../models/index';
 import {
   ERC721_INTERFACE_ID,
@@ -15,6 +14,7 @@ import {
   type DetectedTokenType,
 } from '../contract/erc';
 import { hiddenFields } from '../security/display-name';
+import { callContract, getCode } from '@/lib/web3/provider';
 
 /**
  * Register a contract in the database
@@ -24,8 +24,7 @@ export const registerContract = async (
   contractAddress: string,
   creatorAddress: string,
   creationTxHash: string,
-  blockNumber: number,
-  web3Instance: Web3
+  blockNumber: number
 ): Promise<void> => {
   try {
     const normalizedAddress = contractAddress.toLowerCase();
@@ -37,7 +36,7 @@ export const registerContract = async (
     }
 
     // Get bytecode to verify it's a contract
-    const bytecode = await web3Instance.eth.getCode(contractAddress);
+    const bytecode = await getCode(contractAddress);
     if (!bytecode || bytecode === '0x' || bytecode === '0x0') {
       return; // Not a contract
     }
@@ -60,11 +59,19 @@ export const registerContract = async (
           type: 'function',
         },
       ];
-      const erc165Contract = new web3Instance.eth.Contract(erc165ABI as any, contractAddress);
+      const erc165Contract = {
+        abi: erc165ABI as readonly unknown[],
+        address: contractAddress as string,
+      };
 
       // Check for ERC-721
       try {
-        const isERC721 = await erc165Contract.methods.supportsInterface(ERC721_INTERFACE_ID).call();
+        const isERC721 = await callContract(
+          erc165Contract.abi,
+          erc165Contract.address,
+          'supportsInterface',
+          [ERC721_INTERFACE_ID]
+        );
         if (isERC721) {
           tokenType = 'ERC721';
         }
@@ -75,9 +82,12 @@ export const registerContract = async (
       // Check for ERC-1155
       if (tokenType === 'Contract') {
         try {
-          const isERC1155 = await erc165Contract.methods
-            .supportsInterface(ERC1155_INTERFACE_ID)
-            .call();
+          const isERC1155 = await callContract(
+            erc165Contract.abi,
+            erc165Contract.address,
+            'supportsInterface',
+            [ERC1155_INTERFACE_ID]
+          );
           if (isERC1155) {
             tokenType = 'ERC1155';
           }
@@ -110,22 +120,13 @@ export const registerContract = async (
           type: 'function',
         },
       ];
-      const contract = new web3Instance.eth.Contract(erc20ABI as any, contractAddress);
+      const contract = { abi: erc20ABI as readonly unknown[], address: contractAddress as string };
 
       // Try to call ERC20 methods
       const [name, symbol, decimals] = await Promise.all([
-        contract.methods
-          .name()
-          .call()
-          .catch(() => null),
-        contract.methods
-          .symbol()
-          .call()
-          .catch(() => null),
-        contract.methods
-          .decimals()
-          .call()
-          .catch(() => null),
+        callContract(contract.abi, contract.address, 'name', []).catch(() => null),
+        callContract(contract.abi, contract.address, 'symbol', []).catch(() => null),
+        callContract(contract.abi, contract.address, 'decimals', []).catch(() => null),
       ]);
 
       if (name && symbol) {

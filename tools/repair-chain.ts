@@ -25,10 +25,9 @@
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
-import Web3 from 'web3';
 import { connectDB, ensureIndexesOnStartup } from '../models/index';
-import { getWeb3ProviderURL } from '../lib/config';
-import { createWeb3Node } from '../lib/sync/web3-node';
+import { createChainNode } from '../lib/sync/chain-node';
+import { getProviderUrl } from '../lib/web3/provider';
 import { checkChain, repairChain, sampleAgainstNode } from '../lib/sync/chain-check';
 
 type Mode = 'check' | 'sample' | 'fix' | 'help';
@@ -110,9 +109,9 @@ export async function run(argv: string[]): Promise<number> {
     return result.mismatches === 0 ? 0 : 1;
   }
 
-  const providerUrl = getWeb3ProviderURL();
+  const providerUrl = getProviderUrl();
   console.log(`🔌 Node: ${providerUrl}`);
-  const node = createWeb3Node(new Web3(new Web3.providers.HttpProvider(providerUrl)));
+  const node = createChainNode();
 
   if (options.mode === 'sample') {
     console.log(`🎲 Comparing ${options.sampleSize} random heights with the node...`);

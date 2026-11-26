@@ -37,12 +37,11 @@ vi.mock('@/lib/config', async (importOriginal) => {
     ...actual,
     readConfig: fake,
     loadConfig: fake,
-    getWeb3ProviderURL: () => state.rpcUrl,
   };
 });
 
 import { Token, TokenHolder, ScanProgress } from '@/models/index';
-import { resetWeb3 } from '@/lib/web3/provider';
+import { resetClient } from '@/lib/web3/provider';
 import { POST as registerPost } from '@/app/api/launchpad/register/route';
 import { GET as syncGet, POST as syncPost } from '@/app/api/launchpad/sync/route';
 import { LAUNCHPAD_SYNC_SCAN_TYPE } from '@/lib/launchpad/sync';
@@ -84,7 +83,9 @@ beforeAll(async () => {
   world = new FakeFactoryWorld();
   node = await startFakeNode(world);
   state.rpcUrl = node.url;
-  resetWeb3();
+  // the node client reads web3Provider.url (mocked above) unless the environment names a node
+  delete process.env.WEB3_PROVIDER_URL;
+  resetClient();
   mongod = await MongoMemoryServer.create();
   const uri = mongod.getUri('explorerDB_launchpad');
   process.env.MONGODB_URI = uri;

@@ -7,7 +7,7 @@ This file will scan the blockchain for new token contracts and update the databa
 */
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
-import Web3 from 'web3';
+import { numberToHex } from 'viem';
 import mongoose from 'mongoose';
 import { ERC20ABI } from '../abi/TokenFactoryABI';
 import fs from 'fs';
@@ -79,6 +79,7 @@ import {
 } from '../lib/sync/erc1155';
 import { resolveSyncSettings } from '../lib/sync/reorg';
 import { hiddenFields } from '../lib/security/display-name';
+import { callContract, getClient, getCode } from '../lib/web3/provider';
 
 // LP Token configuration - loaded from environment or fetched from factory
 const LP_TOKEN_TYPES = ['LP', 'SLP', 'SLP-V2', 'UNI-V2', 'CAKE-LP'] as const;
@@ -128,15 +129,12 @@ async function disconnect() {
 
 // --- Configuration ---
 const config = loadConfig();
-const WEB3_PROVIDER_URL = getWeb3ProviderURL(); // Use centralized config
 const START_BLOCK = 0; // Default start block if no sync state is found
 /** Stored blocks per query when looking for contract creations. */
 const CREATION_SCAN_RANGE = 100_000;
 const SCAN_INTERVAL_MS = 900000; // 15 minutes (extended for CPU relief)
 const BATCH_DELAY_MS = 1000; // Longer delay to reduce CPU load
 const MEMORY_LIMIT_MB = parseInt(process.env.MEMORY_LIMIT_MB || '512'); // Optimized for 2GB instances
-
-const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
 
 /**
  * eth_getCode is '0x' for externally owned accounts and self-destructed
@@ -145,7 +143,7 @@ const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
  * `flag-spam-tokens --audit-code`).
  */
 async function hasContractCode(address: string): Promise<boolean> {
-  const code = await web3.eth.getCode(address);
+  const code = await getCode(address);
   return typeof code === 'string' && /^0x[0-9a-fA-F]+$/.test(code) && !/^0x0*$/.test(code);
 }
 
@@ -167,16 +165,16 @@ const checkMemory = () => {
 
 async function isErc20Token(contractAddress: string): Promise<boolean> {
   try {
-    const contract = new web3.eth.Contract(ERC20ABI, contractAddress);
+    const contract = { abi: ERC20ABI as readonly unknown[], address: contractAddress as string };
     // Check for mandatory ERC20 functions - name, symbol, decimals are required
     // totalSupply might fail due to EVM opcode issues (like SELFBALANCE)
-    await contract.methods.name().call();
-    await contract.methods.symbol().call();
-    await contract.methods.decimals().call();
+    await callContract(contract.abi, contract.address, 'name', []);
+    await callContract(contract.abi, contract.address, 'symbol', []);
+    await callContract(contract.abi, contract.address, 'decimals', []);
 
     // Try totalSupply but don't fail if it throws due to opcode issues
     try {
-      await contract.methods.totalSupply().call();
+      await callContract(contract.abi, contract.address, 'totalSupply', []);
     } catch (supplyError: any) {
       // Log the error but continue - might be EVM opcode compatibility issue
       console.log(`⚠️ totalSupply() failed for ${contractAddress}: ${supplyError.message}`);
@@ -195,16 +193,24 @@ async function isErc20Token(contractAddress: string): Promise<boolean> {
 
 async function isErc721Token(contractAddress: string): Promise<boolean> {
   try {
-    const contract = new web3.eth.Contract(minimalErc721Abi as any, contractAddress);
+    const contract = {
+      abi: minimalErc721Abi as readonly unknown[],
+      address: contractAddress as string,
+    };
     // ERC721 interface ID is 0x80ac58cd. Check for ERC165 support.
-    const supportsErc721Interface = await contract.methods.supportsInterface('0x80ac58cd').call();
+    const supportsErc721Interface = await callContract(
+      contract.abi,
+      contract.address,
+      'supportsInterface',
+      ['0x80ac58cd']
+    );
     if (supportsErc721Interface) {
       return true;
     }
     // Fallback for contracts that don't explicitly support ERC165,
     // but might still have VRC-721 functions.
     // We check for tokenURI as a key indicator.
-    await contract.methods.tokenURI(1).call();
+    await callContract(contract.abi, contract.address, 'tokenURI', [1]);
     return true;
   } catch (error) {
     // If calls fail, it's not a standard VRC-721 token.
@@ -226,13 +232,19 @@ async function getTokenTransfers(
   toBlock: number
 ): Promise<{ transfers: any[]; complete: boolean }> {
   try {
-    const logs = await retryWeb3Call(() =>
-      web3.eth.getPastLogs({
-        address: tokenAddress,
-        topics: [ERC721_TRANSFER_TOPIC],
-        fromBlock,
-        toBlock,
-      })
+    const logs = await retryWeb3Call(
+      () =>
+        getClient().request({
+          method: 'eth_getLogs',
+          params: [
+            {
+              address: tokenAddress,
+              topics: [ERC721_TRANSFER_TOPIC],
+              fromBlock: numberToHex(fromBlock),
+              toBlock: numberToHex(toBlock),
+            },
+          ],
+        } as never) as Promise<any[]>
     );
     if (logs.length === 0) return { transfers: [], complete: true };
     const heights = [...new Set(logs.map((log: any) => Number(log.blockNumber)))];
@@ -250,7 +262,7 @@ async function getTokenTransfers(
       value: '1',
       tokenAddress: tokenAddress.toLowerCase(),
       timestamp: new Date(Number(timeOf.get(Number(log.blockNumber))) * 1000),
-      tokenId: web3.utils.hexToNumber(log.topics[3] || log.data),
+      tokenId: Number(BigInt(log.topics[3] || log.data)),
     }));
     return { transfers, complete: true };
   } catch (error) {
@@ -363,8 +375,19 @@ async function getErc20TokenTransfers(
   toBlock: number
 ): Promise<{ transfers: Erc20TransferDoc[]; complete: boolean }> {
   try {
-    const logs = await retryWeb3Call(() =>
-      web3.eth.getPastLogs({ address: tokenAddress, topics: [TRANSFER_TOPIC], fromBlock, toBlock })
+    const logs = await retryWeb3Call(
+      () =>
+        getClient().request({
+          method: 'eth_getLogs',
+          params: [
+            {
+              address: tokenAddress,
+              topics: [TRANSFER_TOPIC],
+              fromBlock: numberToHex(fromBlock),
+              toBlock: numberToHex(toBlock),
+            },
+          ],
+        } as never) as Promise<any[]>
     );
     if (logs.length === 0) return { transfers: [], complete: true };
     const heights = [...new Set(logs.map((log: any) => Number(log.blockNumber)))];
@@ -670,15 +693,20 @@ async function registerTokenContract(
       return 'none';
     }
 
-    const contract = new web3.eth.Contract(ERC20ABI, contractAddress);
-    const name = (await contract.methods.name().call()) as string;
-    const symbol = (await contract.methods.symbol().call()) as string;
-    const decimals = (await contract.methods.decimals().call()) as bigint;
+    const contract = { abi: ERC20ABI as readonly unknown[], address: contractAddress as string };
+    const name = (await callContract(contract.abi, contract.address, 'name', [])) as string;
+    const symbol = (await callContract(contract.abi, contract.address, 'symbol', [])) as string;
+    const decimals = (await callContract(contract.abi, contract.address, 'decimals', [])) as bigint;
 
     // totalSupply might fail due to EVM opcode issues, default to 0
     let totalSupply: bigint = 0n;
     try {
-      totalSupply = (await contract.methods.totalSupply().call()) as bigint;
+      totalSupply = (await callContract(
+        contract.abi,
+        contract.address,
+        'totalSupply',
+        []
+      )) as bigint;
     } catch (supplyError: any) {
       console.log(`⚠️ Could not get totalSupply for ${name}: ${supplyError.message}`);
       console.log(`  (Setting totalSupply to 0)`);
@@ -754,10 +782,13 @@ async function registerTokenContract(
       return 'none';
     }
 
-    const tokenContract = new web3.eth.Contract(minimalErc721Abi as any, contractAddress);
+    const tokenContract = {
+      abi: minimalErc721Abi as readonly unknown[],
+      address: contractAddress as string,
+    };
     try {
-      const name = await tokenContract.methods.name().call();
-      const symbol = await tokenContract.methods.symbol().call();
+      const name = await callContract(tokenContract.abi, tokenContract.address, 'name', []);
+      const symbol = await callContract(tokenContract.abi, tokenContract.address, 'symbol', []);
       const decimals = 0;
       const totalSupply = 0;
 
@@ -1032,27 +1063,27 @@ const ERC20_BASIC_ABI = [
 // Helper function to get pair-based LP token name and symbol
 async function getLPPairInfo(pairAddress: string): Promise<{ name: string; symbol: string }> {
   try {
-    const lpContract = new web3.eth.Contract(LP_TOKEN_ABI as any, pairAddress);
+    const lpContract = { abi: LP_TOKEN_ABI as readonly unknown[], address: pairAddress as string };
 
     // Get token0 and token1 addresses
     const [token0Address, token1Address] = await Promise.all([
-      lpContract.methods.token0().call(),
-      lpContract.methods.token1().call(),
+      callContract(lpContract.abi, lpContract.address, 'token0', []),
+      callContract(lpContract.abi, lpContract.address, 'token1', []),
     ]);
 
     // Get symbols for both tokens
-    const token0Contract = new web3.eth.Contract(ERC20_BASIC_ABI as any, String(token0Address));
-    const token1Contract = new web3.eth.Contract(ERC20_BASIC_ABI as any, String(token1Address));
+    const token0Contract = {
+      abi: ERC20_BASIC_ABI as readonly unknown[],
+      address: String(token0Address) as string,
+    };
+    const token1Contract = {
+      abi: ERC20_BASIC_ABI as readonly unknown[],
+      address: String(token1Address) as string,
+    };
 
     const [symbol0, symbol1] = await Promise.all([
-      token0Contract.methods
-        .symbol()
-        .call()
-        .catch(() => 'UNKNOWN'),
-      token1Contract.methods
-        .symbol()
-        .call()
-        .catch(() => 'UNKNOWN'),
+      callContract(token0Contract.abi, token0Contract.address, 'symbol', []).catch(() => 'UNKNOWN'),
+      callContract(token1Contract.abi, token1Contract.address, 'symbol', []).catch(() => 'UNKNOWN'),
     ]);
 
     const s0 = String(symbol0);
@@ -1085,8 +1116,13 @@ async function syncLPTokensFromFactory() {
 
     console.log(`📍 Using factory address: ${factoryAddress}`);
 
-    const factory = new web3.eth.Contract(FACTORY_ABI as any, factoryAddress);
-    const pairsLengthResult = await factory.methods.allPairsLength().call();
+    const factory = { abi: FACTORY_ABI as readonly unknown[], address: factoryAddress as string };
+    const pairsLengthResult = await callContract(
+      factory.abi,
+      factory.address,
+      'allPairsLength',
+      []
+    );
     const pairsLength = Number(pairsLengthResult);
     console.log(`📊 Found ${pairsLength} LP pairs in factory`);
 
@@ -1100,7 +1136,7 @@ async function syncLPTokensFromFactory() {
     // Process each pair
     for (let i = 0; i < pairsLength; i++) {
       try {
-        const pairAddressResult = await factory.methods.allPairs(i).call();
+        const pairAddressResult = await callContract(factory.abi, factory.address, 'allPairs', [i]);
         const pairAddress = String(pairAddressResult);
         const normalizedAddress = pairAddress.toLowerCase();
 
@@ -1137,10 +1173,10 @@ async function syncLPTokensFromFactory() {
         }
 
         // Get LP token info from contract
-        const lpToken = new web3.eth.Contract(LP_TOKEN_ABI as any, pairAddress);
+        const lpToken = { abi: LP_TOKEN_ABI as readonly unknown[], address: pairAddress as string };
         const [decimals, totalSupplyResult] = await Promise.all([
-          lpToken.methods.decimals().call(),
-          lpToken.methods.totalSupply().call(),
+          callContract(lpToken.abi, lpToken.address, 'decimals', []),
+          callContract(lpToken.abi, lpToken.address, 'totalSupply', []),
         ]);
 
         // Get human-readable name and symbol from pair tokens
@@ -1215,8 +1251,11 @@ async function adoptContractsCreatedByContracts(): Promise<number> {
       if ((await registerTokenContract(address, blockNumber, existing)) !== 'created') continue;
       registered++;
       // a pair contract: LP token named after its tokens
-      const pair = new web3.eth.Contract(LP_TOKEN_ABI as any, address);
-      const isPair = await Promise.all([pair.methods.token0().call(), pair.methods.token1().call()])
+      const pair = { abi: LP_TOKEN_ABI as readonly unknown[], address: address as string };
+      const isPair = await Promise.all([
+        callContract(pair.abi, pair.address, 'token0', []),
+        callContract(pair.abi, pair.address, 'token1', []),
+      ])
         .then(() => true)
         .catch(() => false);
       if (isPair) {

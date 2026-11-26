@@ -50,7 +50,7 @@ import {
   type FactoryClient,
   type FactorySource,
 } from '../lib/launchpad/factory';
-import { getWeb3 } from '../lib/web3/provider';
+import { getCode as nodeGetCode } from '../lib/web3/provider';
 
 interface Options {
   dryRun: boolean;
@@ -314,7 +314,7 @@ export async function auditNoCode(
   dryRun: boolean,
   deps: CodeAuditDeps = {}
 ): Promise<CodeAuditResult> {
-  const getCode = deps.getCode ?? ((address: string) => getWeb3().eth.getCode(address));
+  const getCode = deps.getCode ?? ((address: string) => nodeGetCode(address));
   const batchSize = Math.max(1, deps.batchSize ?? 10);
   const result: CodeAuditResult = {
     checked: 0,

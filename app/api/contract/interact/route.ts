@@ -9,7 +9,7 @@ import {
   isValidContentType,
 } from '../../../../lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
-import { getWeb3 } from '@/lib/web3/provider';
+import { callContract, getCode } from '@/lib/web3/provider';
 
 // Allowed methods for security (read-only methods only)
 const ALLOWED_METHODS = new Set([
@@ -55,7 +55,6 @@ export async function POST(request: NextRequest) {
     }
 
     const config = loadConfig();
-    const web3 = getWeb3();
 
     const { contractAddress, abi, method, params, from } = await request.json();
 
@@ -118,13 +117,18 @@ export async function POST(request: NextRequest) {
     const sanitizedContractAddress = sanitizeAddress(contractAddress);
     const sanitizedFrom = from ? sanitizeAddress(from) : undefined;
 
-    const contract = new web3.eth.Contract(abi, sanitizedContractAddress!);
+    const contract = {
+      abi: abi as readonly unknown[],
+      address: sanitizedContractAddress! as string,
+    };
 
     let result;
     if (sanitizedFrom) {
-      result = await contract.methods[method](...(params || [])).call({ from: sanitizedFrom });
+      result = await callContract(contract.abi, contract.address, method, params || [], {
+        from: sanitizedFrom,
+      });
     } else {
-      result = await contract.methods[method](...(params || [])).call();
+      result = await callContract(contract.abi, contract.address, method, params || []);
     }
 
     return NextResponse.json({ result }, { headers: getSecurityHeaders() });
@@ -147,7 +151,6 @@ export async function GET(request: NextRequest) {
     if (limited) return limited;
 
     const config = loadConfig();
-    const web3 = getWeb3();
 
     const { searchParams } = new URL(request.url);
     const contractAddress = searchParams.get('address');
@@ -171,7 +174,7 @@ export async function GET(request: NextRequest) {
     const sanitizedAddress = sanitizeAddress(contractAddress);
 
     // Check if contract exists
-    const code = await web3.eth.getCode(sanitizedAddress!);
+    const code = await getCode(sanitizedAddress!);
     if (code === '0x' || code === '0x0') {
       return NextResponse.json(
         { error: 'No contract found at this address' },

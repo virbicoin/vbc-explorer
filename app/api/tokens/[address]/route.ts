@@ -18,7 +18,7 @@ import {
   ZERO_ADDR,
   DEAD_ADDR,
 } from '../../../../lib/services/nft.service';
-import { getWeb3 } from '../../../../lib/web3';
+import { callContract } from '@/lib/web3/provider';
 import { apiCache, CACHE_TTL } from '../../../../lib/cache';
 import { loadConfig } from '../../../../lib/config';
 import {
@@ -32,7 +32,6 @@ import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { rejectDeepPagination } from '@/lib/security/pagination';
 
 // Get shared Web3 instance
-const web3 = getWeb3();
 
 // Load configuration
 const config = loadConfig();
@@ -94,8 +93,11 @@ const LAUNCHPAD_V2_ABI = [
 // Function to fetch logoUrl from Launchpad V2 token contract
 async function fetchLaunchpadLogoUrl(tokenAddress: string): Promise<string | null> {
   try {
-    const contract = new web3.eth.Contract(LAUNCHPAD_V2_ABI, tokenAddress);
-    const logoUrl = await contract.methods.logoUrl().call();
+    const contract = {
+      abi: LAUNCHPAD_V2_ABI as readonly unknown[],
+      address: tokenAddress as string,
+    };
+    const logoUrl = await callContract(contract.abi, contract.address, 'logoUrl', []);
     return logoUrl && logoUrl !== '' ? (logoUrl as string) : null;
   } catch {
     // Token doesn't have logoUrl method (not a Launchpad V2 token)
@@ -111,25 +113,13 @@ async function fetchERC20Info(tokenAddress: string): Promise<{
   totalSupply: string | null;
 }> {
   try {
-    const contract = new web3.eth.Contract(ERC20_ABI, tokenAddress);
+    const contract = { abi: ERC20_ABI as readonly unknown[], address: tokenAddress as string };
 
     const [name, symbol, decimals, totalSupply] = await Promise.all([
-      contract.methods
-        .name()
-        .call()
-        .catch(() => null),
-      contract.methods
-        .symbol()
-        .call()
-        .catch(() => null),
-      contract.methods
-        .decimals()
-        .call()
-        .catch(() => null),
-      contract.methods
-        .totalSupply()
-        .call()
-        .catch(() => null),
+      callContract(contract.abi, contract.address, 'name', []).catch(() => null),
+      callContract(contract.abi, contract.address, 'symbol', []).catch(() => null),
+      callContract(contract.abi, contract.address, 'decimals', []).catch(() => null),
+      callContract(contract.abi, contract.address, 'totalSupply', []).catch(() => null),
     ]);
 
     return {
@@ -194,11 +184,11 @@ async function isNftContract(address: string): Promise<boolean> {
   }
 
   try {
-    const erc165 = new web3.eth.Contract(ERC165_ABI, address);
+    const erc165 = { abi: ERC165_ABI as readonly unknown[], address: address as string };
     for (const interfaceId of [ERC721_INTERFACE_ID, ERC1155_INTERFACE_ID]) {
       try {
         const supported = await withTimeout(
-          erc165.methods.supportsInterface(interfaceId).call(),
+          callContract(erc165.abi, erc165.address, 'supportsInterface', [interfaceId]),
           5000
         );
         if (supported === true) return true;
@@ -214,10 +204,12 @@ async function isNftContract(address: string): Promise<boolean> {
 
 /** `tokenURI(tokenId)` via eth_call; null when the contract has no tokenURI. */
 async function readTokenUri(address: string, tokenId: number): Promise<string | null> {
-  if (!web3 || !web3.eth) return null;
   try {
-    const contract = new web3.eth.Contract(ERC721_ABI, address);
-    const uri = await withTimeout(contract.methods.tokenURI(tokenId).call(), 5000);
+    const contract = { abi: ERC721_ABI as readonly unknown[], address: address as string };
+    const uri = await withTimeout(
+      callContract(contract.abi, contract.address, 'tokenURI', [tokenId]),
+      5000
+    );
     return typeof uri === 'string' && uri !== '' ? uri : null;
   } catch (uriError) {
     console.error('Error calling tokenURI:', uriError);

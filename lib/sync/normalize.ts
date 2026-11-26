@@ -145,7 +145,10 @@ const toStatus = (value: unknown): number | null => {
   if (value === null || value === undefined) return null;
   if (typeof value === 'bigint') return value > 0n ? 1 : 0;
   if (typeof value === 'string')
-    return value === '1' || value === '0x1' || value.toLowerCase() === 'true' ? 1 : 0;
+    // viem reports 'success' / 'reverted'; raw JSON-RPC '0x1' / '0x0'
+    return value === '1' || value === '0x1' || value === 'success' || value.toLowerCase() === 'true'
+      ? 1
+      : 0;
   return value ? 1 : 0;
 };
 

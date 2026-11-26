@@ -1,10 +1,10 @@
 // API endpoint to get DEX trading pairs with current prices
 import { NextResponse } from 'next/server';
-import Web3 from 'web3';
 import { loadConfig } from '@/lib/config';
 import { fetchDexConfig, setMinimalConfig, getNativeToken } from '@/lib/dex/contract-service';
 import dbConnect from '@/lib/db';
 import { tryGetDb } from '@/lib/db/get-db';
+import { callContract } from '@/lib/web3/provider';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -133,7 +133,6 @@ const tokenCache = new Map<string, TokenInfo>();
 const logoCache = new Map<string, string | null>();
 
 async function getTokenInfo(
-  web3: Web3,
   address: string,
   nativeToken?: { symbol: string; name: string },
   wrappedNativeAddress?: string
@@ -146,11 +145,11 @@ async function getTokenInfo(
   }
 
   try {
-    const contract = new web3.eth.Contract(ERC20_ABI, address);
+    const contract = { abi: ERC20_ABI as readonly unknown[], address: address as string };
     const [nameResult, symbolResult, decimalsResult] = await Promise.all([
-      contract.methods.name().call(),
-      contract.methods.symbol().call(),
-      contract.methods.decimals().call(),
+      callContract(contract.abi, contract.address, 'name', []),
+      callContract(contract.abi, contract.address, 'symbol', []),
+      callContract(contract.abi, contract.address, 'decimals', []),
     ]);
 
     const name = String(nameResult);
@@ -191,10 +190,9 @@ async function getTokenInfo(
 export async function GET() {
   try {
     const appConfig = loadConfig();
-
+    // the public RPC URL: it also goes to the browser through the DEX settings
     const RPC_URL =
       appConfig.network?.rpcUrl || appConfig.web3Provider?.url || 'http://localhost:8545';
-    const web3 = new Web3(RPC_URL);
 
     // Set minimal config
     setMinimalConfig({
@@ -215,8 +213,8 @@ export async function GET() {
     // Get native token info
     const nativeToken = getNativeToken(appConfig.currency);
 
-    const factory = new web3.eth.Contract(FACTORY_ABI, factoryAddress);
-    const pairsLength = await factory.methods.allPairsLength().call();
+    const factory = { abi: FACTORY_ABI as readonly unknown[], address: factoryAddress as string };
+    const pairsLength = await callContract(factory.abi, factory.address, 'allPairsLength', []);
     const numPairs = Number(pairsLength);
 
     const pairs: PairInfo[] = [];
@@ -226,7 +224,7 @@ export async function GET() {
 
     for (let i = 0; i < maxPairs; i++) {
       try {
-        const pairAddressResult = await factory.methods.allPairs(i).call();
+        const pairAddressResult = await callContract(factory.abi, factory.address, 'allPairs', [i]);
         const pairAddress = String(pairAddressResult);
 
         // Skip blacklisted LP pairs
@@ -234,14 +232,17 @@ export async function GET() {
           continue;
         }
 
-        const pairContract = new web3.eth.Contract(PAIR_ABI, pairAddress);
+        const pairContract = {
+          abi: PAIR_ABI as readonly unknown[],
+          address: pairAddress as string,
+        };
 
         const [token0AddressResult, token1AddressResult, reservesResult, totalSupplyResult] =
           await Promise.all([
-            pairContract.methods.token0().call(),
-            pairContract.methods.token1().call(),
-            pairContract.methods.getReserves().call(),
-            pairContract.methods.totalSupply().call(),
+            callContract(pairContract.abi, pairContract.address, 'token0', []),
+            callContract(pairContract.abi, pairContract.address, 'token1', []),
+            callContract(pairContract.abi, pairContract.address, 'getReserves', []),
+            callContract(pairContract.abi, pairContract.address, 'totalSupply', []),
           ]);
 
         const token0Address = String(token0AddressResult);
@@ -265,8 +266,8 @@ export async function GET() {
 
         // Get token info
         const [token0, token1] = await Promise.all([
-          getTokenInfo(web3, token0Address, nativeToken, wrappedNativeAddress),
-          getTokenInfo(web3, token1Address, nativeToken, wrappedNativeAddress),
+          getTokenInfo(token0Address, nativeToken, wrappedNativeAddress),
+          getTokenInfo(token1Address, nativeToken, wrappedNativeAddress),
         ]);
 
         // Calculate price (token1 per token0)
@@ -377,8 +378,16 @@ export async function GET() {
     // Check each token's contract for logoUrl
     for (const tokenInfo of tokensNeedingIcons) {
       try {
-        const tokenContract = new web3.eth.Contract(ERC20_ABI, tokenInfo.address);
-        const logoUrl = (await tokenContract.methods.logoUrl().call()) as string;
+        const tokenContract = {
+          abi: ERC20_ABI as readonly unknown[],
+          address: tokenInfo.address as string,
+        };
+        const logoUrl = (await callContract(
+          tokenContract.abi,
+          tokenContract.address,
+          'logoUrl',
+          []
+        )) as string;
         if (logoUrl && logoUrl !== '') {
           if (tokenInfo.isBase) {
             pairs[tokenInfo.pairIndex].baseToken.logoURI = logoUrl;

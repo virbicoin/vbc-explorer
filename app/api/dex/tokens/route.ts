@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/models/index';
 import { tryGetDb } from '@/lib/db/get-db';
-import Web3 from 'web3';
 import { loadConfig } from '@/lib/config';
 import { fetchDexConfig, setMinimalConfig, getNativeToken } from '@/lib/dex/contract-service';
+import { callContract } from '@/lib/web3/provider';
 
 // Load blacklist from config
 const config = loadConfig();
@@ -155,10 +155,10 @@ interface DexToken {
 async function getTokensWithPairs(
   appConfig: ReturnType<typeof loadConfig>
 ): Promise<{ tokens: Set<string>; wrappedNativeAddress: string }> {
+  const tokensWithPairs = new Set<string>();
+  // the public RPC URL: it also goes to the browser through the DEX settings
   const RPC_URL =
     appConfig.network?.rpcUrl || appConfig.web3Provider?.url || 'http://localhost:8545';
-  const web3 = new Web3(RPC_URL);
-  const tokensWithPairs = new Set<string>();
 
   // Set minimal config for dex service
   setMinimalConfig({
@@ -177,10 +177,10 @@ async function getTokensWithPairs(
   const WRAPPED_NATIVE_ADDRESS = dexConfig.wrappedNative.toLowerCase();
 
   try {
-    const factory = new web3.eth.Contract(FACTORY_ABI, DEX_FACTORY);
+    const factory = { abi: FACTORY_ABI as readonly unknown[], address: DEX_FACTORY as string };
 
     // Get total number of pairs
-    const pairsLength = await factory.methods.allPairsLength().call();
+    const pairsLength = await callContract(factory.abi, factory.address, 'allPairsLength', []);
     const numPairs = Number(pairsLength);
 
     console.log(`Found ${numPairs} pairs in DEX factory`);
@@ -188,12 +188,14 @@ async function getTokensWithPairs(
     // Get all pairs and extract tokens
     for (let i = 0; i < numPairs; i++) {
       try {
-        const pairAddress = (await factory.methods.allPairs(i).call()) as string;
-        const pair = new web3.eth.Contract(PAIR_ABI, pairAddress);
+        const pairAddress = (await callContract(factory.abi, factory.address, 'allPairs', [
+          i,
+        ])) as string;
+        const pair = { abi: PAIR_ABI as readonly unknown[], address: pairAddress as string };
 
         const [token0, token1] = await Promise.all([
-          pair.methods.token0().call(),
-          pair.methods.token1().call(),
+          callContract(pair.abi, pair.address, 'token0', []),
+          callContract(pair.abi, pair.address, 'token1', []),
         ]);
 
         // Add both tokens to the set (lowercase for consistency)
@@ -219,6 +221,9 @@ export async function GET() {
   try {
     // Load configuration
     const appConfig = loadConfig();
+    // the public RPC URL: it also goes to the browser through the DEX settings
+    const RPC_URL =
+      appConfig.network?.rpcUrl || appConfig.web3Provider?.url || 'http://localhost:8545';
 
     // Get tokenIcons from config for icon lookup
     const tokenIcons =
@@ -292,16 +297,21 @@ export async function GET() {
         const contractsMap = new Map(dbContracts.map((c) => [c.address.toLowerCase(), c]));
 
         // Try to get logoUrl directly from token contracts (works for launchpad tokens)
-        const RPC_URL =
-          appConfig.network?.rpcUrl || appConfig.web3Provider?.url || 'http://localhost:8545';
-        const web3 = new Web3(RPC_URL);
         const logoUrlCache = new Map<string, string>();
 
         // Get logoUrl from token contracts in parallel
         const logoPromises = pairTokenAddresses.map(async (tokenAddr) => {
           try {
-            const tokenContract = new web3.eth.Contract(ERC20_ABI, tokenAddr);
-            const logoUrl = (await tokenContract.methods.logoUrl().call()) as string;
+            const tokenContract = {
+              abi: ERC20_ABI as readonly unknown[],
+              address: tokenAddr as string,
+            };
+            const logoUrl = (await callContract(
+              tokenContract.abi,
+              tokenContract.address,
+              'logoUrl',
+              []
+            )) as string;
             if (logoUrl && logoUrl !== '') {
               return { address: tokenAddr.toLowerCase(), logoUrl };
             }
@@ -386,24 +396,23 @@ export async function GET() {
           // Fetch token info from blockchain in parallel
           const tokenInfoPromises = tokensNotInDb.map(async (addr) => {
             try {
-              const tokenContract = new web3.eth.Contract(ERC20_ABI, addr);
+              const tokenContract = {
+                abi: ERC20_ABI as readonly unknown[],
+                address: addr as string,
+              };
               const [name, symbol, decimals, logoUrl] = await Promise.all([
-                tokenContract.methods
-                  .name()
-                  .call()
-                  .catch(() => 'Unknown Token'),
-                tokenContract.methods
-                  .symbol()
-                  .call()
-                  .catch(() => '???'),
-                tokenContract.methods
-                  .decimals()
-                  .call()
-                  .catch(() => 18),
-                tokenContract.methods
-                  .logoUrl()
-                  .call()
-                  .catch(() => ''),
+                callContract(tokenContract.abi, tokenContract.address, 'name', []).catch(
+                  () => 'Unknown Token'
+                ),
+                callContract(tokenContract.abi, tokenContract.address, 'symbol', []).catch(
+                  () => '???'
+                ),
+                callContract(tokenContract.abi, tokenContract.address, 'decimals', []).catch(
+                  () => 18
+                ),
+                callContract(tokenContract.abi, tokenContract.address, 'logoUrl', []).catch(
+                  () => ''
+                ),
               ]);
               const symbolStr = String(symbol);
               // Priority: 1. config.json icon by symbol, 2. on-chain logoUrl (Launchpad tokens)

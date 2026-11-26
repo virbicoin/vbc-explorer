@@ -16,10 +16,11 @@ The tool will:
 */
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
-import Web3 from 'web3';
+import { isAddress } from 'viem';
 import mongoose from 'mongoose';
 import { connectDB, ensureIndexesOnStartup, Contract, Token } from '../models/index';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
+import { callContract } from '@/lib/web3/provider';
 
 // ERC20 ABI
 const ERC20_ABI = [
@@ -54,14 +55,12 @@ const ERC20_ABI = [
 ] as const;
 
 const config = loadConfig();
-const WEB3_PROVIDER_URL = getWeb3ProviderURL();
-const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
 
 async function addToken(tokenAddress: string) {
   console.log(`\n🔍 Adding token: ${tokenAddress}\n`);
 
   // Validate address format
-  if (!web3.utils.isAddress(tokenAddress)) {
+  if (!isAddress(tokenAddress)) {
     console.error('❌ Invalid Ethereum address format');
     process.exit(1);
   }
@@ -101,7 +100,7 @@ async function addToken(tokenAddress: string) {
     }
 
     // Verify it's a valid ERC20 contract
-    const contract = new web3.eth.Contract(ERC20_ABI as any, tokenAddress);
+    const contract = { abi: ERC20_ABI as readonly unknown[], address: tokenAddress as string };
 
     let name: string;
     let symbol: string;
@@ -109,7 +108,7 @@ async function addToken(tokenAddress: string) {
     let totalSupply: bigint;
 
     try {
-      name = (await contract.methods.name().call()) as string;
+      name = (await callContract(contract.abi, contract.address, 'name', [])) as string;
       console.log(`   Name: ${name}`);
     } catch (e) {
       console.error('❌ Failed to get token name. This may not be a valid ERC20 token.');
@@ -117,7 +116,7 @@ async function addToken(tokenAddress: string) {
     }
 
     try {
-      symbol = (await contract.methods.symbol().call()) as string;
+      symbol = (await callContract(contract.abi, contract.address, 'symbol', [])) as string;
       console.log(`   Symbol: ${symbol}`);
     } catch (e) {
       console.error('❌ Failed to get token symbol. This may not be a valid ERC20 token.');
@@ -125,7 +124,7 @@ async function addToken(tokenAddress: string) {
     }
 
     try {
-      decimals = Number(await contract.methods.decimals().call());
+      decimals = Number(await callContract(contract.abi, contract.address, 'decimals', []));
       console.log(`   Decimals: ${decimals}`);
     } catch (e) {
       console.log('⚠️ Could not get decimals, defaulting to 18');
@@ -133,7 +132,12 @@ async function addToken(tokenAddress: string) {
     }
 
     try {
-      totalSupply = (await contract.methods.totalSupply().call()) as bigint;
+      totalSupply = (await callContract(
+        contract.abi,
+        contract.address,
+        'totalSupply',
+        []
+      )) as bigint;
       console.log(`   Total Supply: ${totalSupply.toString()}`);
     } catch (e) {
       console.log('⚠️ Could not get totalSupply, defaulting to 0');

@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Account, Transaction, Contract, TokenHolder } from '@/models/index';
 import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
-import { getWeb3 } from '@/lib/web3/provider';
+import { getClient, getCode } from '@/lib/web3/provider';
 
 // The shared node connection (lib/web3/provider.ts)
-const web3 = getWeb3();
 
 // Blockscout API v2 - Get address info
 export async function GET(
@@ -32,7 +31,9 @@ export async function GET(
     // Get balance from blockchain
     let balance = '0';
     try {
-      balance = (await web3.eth.getBalance(sanitizedAddress)).toString();
+      balance = (
+        await getClient().getBalance({ address: sanitizedAddress as `0x${string}` })
+      ).toString();
     } catch (error) {
       console.error('Error fetching balance:', error);
     }
@@ -40,7 +41,7 @@ export async function GET(
     // Get bytecode to check if it's a contract
     let bytecode = '0x';
     try {
-      bytecode = await web3.eth.getCode(sanitizedAddress);
+      bytecode = await getCode(sanitizedAddress);
     } catch (error) {
       console.error('Error fetching bytecode:', error);
     }

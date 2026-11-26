@@ -1,6 +1,6 @@
 import { loadConfig } from '@/lib/config';
 import { getNativePrice, priceSourceLabel } from '@/lib/price-service';
-import Web3 from 'web3';
+import { callContract } from '@/lib/web3/provider';
 
 // Cache for external price data (5 minute TTL)
 let cachedData: ExternalPriceData | null = null;
@@ -91,9 +91,6 @@ async function calculateTvlFromBlockchain(nativePriceUsd: number): Promise<numbe
       return 0;
     }
 
-    const RPC_URL = config.network?.rpcUrl || config.web3Provider?.url || 'http://localhost:8545';
-    const web3 = new Web3(RPC_URL);
-
     const factoryAddress = config.dex.factory;
     const wrappedNativeAddress = config.dex.wrappedNative?.address?.toLowerCase() || '';
 
@@ -110,8 +107,13 @@ async function calculateTvlFromBlockchain(nativePriceUsd: number): Promise<numbe
     }
     const STABLECOIN_ADDRESSES = new Set(stablecoinAddresses);
 
-    const factory = new web3.eth.Contract(FACTORY_ABI, factoryAddress);
-    const pairsLengthResult = await factory.methods.allPairsLength().call();
+    const factory = { abi: FACTORY_ABI as readonly unknown[], address: factoryAddress as string };
+    const pairsLengthResult = await callContract(
+      factory.abi,
+      factory.address,
+      'allPairsLength',
+      []
+    );
     const numPairs = Number(pairsLengthResult);
 
     let totalTvlUsd = 0;
@@ -121,15 +123,18 @@ async function calculateTvlFromBlockchain(nativePriceUsd: number): Promise<numbe
 
     for (let i = 0; i < maxPairs; i++) {
       try {
-        const pairAddressResult = await factory.methods.allPairs(i).call();
+        const pairAddressResult = await callContract(factory.abi, factory.address, 'allPairs', [i]);
         const pairAddress = String(pairAddressResult);
 
-        const pairContract = new web3.eth.Contract(PAIR_ABI, pairAddress);
+        const pairContract = {
+          abi: PAIR_ABI as readonly unknown[],
+          address: pairAddress as string,
+        };
 
         const [token0AddressResult, token1AddressResult, reservesResult] = await Promise.all([
-          pairContract.methods.token0().call(),
-          pairContract.methods.token1().call(),
-          pairContract.methods.getReserves().call(),
+          callContract(pairContract.abi, pairContract.address, 'token0', []),
+          callContract(pairContract.abi, pairContract.address, 'token1', []),
+          callContract(pairContract.abi, pairContract.address, 'getReserves', []),
         ]);
 
         const token0Address = String(token0AddressResult).toLowerCase();
@@ -144,12 +149,18 @@ async function calculateTvlFromBlockchain(nativePriceUsd: number): Promise<numbe
         }
 
         // Get decimals for both tokens
-        const token0Contract = new web3.eth.Contract(ERC20_ABI, token0Address);
-        const token1Contract = new web3.eth.Contract(ERC20_ABI, token1Address);
+        const token0Contract = {
+          abi: ERC20_ABI as readonly unknown[],
+          address: token0Address as string,
+        };
+        const token1Contract = {
+          abi: ERC20_ABI as readonly unknown[],
+          address: token1Address as string,
+        };
 
         const [decimals0Result, decimals1Result] = await Promise.all([
-          token0Contract.methods.decimals().call(),
-          token1Contract.methods.decimals().call(),
+          callContract(token0Contract.abi, token0Contract.address, 'decimals', []),
+          callContract(token1Contract.abi, token1Contract.address, 'decimals', []),
         ]);
 
         const decimals0 = Number(decimals0Result);

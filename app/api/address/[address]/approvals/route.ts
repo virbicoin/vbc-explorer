@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '../../../../../models/index';
 import { tryGetDb } from '../../../../../lib/db/get-db';
-import { getWeb3 } from '../../../../../lib/web3';
+import { callContract, getClient } from '@/lib/web3/provider';
 import { loadConfig } from '../../../../../lib/config';
 import { buildAddressTags, type AddressTagSources } from '../../../../../lib/address-tags';
 import { apiCache } from '../../../../../lib/cache';
@@ -59,15 +59,13 @@ async function scanApprovals(owner: string): Promise<{
   approvals: ApprovalEntry[];
   scannedEvents: number;
 }> {
-  const web3 = getWeb3();
   const ownerTopic = '0x' + owner.slice(2).toLowerCase().padStart(64, '0');
 
   // Owner is an indexed topic, so the node can serve this from bloom filters
-  const logs = (await web3.eth.getPastLogs({
-    fromBlock: '0x0',
-    toBlock: 'latest',
-    topics: [APPROVAL_TOPIC, ownerTopic],
-  })) as { address?: string; topics?: string[]; blockNumber?: bigint | number }[];
+  const logs = (await getClient().request({
+    method: 'eth_getLogs',
+    params: [{ fromBlock: '0x0', toBlock: 'latest', topics: [APPROVAL_TOPIC, ownerTopic] }],
+  } as never)) as { address?: string; topics?: string[]; blockNumber?: bigint | number }[];
 
   // Latest (token, spender) pairs. ERC-20 Approval has exactly 3 topics
   // (value lives in data); ERC-721 Approval has 4 (tokenId indexed) - skip.
@@ -92,8 +90,14 @@ async function scanApprovals(owner: string): Promise<{
     const results = await Promise.all(
       batch.map(async (pair) => {
         try {
-          const contract = new web3.eth.Contract(ERC20_ALLOWANCE_ABI, pair.token);
-          const raw = (await contract.methods.allowance(owner, pair.spender).call()) as unknown;
+          const contract = {
+            abi: ERC20_ALLOWANCE_ABI as readonly unknown[],
+            address: pair.token as string,
+          };
+          const raw = (await callContract(contract.abi, contract.address, 'allowance', [
+            owner,
+            pair.spender,
+          ])) as unknown;
           const allowance = BigInt(String(raw ?? 0));
           if (allowance <= 0n) return null;
           return {

@@ -3,10 +3,9 @@ import { connectDB, Contract } from '@/models/index';
 import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { blockscoutCompilerVersion, blockscoutLicenseType } from '@/lib/api/v2/common';
-import { getWeb3 } from '@/lib/web3/provider';
+import { getCode } from '@/lib/web3/provider';
 
 // The shared node connection (lib/web3/provider.ts)
-const web3 = getWeb3();
 
 // Blockscout API v2 - Get smart contract info
 export async function GET(
@@ -38,7 +37,7 @@ export async function GET(
     // Get on-chain bytecode
     let bytecode = '0x';
     try {
-      bytecode = await web3.eth.getCode(sanitizedAddress);
+      bytecode = await getCode(sanitizedAddress);
     } catch (error) {
       console.error('Error fetching bytecode:', error);
     }

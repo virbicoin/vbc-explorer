@@ -20,7 +20,7 @@ import {
 } from '@/models/index';
 import { requireDb } from '@/lib/db/get-db';
 import { getNftOwnershipFromDb } from '@/lib/services/nft.service';
-import { getWeb3 } from '@/lib/web3/provider';
+import { getClient } from '@/lib/web3/provider';
 import { ercTokenType } from '@/lib/api/token-standard';
 import {
   publicClient,
@@ -673,7 +673,7 @@ interface PendingTx {
  */
 async function nodePendingTransactions(): Promise<PendingTx[]> {
   const send = (method: string) =>
-    getWeb3().requestManager.send({ method, params: [] } as never) as Promise<unknown>;
+    getClient().request({ method, params: [] } as never) as Promise<unknown>;
   try {
     const pool = (await send('txpool_content')) as {
       pending?: Record<string, Record<string, PendingTx>>;

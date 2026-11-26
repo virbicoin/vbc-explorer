@@ -1,61 +1,94 @@
 /**
- * Web3 Provider Singleton
- *
- * Shared Web3 instance to avoid creating multiple connections.
- * Uses lazy initialization for better startup performance.
+ * The node the server reads from: one viem client for the whole app and the tools
+ * (WEB3_PROVIDER_URL, else config.json `web3Provider.url`). Until 2026-11-27 the app also carried
+ * web3.js for the same calls, and the Etherscan API read the public RPC URL meant for wallets.
  */
-
-import Web3 from 'web3';
+import {
+  createPublicClient,
+  decodeFunctionResult,
+  encodeFunctionData,
+  http,
+  type Abi,
+  type PublicClient,
+} from 'viem';
 import { loadConfig } from '../config';
 
-let web3Instance: Web3 | null = null;
-let providerUrl: string | null = null;
+let client: PublicClient | null = null;
 
-/**
- * Get shared Web3 instance
- * Creates instance on first call and reuses it thereafter
- */
-export function getWeb3(): Web3 {
-  if (!web3Instance) {
-    const config = loadConfig();
-    // the environment overrides config.json, as for the other settings
-    providerUrl =
-      process.env.WEB3_PROVIDER_URL || config.web3Provider?.url || 'http://localhost:8545';
-    web3Instance = new Web3(providerUrl);
-  }
-  return web3Instance;
-}
-
-/**
- * Get provider URL
- */
+/** The node's URL: the environment overrides config.json, as for the other settings. */
 export function getProviderUrl(): string {
-  if (!providerUrl) {
-    const config = loadConfig();
-    // the environment overrides config.json, as for the other settings
-    providerUrl =
-      process.env.WEB3_PROVIDER_URL || config.web3Provider?.url || 'http://localhost:8545';
-  }
-  return providerUrl;
+  return process.env.WEB3_PROVIDER_URL || loadConfig().web3Provider?.url || 'http://localhost:8545';
 }
 
-/**
- * Reset Web3 instance (useful for testing or reconnection)
- */
-export function resetWeb3(): void {
-  web3Instance = null;
-  providerUrl = null;
+export function getClient(): PublicClient {
+  client ??= createPublicClient({ transport: http(getProviderUrl(), { timeout: 30_000 }) });
+  return client;
 }
 
-/**
- * Check if Web3 is connected
- */
-export async function isWeb3Connected(): Promise<boolean> {
+/** Forgets the client (tests that point WEB3_PROVIDER_URL elsewhere). */
+export function resetClient(): void {
+  client = null;
+}
+
+export async function isNodeConnected(): Promise<boolean> {
   try {
-    const web3 = getWeb3();
-    await web3.eth.getBlockNumber();
+    await getClient().getBlockNumber();
     return true;
   } catch {
     return false;
   }
+}
+
+/** The runtime code at an address, '0x' when there is none. */
+export async function getCode(address: string): Promise<string> {
+  return (await getClient().getCode({ address: address as `0x${string}` })) ?? '0x';
+}
+
+/** Addresses in lower case, as the database stores them. */
+function lowerAddresses(value: unknown): unknown {
+  if (typeof value === 'string')
+    return /^0x[0-9a-fA-F]{40}$/.test(value) ? value.toLowerCase() : value;
+  if (Array.isArray(value)) return value.map(lowerAddresses);
+  if (value && typeof value === 'object' && !(value instanceof Uint8Array)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, lowerAddresses(item)])
+    );
+  }
+  return value;
+}
+
+/**
+ * Calls a view function (eth_call). One output comes back as its value; several come back as an
+ * object keyed by position and by name (`result[0]`, `result.reserve0`), as web3.js returned them.
+ * Addresses are in lower case. A revert or an empty answer throws.
+ */
+export async function callContract(
+  abi: Abi | readonly unknown[],
+  address: string,
+  functionName: string,
+  args: readonly unknown[] = [],
+  options: { blockNumber?: bigint; from?: string } = {}
+): Promise<any> {
+  const typedAbi = abi as Abi;
+  const data = encodeFunctionData({ abi: typedAbi, functionName, args: args as unknown[] });
+  const result = await getClient().call({
+    to: address as `0x${string}`,
+    data,
+    ...(options.blockNumber !== undefined ? { blockNumber: options.blockNumber } : {}),
+    ...(options.from ? { account: options.from as `0x${string}` } : {}),
+  });
+  if (!result.data || result.data === '0x') throw new Error(`${functionName}() returned nothing`);
+  const decoded = decodeFunctionResult({ abi: typedAbi, functionName, data: result.data });
+  const fragment = typedAbi.find(
+    (item) => item.type === 'function' && item.name === functionName
+  ) as { outputs?: Array<{ name?: string }> } | undefined;
+  const outputs = fragment?.outputs ?? [];
+  if (outputs.length <= 1) return lowerAddresses(decoded);
+  const values = decoded as readonly unknown[];
+  const named: Record<string, unknown> = {};
+  outputs.forEach((output, index) => {
+    named[index] = lowerAddresses(values[index]);
+    if (output.name) named[output.name] = named[index];
+  });
+  return named;
 }

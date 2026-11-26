@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Contract, Transaction } from '../../../../../models/index';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { spdxLicense } from '@/lib/contract/solc-utils';
-import { getWeb3 } from '@/lib/web3/provider';
+import { getCode } from '@/lib/web3/provider';
 
 // Function to read config
 
 // The shared node connection (lib/web3/provider.ts)
-const web3 = getWeb3();
 
 export async function GET(
   request: NextRequest,
@@ -27,7 +26,7 @@ export async function GET(
     // Get bytecode from blockchain
     let bytecode = '';
     try {
-      bytecode = await web3.eth.getCode(address);
+      bytecode = await getCode(address);
     } catch {
       // ignore
     }

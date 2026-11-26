@@ -14,7 +14,7 @@
 
 import { Interface } from 'ethers';
 import { loadConfig, type AppConfig } from '../config';
-import { getWeb3 } from '../web3/provider';
+import { getClient, getCode } from '../web3/provider';
 
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -131,20 +131,28 @@ export function getLaunchpadFactories(config: AppConfig = loadConfig()): Factory
 }
 
 /** JSON-RPC level errors (revert, unknown method) carry a numeric code in `innerError`. */
+/** True when the node answered with a JSON-RPC error (a revert), not when it could not be reached. */
 function isJsonRpcError(error: unknown): boolean {
-  const inner = (error as { innerError?: unknown })?.innerError;
-  if (Array.isArray(inner))
-    return inner.some((e) => typeof (e as { code?: unknown })?.code === 'number');
-  return typeof (inner as { code?: unknown })?.code === 'number';
+  for (
+    let e = error as { code?: unknown; cause?: unknown } | undefined;
+    e;
+    e = e.cause as typeof e
+  ) {
+    if (typeof e.code === 'number') return true;
+  }
+  return false;
 }
 
-/** The default client: the shared Web3 singleton (`lib/web3/provider.ts`). */
+/** The default client: the shared node client (`lib/web3/provider.ts`). */
 export function createWeb3FactoryClient(): FactoryClient {
   return {
     async call(to: string, data: string): Promise<string> {
       try {
-        const result = await getWeb3().eth.call({ to, data });
-        return typeof result === 'string' ? result : '0x';
+        const result = await getClient().call({
+          to: to as `0x${string}`,
+          data: data as `0x${string}`,
+        });
+        return result.data ?? '0x';
       } catch (error) {
         if (isJsonRpcError(error)) return '0x';
         throw new FactoryRpcError(
@@ -155,7 +163,7 @@ export function createWeb3FactoryClient(): FactoryClient {
     },
     async getCode(address: string): Promise<string> {
       try {
-        const code = await getWeb3().eth.getCode(address);
+        const code = await getCode(address);
         return typeof code === 'string' ? code : '0x';
       } catch (error) {
         throw new FactoryRpcError(
