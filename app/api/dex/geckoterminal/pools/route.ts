@@ -16,11 +16,6 @@ import { getNativePriceFromDex, getSecondaryPriceFromDex, ADDRESSES } from '@/li
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// Stablecoin address (USDT, USDC, etc.)
-const stablecoinAddress = ADDRESSES.STABLECOIN;
-// Secondary token address (governance token, etc.)
-const secondaryTokenAddress = ADDRESSES.SECONDARY;
-
 // GeckoTerminal API headers
 const API_HEADERS = {
   'Content-Type': 'application/json',
@@ -200,10 +195,10 @@ export async function GET() {
             const isBaseNative =
               baseAddress.toLowerCase() === wrappedNativeAddress ||
               baseAddress.toLowerCase() === ADDRESSES.NATIVE;
-            const isQuoteStable = quoteAddress.toLowerCase() === stablecoinAddress;
-            const isBaseStable = baseAddress.toLowerCase() === stablecoinAddress;
-            const isQuoteSecondary = quoteAddress.toLowerCase() === secondaryTokenAddress;
-            const isBaseSecondary = baseAddress.toLowerCase() === secondaryTokenAddress;
+            const isQuoteStable = quoteAddress.toLowerCase() === ADDRESSES.STABLECOIN;
+            const isBaseStable = baseAddress.toLowerCase() === ADDRESSES.STABLECOIN;
+            const isQuoteSecondary = quoteAddress.toLowerCase() === ADDRESSES.SECONDARY;
+            const isBaseSecondary = baseAddress.toLowerCase() === ADDRESSES.SECONDARY;
 
             if (isBaseNative && isQuoteStable) {
               // Native/Stablecoin pair - use stablecoin reserve to value native (50/50 pool)
