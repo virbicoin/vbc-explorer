@@ -14,6 +14,7 @@ import { loadConfig } from '../../../../lib/config';
 import { getWeb3 } from '../../../../lib/web3';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { createWeb3FactoryClient, resolveFactoryToken } from '@/lib/launchpad/factory';
+import { minerRewardWei, transactionFeesWei } from '@/lib/reward-schedule';
 
 // Load configuration
 const config = loadConfig();
@@ -97,6 +98,7 @@ interface BlockDocument {
   hash: string;
   timestamp: Date;
   miner: string;
+  uncles?: string[];
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ hash: string }> }) {
@@ -149,12 +151,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // Try to find a block with this hash (for mining reward tx)
       const block = (await Block.findOne({ hash: hash }).lean()) as BlockDocument | null;
       if (block) {
-        // Generate a pseudo-transaction for mining reward
+        // Generate a pseudo-transaction for mining reward, worth what the mining list shows
+        // (/api/address/[address]/mining): reward at this height + fees + uncle inclusion
+        const blockTxs = (await Transaction.find({ blockNumber: block.number })
+          .select('gasUsed gasPrice')
+          .lean()) as Array<{ gasUsed?: number; gasPrice?: string }>;
+        const reward = minerRewardWei(
+          block.number,
+          block.uncles?.length ?? 0,
+          transactionFeesWei(blockTxs)
+        );
         const miningRewardTx = {
           hash: block.hash,
           from: '0x0000000000000000000000000000000000000000',
           to: block.miner,
-          value: (8n * 10n ** 18n).toString(), // 8 VBC in Wei
+          value: reward.total.toString(),
           timestamp: block.timestamp,
           blockNumber: block.number,
           gas: '0',

@@ -22,9 +22,8 @@ import {
   txStatusFields,
   getHeadNumber,
   confirmations,
-  getBlockRewardWeiForHeight,
 } from './shared';
-import { getNephewRewardWei, getUncleRewardWei } from '@/lib/reward-schedule';
+import { getUncleRewardWei, minerRewardWei, transactionFeesWei } from '@/lib/reward-schedule';
 import { calculateTotalSupplyWei } from '@/lib/supply';
 import { etherscanEvmVersion } from '@/lib/contract/solc-utils';
 
@@ -63,28 +62,19 @@ export async function getBlockReward(blockno: string) {
         };
       })
     );
-    const uncleInclusionReward = BigInt(uncles.length) * getNephewRewardWei(blockNum);
-
     const txs = (await Transaction.find({ blockNumber: blockNum })
       .select('gasUsed gasPrice')
       .lean()) as Array<{ gasUsed?: number; gasPrice?: string }>;
-    const fees = txs.reduce(
-      (total, tx) => total + BigInt(tx.gasUsed ?? 0) * BigInt(tx.gasPrice || '0'),
-      0n
-    );
+    const reward = minerRewardWei(blockNum, uncles.length, transactionFeesWei(txs));
 
     // Etherscan semantics: blockReward = static reward + fees + uncle inclusion reward
     const result = {
       blockNumber: String(block.number),
       timeStamp: String(block.timestamp || ''),
       blockMiner: block.miner,
-      blockReward: (
-        BigInt(getBlockRewardWeiForHeight(blockNum)) +
-        fees +
-        uncleInclusionReward
-      ).toString(),
+      blockReward: reward.total.toString(),
       uncles,
-      uncleInclusionReward: uncleInclusionReward.toString(),
+      uncleInclusionReward: reward.uncleInclusionReward.toString(),
     };
 
     return successResponse(result);

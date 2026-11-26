@@ -10,6 +10,8 @@ import {
   getUncleRewardWei,
   getNephewRewardWei,
   calculateUncleIssuanceWei,
+  minerRewardWei,
+  transactionFeesWei,
 } from '@/lib/reward-schedule';
 
 const coins = (value: string) => {
@@ -155,5 +157,31 @@ describe('uncle issuance', () => {
     // block 3397818: uncles at 3397815 and 3397816 → 5 + 6, plus 0.5
     expect(calculateUncleIssuanceWei(3397818, [3397815, 3397816])).toBe(coins('11.5'));
     expect(calculateUncleIssuanceWei(3397818, [])).toBe(0n);
+  });
+});
+
+describe('miner reward', () => {
+  it('sums gasUsed × gasPrice over the transactions', () => {
+    expect(
+      transactionFeesWei([
+        { gasUsed: 21000, gasPrice: '1000000000' },
+        { gasUsed: '50000', gasPrice: '2000000000' },
+        { gasUsed: undefined, gasPrice: null },
+      ])
+    ).toBe(21000n * 10n ** 9n + 50000n * 2n * 10n ** 9n);
+    expect(transactionFeesWei([])).toBe(0n);
+  });
+
+  it('is the reward at the height plus fees plus 1/32 of it per included uncle', () => {
+    const fees = 21000n * 10n ** 9n;
+    expect(minerRewardWei(100, 0, 0n).total).toBe(coins('8'));
+    expect(minerRewardWei(3397818, 2, fees)).toEqual({
+      blockReward: coins('8'),
+      fees,
+      uncleInclusionReward: coins('0.5'),
+      total: coins('8.5') + fees,
+    });
+    // after the first reduction the block reward is 7, not a fixed 8
+    expect(minerRewardWei(FIRST_REDUCTION_BLOCK, 1, 0n).total).toBe(coins('7') + coins('7') / 32n);
   });
 });

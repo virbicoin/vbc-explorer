@@ -3,11 +3,7 @@ import { connectDB, Block, Transaction } from '../../../../../models/index';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { validatePagination } from '@/lib/security/validation';
 import { rejectDeepPagination } from '@/lib/security/pagination';
-import {
-  getBlockRewardForHeight,
-  getBlockRewardWeiForHeight,
-  getNephewRewardWei,
-} from '@/lib/reward-schedule';
+import { getBlockRewardForHeight, minerRewardWei, transactionFeesWei } from '@/lib/reward-schedule';
 
 /** Wei as a decimal string with 8 fractional digits (truncated), the format this API returns. */
 function toFixed8(wei: bigint): string {
@@ -61,34 +57,33 @@ export async function GET(
     const txs = (await Transaction.find({ blockNumber: { $in: blockNumbers } })
       .select('blockNumber gasUsed gasPrice')
       .lean()) as Array<{ blockNumber: number; gasUsed?: number; gasPrice?: string }>;
-    const feesByBlock = new Map<number, bigint>();
+    const txsByBlock = new Map<number, typeof txs>();
     for (const tx of txs) {
-      const fee = BigInt(tx.gasUsed ?? 0) * BigInt(tx.gasPrice || '0');
-      feesByBlock.set(tx.blockNumber, (feesByBlock.get(tx.blockNumber) ?? 0n) + fee);
+      txsByBlock.set(tx.blockNumber, [...(txsByBlock.get(tx.blockNumber) ?? []), tx]);
     }
 
     // What consensus credits the miner: block reward + fees + 1/32 of the reward per included uncle
     const miningRewards = minedBlocks.map((block) => {
       const number = block.number as number;
-      const blockReward = BigInt(getBlockRewardWeiForHeight(number));
-      const gasFees = feesByBlock.get(number) ?? 0n;
-      const uncleInclusionReward =
-        BigInt((block.uncles as string[] | undefined)?.length ?? 0) * getNephewRewardWei(number);
-      const totalReward = blockReward + gasFees + uncleInclusionReward;
+      const reward = minerRewardWei(
+        number,
+        (block.uncles as string[] | undefined)?.length ?? 0,
+        transactionFeesWei(txsByBlock.get(number) ?? [])
+      );
       return {
         hash: block.hash,
         from: '0x0000000000000000000000000000000000000000',
         to: address,
-        value: toFixed8(totalReward),
+        value: toFixed8(reward.total),
         timestamp: block.timestamp,
         blockNumber: number,
         type: 'mining_reward',
         status: 'success',
         details: {
           blockReward: getBlockRewardForHeight(number),
-          gasFees: toFixed8(gasFees),
-          uncleInclusionReward: toFixed8(uncleInclusionReward),
-          totalReward: toFixed8(totalReward),
+          gasFees: toFixed8(reward.fees),
+          uncleInclusionReward: toFixed8(reward.uncleInclusionReward),
+          totalReward: toFixed8(reward.total),
         },
       };
     });

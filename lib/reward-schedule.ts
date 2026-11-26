@@ -67,6 +67,38 @@ export function getNephewRewardWei(blockNumber: number): bigint {
   return blockRewardWei(blockNumber) / 32n;
 }
 
+/** Sum of gasUsed × gasPrice over a block's transactions, in wei. */
+export function transactionFeesWei(
+  transactions: ReadonlyArray<{ gasUsed?: number | string | null; gasPrice?: string | null }>
+): bigint {
+  return transactions.reduce(
+    (total, tx) => total + BigInt(tx.gasUsed ?? 0) * BigInt(tx.gasPrice || '0'),
+    0n
+  );
+}
+
+export interface MinerReward {
+  blockReward: bigint;
+  fees: bigint;
+  uncleInclusionReward: bigint;
+  total: bigint;
+}
+
+/**
+ * What consensus credits the miner of a block (go-virbicoin accumulateRewards): the block
+ * reward, the block's transaction fees and 1/32 of the reward for each uncle it includes.
+ */
+export function minerRewardWei(blockNumber: number, uncleCount: number, fees: bigint): MinerReward {
+  const blockReward = blockRewardWei(blockNumber);
+  const uncleInclusionReward = BigInt(uncleCount) * getNephewRewardWei(blockNumber);
+  return {
+    blockReward,
+    fees,
+    uncleInclusionReward,
+    total: blockReward + fees + uncleInclusionReward,
+  };
+}
+
 /**
  * Coins created for the uncles of one block: each uncle's reward plus the
  * nephew reward for including it. This issuance comes on top of the block
