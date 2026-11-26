@@ -4,6 +4,7 @@ import { loadConfig } from '@/lib/config';
 import { getExternalPriceData } from '@/lib/dex/external-price';
 import { headers } from 'next/headers';
 import { getCachedPoolStats } from '@/lib/dex/cache-service';
+import { ADDRESSES } from '@/lib/dex/priceUtils';
 
 /**
  * DefiLlama Pools API
@@ -43,6 +44,7 @@ async function calculateFarmingAPR(
   rewardTokenPriceUsd: number,
   blockTime: number = 12
 ): Promise<number> {
+  if (!masterChefAddress) return 0; // no farm configured
   try {
     const masterChef = new ethers.Contract(masterChefAddress, MASTERCHEF_ABI, provider);
 
@@ -156,9 +158,9 @@ export async function GET() {
         const rpcUrl =
           config.network?.rpcUrl || config.web3Provider?.url || 'http://localhost:8545';
         const provider = new ethers.JsonRpcProvider(rpcUrl);
-        const masterChefAddress =
-          (config.dex?.masterChef as { address?: string })?.address ||
-          '0x12A656c2DeE0EA2685398d52AcF78974fCD67B27';
+        // config.dex.masterChef is an address string; reading `.address` from it always fell
+        // back to a hardcoded VirBiCoin address
+        const masterChefAddress = ADDRESSES.MASTERCHEF;
         const blockTime = config.network?.blockTime || 12;
 
         // Get symbol mappings from config

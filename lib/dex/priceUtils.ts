@@ -15,37 +15,82 @@ import {
   getLPAddresses,
 } from './cache-service';
 
-// Known contract addresses (chain-specific)
-export const ADDRESSES = {
-  // Wrapped native token
-  WRAPPED_NATIVE: '0x52CB9F0d65D9d4De08CF103153C7A1A97567Bb9b'.toLowerCase(),
-  // Stablecoin
-  STABLECOIN: '0xdf136683B118E95c04A61FEC091c65736d9de059'.toLowerCase(),
-  // Secondary token (governance/utility token)
-  SECONDARY: '0xac7F60af25C5c4E23d1008C46511e265A8c9B6cF'.toLowerCase(),
-  // Native/Stablecoin pair address
-  NATIVE_STABLECOIN_PAIR: '0xA67D40496Bd61F9c30efdb040cFCFe6701653d55'.toLowerCase(),
-  // Native/Secondary pair address
-  NATIVE_SECONDARY_PAIR: '0x3095069E8725402B43E6Ff127750E1246563e48a'.toLowerCase(),
-  // MasterChef address
-  MASTERCHEF: '0x12A656c2DeE0EA2685398d52AcF78974fCD67B27'.toLowerCase(),
-  // Factory address
-  FACTORY: '0x663B1b42B79077AaC918515D3f57FED6820Dad63'.toLowerCase(),
-  // Router address
-  ROUTER: '0xdD1Ae4345252FFEA67fE844296fbd6C973B98c18'.toLowerCase(),
-  // Native token (zero address)
-  NATIVE: '0x0000000000000000000000000000000000000000',
-
-  // Legacy aliases (for backward compatibility)
-  WVBC: '0x52CB9F0d65D9d4De08CF103153C7A1A97567Bb9b'.toLowerCase(),
-  USDT: '0xdf136683B118E95c04A61FEC091c65736d9de059'.toLowerCase(),
-  VBCG: '0xac7F60af25C5c4E23d1008C46511e265A8c9B6cF'.toLowerCase(),
-  USDT_VBC_PAIR: '0xA67D40496Bd61F9c30efdb040cFCFe6701653d55'.toLowerCase(),
-  VBC_VBCG_PAIR: '0x3095069E8725402B43E6Ff127750E1246563e48a'.toLowerCase(),
+type DexConfigLike = {
+  factory?: string;
+  router?: string;
+  masterChef?: string | { address?: string };
+  wrappedNative?: { address?: string; symbol?: string };
+  rewardToken?: { address?: string; symbol?: string };
+  tokens?: Record<string, { address?: string; symbol?: string } | undefined>;
+  lpTokens?: Record<string, { address?: string; token0?: string; token1?: string } | undefined>;
 };
+
+const lower = (value: unknown): string => (typeof value === 'string' ? value.toLowerCase() : '');
+
+/**
+ * Contract addresses of the DEX, from config.json (`dex`, `currency.priceApi.dex`, `dexInfo`).
+ * They used to be hardcoded VirBiCoin addresses, which a change of the configuration did not
+ * reach. A pair is found by its address in the price settings or by the token symbols of a
+ * `dex.lpTokens` entry. Missing entries are '' (nothing matches them).
+ */
+export function dexAddresses(source: unknown = loadConfig()) {
+  const config = source as {
+    dex?: DexConfigLike;
+    currency?: { priceApi?: { dex?: { pairAddress?: string; stablecoinAddress?: string } } };
+    dexInfo?: { stablePoolAddress?: string };
+  };
+  const dex = config.dex ?? {};
+  const priceDex = config.currency?.priceApi?.dex ?? {};
+  const stable = Object.values(dex.tokens ?? {}).find(
+    (token) => token?.symbol && STABLECOIN_SYMBOLS.has(token.symbol.toUpperCase())
+  );
+  const pairOf = (a?: string, b?: string): string => {
+    if (!a || !b) return '';
+    const want = new Set([a.toUpperCase(), b.toUpperCase()]);
+    const pair = Object.values(dex.lpTokens ?? {}).find(
+      (lp) =>
+        lp?.token0 &&
+        lp?.token1 &&
+        want.has(lp.token0.toUpperCase()) &&
+        want.has(lp.token1.toUpperCase()) &&
+        lp.token0.toUpperCase() !== lp.token1.toUpperCase()
+    );
+    return lower(pair?.address);
+  };
+  const wrappedNative = lower(dex.wrappedNative?.address);
+  const stablecoin = lower(priceDex.stablecoinAddress || stable?.address);
+  const secondary = lower(dex.rewardToken?.address);
+  const nativeStablePair =
+    lower(priceDex.pairAddress || config.dexInfo?.stablePoolAddress) ||
+    pairOf(dex.wrappedNative?.symbol, stable?.symbol);
+  const nativeSecondaryPair = pairOf(dex.wrappedNative?.symbol, dex.rewardToken?.symbol);
+  const masterChef = lower(
+    typeof dex.masterChef === 'string' ? dex.masterChef : dex.masterChef?.address
+  );
+  return {
+    WRAPPED_NATIVE: wrappedNative,
+    STABLECOIN: stablecoin,
+    SECONDARY: secondary,
+    NATIVE_STABLECOIN_PAIR: nativeStablePair,
+    NATIVE_SECONDARY_PAIR: nativeSecondaryPair,
+    MASTERCHEF: masterChef,
+    FACTORY: lower(dex.factory),
+    ROUTER: lower(dex.router),
+    // Native token (zero address)
+    NATIVE: '0x0000000000000000000000000000000000000000',
+    // Legacy aliases (for backward compatibility)
+    WVBC: wrappedNative,
+    USDT: stablecoin,
+    VBCG: secondary,
+    USDT_VBC_PAIR: nativeStablePair,
+    VBC_VBCG_PAIR: nativeSecondaryPair,
+  };
+}
 
 // Known stablecoin symbols
 export const STABLECOIN_SYMBOLS = new Set(['USDT', 'USDC', 'DAI', 'BUSD']);
+
+export const ADDRESSES = dexAddresses();
 
 // Cache key for DEX prices
 const DEX_PRICES_CACHE_KEY = 'dex:prices';
