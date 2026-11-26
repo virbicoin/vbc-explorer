@@ -3,6 +3,7 @@
 // This module can be used on both server and client side
 
 import Web3 from 'web3';
+import { ERC20ABI } from '@/abi/TokenFactoryABI';
 
 // Configuration type definition
 export interface MinimalConfig {
@@ -235,37 +236,6 @@ const MASTERCHEF_ABI: any = [
   },
 ];
 
-const ERC20_ABI: any = [
-  {
-    inputs: [],
-    name: 'name',
-    outputs: [{ type: 'string' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'symbol',
-    outputs: [{ type: 'string' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'decimals',
-    outputs: [{ type: 'uint8' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ type: 'address' }],
-    name: 'balanceOf',
-    outputs: [{ type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-];
-
 const PAIR_ABI: any = [
   {
     inputs: [],
@@ -340,7 +310,7 @@ function getWeb3(): Web3 {
 
 // Fetch token info from blockchain
 async function fetchTokenInfo(web3: Web3, address: string): Promise<TokenInfo> {
-  const contract = new web3.eth.Contract(ERC20_ABI, address);
+  const contract = new web3.eth.Contract(ERC20ABI, address);
 
   const [name, symbol, decimals] = await Promise.all([
     contract.methods.name().call() as Promise<string>,

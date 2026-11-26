@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/// <reference path="../types/human-standard-token-abi.d.ts" />
 
 /*
 Name: Token Scanner
@@ -10,7 +9,7 @@ This file will scan the blockchain for new token contracts and update the databa
 import '../lib/env'; // .env / .env.local before any other module reads process.env
 import Web3 from 'web3';
 import mongoose from 'mongoose';
-import humanStandardTokenAbi from 'human-standard-token-abi';
+import { ERC20ABI } from '../abi/TokenFactoryABI';
 import fs from 'fs';
 import path from 'path';
 import { requireDb } from '../lib/db/get-db';
@@ -215,7 +214,7 @@ const processBatchWithDelay = async (
 
 async function isErc20Token(contractAddress: string): Promise<boolean> {
   try {
-    const contract = new web3.eth.Contract(humanStandardTokenAbi, contractAddress);
+    const contract = new web3.eth.Contract(ERC20ABI, contractAddress);
     // Check for mandatory ERC20 functions - name, symbol, decimals are required
     // totalSupply might fail due to EVM opcode issues (like SELFBALANCE)
     await contract.methods.name().call();
@@ -841,7 +840,7 @@ async function registerTokenContract(
       return 'none';
     }
 
-    const contract = new web3.eth.Contract(humanStandardTokenAbi, contractAddress);
+    const contract = new web3.eth.Contract(ERC20ABI, contractAddress);
     const name = (await contract.methods.name().call()) as string;
     const symbol = (await contract.methods.symbol().call()) as string;
     const decimals = (await contract.methods.decimals().call()) as bigint;

@@ -13,7 +13,7 @@ Practical instructions for AI coding agents working in this repository.
 - Environment: copy `.env.example` to `.env` (or `.env.local`, which takes precedence); `MONGODB_URI` is required. Next.js and every `tools/*.ts` (through `lib/env.ts`, always their first import) read these files. There is no default URI: `connectDB()` stops with `MissingMongoUriError`. Credentials never go into `ecosystem.config.json`, pm2's environment, logs, docs or chat.
 - Dev server: `npm run dev`
 - Quality gate: `npm run check`
-- Tests: `npm run test` (Vitest; `test:watch` / `test:coverage` are also available). DB tests use mongodb-memory-server, which downloads a MongoDB 8.0 binary on first run (`MONGOMS_SYSTEM_BINARY=/usr/bin/mongod` uses a local binary instead).
+- Tests: `npm run test` (Vitest; `npx vitest` watches). DB tests use mongodb-memory-server, which downloads a MongoDB 8.0 binary on first run (`MONGOMS_SYSTEM_BINARY=/usr/bin/mongod` uses a local binary instead).
 - Individual checks:
   - `npm run lint`
   - `npm run typecheck`

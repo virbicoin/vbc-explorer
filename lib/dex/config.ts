@@ -4,6 +4,7 @@
 
 import { defineChain, type Chain } from 'viem';
 import { getMinimalConfig, type MinimalConfig } from './contract-service';
+import { ERC20ABI } from '@/abi/TokenFactoryABI';
 
 // Type for dynamic chain definition
 export interface ChainConfig {
@@ -595,63 +596,8 @@ export const PAIR_ABI = [
   },
 ] as const;
 
-export const ERC20_ABI = [
-  {
-    inputs: [],
-    name: 'name',
-    outputs: [{ type: 'string' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'symbol',
-    outputs: [{ type: 'string' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'decimals',
-    outputs: [{ type: 'uint8' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [],
-    name: 'totalSupply',
-    outputs: [{ type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [{ type: 'address', name: 'account' }],
-    name: 'balanceOf',
-    outputs: [{ type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-  {
-    inputs: [
-      { type: 'address', name: 'spender' },
-      { type: 'uint256', name: 'amount' },
-    ],
-    name: 'approve',
-    outputs: [{ type: 'bool' }],
-    stateMutability: 'nonpayable',
-    type: 'function',
-  },
-  {
-    inputs: [
-      { type: 'address', name: 'owner' },
-      { type: 'address', name: 'spender' },
-    ],
-    name: 'allowance',
-    outputs: [{ type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const;
+// the one ERC-20 ABI (abi/TokenFactoryABI.ts)
+export const ERC20_ABI = ERC20ABI;
 
 // Wrapped native token ABI (WETH-compatible)
 export const WRAPPED_NATIVE_ABI = [

@@ -591,7 +591,6 @@ sequenceDiagram
 |    |-- config.ts            # Server-side config
 |    |-- db.ts                # Database connection
 |    |-- etherUnits.ts        # Unit conversion
-|    |-- filters.ts           # Data filters
 |    |-- launchpad-token-source.ts  # Launchpad token data
 |    |-- models.ts            # Model interfaces
 |    |-- price-service.ts     # Price data service
@@ -1172,7 +1171,7 @@ npm run flag-spam-tokens -- --audit-code      # Hide token/contract records whos
 pm2 start ecosystem.config.json
 pm2 restart explorer
 pm2 status
-pm2 logs <app>
+pm2 logs explorer
 pm2 monit
 
 # Development
@@ -1185,31 +1184,7 @@ npm run typecheck
 
 ### Direct Execution
 
-```bash
-# All background jobs (what the explorer starts)
-npx tsx --tsconfig tsconfig.tools.json tools/worker.ts
-
-# Blockchain synchronization
-npx tsx --tsconfig tsconfig.tools.json tools/sync.ts
-
-# Richlist calculation
-npx tsx --tsconfig tsconfig.tools.json tools/richlist.ts
-
-# Token tracking
-npx tsx --tsconfig tsconfig.tools.json tools/tokens.ts
-
-# Price tracking
-npx tsx --tsconfig tsconfig.tools.json tools/price.ts
-
-# Database indexes
-npx tsx --tsconfig tsconfig.tools.json tools/optimize-indexes.ts --check
-
-# Chain integrity / spam tokens
-npx tsx --tsconfig tsconfig.tools.json tools/repair-chain.ts --check
-npx tsx --tsconfig tsconfig.tools.json tools/flag-spam-tokens.ts --dry-run
-
-SYNCALL=true npx tsx --tsconfig tsconfig.tools.json tools/sync.ts            # Full block sync
-```
+Every tool script is `tsx tools/<name>.ts` (`npm run sync` runs `tsx tools/sync.ts`), so `npx tsx tools/<name>.ts --flag` runs a tool without npm.
 
 ## Configuration
 

@@ -33,16 +33,17 @@ VBC Explorer は、VirBiCoin 向けに作られたモダンなブロックチェ
 TypeScript 7 は Go 実装のネイティブコンパイラで、`typescript` パッケージは JS コンパイラ API
 （`ts.createProgram` / `ts.transpileModule` など）を同梱しなくなった。これに伴う構成変更:
 
-- **typecheck**: `tsc --noEmit`（tsgo）が全体を数秒で検査。`npm run typecheck:tools` が
-  `tsconfig.tools.json`（`module`/`moduleResolution: nodenext`。旧 `node10` は TS7 で削除）で
-  tools/ を検査し、`npm run check` に組み込み済み
+- **typecheck**: `npm run typecheck` が `tsc --noEmit`（tsgo、全体を数秒）と
+  `tsconfig.tools.json`（`module`/`moduleResolution: nodenext`。旧 `node10` は TS7 で削除）での
+  tools/ の検査を続けて行う（`npm run check` に組み込み済み）
 - **lint**: typescript-eslint / @eslint-react は JS API 依存のため撤去（canary も TS7 未対応）。
   TS/TSX の構文解析は `@babel/eslint-parser`＋`@babel/preset-typescript`（Babel 8、型情報なし）。
   `.tsx` は `@babel/plugin-syntax-jsx` を明示（Babel 8 は自動で JSX を有効化しない）。
   `no-undef` など tsc が担保するルールは off。`@typescript-eslint/no-explicit-any` 等の
   型依存ルールは失われた（typescript-eslint が TS7 対応したら復帰を検討）
-- **CLI ツール**: ts-node は JS API 依存のため tsx へ移行（`tsx --tsconfig tsconfig.tools.json`）。
-  tsx は実行時に型検査しないため、型担保は `typecheck:tools` が代替
+- **CLI ツール**: ts-node は JS API 依存のため tsx へ移行（`tsx tools/<name>.ts`。別名 `@/` は既定の
+  tsconfig.json で解決できるので `--tsconfig` は付けない）。tsx は実行時に型検査しないため、型担保は
+  `npm run typecheck` の tools/ の検査が代替
 - **Next.js ビルド**: `@typescript/native-preview` を devDependencies に入れることで、Next 16.2 が
   tsgo 利用を検出しビルド内型チェックを安全にスキップする（型検査は `npm run check` 側で実施）。
   これを外すと `next build` が「TypeScript 未インストール」誤検出でクラッシュするので注意
@@ -123,7 +124,6 @@ lib/                    # ユーティリティライブラリ
   db.ts                 # データベース接続
   env.ts                # .env / .env.local の読み込み（tools の最初の import。資格情報はログに出さない）
   etherUnits.ts         # 単位変換
-  filters.ts            # データフィルタ
   launchpad-token-source.ts # Launchpad トークンデータ
   models.ts             # モデルインターフェース
   price-service.ts      # 価格データサービス
@@ -228,8 +228,6 @@ npm run check           # lint, typecheck, format:check を実行
 
 # テスト
 npm run test            # Vitest でユニットテストを実行
-npm run test:watch      # ウォッチモードでテストを実行
-npm run test:coverage   # カバレッジ付きでテストを実行
 
 # バックグラウンドのジョブ（本番は explorer が自分で起動する。手で動かすのは調べるとき）
 npm run worker -- --plan  # この config.json で動くジョブと理由を表示

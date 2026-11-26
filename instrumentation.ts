@@ -26,7 +26,6 @@ export async function register(): Promise<void> {
       execArgv: ['--import', 'tsx', `--max-old-space-size=${heapMb}`],
       env: {
         ...process.env,
-        TSX_TSCONFIG_PATH: 'tsconfig.tools.json',
         MEMORY_LIMIT_MB: String(Math.floor((heapMb * 3) / 4)),
       },
       stdio: ['inherit', 'inherit', 'inherit', 'ipc'],

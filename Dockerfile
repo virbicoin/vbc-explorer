@@ -12,7 +12,7 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     MONGOMS_DISABLE_POSTINSTALL=1
 
 COPY package.json package-lock.json ./
-# Dev dependencies stay: the sync tools run through tsx and cross-env
+# Dev dependencies stay: the background jobs and the tools run through tsx
 RUN npm ci --include=dev && npm cache clean --force
 
 COPY . .
