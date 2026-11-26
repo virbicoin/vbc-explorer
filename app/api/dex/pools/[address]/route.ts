@@ -1,6 +1,7 @@
 // Pool Details API - Returns detailed information for a specific pool
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { formatUnits, isAddress } from 'viem';
+import { callContract } from '@/lib/web3/provider';
 import { loadConfig } from '@/lib/config';
 import { getCachedPoolStats } from '@/lib/dex/cache-service';
 
@@ -25,14 +26,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
   try {
     const { address } = await params;
 
-    if (!address || !ethers.isAddress(address)) {
+    if (!address || !isAddress(address)) {
       return NextResponse.json({ success: false, error: 'Invalid pool address' }, { status: 400 });
     }
 
     const appConfig = loadConfig();
     const rpcUrl =
       appConfig.network?.rpcUrl || appConfig.web3Provider?.url || 'http://localhost:8545';
-    const provider = new ethers.JsonRpcProvider(rpcUrl);
 
     // Get USDT and wrapped native addresses
     const usdtAddress = (appConfig.dex?.tokens?.usdt?.address || '').toLowerCase();
@@ -49,34 +49,30 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     }
 
     // Fetch pool details from blockchain
-    const pairContract = new ethers.Contract(address, PAIR_ABI, provider);
 
     const [reserves, token0Address, token1Address, totalSupply] = await Promise.all([
-      pairContract.getReserves(),
-      pairContract.token0(),
-      pairContract.token1(),
-      pairContract.totalSupply(),
+      callContract(PAIR_ABI, address, 'getReserves'),
+      callContract(PAIR_ABI, address, 'token0'),
+      callContract(PAIR_ABI, address, 'token1'),
+      callContract(PAIR_ABI, address, 'totalSupply'),
     ]);
 
-    const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
-    const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
-
     const [symbol0, name0, decimals0Raw, symbol1, name1, decimals1Raw] = await Promise.all([
-      token0Contract.symbol(),
-      token0Contract.name(),
-      token0Contract.decimals(),
-      token1Contract.symbol(),
-      token1Contract.name(),
-      token1Contract.decimals(),
+      callContract(ERC20_ABI, token0Address, 'symbol'),
+      callContract(ERC20_ABI, token0Address, 'name'),
+      callContract(ERC20_ABI, token0Address, 'decimals'),
+      callContract(ERC20_ABI, token1Address, 'symbol'),
+      callContract(ERC20_ABI, token1Address, 'name'),
+      callContract(ERC20_ABI, token1Address, 'decimals'),
     ]);
 
     // Convert decimals to number (ethers v6 returns bigint)
     const decimals0 = Number(decimals0Raw);
     const decimals1 = Number(decimals1Raw);
 
-    const reserve0 = ethers.formatUnits(reserves[0], decimals0);
-    const reserve1 = ethers.formatUnits(reserves[1], decimals1);
-    const lpSupply = ethers.formatUnits(totalSupply, 18);
+    const reserve0 = formatUnits(BigInt(reserves[0]), decimals0);
+    const reserve1 = formatUnits(BigInt(reserves[1]), decimals1);
+    const lpSupply = formatUnits(BigInt(totalSupply), 18);
 
     const reserve0Num = Number(reserve0);
     const reserve1Num = Number(reserve1);
@@ -97,8 +93,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     // Try to get logoUrl directly from token contracts (works for all launchpad tokens)
     if (!logoUrl0) {
       try {
-        const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
-        const logo = await token0Contract.logoUrl();
+        const logo = await callContract(ERC20_ABI, token0Address, 'logoUrl');
         if (logo && logo !== '') {
           logoUrl0 = logo;
         }
@@ -109,8 +104,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
 
     if (!logoUrl1) {
       try {
-        const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
-        const logo = await token1Contract.logoUrl();
+        const logo = await callContract(ERC20_ABI, token1Address, 'logoUrl');
         if (logo && logo !== '') {
           logoUrl1 = logo;
         }

@@ -2,7 +2,8 @@
 // Format: https://docs.geckoterminal.com/reference/get_networks-network-pools-address
 // Optimized with centralized caching
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { formatUnits, isAddress } from 'viem';
+import { callContract } from '@/lib/web3/provider';
 import { loadConfig } from '@/lib/config';
 import { connectDB, Contract } from '@/models/index';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
@@ -13,7 +14,6 @@ import {
   getCachedTokenInfo,
   getWrappedNativeAddress,
   getUSDTAddress,
-  getProvider,
 } from '@/lib/dex/cache-service';
 
 export const dynamic = 'force-dynamic';
@@ -49,7 +49,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     const config = loadConfig();
 
     // Validate address
-    if (!ethers.isAddress(poolAddress)) {
+    if (!isAddress(poolAddress)) {
       return errorResponse(400, 'Invalid pool address');
     }
 
@@ -77,8 +77,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
 
     const { token0, token1, reserve0, reserve1, totalSupply } = poolInfo;
 
-    const reserveNum0 = Number(ethers.formatUnits(reserve0, token0.decimals));
-    const reserveNum1 = Number(ethers.formatUnits(reserve1, token1.decimals));
+    const reserveNum0 = Number(formatUnits(BigInt(reserve0), token0.decimals));
+    const reserveNum1 = Number(formatUnits(BigInt(reserve1), token1.decimals));
 
     if (reserveNum0 === 0 || reserveNum1 === 0) {
       return errorResponse(404, 'Pool has no liquidity');
@@ -191,16 +191,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     const totalLiquidityUsd = baseReserveUsd + quoteReserveUsd;
 
     // Get token total supplies (for FDV calculation)
-    const provider = getProvider();
     let baseSupply = BigInt(0);
     let quoteSupply = BigInt(0);
 
     try {
-      const baseContract = new ethers.Contract(baseAddress, ERC20_ABI, provider);
-      const quoteContract = new ethers.Contract(quoteAddress, ERC20_ABI, provider);
       [baseSupply, quoteSupply] = await Promise.all([
-        baseContract.totalSupply().catch(() => BigInt(0)),
-        quoteContract.totalSupply().catch(() => BigInt(0)),
+        callContract(ERC20_ABI, baseAddress, 'totalSupply').catch(() => BigInt(0)),
+        callContract(ERC20_ABI, quoteAddress, 'totalSupply').catch(() => BigInt(0)),
       ]);
     } catch {
       // Ignore errors
@@ -209,7 +206,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     // Calculate FDV for base token
     let fdvUsd: string | null = null;
     if (baseTokenPriceUsd && baseSupply > 0n) {
-      const totalSupplyNum = Number(ethers.formatUnits(baseSupply, baseDecimals));
+      const totalSupplyNum = Number(formatUnits(BigInt(baseSupply), baseDecimals));
       fdvUsd = (totalSupplyNum * parseFloat(baseTokenPriceUsd)).toFixed(2);
     }
 

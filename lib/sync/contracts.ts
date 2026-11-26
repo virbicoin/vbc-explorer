@@ -59,19 +59,12 @@ export const registerContract = async (
           type: 'function',
         },
       ];
-      const erc165Contract = {
-        abi: erc165ABI as readonly unknown[],
-        address: contractAddress as string,
-      };
 
       // Check for ERC-721
       try {
-        const isERC721 = await callContract(
-          erc165Contract.abi,
-          erc165Contract.address,
-          'supportsInterface',
-          [ERC721_INTERFACE_ID]
-        );
+        const isERC721 = await callContract(erc165ABI, contractAddress, 'supportsInterface', [
+          ERC721_INTERFACE_ID,
+        ]);
         if (isERC721) {
           tokenType = 'ERC721';
         }
@@ -82,12 +75,9 @@ export const registerContract = async (
       // Check for ERC-1155
       if (tokenType === 'Contract') {
         try {
-          const isERC1155 = await callContract(
-            erc165Contract.abi,
-            erc165Contract.address,
-            'supportsInterface',
-            [ERC1155_INTERFACE_ID]
-          );
+          const isERC1155 = await callContract(erc165ABI, contractAddress, 'supportsInterface', [
+            ERC1155_INTERFACE_ID,
+          ]);
           if (isERC1155) {
             tokenType = 'ERC1155';
           }
@@ -120,13 +110,12 @@ export const registerContract = async (
           type: 'function',
         },
       ];
-      const contract = { abi: erc20ABI as readonly unknown[], address: contractAddress as string };
 
       // Try to call ERC20 methods
       const [name, symbol, decimals] = await Promise.all([
-        callContract(contract.abi, contract.address, 'name', []).catch(() => null),
-        callContract(contract.abi, contract.address, 'symbol', []).catch(() => null),
-        callContract(contract.abi, contract.address, 'decimals', []).catch(() => null),
+        callContract(erc20ABI, contractAddress, 'name', []).catch(() => null),
+        callContract(erc20ABI, contractAddress, 'symbol', []).catch(() => null),
+        callContract(erc20ABI, contractAddress, 'decimals', []).catch(() => null),
       ]);
 
       if (name && symbol) {

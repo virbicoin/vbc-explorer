@@ -2,7 +2,8 @@
 // Format: https://docs.geckoterminal.com/reference/get_networks-network-tokens-address
 // Optimized with centralized caching
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { formatUnits, isAddress } from 'viem';
+import { callContract } from '@/lib/web3/provider';
 import { loadConfig, getNetworkSlug } from '@/lib/config';
 import { connectDB, Contract, DexSwap } from '@/models/index';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
@@ -12,7 +13,6 @@ import {
   getWrappedNativeAddress,
   getUSDTAddress,
   getLPAddresses,
-  getProvider,
 } from '@/lib/dex/cache-service';
 import {
   getNativePriceFromDex,
@@ -54,7 +54,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     const config = loadConfig();
 
     // Validate address
-    if (!ethers.isAddress(tokenAddress)) {
+    if (!isAddress(tokenAddress)) {
       return errorResponse(400, 'Invalid token address');
     }
 
@@ -83,11 +83,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     const { symbol, name, decimals } = tokenInfo;
 
     // Get total supply
-    const provider = getProvider();
     let totalSupply = BigInt(0);
     try {
-      const tokenContract = new ethers.Contract(normalizedAddress, ERC20_ABI, provider);
-      totalSupply = await tokenContract.totalSupply().catch(() => BigInt(0));
+      totalSupply = await callContract(ERC20_ABI, normalizedAddress, 'totalSupply').catch(() =>
+        BigInt(0)
+      );
     } catch {
       // Ignore
     }
@@ -115,21 +115,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
       // Native token - use DEX price
       priceUsd = nativePriceUsd.toString();
       if (nativePriceUsd > 0 && totalSupply > 0n) {
-        const totalSupplyNum = Number(ethers.formatUnits(totalSupply, decimals));
+        const totalSupplyNum = Number(formatUnits(BigInt(totalSupply), decimals));
         fdvUsd = (totalSupplyNum * nativePriceUsd).toFixed(2);
       }
     } else if (normalizedAddress === usdtAddress || symbol === 'USDT') {
       // USDT - stablecoin is always 1.0
       priceUsd = '1';
       if (totalSupply > 0n) {
-        const totalSupplyNum = Number(ethers.formatUnits(totalSupply, decimals));
+        const totalSupplyNum = Number(formatUnits(BigInt(totalSupply), decimals));
         fdvUsd = totalSupplyNum.toFixed(2);
       }
     } else if (isStablecoin(symbol)) {
       // Other stablecoins
       priceUsd = '1';
       if (totalSupply > 0n) {
-        const totalSupplyNum = Number(ethers.formatUnits(totalSupply, decimals));
+        const totalSupplyNum = Number(formatUnits(BigInt(totalSupply), decimals));
         fdvUsd = totalSupplyNum.toFixed(2);
       }
     } else {
@@ -138,7 +138,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
       if (tokenPrice > 0) {
         priceUsd = tokenPrice.toString();
         if (totalSupply > 0n) {
-          const totalSupplyNum = Number(ethers.formatUnits(totalSupply, decimals));
+          const totalSupplyNum = Number(formatUnits(BigInt(totalSupply), decimals));
           fdvUsd = (totalSupplyNum * tokenPrice).toFixed(2);
         }
       } else {
@@ -161,8 +161,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
                 ? token1.address.toLowerCase()
                 : token0.address.toLowerCase();
 
-              const reserveNum0 = Number(ethers.formatUnits(reserve0, token0.decimals));
-              const reserveNum1 = Number(ethers.formatUnits(reserve1, token1.decimals));
+              const reserveNum0 = Number(formatUnits(BigInt(reserve0), token0.decimals));
+              const reserveNum1 = Number(formatUnits(BigInt(reserve1), token1.decimals));
 
               // Paired with USDT
               if (pairedToken === usdtAddress) {
@@ -189,7 +189,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
 
         // Calculate FDV if we have price
         if (priceUsd && totalSupply > 0n) {
-          const totalSupplyNum = Number(ethers.formatUnits(totalSupply, decimals));
+          const totalSupplyNum = Number(formatUnits(BigInt(totalSupply), decimals));
           fdvUsd = (totalSupplyNum * parseFloat(priceUsd)).toFixed(2);
         }
       }

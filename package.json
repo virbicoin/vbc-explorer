@@ -58,7 +58,6 @@
   "dependencies": {
     "@heroicons/react": "^2.2.0",
     "@tanstack/react-query": "^5.105.0",
-    "ethers": "^6.17.0",
     "lightweight-charts": "^5.2.1",
     "mongoose": "^9.11.4",
     "next": "^16.4.6",

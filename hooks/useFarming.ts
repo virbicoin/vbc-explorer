@@ -1,7 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { ethers, Contract, BrowserProvider } from 'ethers';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  createPublicClient,
+  createWalletClient,
+  custom,
+  http,
+  parseEther,
+  type Abi,
+  type Address,
+} from 'viem';
 import {
   initFarmingConfig,
   getNetworkConfig,
@@ -225,8 +233,8 @@ export function useFarming(options: UseFarmingOptions = {}) {
     };
   }, []);
 
-  // Get provider and signer
-  const getProviderAndSigner = useCallback(async () => {
+  // The wallet, switched to this network first
+  const getWallet = useCallback(async () => {
     if (typeof window === 'undefined' || !window.ethereum) {
       throw new Error('MetaMask is not installed');
     }
@@ -238,15 +246,10 @@ export function useFarming(options: UseFarmingOptions = {}) {
     // Check and switch to correct network first
     const chainId = await window.ethereum.request({ method: 'eth_chainId' });
     const currentChainId = parseInt(chainId as string, 16);
-    console.log(
-      '[getProviderAndSigner] Current chainId:',
-      currentChainId,
-      'Expected:',
-      networkConfig.chainId
-    );
+    console.log('[getWallet] Current chainId:', currentChainId, 'Expected:', networkConfig.chainId);
 
     if (currentChainId !== networkConfig.chainId) {
-      console.log('[getProviderAndSigner] Switching network...');
+      console.log('[getWallet] Switching network...');
       try {
         await window.ethereum.request({
           method: 'wallet_switchEthereumChain',
@@ -279,30 +282,54 @@ export function useFarming(options: UseFarmingOptions = {}) {
       }
     }
 
-    const provider = new BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
-    const address = await signer.getAddress();
-    console.log('[getProviderAndSigner] Got signer:', address);
-    return { provider, signer, address };
+    const walletClient = createWalletClient({ transport: custom(window.ethereum) });
+    const [address] = await walletClient.requestAddresses();
+    console.log('[getWallet] Got account:', address);
+    return { walletClient, address };
   }, [networkConfig]);
 
-  // Get read-only provider
-  const getReadOnlyProvider = useCallback(() => {
-    if (!networkConfig) {
-      throw new Error('Config not loaded');
-    }
-    return new ethers.JsonRpcProvider(networkConfig.rpcUrl);
-  }, [networkConfig]);
-
-  // Get MasterChef contract
-  const getMasterChef = useCallback(
-    (signerOrProvider: ethers.Signer | ethers.Provider) => {
-      if (!staticContracts) {
-        throw new Error('Config not loaded');
-      }
-      return new Contract(staticContracts.masterChef, MASTER_CHEF_ABI, signerOrProvider);
+  // Reads go to the network's public RPC
+  const readClient = useMemo(
+    () => (networkConfig ? createPublicClient({ transport: http(networkConfig.rpcUrl) }) : null),
+    [networkConfig]
+  );
+  const read = useCallback(
+    (
+      address: string,
+      abi: Abi | readonly unknown[],
+      functionName: string,
+      args: unknown[] = []
+    ) => {
+      if (!readClient) throw new Error('Config not loaded');
+      return readClient.readContract({
+        address: address as Address,
+        abi: abi as Abi,
+        functionName,
+        args,
+      }) as Promise<any>;
     },
-    [staticContracts]
+    [readClient]
+  );
+
+  /** Sends a transaction from the connected wallet and waits until it is mined. */
+  const send = useCallback(
+    async (address: string, abi: Abi, functionName: string, args: unknown[]) => {
+      if (!readClient) throw new Error('Config not loaded');
+      const { walletClient, address: account } = await getWallet();
+      const hash = await walletClient.writeContract({
+        address: address as Address,
+        abi,
+        functionName,
+        args,
+        account,
+        // getWallet() has switched the wallet to this network
+        chain: null,
+      });
+      console.log(`[${functionName}] Transaction sent:`, hash);
+      const receipt = await readClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== 'success') throw new Error('execution reverted');
+    },
+    [getWallet, readClient]
   );
 
   // Fetch pool information from blockchain
@@ -313,14 +340,12 @@ export function useFarming(options: UseFarmingOptions = {}) {
     }
 
     try {
-      const provider = getReadOnlyProvider();
-      const masterChef = getMasterChef(provider);
-
-      const [rewardRate, totalAlloc, poolLength] = await Promise.all([
-        masterChef.rewardPerBlock(),
-        masterChef.totalAllocPoint(),
-        masterChef.poolLength(),
-      ]);
+      const masterChef = staticContracts.masterChef;
+      const [rewardRate, totalAlloc, poolLength] = (await Promise.all([
+        read(masterChef, MASTER_CHEF_ABI, 'rewardPerBlock'),
+        read(masterChef, MASTER_CHEF_ABI, 'totalAllocPoint'),
+        read(masterChef, MASTER_CHEF_ABI, 'poolLength'),
+      ])) as [bigint, bigint, bigint];
 
       setRewardPerBlock(rewardRate);
       setTotalAllocPoint(totalAlloc);
@@ -356,13 +381,11 @@ export function useFarming(options: UseFarmingOptions = {}) {
               type: 'function',
             },
           ];
-          const factory = new Contract(FACTORY_ADDRESS, factoryABI, provider);
-
           // Try to get direct reward token / stablecoin pair first
-          const rewardStablePairAddr = await factory.getPair(
+          const rewardStablePairAddr = await read(FACTORY_ADDRESS, factoryABI, 'getPair', [
             REWARD_TOKEN_ADDRESS,
-            STABLECOIN_ADDRESS
-          );
+            STABLECOIN_ADDRESS,
+          ]);
 
           if (
             rewardStablePairAddr &&
@@ -385,10 +408,9 @@ export function useFarming(options: UseFarmingOptions = {}) {
                 type: 'function',
               },
             ];
-            const rewardStablePair = new Contract(rewardStablePairAddr, pairABI, provider);
             const [pairToken0, pairReserves] = await Promise.all([
-              rewardStablePair.token0(),
-              rewardStablePair.getReserves(),
+              read(rewardStablePairAddr, pairABI, 'token0'),
+              read(rewardStablePairAddr, pairABI, 'getReserves'),
             ]);
 
             const isRewardToken0 = pairToken0.toLowerCase() === REWARD_TOKEN_ADDRESS;
@@ -410,8 +432,14 @@ export function useFarming(options: UseFarmingOptions = {}) {
             // No direct stablecoin pair, calculate via wrapped native token
             // reward/wrapped -> wrapped/stable
             const [rewardWrappedPairAddr, wrappedStablePairAddr] = await Promise.all([
-              factory.getPair(REWARD_TOKEN_ADDRESS, WRAPPED_NATIVE_ADDRESS),
-              factory.getPair(WRAPPED_NATIVE_ADDRESS, STABLECOIN_ADDRESS),
+              read(FACTORY_ADDRESS, factoryABI, 'getPair', [
+                REWARD_TOKEN_ADDRESS,
+                WRAPPED_NATIVE_ADDRESS,
+              ]),
+              read(FACTORY_ADDRESS, factoryABI, 'getPair', [
+                WRAPPED_NATIVE_ADDRESS,
+                STABLECOIN_ADDRESS,
+              ]),
             ]);
 
             if (
@@ -436,10 +464,9 @@ export function useFarming(options: UseFarmingOptions = {}) {
               ];
 
               // Get reward token / wrapped native price
-              const rewardWrappedPair = new Contract(rewardWrappedPairAddr, pairABI, provider);
               const [rewardWrappedToken0, rewardWrappedReserves] = await Promise.all([
-                rewardWrappedPair.token0(),
-                rewardWrappedPair.getReserves(),
+                read(rewardWrappedPairAddr, pairABI, 'token0'),
+                read(rewardWrappedPairAddr, pairABI, 'getReserves'),
               ]);
               const isRewardToken0InWrapped =
                 rewardWrappedToken0.toLowerCase() === REWARD_TOKEN_ADDRESS;
@@ -453,10 +480,9 @@ export function useFarming(options: UseFarmingOptions = {}) {
                 rewardInPair > 0 ? wrappedInRewardPair / rewardInPair : 0;
 
               // Get wrapped native / stablecoin price
-              const wrappedStablePair = new Contract(wrappedStablePairAddr, pairABI, provider);
               const [wrappedStableToken0, wrappedStableReserves] = await Promise.all([
-                wrappedStablePair.token0(),
-                wrappedStablePair.getReserves(),
+                read(wrappedStablePairAddr, pairABI, 'token0'),
+                read(wrappedStablePairAddr, pairABI, 'getReserves'),
               ]);
               const isWrappedToken0InStable =
                 wrappedStableToken0.toLowerCase() === WRAPPED_NATIVE_ADDRESS;
@@ -496,10 +522,17 @@ export function useFarming(options: UseFarmingOptions = {}) {
       for (let pid = 0; pid < numPools; pid++) {
         try {
           console.log('[fetchPools] Fetching pool', pid);
-          const info = await masterChef.getPoolInfo(pid);
-
-          // Get LP token info
-          const lpToken = new Contract(info.lpToken, ERC20_ABI, provider);
+          const [lpTokenAddress, allocPoint, , , , totalStaked] = await read(
+            masterChef,
+            MASTER_CHEF_ABI,
+            'getPoolInfo',
+            [BigInt(pid)]
+          );
+          const info = {
+            lpToken: lpTokenAddress as string,
+            allocPoint: allocPoint as bigint,
+            totalStaked: totalStaked as bigint,
+          };
           let lpName = 'LP Token';
           let token0Symbol = 'Token0';
           let token1Symbol = 'Token1';
@@ -509,7 +542,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
           let token1Decimals = 18;
 
           try {
-            lpName = await lpToken.name();
+            lpName = await read(info.lpToken, ERC20_ABI, 'name');
           } catch {
             // If name() fails, use a generic name
             lpName = `LP Token ${pid}`;
@@ -547,17 +580,17 @@ export function useFarming(options: UseFarmingOptions = {}) {
                 type: 'function',
               },
             ];
-            const pair = new Contract(info.lpToken, pairABI, provider);
-            [token0Addr, token1Addr] = await Promise.all([pair.token0(), pair.token1()]);
+            [token0Addr, token1Addr] = await Promise.all([
+              read(info.lpToken, pairABI, 'token0'),
+              read(info.lpToken, pairABI, 'token1'),
+            ]);
 
             // Get token symbols and decimals
-            const token0Contract = new Contract(token0Addr, ERC20_ABI, provider);
-            const token1Contract = new Contract(token1Addr, ERC20_ABI, provider);
             const [sym0, sym1, dec0, dec1] = await Promise.all([
-              token0Contract.symbol().catch(() => 'Token'),
-              token1Contract.symbol().catch(() => 'Token'),
-              token0Contract.decimals().catch(() => 18),
-              token1Contract.decimals().catch(() => 18),
+              read(token0Addr, ERC20_ABI, 'symbol').catch(() => 'Token'),
+              read(token1Addr, ERC20_ABI, 'symbol').catch(() => 'Token'),
+              read(token0Addr, ERC20_ABI, 'decimals').catch(() => 18),
+              read(token1Addr, ERC20_ABI, 'decimals').catch(() => 18),
             ]);
             token0Symbol = sym0;
             token1Symbol = sym1;
@@ -593,8 +626,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
                   type: 'function',
                 },
               ];
-              const pair = new Contract(info.lpToken, pairABI, provider);
-              const reserves = await pair.getReserves();
+              const reserves = await read(info.lpToken, pairABI, 'getReserves');
 
               const reserve0 = reserves[0];
               const reserve1 = reserves[1];
@@ -694,15 +726,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
       console.error('Failed to fetch pools:', err);
       setError('Failed to fetch pool information');
     }
-  }, [
-    getReadOnlyProvider,
-    getMasterChef,
-    configReady,
-    staticContracts,
-    networkConfig,
-    blocksPerYear,
-    dexTokenConfig,
-  ]);
+  }, [read, configReady, staticContracts, networkConfig, blocksPerYear, dexTokenConfig]);
 
   // Fetch user information
   const fetchUserInfo = useCallback(async () => {
@@ -718,27 +742,27 @@ export function useFarming(options: UseFarmingOptions = {}) {
 
     try {
       console.log('[fetchUserInfo] Fetching for account:', account);
-      const provider = getReadOnlyProvider();
       const userAddress = account;
-
-      const masterChef = getMasterChef(provider);
+      const masterChef = staticContracts.masterChef;
       const newUserPools = new Map<number, UserPoolData>();
 
       for (const pool of pools) {
         try {
           console.log('[fetchUserInfo] Fetching pool', pool.pid, 'lpToken:', pool.lpToken);
-          const [userInfo, pending] = await Promise.all([
-            masterChef.userInfo(pool.pid, userAddress),
-            masterChef.pendingReward(pool.pid, userAddress),
+          const [[stakedAmount], pending] = await Promise.all([
+            read(masterChef, MASTER_CHEF_ABI, 'userInfo', [BigInt(pool.pid), userAddress]),
+            read(masterChef, MASTER_CHEF_ABI, 'pendingReward', [BigInt(pool.pid), userAddress]),
           ]);
 
-          const lpToken = new Contract(pool.lpToken, ERC20_ABI, provider);
-          const balance = await lpToken.balanceOf(userAddress);
+          const balance: bigint = await read(pool.lpToken, ERC20_ABI, 'balanceOf', [userAddress]);
 
           // Try to get allowance, but some LP tokens may not support it
           let allowance = 0n;
           try {
-            allowance = await lpToken.allowance(userAddress, staticContracts.masterChef);
+            allowance = await read(pool.lpToken, ERC20_ABI, 'allowance', [
+              userAddress,
+              staticContracts.masterChef,
+            ]);
           } catch (allowanceError) {
             console.log(
               '[fetchUserInfo] Could not get allowance, setting to 0 (will require approval)'
@@ -756,7 +780,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
           );
 
           newUserPools.set(pool.pid, {
-            stakedAmount: userInfo.amount,
+            stakedAmount,
             pendingReward: pending,
             lpBalance: balance,
             allowance,
@@ -777,7 +801,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
     } catch (err) {
       console.error('Failed to fetch user info:', err);
     }
-  }, [getReadOnlyProvider, getMasterChef, pools, isConnected, account, staticContracts]);
+  }, [read, pools, isConnected, account, staticContracts]);
 
   // Connect wallet
   const connectWallet = useCallback(async () => {
@@ -830,7 +854,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
         }
       }
 
-      const { address } = await getProviderAndSigner();
+      const { address } = await getWallet();
       setInternalAccount(address);
       setInternalIsConnected(true);
     } catch (err) {
@@ -839,7 +863,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
     } finally {
       setLoading(false);
     }
-  }, [getProviderAndSigner, networkConfig]);
+  }, [getWallet, networkConfig]);
 
   // Approve LP token
   const approve = useCallback(
@@ -852,23 +876,14 @@ export function useFarming(options: UseFarmingOptions = {}) {
         }
 
         console.log('[approve] Starting approval for pid:', pid);
-        const { signer, address } = await getProviderAndSigner();
-        console.log('[approve] Signer address:', address);
-
         const pool = pools.find((p) => p.pid === pid);
         if (!pool) throw new Error('Pool not found');
         console.log('[approve] LP Token:', pool.lpToken);
         console.log('[approve] MasterChef:', staticContracts.masterChef);
 
-        const lpToken = new Contract(pool.lpToken, ERC20_ABI, signer);
-
         // Use a large but not max value to avoid potential overflow issues
-        const approveAmount = ethers.parseEther('1000000000'); // 1 billion tokens
-        console.log('[approve] Approve amount:', approveAmount.toString());
-
-        const tx = await lpToken.approve(staticContracts.masterChef, approveAmount);
-        console.log('[approve] Transaction sent:', tx.hash);
-        await tx.wait();
+        const approveAmount = parseEther('1000000000'); // 1 billion tokens
+        await send(pool.lpToken, ERC20_ABI, 'approve', [staticContracts.masterChef, approveAmount]);
         console.log('[approve] Transaction confirmed');
         await fetchUserInfo();
         return true;
@@ -880,7 +895,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
         setLoading(false);
       }
     },
-    [getProviderAndSigner, pools, fetchUserInfo, staticContracts]
+    [send, pools, fetchUserInfo, staticContracts]
   );
 
   // Deposit LP tokens
@@ -894,17 +909,11 @@ export function useFarming(options: UseFarmingOptions = {}) {
         }
 
         console.log('[deposit] Starting deposit for pid:', pid, 'amount:', amount);
-        const { signer, address } = await getProviderAndSigner();
-        console.log('[deposit] Signer address:', address);
-
-        const masterChef = getMasterChef(signer);
-        const amountWei = ethers.parseEther(amount);
-        console.log('[deposit] Amount in wei:', amountWei.toString());
-        console.log('[deposit] MasterChef address:', staticContracts.masterChef);
-
-        const tx = await masterChef.deposit(pid, amountWei);
-        console.log('[deposit] Transaction sent:', tx.hash);
-        await tx.wait();
+        const amountWei = parseEther(amount);
+        await send(staticContracts.masterChef, MASTER_CHEF_ABI, 'deposit', [
+          BigInt(pid),
+          amountWei,
+        ]);
         console.log('[deposit] Transaction confirmed');
         await fetchUserInfo();
         return true;
@@ -916,7 +925,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
         setLoading(false);
       }
     },
-    [getProviderAndSigner, getMasterChef, fetchUserInfo, staticContracts]
+    [send, fetchUserInfo, staticContracts]
   );
 
   // Withdraw LP tokens
@@ -925,10 +934,11 @@ export function useFarming(options: UseFarmingOptions = {}) {
       setLoading(true);
       setError(null);
       try {
-        const { signer } = await getProviderAndSigner();
-        const masterChef = getMasterChef(signer);
-        const tx = await masterChef.withdraw(pid, ethers.parseEther(amount));
-        await tx.wait();
+        if (!staticContracts) throw new Error('Config not loaded');
+        await send(staticContracts.masterChef, MASTER_CHEF_ABI, 'withdraw', [
+          BigInt(pid),
+          parseEther(amount),
+        ]);
         await fetchUserInfo();
         return true;
       } catch (err) {
@@ -939,7 +949,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
         setLoading(false);
       }
     },
-    [getProviderAndSigner, getMasterChef, fetchUserInfo]
+    [send, fetchUserInfo, staticContracts]
   );
 
   // Harvest rewards
@@ -948,10 +958,8 @@ export function useFarming(options: UseFarmingOptions = {}) {
       setLoading(true);
       setError(null);
       try {
-        const { signer } = await getProviderAndSigner();
-        const masterChef = getMasterChef(signer);
-        const tx = await masterChef.harvest(pid);
-        await tx.wait();
+        if (!staticContracts) throw new Error('Config not loaded');
+        await send(staticContracts.masterChef, MASTER_CHEF_ABI, 'harvest', [BigInt(pid)]);
         await fetchUserInfo();
         return true;
       } catch (err) {
@@ -962,7 +970,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
         setLoading(false);
       }
     },
-    [getProviderAndSigner, getMasterChef, fetchUserInfo]
+    [send, fetchUserInfo, staticContracts]
   );
 
   // Harvest all rewards
@@ -970,9 +978,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
     setLoading(true);
     setError(null);
     try {
-      const { signer } = await getProviderAndSigner();
-      const masterChef = getMasterChef(signer);
-
+      if (!staticContracts) throw new Error('Config not loaded');
       const pidsWithReward = Array.from(userPools.entries())
         .filter(([, data]) => data.pendingReward > 0n)
         .map(([pid]) => pid);
@@ -982,8 +988,9 @@ export function useFarming(options: UseFarmingOptions = {}) {
         return false;
       }
 
-      const tx = await masterChef.harvestMultiple(pidsWithReward);
-      await tx.wait();
+      await send(staticContracts.masterChef, MASTER_CHEF_ABI, 'harvestMultiple', [
+        pidsWithReward.map((pid) => BigInt(pid)),
+      ]);
       await fetchUserInfo();
       return true;
     } catch (err) {
@@ -993,7 +1000,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
     } finally {
       setLoading(false);
     }
-  }, [getProviderAndSigner, getMasterChef, userPools, fetchUserInfo]);
+  }, [send, staticContracts, userPools, fetchUserInfo]);
 
   // Emergency withdraw (no rewards)
   const emergencyWithdraw = useCallback(
@@ -1001,10 +1008,8 @@ export function useFarming(options: UseFarmingOptions = {}) {
       setLoading(true);
       setError(null);
       try {
-        const { signer } = await getProviderAndSigner();
-        const masterChef = getMasterChef(signer);
-        const tx = await masterChef.emergencyWithdraw(pid);
-        await tx.wait();
+        if (!staticContracts) throw new Error('Config not loaded');
+        await send(staticContracts.masterChef, MASTER_CHEF_ABI, 'emergencyWithdraw', [BigInt(pid)]);
         await fetchUserInfo();
         return true;
       } catch (err) {
@@ -1015,7 +1020,7 @@ export function useFarming(options: UseFarmingOptions = {}) {
         setLoading(false);
       }
     },
-    [getProviderAndSigner, getMasterChef, fetchUserInfo]
+    [send, fetchUserInfo, staticContracts]
   );
 
   // Clear error
@@ -1075,85 +1080,16 @@ export function useFarming(options: UseFarmingOptions = {}) {
     }
   }, [configReady, fetchPools]);
 
-  // Fetch user info when pools are loaded and connected or account changes
+  // Fetch user info when pools are loaded and connected or account changes, then every 15 seconds
   useEffect(() => {
-    const fetchUserData = async () => {
-      if (pools.length === 0 || !isConnected || !account || !staticContracts) {
-        console.log('[useFarming] Skipping fetch:', {
-          poolsLength: pools.length,
-          isConnected,
-          account,
-          staticContracts: !!staticContracts,
-        });
-        if (!isConnected || !account) {
-          setUserPools(new Map());
-        }
-        return;
-      }
-
-      console.log('[useFarming] Fetching user info for:', account);
-
-      try {
-        const provider = getReadOnlyProvider();
-        const masterChef = getMasterChef(provider);
-        const newUserPools = new Map<number, UserPoolData>();
-
-        for (const pool of pools) {
-          try {
-            console.log('[useFarming] Fetching pool', pool.pid);
-            const [userInfo, pending] = await Promise.all([
-              masterChef.userInfo(pool.pid, account),
-              masterChef.pendingReward(pool.pid, account),
-            ]);
-
-            const lpToken = new Contract(pool.lpToken, ERC20_ABI, provider);
-            const balance = await lpToken.balanceOf(account);
-
-            // Try to get allowance, but some LP tokens may not support it
-            let allowance = 0n;
-            try {
-              allowance = await lpToken.allowance(account, staticContracts.masterChef);
-            } catch (allowanceError) {
-              console.log(
-                '[useFarming] Could not get allowance, setting to 0 (will require approval)'
-              );
-              allowance = 0n; // Require approval if allowance call fails
-            }
-
-            console.log('[useFarming] Pool', pool.pid, 'LP balance:', ethers.formatEther(balance));
-
-            newUserPools.set(pool.pid, {
-              stakedAmount: userInfo.amount,
-              pendingReward: pending,
-              lpBalance: balance,
-              allowance,
-            });
-          } catch (userError) {
-            console.error(`[useFarming] Error fetching pool ${pool.pid}:`, userError);
-            newUserPools.set(pool.pid, {
-              stakedAmount: 0n,
-              pendingReward: 0n,
-              lpBalance: 0n,
-              allowance: 0n,
-            });
-          }
-        }
-
-        console.log('[useFarming] Setting userPools with', newUserPools.size, 'pools');
-        setUserPools(newUserPools);
-      } catch (err) {
-        console.error('[useFarming] Failed to fetch user info:', err);
-      }
-    };
-
-    fetchUserData();
-
-    // Auto-refresh every 15 seconds
-    if (isConnected && account && pools.length > 0) {
-      const interval = setInterval(fetchUserData, 15000);
-      return () => clearInterval(interval);
+    if (pools.length === 0 || !isConnected || !account || !staticContracts) {
+      if (!isConnected || !account) setUserPools(new Map());
+      return;
     }
-  }, [pools, isConnected, account, getReadOnlyProvider, getMasterChef, staticContracts]);
+    fetchUserInfo();
+    const interval = setInterval(fetchUserInfo, 15000);
+    return () => clearInterval(interval);
+  }, [fetchUserInfo, pools.length, isConnected, account, staticContracts]);
 
   return {
     // State

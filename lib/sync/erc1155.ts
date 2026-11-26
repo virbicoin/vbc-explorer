@@ -21,7 +21,17 @@
  *   transfers when an API needs them (lib/api/erc1155.ts).
  */
 
-import { ethers } from 'ethers';
+import {
+  decodeAbiParameters,
+  decodeFunctionResult,
+  encodeFunctionData,
+  keccak256,
+  parseAbi,
+  parseAbiParameters,
+  toHex,
+  type Hex,
+} from 'viem';
+import { getClient } from '../web3/provider';
 import { Block, Contract, Token, TokenHolder, TokenTransfer } from '../../models/index';
 import { ERC_CODES, ERC1155_INTERFACE_ID } from '../contract/erc';
 import { hiddenFields } from '../security/display-name';
@@ -30,16 +40,17 @@ import { claimRange, completeRange, loadRangeScan } from './range-scan';
 import { dbHeadNumber } from './reorg';
 
 export const VRC1155_TYPE = 'VRC-1155';
-export const TRANSFER_SINGLE_TOPIC = ethers.id(
-  'TransferSingle(address,address,address,uint256,uint256)'
+export const TRANSFER_SINGLE_TOPIC = keccak256(
+  toHex('TransferSingle(address,address,address,uint256,uint256)')
 );
-export const TRANSFER_BATCH_TOPIC = ethers.id(
-  'TransferBatch(address,address,address,uint256[],uint256[])'
+export const TRANSFER_BATCH_TOPIC = keccak256(
+  toHex('TransferBatch(address,address,address,uint256[],uint256[])')
 );
 
 const ZERO_ADDRESS = `0x${'0'.repeat(40)}`;
-const abi = ethers.AbiCoder.defaultAbiCoder();
-const probe = new ethers.Interface([
+const SINGLE_DATA = parseAbiParameters('uint256 id, uint256 value');
+const BATCH_DATA = parseAbiParameters('uint256[] ids, uint256[] values');
+const probe = parseAbi([
   'function supportsInterface(bytes4) view returns (bool)',
   'function name() view returns (string)',
   'function symbol() view returns (string)',
@@ -94,14 +105,11 @@ export function erc1155TransfersFromLog(log: RawLog, blockTimestamp: number): Er
   } as const;
   try {
     if (signature === TRANSFER_SINGLE_TOPIC) {
-      const [id, value] = abi.decode(['uint256', 'uint256'], log.data);
+      const [id, value] = decodeAbiParameters(SINGLE_DATA, log.data as Hex);
       return [{ ...base, batchIndex: 0, tokenId: id.toString(), value: value.toString() }];
     }
     if (signature === TRANSFER_BATCH_TOPIC) {
-      const [ids, values] = abi.decode(['uint256[]', 'uint256[]'], log.data) as unknown as [
-        bigint[],
-        bigint[],
-      ];
+      const [ids, values] = decodeAbiParameters(BATCH_DATA, log.data as Hex);
       if (ids.length !== values.length) return [];
       return ids.map((id, index) => ({
         ...base,
@@ -149,37 +157,40 @@ export interface Erc1155Node {
   getCode(address: string): Promise<string>;
 }
 
-/** An Erc1155Node over a JSON-RPC URL (the explorer's own node). */
-export function createErc1155Node(url: string): Erc1155Node {
-  const provider = new ethers.JsonRpcProvider(url, undefined, {
-    staticNetwork: true,
-    batchMaxCount: 1,
-  });
-  const hex = (n: number) => `0x${n.toString(16)}`;
+/** An Erc1155Node over the explorer's own node (lib/web3/provider.ts). */
+export function createErc1155Node(): Erc1155Node {
+  const request = (method: string, params: unknown[]) =>
+    getClient().request({ method, params } as never) as Promise<unknown>;
   return {
     async getLogs(fromBlock, toBlock, topics) {
-      return (await provider.send('eth_getLogs', [
-        { fromBlock: hex(fromBlock), toBlock: hex(toBlock), topics },
+      return (await request('eth_getLogs', [
+        { fromBlock: toHex(fromBlock), toBlock: toHex(toBlock), topics },
       ])) as RawLog[];
     },
     async call(to, data) {
       try {
-        return (await provider.send('eth_call', [{ to, data }, 'latest'])) as string;
+        return (await request('eth_call', [{ to, data }, 'latest'])) as string;
       } catch {
         return null;
       }
     },
     async getCode(address) {
-      return (await provider.send('eth_getCode', [address, 'latest'])) as string;
+      return (await request('eth_getCode', [address, 'latest'])) as string;
     },
   };
 }
 
-async function callView(node: Erc1155Node, to: string, fn: string, args: unknown[] = []) {
-  const result = await node.call(to, probe.encodeFunctionData(fn, args));
+async function callView(
+  node: Erc1155Node,
+  to: string,
+  functionName: 'supportsInterface' | 'name' | 'symbol',
+  args: readonly unknown[] = []
+) {
+  const data = encodeFunctionData({ abi: probe, functionName, args } as never);
+  const result = await node.call(to, data);
   if (!result || result === '0x') return null;
   try {
-    return probe.decodeFunctionResult(fn, result)[0] as unknown;
+    return decodeFunctionResult({ abi: probe, functionName, data: result as Hex }) as unknown;
   } catch {
     return null;
   }

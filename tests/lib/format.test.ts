@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  formatTokenBalance,
   formatNumber,
-  formatEther,
   shortenAddress,
   timeAgo,
   formatPercentage,
@@ -17,17 +15,6 @@ import {
   normalizeLegacyLogoUrl,
 } from '@/lib/utils/format';
 
-describe('formatTokenBalance', () => {
-  it('formats raw balances using the given decimals', () => {
-    expect(formatTokenBalance('1000000000000000000', 18)).toBe('1.0');
-    expect(formatTokenBalance('1500000', 6)).toBe('1.5');
-  });
-
-  it('returns "0" on invalid input', () => {
-    expect(formatTokenBalance('not-a-number', 18)).toBe('0');
-  });
-});
-
 describe('formatNumber', () => {
   it('adds thousands separators', () => {
     expect(formatNumber(1234567.89)).toBe('1,234,567.89');
@@ -36,16 +23,6 @@ describe('formatNumber', () => {
 
   it('returns "0" for NaN input', () => {
     expect(formatNumber('abc')).toBe('0');
-  });
-});
-
-describe('formatEther', () => {
-  it('formats wei to ether', () => {
-    expect(formatEther('1000000000000000000')).toBe('1.0');
-  });
-
-  it('returns "0" on invalid input', () => {
-    expect(formatEther('xyz')).toBe('0');
   });
 });
 

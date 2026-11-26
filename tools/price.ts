@@ -21,7 +21,8 @@ import {
   CurrencyConfig,
 } from '../lib/config';
 import { loadDexSettingsFromChain } from '../lib/dex/cache-service';
-import { ethers, EventLog } from 'ethers';
+import { formatUnits, parseAbiItem } from 'viem';
+import { callContract, getClient } from '../lib/web3/provider';
 import {
   PAIR_VIEW_ABI,
   configuredAddress,
@@ -40,26 +41,15 @@ const PRICE_UPDATE_INTERVAL = config.priceUpdateInterval || 5 * 60 * 1000;
 const MEMORY_LIMIT_MB = parseInt(process.env.MEMORY_LIMIT_MB || '256');
 
 // ABIs (minimal)
-const PAIR_ABI = [
-  'event Swap(address indexed sender, uint amount0In, uint amount1In, uint amount0Out, uint amount1Out, address indexed to)',
-  ...PAIR_VIEW_ABI,
-];
+const SWAP_EVENT = parseAbiItem(
+  'event Swap(address indexed sender, uint256 amount0In, uint256 amount1In, uint256 amount0Out, uint256 amount1Out, address indexed to)'
+);
 const ERC20_ABI = ['function decimals() external view returns (uint8)'];
 
 // ============================================
 // Singleton Instances (avoid recreation)
 // ============================================
-let providerInstance: ethers.JsonRpcProvider | null = null;
 let dbInitialized = false;
-
-function getProvider(): ethers.JsonRpcProvider {
-  if (!providerInstance) {
-    providerInstance = new ethers.JsonRpcProvider(
-      config.network?.rpcUrl || config.web3Provider?.url
-    );
-  }
-  return providerInstance;
-}
 
 // ============================================
 // Caches
@@ -282,14 +272,12 @@ const fetchDexPrice = async (): Promise<Quote | null> => {
   const candidates = new Set<string>(configuredPair ? [configuredPair] : []);
   getLPAddresses().forEach((address) => candidates.add(address));
 
-  const provider = getProvider();
   for (const lpAddress of candidates) {
     try {
       const pairInfo = await getPairInfo(lpAddress);
       if (!pairInfo || !isNativeStablePair(pairInfo, wrappedNative, stablecoin)) continue;
 
-      const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
-      const reserves = await pairContract.getReserves();
+      const reserves = await callContract(PAIR_VIEW_ABI, lpAddress, 'getReserves');
       const quoteUSD = nativePriceFromReserves(
         { ...pairInfo, reserve0: reserves[0], reserve1: reserves[1] },
         wrappedNative,
@@ -357,15 +345,13 @@ async function getPairInfo(pairAddress: string): Promise<PairInfo | null> {
   if (cached) return cached;
 
   try {
-    const provider = getProvider();
-    const pairContract = new ethers.Contract(pairAddress, PAIR_ABI, provider);
-    const [token0, token1] = await Promise.all([pairContract.token0(), pairContract.token1()]);
-
-    const token0Contract = new ethers.Contract(token0, ERC20_ABI, provider);
-    const token1Contract = new ethers.Contract(token1, ERC20_ABI, provider);
+    const [token0, token1] = await Promise.all([
+      callContract(PAIR_VIEW_ABI, pairAddress, 'token0'),
+      callContract(PAIR_VIEW_ABI, pairAddress, 'token1'),
+    ]);
     const [decimals0, decimals1] = await Promise.all([
-      token0Contract.decimals(),
-      token1Contract.decimals(),
+      callContract(ERC20_ABI, token0, 'decimals'),
+      callContract(ERC20_ABI, token1, 'decimals'),
     ]);
 
     const info: PairInfo = {
@@ -411,7 +397,6 @@ async function getTokenPriceFromPool(tokenAddress: string, nativePrice: number):
 
   // Look through pools to find price
   const lpAddresses = getLPAddresses();
-  const provider = getProvider();
 
   for (const lpAddress of lpAddresses) {
     try {
@@ -427,10 +412,9 @@ async function getTokenPriceFromPool(tokenAddress: string, nativePrice: number):
       const pairedToken = isToken0 ? token1 : token0;
 
       // Get reserves
-      const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
-      const reserves = await pairContract.getReserves();
-      const r0 = Number(ethers.formatUnits(reserves[0], decimals0));
-      const r1 = Number(ethers.formatUnits(reserves[1], decimals1));
+      const reserves = await callContract(PAIR_VIEW_ABI, lpAddress, 'getReserves');
+      const r0 = Number(formatUnits(BigInt(reserves[0]), decimals0));
+      const r1 = Number(formatUnits(BigInt(reserves[1]), decimals1));
 
       if (r0 <= 0 || r1 <= 0) continue;
 
@@ -481,11 +465,15 @@ async function processSwapEvents(
   const wrappedNative = (config.dex?.wrappedNative?.address || '').toLowerCase();
   const usdt = (config.dex?.tokens?.usdt?.address || '').toLowerCase();
 
-  const provider = getProvider();
-  const pairContract = new ethers.Contract(pairAddress, PAIR_ABI, provider);
-
   try {
-    const events = await pairContract.queryFilter(pairContract.filters.Swap(), fromBlock, toBlock);
+    const events = await getClient().getLogs({
+      address: pairAddress as `0x${string}`,
+      event: SWAP_EVENT,
+      fromBlock: BigInt(fromBlock),
+      toBlock: BigInt(toBlock),
+      // only logs that decode as the Swap event
+      strict: true,
+    });
     if (events.length === 0) return 0;
 
     log(`  ${pairAddress.slice(0, 10)}... ${events.length} swaps`);
@@ -494,18 +482,18 @@ async function processSwapEvents(
     const bulkOps = [];
 
     for (const event of events) {
-      if (!(event instanceof EventLog) || !event.args) continue;
-
       try {
-        const block = await provider.getBlock(event.blockNumber);
+        const block = await getClient()
+          .getBlock({ blockNumber: event.blockNumber })
+          .catch(() => null);
         if (!block) continue;
 
         const { sender, to, amount0In, amount1In, amount0Out, amount1Out } = event.args;
 
-        const a0In = Number(ethers.formatUnits(amount0In, decimals0));
-        const a1In = Number(ethers.formatUnits(amount1In, decimals1));
-        const a0Out = Number(ethers.formatUnits(amount0Out, decimals0));
-        const a1Out = Number(ethers.formatUnits(amount1Out, decimals1));
+        const a0In = Number(formatUnits(BigInt(amount0In), decimals0));
+        const a1In = Number(formatUnits(BigInt(amount1In), decimals1));
+        const a0Out = Number(formatUnits(BigInt(amount0Out), decimals0));
+        const a1Out = Number(formatUnits(BigInt(amount1Out), decimals1));
 
         // Calculate amountUSD based on token types
         let amountUSD = 0;
@@ -547,8 +535,8 @@ async function processSwapEvents(
             update: {
               $set: {
                 hash: event.transactionHash,
-                blockNumber: event.blockNumber,
-                timestamp: block.timestamp,
+                blockNumber: Number(event.blockNumber),
+                timestamp: Number(block.timestamp),
                 pair: pairAddress,
                 sender: sender.toLowerCase(),
                 to: to.toLowerCase(),
@@ -589,8 +577,7 @@ const syncDexSwaps = async (nativePrice: number): Promise<void> => {
   if (lpAddresses.length === 0) return;
 
   try {
-    const provider = getProvider();
-    const currentBlock = await provider.getBlockNumber();
+    const currentBlock = Number(await getClient().getBlockNumber());
     let totalEvents = 0;
 
     for (const pairAddress of lpAddresses) {

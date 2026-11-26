@@ -188,26 +188,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ success: false, error: 'Invalid pair address' }, { status: 400 });
     }
 
-    const pairContract = { abi: PAIR_ABI as readonly unknown[], address: pairAddress as string };
-
     // Get token addresses and decimals
     const [token0Address, token1Address] = await Promise.all([
-      callContract(pairContract.abi, pairContract.address, 'token0', []) as Promise<string>,
-      callContract(pairContract.abi, pairContract.address, 'token1', []) as Promise<string>,
+      callContract(PAIR_ABI, pairAddress, 'token0', []) as Promise<string>,
+      callContract(PAIR_ABI, pairAddress, 'token1', []) as Promise<string>,
     ]);
 
-    const token0Contract = {
-      abi: ERC20_ABI as readonly unknown[],
-      address: token0Address as string,
-    };
-    const token1Contract = {
-      abi: ERC20_ABI as readonly unknown[],
-      address: token1Address as string,
-    };
-
     const [decimals0Result, decimals1Result] = await Promise.all([
-      callContract(token0Contract.abi, token0Contract.address, 'decimals', []),
-      callContract(token1Contract.abi, token1Contract.address, 'decimals', []),
+      callContract(ERC20_ABI, token0Address, 'decimals', []),
+      callContract(ERC20_ABI, token1Address, 'decimals', []),
     ]);
 
     const decimals0 = Number(decimals0Result);
@@ -342,12 +331,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     if (swaps.length === 0) {
       // Get current price from reserves as fallback
-      const reservesResult = (await callContract(
-        pairContract.abi,
-        pairContract.address,
-        'getReserves',
-        []
-      )) as {
+      const reservesResult = (await callContract(PAIR_ABI, pairAddress, 'getReserves', [])) as {
         reserve0: string;
         reserve1: string;
       };

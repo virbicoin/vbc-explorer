@@ -20,7 +20,7 @@ VBC Explorer は、VirBiCoin 向けに作られたモダンなブロックチェ
 - **言語**: TypeScript 7+（Go ネイティブ版 tsc。JS コンパイラ API は同梱されない）
 - **データベース**: MongoDB（Mongoose 9）
 - **スタイリング**: Tailwind CSS 4
-- **Web3**: ethers.js 6, web3.js 4, viem 2, wagmi 3
+- **Ethereum**: viem 2（サーバーとブラウザのノード読み取り・ABI）、wagmi 3（ウォレット）。web3.js と ethers.js は 2026-11-27 に外した（「新機能（2026-11）: Ethereum ライブラリは viem だけ」）
 - **状態管理**: @tanstack/react-query 5
 - **テスト**: Vitest 5（DB テストは mongodb-memory-server / MongoDB 8.0）
 - **Lint/型**: ESLint 10（flat config: @babel/eslint-parser + @next/eslint-plugin-next + react-hooks）。型検査は tsc（TS7）が担当
@@ -111,13 +111,13 @@ lib/                    # ユーティリティライブラリ
   db/                   # データベース抽象化レイヤー（get-db.ts, indexes.ts, uri.ts: MONGODB_URI 解決・既定なし, count.ts: estimatedDocumentCount）
   dex/                  # DEX 固有ユーティリティ & キャッシュサービス
   security/             # 入力検証（validation.ts, url.ts, pagination.ts）・レート制限（rate-limits.ts）・SSRF 安全 fetch（safe-fetch.ts）・表示名判定（display-name.ts）
-  sync/                 # リオーグ対応の同期共通モジュール（normalize / reorg / chain-check / web3-node）
+  sync/                 # リオーグ対応の同期共通モジュール（normalize / reorg / chain-check / chain-node）
   launchpad/            # Launchpad ファクトリー照会（factory.ts: eth_call でチェーン認証）と tokens への同期（sync.ts）
   contract/             # solc 補助（solc-utils.ts）・検証済みコンパイラキャッシュ（compiler-cache.ts）・worker_threads コンパイル（compile-worker.ts, solc-worker.cjs）
   services/             # ビジネスロジックサービス
   types/                # TypeScript 型定義
   utils/                # ユーティリティ関数
-  web3/                 # Web3 シングルトンプロバイダ
+  web3/                 # ノードのクライアント（viem）: getClient() / callContract()
   bigint-utils.ts       # BigInt ユーティリティ
   client-config.ts      # クライアント側設定
   config.ts             # サーバー側設定
@@ -151,10 +151,9 @@ public/                 # 静的アセット
 
 ## パフォーマンス最適化
 
-### Web3 シングルトン（`lib/web3/provider.ts`）
-- すべての API ルートで単一の Web3 インスタンスを共有
-- リクエストごとに新しい接続を作成するのを回避
-- 高速起動のための遅延初期化
+### ノードのクライアント（`lib/web3/provider.ts`）
+- サーバー（API ルートとツール）はノードを viem のクライアント 1 つで読む（`getClient()`、遅延初期化）。URL は `WEB3_PROVIDER_URL`、無ければ config.json の `web3Provider.url`
+- コントラクトの view 関数は `callContract(abi, address, functionName, args)`。詳細は「新機能（2026-11）: Ethereum ライブラリは viem だけ」
 
 ### インメモリキャッシュ（`lib/cache/memory-cache.ts`）
 - TTL 対応の LRU 風キャッシュ
@@ -509,6 +508,24 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 - `proxy.ts` の `/address` タイプ判定 fetch に AbortController（2s）を追加 → DB 停止時も `/address` がハングしない（従来 ~15s）。
 - DEX サブシステム（`geckoterminal/info`・`pool`、`dex` ページ、`useFarming` のウォレット追加 `nativeCurrency`）の真のハードコード固有名を config 由来に。クライアントは `lib/client-config`（`getNetworkName`/`getCurrencyConfig`）または `useDexConfig`（`currency` フィールド追加）から取得。設定済みの本番では出力は不変。
 
+## 新機能（2026-11）: Ethereum ライブラリは viem だけ
+
+2026-11-27 まで、ノードとコントラクトの読み取りに web3.js 4（同期の中核と API 約 25 本）、ethers.js 6（DEX の API 約 20 本、価格ジョブ、VRC-1155、トレース、Launchpad、ファーミング画面）、viem 2（画面と一部の API）の 3 つが混在していた。DEX の API はリクエストごとに ethers の provider を作って公開 RPC（`network.rpcUrl`）を読み、ワーカーは web3 と ethers の両方を読み込み、web3 の依存（zod 3）が `npm audit` の high 19 件の経路だった。ユーザーの判断（「web3 を外して viem に」、ethers はその後）で同日に viem 1 つにした。
+
+### 設計ルール（必ず守る）
+- **サーバーのノード読み取りは `lib/web3/provider.ts` だけ**: `getClient()`（viem の public client。`WEB3_PROVIDER_URL` → `web3Provider.url`）、`getCode()`、`callContract(abi, address, functionName, args, { blockNumber, from })`。ルートやツールで provider / client を作らない。公開 RPC（`network.rpcUrl`）はブラウザとウォレットのためのもので、サーバーは読まない（画面に URL を渡すだけ）
+- `callContract()` は JSON の ABI も human-readable の ABI（`'function name() view returns (string)'`）も受ける。戻り値は 1 つならその値、複数なら名前でも引ける配列（`r[0]` / `r.reserve0` / `const [a, b] = r`）。アドレスは小文字、整数は bigint（48 ビット以下の型、例えば `decimals()` の uint8 は number）。revert と空の応答は throw
+- **生の `client.request()` の応答はノードの形（16 進の数量）のまま。** 数にするときは `toNumber()`（`lib/sync/normalize.ts`。16 進も読む）か `Number()` / `BigInt()` を使い、`parseInt(x, 10)` を使わない。viem に移した直後は `eth_getUncleByBlockHashAndIndex` のアンクルの高さ（`0x886a2`）を 0 と読み、一括同期がアンクル報酬を保存せず、`replaceBlock()` と埋め戻しはアンクルのあるブロックをすべて拒む状態だった（TK01 での一からの同期で見つけて修正。テストの偽ノードも 16 進で答える）
+- **DB の保存形式は web3.js の頃と同じ**。ブロックの `nonce` は 10 進の文字列（viem は 16 進で返す）
+- 内部取引のトレース取得（`createTraceSource()`）は viem の http / webSocket / ipc（`viem/node`）のトランスポートで、リトライしない（失敗の扱いは索引器が決める）。失敗したら socket を閉じ、次の呼び出しでつなぎ直す（`tests/sync/internal-transactions.test.ts` に IPC の偽サーバーのテスト）
+- ブラウザ: wagmi の中では `usePublicClient()` / `useReadContract()` / `useWriteContract()`。wagmi の外のウォレット操作（`hooks/useFarming.ts`）は `createWalletClient({ transport: custom(window.ethereum) })` の `writeContract()` と `waitForTransactionReceipt()`（`status` が `success` でなければ失敗）。uint256 の引数は bigint で渡す（ethers は number も受け付けた）
+- viem の `formatUnits(value, decimals)` は bigint だけを受け、整数を `1` と返す（ethers は文字列も受け、`1.0` と返した）
+- `/api/contract/interact` は結果の bigint を 10 進の文字列にして返す（以前は uint を返す関数がすべて「Do not know how to serialize a BigInt」の 500 だった）
+
+### TK04 の古いデータ（2026-11-27 に、web3 版の TK04 と viem 版の TK01 で同じチェーンを同期して比べたときに分かったこと）
+- コントラクト作成の取引 204 件すべてで `Transaction.creates` が空（normalize.ts より前の同期は保存していなかった。今の同期はレシートの `contractAddress` を保存する）。Etherscan の `getcontractcreation`、`txlist` の `contractAddress`、v2 の `created_contract` と `type=contract_creation` が空になる
+- ガス価格 0 の取引に `gasPrice` が無い（今の同期は `'0'`）。2,298,155 より古いブロックに `receiptRoot` が無い
+
 ## 新機能（2026-11）: config.json にはチェーンや既定値で足りない値だけを書く
 
 ユーザーの指示（「config.jsonが長すぎるので、オンチェーンから情報を取った方がいい場合はそうしてください」、2026-11-27）。本番の config.json は 392 行、config.example.json は 362 行だった。
@@ -573,7 +590,7 @@ DEX・Token Launchpad・ブリッジ・richlist は任意の機能で、すべ�
 
 ## 修正（2026-11）: アンクル報酬を含む供給量・Next.js 16.4.6（v0.8.9）
 
-Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`npm audit` に残る zod（web3 4.x → web3-validator が zod 3 系を要求し、修正は zod 4.6.6 以降のみ）は web3 側の対応待ち。2026-11-26 時点でも web3 4.16.0 / web3-validator 2.0.6 は zod ^3.21.4 のままで、`npm audit` の high 19 件はすべてこの経路（`npm audit fix --force` が示す web3 4.0.3 への格下げはしない）。同日、使っていなかった devDependency `postinstall`（2016 年の元プロジェクトから残っていたもの。glob / minimatch の勧告の経路）を外し、brace-expansion を範囲内の修正版にした（v0.8.10）。
+Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`npm audit` に残る zod（web3 4.x → web3-validator が zod 3 系を要求し、修正は zod 4.6.6 以降のみ）は web3 側の対応待ち。2026-11-26 時点でも web3 4.16.0 / web3-validator 2.0.6 は zod ^3.21.4 のままで、`npm audit` の high 19 件はすべてこの経路（`npm audit fix --force` が示す web3 4.0.3 への格下げはしない）。2026-11-27 に web3 を外して（b6baa40）`npm audit` は 0 件になった。同日、使っていなかった devDependency `postinstall`（2016 年の元プロジェクトから残っていたもの。glob / minimatch の勧告の経路）を外し、brace-expansion を範囲内の修正版にした（v0.8.10）。
 
 `/api/total_supply` などの供給量がアンクル報酬とネフュー報酬を数えておらず、2026-11-24 時点で実際の発行量より 4% 以上少なかった（11 月以降はアンクルがほぼ毎ブロック付き、1 ブロックあたり約 7 VBC が上乗せで発行されている）ことへの対策。
 
@@ -637,7 +654,7 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 - 攻撃元 IP の遮断、ovbc / MongoDB の再起動、`--jsonrpc-apis` の縮小はコードでやらない（運用で判断）
 
 ### 実装の要点
-- `lib/launchpad/factory.ts`: `FactoryClient`（`call(to, data)`、既定は `lib/web3/provider.ts` の Web3 シングルトン。revert / JSON-RPC エラーは '0x'、接続失敗は `FactoryRpcError` → 503）、`getLaunchpadFactories()`、`resolveFactoryToken()`、`describeFactoryToken()`、`listFactoryTokens()`、`readBalanceOf()`。ABI は ethers `Interface` の human-readable 断片
+- `lib/launchpad/factory.ts`: `FactoryClient`（`call(to, data)`、既定は `lib/web3/provider.ts` の viem クライアント。revert / JSON-RPC エラーは '0x'、接続失敗は `FactoryRpcError` → 503）、`getLaunchpadFactories()`、`resolveFactoryToken()`、`describeFactoryToken()`、`listFactoryTokens()`、`readBalanceOf()`。ABI は viem の `parseAbi()` で読む human-readable 断片
 - `lib/launchpad/sync.ts`: `registerFactoryToken()`（新規はチェーン値＋ `hiddenFields()` ＋ `factory` / `factoryVerified: true`、creator の実残高で TokenHolder。既存は `factoryVerified` / `factory` を付けるだけで名前や帰属は書き換えない）、`syncLaunchpadTokens()`、`getLaunchpadSyncStatus()`
 - `tokens` に `factory`（小文字）と `factoryVerified`（true / false / 未設定）を追加。`/api/tokens/[address]` は `source` / `factory` / `factoryVerified` を返し、`TokenDetailClient` は `source === 'launchpad' && factoryVerified === false` で「ファクトリー外」バッジ。`npm run flag-spam-tokens -- --audit-launchpad [--dry-run]` が Launchpad 由来トークンをファクトリーに照会して記録する（非表示にするかは別判断）
 - `CreateTokenForm.tsx` は `tokenAddress` だけを送り、404 なら「トークンのデプロイがまだ確定していません」と表示して 12 秒間隔で最大 3 回再試行
@@ -668,7 +685,7 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 - `lib/security/url.ts`: ブラウザでも使える URL 判定（`parseSafeHttpsUrl`、`isPrivateIp`、`resolveIpfsUrl`）。`isValidImageUrl` も同じ判定を使う（IP リテラル・認証情報入り URL を拒否）
 - `lib/contract/erc.ts`: `Contract.ERC` の値（2 / 721 / 1155）と ERC-165 インターフェース ID の定数
 - `next.config.ts`: `images.remotePatterns` は自ホスト・IPFS ゲートウェイ・`images.allowedHosts` のみ（チェーン由来画像は `unoptimized`）
-- `lib/sync/`: `normalize.ts`（ノード→DB ドキュメント）、`reorg.ts`（upsert / `replaceBlock` / `findCommonAncestor` / `handleReorg` / `processNewBlock` / `verifyConfirmationWindow` / リスナー位置の永続化）、`chain-check.ts`（`checkChain` / `sampleAgainstNode` / `repairChain`）、`web3-node.ts`（web3 v4 アダプタ）。リスナーは新ブロック N の parentHash と DB の N-1 を比較し、不一致なら共通祖先（最大 `maxReorgDepth`=64）まで遡って置換。毎ポーリングで head−`confirmations`（既定 12）..head も照合。設定は `config.json` の `sync` か `SYNC_CONFIRMATIONS` / `SYNC_MAX_REORG_DEPTH`
+- `lib/sync/`: `normalize.ts`（ノード→DB ドキュメント）、`reorg.ts`（upsert / `replaceBlock` / `findCommonAncestor` / `handleReorg` / `processNewBlock` / `verifyConfirmationWindow` / リスナー位置の永続化）、`chain-check.ts`（`checkChain` / `sampleAgainstNode` / `repairChain`）、`chain-node.ts`（viem のアダプタ）。リスナーは新ブロック N の parentHash と DB の N-1 を比較し、不一致なら共通祖先（最大 `maxReorgDepth`=64）まで遡って置換。毎ポーリングで head−`confirmations`（既定 12）..head も照合。設定は `config.json` の `sync` か `SYNC_CONFIRMATIONS` / `SYNC_MAX_REORG_DEPTH`
 - `tools/repair-chain.ts`: `--check`（number 昇順ストリームで欠落と parentHash 不一致を数える。不一致で exit 1）、`--sample k`、`--fix [--from] [--to] [--dry-run]`（共通祖先から連結が復元するまで置換、1 箇所 256 まで、`scan_progress` の `repair` で再開可、完了後に `--check` を自動実行）。本番ではローカルノードに対してのみ実行する
 - `tools/flag-spam-tokens.ts`: Contract / Token 全件に `classifyDisplayName` を適用（`--dry-run`、`--address --hide|--unhide`、`--unhide-all`。`manual` フラグは自動判定で上書きしない）
 - （2026-11-27 に統計ジョブごと削除。BlockStat はどこからも読まれていなかった）`tools/stats.ts` は import 時に接続しない（sync.ts が全モードで stats の初期化を走らせ、ログのラベルが `tool: 'stats'` に固定されていた）。`tools/sync.ts` は環境変数 `MONGODB_URI` を config.json より優先し、`${VAR}` プレースホルダを解決する
@@ -715,7 +732,7 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 - レート制限: 10 req/min（1 リクエストで最大 5000 行スキャンするため厳しめ）
 
 ### トランザクション入力データのデコード表示
-- `GET /api/tx/[hash]` が `decodedInput` を返す: 宛先コントラクトが**検証済み**なら DB の ABI で `ethers.Interface.parseTransaction` により関数シグネチャ+引数を展開、未検証なら `METHOD_IDS` セレクタマップで関数名のみ解決（どちらも不可なら null）
+- `GET /api/tx/[hash]` が `decodedInput` を返す: 宛先コントラクトが**検証済み**なら DB の ABI からセレクタの一致する関数を選び、viem の `decodeFunctionData` で関数シグネチャ+引数を展開、未検証なら `METHOD_IDS` セレクタマップで関数名のみ解決（どちらも不可なら null）
 - tx 詳細ページの Input Data セクションに Function シグネチャ + 引数テーブル（#/Name/Type/Data、address 型はリンク化）を表示。生 hex は従来どおり下に併記
 - 一覧側の Method バッジ（アドレスページ・/transactions）は従来から存在（`getTransactionTypeGlobal`）
 
@@ -915,7 +932,7 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 - `GET /api/dex/external-price` - ネイティブコインの価格（出どころ付き。VBC は DEX）と DEX の TVL
 
 ### DEX API - GeckoTerminal 互換（フル V2 API）
-どのエンドポイントも、アドレスパラメータを `ethers.isAddress()` で検証し、クエリパラメータをサニタイズします。
+どのエンドポイントも、アドレスパラメータを viem の `isAddress()` で検証し、クエリパラメータをサニタイズします。
 エラーレスポンスは標準の JSON:API 形式です: `{ errors: [{ status: "404", title: "..." }] }`
 
 | エンドポイント | パラメータ | 制限 |

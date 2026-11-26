@@ -7,7 +7,7 @@
  * JSON-RPC HTTP node.
  */
 import http from 'node:http';
-import { Interface } from 'ethers';
+import { decodeFunctionData, encodeFunctionResult, parseAbi, type Abi, type Hex } from 'viem';
 import type { FactoryClient, FactorySource } from '@/lib/launchpad/factory';
 
 export const V2_FACTORY = '0x5b6c68456d8e79194c63514390884e8b541298c4';
@@ -23,16 +23,37 @@ export const FACTORIES: FactorySource[] = [
 /** What `eth_getCode` returns for every deployed contract of the fake chain. */
 export const FAKE_CODE = '0x6080604052348015600f57600080fd5b50';
 
-const FACTORY_IFACE = new Interface([
+/** One contract's functions: which one a call selects, and its encoded answer. */
+function contractAbi(signatures: string[]) {
+  const abi = parseAbi(signatures) as Abi;
+  return {
+    /** The function and arguments of `data`; null for a selector the contract does not have. */
+    decode(data: string): { name: string; args: readonly unknown[] } | null {
+      try {
+        const { functionName, args = [] } = decodeFunctionData({ abi, data: data as Hex });
+        return { name: functionName, args };
+      } catch {
+        return null;
+      }
+    },
+    encode(name: string, values: unknown[]): string {
+      const fn = abi.find((item) => item.type === 'function' && item.name === name);
+      const result = fn?.type === 'function' && fn.outputs.length === 1 ? values[0] : values;
+      return encodeFunctionResult({ abi, functionName: name, result } as never);
+    },
+  };
+}
+
+const FACTORY = contractAbi([
   'function isFactoryToken(address token) view returns (bool)',
   'function tokenInfo(address token) view returns (address creator, string name, string symbol, uint8 decimals, uint256 totalSupply, uint256 createdAt, string logoUrl, string description, string website)',
   'function getAllTokens() view returns (address[] tokens)',
 ]);
-const LEGACY_IFACE = new Interface([
+const LEGACY = contractAbi([
   'function tokenInfo(address token) view returns (address creator, string name, string symbol, uint8 decimals, uint256 totalSupply, uint256 createdAt)',
   'function getAllTokens() view returns (address[] tokens)',
 ]);
-const ERC20_IFACE = new Interface([
+const ERC20 = contractAbi([
   'function balanceOf(address owner) view returns (uint256)',
   'function totalSupply() view returns (uint256)',
 ]);
@@ -106,17 +127,17 @@ export class FakeFactoryWorld {
     this.calls.push({ to: target, selector });
 
     if (target === V2_FACTORY) {
-      const fn = FACTORY_IFACE.getFunction(selector);
+      const fn = FACTORY.decode(data);
       if (!fn) return '0x';
-      const args = FACTORY_IFACE.decodeFunctionData(fn, data);
+      const args = fn.args;
       if (fn.name === 'isFactoryToken') {
         const token = this.tokens.get(String(args[0]).toLowerCase());
-        return FACTORY_IFACE.encodeFunctionResult(fn, [token?.factory === V2_FACTORY]);
+        return FACTORY.encode(fn.name, [token?.factory === V2_FACTORY]);
       }
       if (fn.name === 'tokenInfo') {
         const token = this.tokens.get(String(args[0]).toLowerCase());
         if (!token || token.factory !== V2_FACTORY) {
-          return FACTORY_IFACE.encodeFunctionResult(fn, [
+          return FACTORY.encode(fn.name, [
             '0x0000000000000000000000000000000000000000',
             '',
             '',
@@ -128,7 +149,7 @@ export class FakeFactoryWorld {
             '',
           ]);
         }
-        return FACTORY_IFACE.encodeFunctionResult(fn, [
+        return FACTORY.encode(fn.name, [
           token.creator,
           token.name,
           token.symbol,
@@ -141,19 +162,19 @@ export class FakeFactoryWorld {
         ]);
       }
       if (fn.name === 'getAllTokens') {
-        return FACTORY_IFACE.encodeFunctionResult(fn, [this.tokensOf(V2_FACTORY)]);
+        return FACTORY.encode(fn.name, [this.tokensOf(V2_FACTORY)]);
       }
       return '0x';
     }
 
     if (target === LEGACY_FACTORY) {
-      const fn = LEGACY_IFACE.getFunction(selector);
+      const fn = LEGACY.decode(data);
       if (!fn) return '0x'; // no isFactoryToken on the old factory → revert
-      const args = LEGACY_IFACE.decodeFunctionData(fn, data);
+      const args = fn.args;
       if (fn.name === 'tokenInfo') {
         const token = this.tokens.get(String(args[0]).toLowerCase());
         if (!token || token.factory !== LEGACY_FACTORY) return '0x';
-        return LEGACY_IFACE.encodeFunctionResult(fn, [
+        return LEGACY.encode(fn.name, [
           token.creator,
           token.name,
           token.symbol,
@@ -163,23 +184,21 @@ export class FakeFactoryWorld {
         ]);
       }
       if (fn.name === 'getAllTokens') {
-        return LEGACY_IFACE.encodeFunctionResult(fn, [this.tokensOf(LEGACY_FACTORY)]);
+        return LEGACY.encode(fn.name, [this.tokensOf(LEGACY_FACTORY)]);
       }
       return '0x';
     }
 
     const token = this.tokens.get(target);
     if (token) {
-      const fn = ERC20_IFACE.getFunction(selector);
+      const fn = ERC20.decode(data);
       if (!fn) return '0x';
       if (fn.name === 'balanceOf') {
-        const [owner] = ERC20_IFACE.decodeFunctionData(fn, data);
-        return ERC20_IFACE.encodeFunctionResult(fn, [
-          token.balances[String(owner).toLowerCase()] ?? 0n,
-        ]);
+        const [owner] = fn.args;
+        return ERC20.encode(fn.name, [token.balances[String(owner).toLowerCase()] ?? 0n]);
       }
       if (fn.name === 'totalSupply') {
-        return ERC20_IFACE.encodeFunctionResult(fn, [token.liveSupply]);
+        return ERC20.encode(fn.name, [token.liveSupply]);
       }
     }
     return '0x';

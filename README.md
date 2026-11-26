@@ -369,7 +369,7 @@ Checked on a fresh install (2026-11-27): with all four parts off, their pages an
 ### Backend & API
 - **Next.js API Routes** - Serverless API endpoints
 - **Node.js 22.18+ / 24.11+** - Runtime environment (Node 24 LTS recommended, see `.nvmrc`; Node 20 reached end-of-life on 2026-04-30)
-- **Web3.js v4+** - Ethereum blockchain interaction
+- **viem 2** - Node access (JSON-RPC, contract calls, ABI encoding) on the server and in the browser; **wagmi 3** for wallets
 - **MongoDB 8+** - Document database for scalable data storage
 - **Mongoose 9+** - ODM for MongoDB with schema validation
 
@@ -426,7 +426,7 @@ graph TB
     
     subgraph "Blockchain Layer"
         P[EVM Node]
-        Q[Web3.js]
+        Q[viem]
         R[RPC Connection]
     end
     
@@ -579,7 +579,7 @@ sequenceDiagram
 |    |-- services/            # Business logic services
 |    |-- types/               # TypeScript type definitions
 |    |-- utils/               # Utility functions
-|    |-- web3/                # Web3 singleton provider
+|    |-- web3/                # Node client (viem): getClient(), callContract()
 |    |-- bigint-utils.ts      # BigInt utilities
 |    |-- client-config.ts     # Client-side config
 |    |-- config.ts            # Server-side config
@@ -2108,47 +2108,11 @@ pm2 monit
 
 ## Development
 
-### Adding New Data Sources
-To add new data sources, create a new sync module:
-```typescript
-// tools/custom-sync.ts
-import Web3 from 'web3';
-import mongoose from 'mongoose';
-
-class CustomSync {
-  constructor(config: any) {
-    this.web3 = new Web3(config.web3Provider.url);
-    this.config = config;
-  }
-
-  async sync(): Promise<void> {
-    // Implementation
-  }
-}
-
-export default CustomSync;
-```
-
-### Custom Statistics
-To add custom statistics, extend the stats calculator:
-```typescript
-// tools/custom-stats.ts
-class CustomStats {
-  async calculate(): Promise<void> {
-    // Custom calculation logic
-  }
-}
-```
-
-### NFT Metadata Providers
-Implement custom metadata providers:
-```typescript
-// lib/metadata-provider.ts
-interface MetadataProvider {
-  getMetadata(tokenId: number): Promise<TokenMetadata>;
-  getImageUrl(tokenId: number): Promise<string>;
-}
-```
+### Adding a Background Job
+The jobs run in the worker that the explorer starts (`tools/worker.ts`, see [Background jobs](#background-jobs)). To add one:
+1. Write `tools/<name>.ts` with an exported `main(args)` that throws on failure instead of calling `process.exit` (exit codes and signal handling belong in its `require.main === module` block only).
+2. Add its name to `JobName` / `JOB_NAMES` and `planJobs()` in `lib/features.ts` (with the `config.json` setting that turns it on) and its start to `STARTERS` in `tools/worker.ts`; `npm run worker -- --plan` then lists it.
+3. Read the node through `lib/web3/provider.ts`: `getClient()` (a viem public client) or `callContract(abi, address, functionName, args)`. Raw `client.request()` answers keep the node's hex quantities.
 
 ## Deployment
 
@@ -2217,6 +2181,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Community** - For blockchain network support
 - **Next.js Team** - For the amazing React framework
 - **MongoDB Team** - For the robust database solution
-- **Web3.js Team** - For blockchain interaction libraries
+- **wevm** - For viem and wagmi
 
 These tools enable the EVM Explorer to track the latest blockchain data in real-time, manage NFT collections, verify smart contracts, and provide comprehensive statistical information for the EVM-compatible network.

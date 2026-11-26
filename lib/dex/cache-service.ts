@@ -5,7 +5,7 @@
  * This significantly reduces load on t4g.medium instances.
  */
 
-import { ethers } from 'ethers';
+import { isAddress } from 'viem';
 import {
   getFeatures,
   loadConfig,
@@ -17,6 +17,7 @@ import {
   type TokenConfig,
 } from '@/lib/config';
 import { MASTER_CHEF_ABI } from '@/abi/MasterChefABI';
+import { callContract } from '@/lib/web3/provider';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import { connectDB, DexSwap } from '@/models/index';
 import { getNativePrice } from '@/lib/price-service';
@@ -71,21 +72,6 @@ const TIME_INTERVALS = {
   h24: 24 * 60 * 60,
 };
 
-let providerInstance: ethers.JsonRpcProvider | null = null;
-
-/**
- * Get cached provider instance
- */
-export function getProvider(): ethers.JsonRpcProvider {
-  if (!providerInstance) {
-    const config = loadConfig();
-    providerInstance = new ethers.JsonRpcProvider(
-      config.network?.rpcUrl || config.web3Provider?.url
-    );
-  }
-  return providerInstance;
-}
-
 /**
  * Get native currency price with caching
  */
@@ -112,12 +98,10 @@ export async function getCachedTokenInfo(tokenAddress: string): Promise<TokenInf
   if (cached) return cached;
 
   try {
-    const provider = getProvider();
-    const contract = new ethers.Contract(tokenAddress, ERC20_ABI, provider);
     const [symbol, name, decimals] = await Promise.all([
-      contract.symbol().catch(() => 'UNKNOWN'),
-      contract.name().catch(() => 'Unknown Token'),
-      contract.decimals().catch(() => 18),
+      callContract(ERC20_ABI, tokenAddress, 'symbol').catch(() => 'UNKNOWN'),
+      callContract(ERC20_ABI, tokenAddress, 'name').catch(() => 'Unknown Token'),
+      callContract(ERC20_ABI, tokenAddress, 'decimals').catch(() => 18),
     ]);
 
     const info: TokenInfo = {
@@ -144,14 +128,11 @@ export async function getCachedPoolInfo(poolAddress: string): Promise<PoolInfo |
   if (cached) return cached;
 
   try {
-    const provider = getProvider();
-    const pairContract = new ethers.Contract(poolAddress, PAIR_ABI, provider);
-
     const [reserves, token0Addr, token1Addr, totalSupply] = await Promise.all([
-      pairContract.getReserves(),
-      pairContract.token0(),
-      pairContract.token1(),
-      pairContract.totalSupply(),
+      callContract(PAIR_ABI, poolAddress, 'getReserves'),
+      callContract(PAIR_ABI, poolAddress, 'token0'),
+      callContract(PAIR_ABI, poolAddress, 'token1'),
+      callContract(PAIR_ABI, poolAddress, 'totalSupply'),
     ]);
 
     const [token0Info, token1Info] = await Promise.all([
@@ -316,6 +297,8 @@ export async function getCachedPoolStats(poolAddress: string): Promise<PoolStats
   return stats;
 }
 
+const ROUTER_FACTORY_ABI = ['function factory() view returns (address)'];
+
 // Factory ABI for getting all pairs
 const FACTORY_ABI = [
   'function allPairsLength() view returns (uint256)',
@@ -374,24 +357,16 @@ export async function getLPAddresses(): Promise<string[]> {
   const routerAddress = config.dex?.router;
   if (routerAddress) {
     try {
-      const provider = getProvider();
-      const routerContract = new ethers.Contract(
-        routerAddress,
-        ['function factory() view returns (address)'],
-        provider
-      );
-
-      const factoryAddress = await routerContract.factory();
-      const factoryContract = new ethers.Contract(factoryAddress, FACTORY_ABI, provider);
-
-      const pairsLength = await factoryContract.allPairsLength();
-      const numPairs = Number(pairsLength);
+      const factoryAddress = await callContract(ROUTER_FACTORY_ABI, routerAddress, 'factory');
+      const numPairs = Number(await callContract(FACTORY_ABI, factoryAddress, 'allPairsLength'));
 
       // Fetch all pairs from factory (excluding blacklisted)
       for (let i = 0; i < numPairs; i++) {
         try {
-          const pairAddress = await factoryContract.allPairs(i);
-          const pairAddrLower = pairAddress.toLowerCase();
+          const pairAddress = await callContract(FACTORY_ABI, factoryAddress, 'allPairs', [
+            BigInt(i),
+          ]);
+          const pairAddrLower = String(pairAddress).toLowerCase();
           if (!blacklistedAddresses.has(pairAddrLower)) {
             addresses.add(pairAddrLower);
           }
@@ -502,16 +477,18 @@ export function loadDexSettingsFromChain(options: { onlyIfMissing?: boolean } = 
 
 async function readDexSettings(): Promise<void> {
   const dex = loadConfig().dex;
-  if (!getFeatures().dex || !dex?.router || !ethers.isAddress(dex.router)) return;
-  const provider = getProvider();
+  if (!getFeatures().dex || !dex?.router || !isAddress(dex.router)) return;
   const tokenInfo = new Map<string, Promise<TokenConfig | null>>();
   const readToken = (address: string) => {
     const key = address.toLowerCase();
     if (!tokenInfo.has(key)) {
-      const contract = new ethers.Contract(address, TOKEN_READS, provider);
       tokenInfo.set(
         key,
-        Promise.all([contract.name(), contract.symbol(), contract.decimals()])
+        Promise.all([
+          callContract(TOKEN_READS, key, 'name'),
+          callContract(TOKEN_READS, key, 'symbol'),
+          callContract(TOKEN_READS, key, 'decimals'),
+        ])
           .then(([name, symbol, decimals]) => ({
             address: key as `0x${string}`,
             name: String(name),
@@ -533,37 +510,41 @@ async function readDexSettings(): Promise<void> {
 
   // Uniswap V2 names the wrapped coin WETH(); forks name it after their coin (WBNB(), WVBC())
   const wrappedGetter = `W${(loadConfig().currency?.symbol || 'ETH').toUpperCase()}`;
-  const router = new ethers.Contract(
-    dex.router,
-    [
-      'function factory() view returns (address)',
-      'function WETH() view returns (address)',
-      `function ${wrappedGetter}() view returns (address)`,
-    ],
-    provider
+  const routerAbi = [...new Set(['factory', 'WETH', wrappedGetter])].map(
+    (name) => `function ${name}() view returns (address)`
   );
-  const factory = String(await router.factory()).toLowerCase();
+  const router = dex.router;
+  const factory = String(await callContract(routerAbi, router, 'factory'));
   const wrapped = String(
-    await router.WETH().catch(() => router.getFunction(wrappedGetter).staticCall())
-  ).toLowerCase();
-  const factoryContract = new ethers.Contract(factory, FACTORY_READS, provider);
-  const count = Math.min(Number(await factoryContract.allPairsLength()), MAX_PAIRS);
+    await callContract(routerAbi, router, 'WETH').catch(() =>
+      callContract(routerAbi, router, wrappedGetter)
+    )
+  );
+  const count = Math.min(
+    Number(await callContract(FACTORY_READS, factory, 'allPairsLength')),
+    MAX_PAIRS
+  );
   const pairs = await inBatches([...Array(count).keys()], async (index) => {
-    const address = String(await factoryContract.allPairs(index)).toLowerCase();
-    const pair = new ethers.Contract(address, PAIR_READS, provider);
-    const [token0, token1] = await Promise.all([pair.token0(), pair.token1()]);
+    const address = String(await callContract(FACTORY_READS, factory, 'allPairs', [BigInt(index)]));
+    const [token0, token1] = await Promise.all([
+      callContract(PAIR_READS, address, 'token0'),
+      callContract(PAIR_READS, address, 'token1'),
+    ]);
     return { address, token0: String(token0), token1: String(token1) };
   });
 
   let reward: TokenConfig | null = null;
   let farms: Array<{ pid: number; lpToken: string }> = [];
-  if (dex.masterChef && ethers.isAddress(dex.masterChef)) {
-    const chef = new ethers.Contract(dex.masterChef, MASTER_CHEF_ABI, provider);
-    const [rewardAddress, poolLength] = await Promise.all([chef.rewardToken(), chef.poolLength()]);
+  const chef = dex.masterChef;
+  if (chef && isAddress(chef)) {
+    const [rewardAddress, poolLength] = await Promise.all([
+      callContract(MASTER_CHEF_ABI, chef, 'rewardToken'),
+      callContract(MASTER_CHEF_ABI, chef, 'poolLength'),
+    ]);
     reward = await readToken(String(rewardAddress));
     farms = await inBatches([...Array(Number(poolLength)).keys()], async (pid) => ({
       pid,
-      lpToken: String((await chef.poolInfo(pid))[0]).toLowerCase(),
+      lpToken: String((await callContract(MASTER_CHEF_ABI, chef, 'poolInfo', [BigInt(pid)]))[0]),
     }));
   }
 

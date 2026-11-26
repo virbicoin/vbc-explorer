@@ -8,7 +8,6 @@ import {
   isStablecoin,
 } from '@/lib/dex/priceUtils';
 import { getLPAddresses, getCachedPoolInfo, getCachedTokenInfo } from '@/lib/dex/cache-service';
-import { ethers } from 'ethers';
 
 /**
  * DefiLlama Prices API

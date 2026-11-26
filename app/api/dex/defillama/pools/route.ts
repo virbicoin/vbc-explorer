@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { formatEther } from 'viem';
+import { callContract } from '@/lib/web3/provider';
 import {
   loadConfig,
   getNetworkName,
@@ -42,7 +43,6 @@ async function getBaseUrl(): Promise<string> {
 
 // Calculate APR from MasterChef
 async function calculateFarmingAPR(
-  provider: ethers.JsonRpcProvider,
   masterChefAddress: string,
   lpTokenAddress: string,
   lpTvlUsd: number,
@@ -51,20 +51,20 @@ async function calculateFarmingAPR(
 ): Promise<number> {
   if (!masterChefAddress) return 0; // no farm configured
   try {
-    const masterChef = new ethers.Contract(masterChefAddress, MASTERCHEF_ABI, provider);
-
     const [rewardPerBlock, totalAllocPoint, poolLength] = await Promise.all([
-      masterChef.rewardPerBlock(),
-      masterChef.totalAllocPoint(),
-      masterChef.poolLength(),
+      callContract(MASTERCHEF_ABI, masterChefAddress, 'rewardPerBlock'),
+      callContract(MASTERCHEF_ABI, masterChefAddress, 'totalAllocPoint'),
+      callContract(MASTERCHEF_ABI, masterChefAddress, 'poolLength'),
     ]);
 
     // Find the pool for this LP token
     for (let pid = 0; pid < Number(poolLength); pid++) {
-      const poolInfo = await masterChef.poolInfo(pid);
+      const poolInfo = await callContract(MASTERCHEF_ABI, masterChefAddress, 'poolInfo', [
+        BigInt(pid),
+      ]);
       if (poolInfo.lpToken.toLowerCase() === lpTokenAddress.toLowerCase()) {
         const allocPoint = Number(poolInfo.allocPoint);
-        const totalStaked = Number(ethers.formatEther(poolInfo.totalStaked));
+        const totalStaked = Number(formatEther(poolInfo.totalStaked));
 
         if (allocPoint === 0 || Number(totalAllocPoint) === 0) return 0;
 
@@ -73,12 +73,12 @@ async function calculateFarmingAPR(
         const blocksPerYear = SECONDS_PER_YEAR / blockTime;
         const poolShareRatio = allocPoint / Number(totalAllocPoint);
         const yearlyRewardTokens =
-          Number(ethers.formatEther(rewardPerBlock)) * blocksPerYear * poolShareRatio;
+          Number(formatEther(rewardPerBlock)) * blocksPerYear * poolShareRatio;
 
         // Calculate APR based on staked TVL
         const stakedTvlUsd =
           totalStaked > 0
-            ? (totalStaked / Number(await getTotalLPSupply(provider, lpTokenAddress))) * lpTvlUsd
+            ? (totalStaked / Number(await getTotalLPSupply(lpTokenAddress))) * lpTvlUsd
             : lpTvlUsd;
 
         if (stakedTvlUsd <= 0) return 0;
@@ -94,18 +94,14 @@ async function calculateFarmingAPR(
   }
 }
 
-async function getTotalLPSupply(
-  provider: ethers.JsonRpcProvider,
-  lpAddress: string
-): Promise<number> {
+async function getTotalLPSupply(lpAddress: string): Promise<number> {
   try {
-    const lpContract = new ethers.Contract(
-      lpAddress,
+    const totalSupply = await callContract(
       ['function totalSupply() view returns (uint256)'],
-      provider
+      lpAddress,
+      'totalSupply'
     );
-    const totalSupply = await lpContract.totalSupply();
-    return Number(ethers.formatEther(totalSupply));
+    return Number(formatEther(totalSupply));
   } catch {
     return 1;
   }
@@ -159,12 +155,7 @@ export async function GET() {
         // Get known stablecoin symbols
         const STABLECOIN_SYMBOLS = new Set(['USDT', 'USDC', 'DAI', 'BUSD']);
 
-        // Setup provider and MasterChef for APR calculation
-        const rpcUrl =
-          config.network?.rpcUrl || config.web3Provider?.url || 'http://localhost:8545';
-        const provider = new ethers.JsonRpcProvider(rpcUrl);
-        // config.dex.masterChef is an address string; reading `.address` from it always fell
-        // back to a hardcoded VirBiCoin address
+        // MasterChef for the APR (config.dex.masterChef is the address string itself)
         const masterChefAddress = ADDRESSES.MASTERCHEF;
         const blockTime = config.network?.blockTime || 12;
 
@@ -233,7 +224,6 @@ export async function GET() {
           let apyReward = 0;
           try {
             apyReward = await calculateFarmingAPR(
-              provider,
               masterChefAddress,
               pair.address,
               tvlUsd,

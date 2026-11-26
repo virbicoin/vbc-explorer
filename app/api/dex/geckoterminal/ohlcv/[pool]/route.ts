@@ -2,7 +2,8 @@
 // Format: https://docs.geckoterminal.com/reference/get_networks-network-pools-pool_address-ohlcv-timeframe
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
-import { ethers } from 'ethers';
+import { formatUnits, isAddress } from 'viem';
+import { callContract } from '@/lib/web3/provider';
 import { loadConfig } from '@/lib/config';
 import { connectDB, DexSwap, Contract } from '@/models';
 import { getNativePrice } from '@/lib/price-service';
@@ -118,7 +119,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
     const { searchParams } = new URL(request.url);
 
     // Validate pool address
-    if (!ethers.isAddress(poolAddress)) {
+    if (!isAddress(poolAddress)) {
       return errorResponse(400, 'Invalid pool address');
     }
 
@@ -143,34 +144,29 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
 
     const config = loadConfig();
 
-    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';
     const wrappedNativeSymbol = config.dex?.wrappedNative?.symbol || 'WETH';
     const nativeSymbol = config.currency?.symbol || 'ETH';
     const nativeName = config.currency?.name || 'Ether';
 
     // Get pool info
-    const pairContract = new ethers.Contract(poolAddress, PAIR_ABI, provider);
 
     let reserves, token0Address, token1Address;
     try {
       [reserves, token0Address, token1Address] = await Promise.all([
-        pairContract.getReserves(),
-        pairContract.token0(),
-        pairContract.token1(),
+        callContract(PAIR_ABI, poolAddress, 'getReserves'),
+        callContract(PAIR_ABI, poolAddress, 'token0'),
+        callContract(PAIR_ABI, poolAddress, 'token1'),
       ]);
     } catch {
       return errorResponse(404, 'Pool not found');
     }
 
-    const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
-    const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
-
     const [decimals0, decimals1, symbol0, symbol1] = await Promise.all([
-      token0Contract.decimals(),
-      token1Contract.decimals(),
-      token0Contract.symbol(),
-      token1Contract.symbol(),
+      callContract(ERC20_ABI, token0Address, 'decimals'),
+      callContract(ERC20_ABI, token1Address, 'decimals'),
+      callContract(ERC20_ABI, token0Address, 'symbol'),
+      callContract(ERC20_ABI, token1Address, 'symbol'),
     ]);
 
     // Determine base/quote tokens (native is always base)
@@ -258,8 +254,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
       ohlcvList = aggregateToOHLCV(swaps, intervalSeconds, limit);
     } else {
       // Fallback: Generate from current reserves if no swap data
-      const reserve0 = Number(ethers.formatUnits(reserves[0], decimals0));
-      const reserve1 = Number(ethers.formatUnits(reserves[1], decimals1));
+      const reserve0 = Number(formatUnits(BigInt(reserves[0]), decimals0));
+      const reserve1 = Number(formatUnits(BigInt(reserves[1]), decimals1));
 
       let currentPrice = isToken0Native ? reserve1 / reserve0 : reserve0 / reserve1;
 

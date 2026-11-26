@@ -1,7 +1,8 @@
 // GeckoTerminal Trades API - Returns recent trades for a pool
 // Format: https://docs.geckoterminal.com/reference/get_networks-network-pools-pool_address-trades
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { formatUnits, isAddress } from 'viem';
+import { callContract } from '@/lib/web3/provider';
 import { loadConfig } from '@/lib/config';
 import { connectDB, DexSwap, Contract } from '@/models/index';
 import { getNativePrice } from '@/lib/price-service';
@@ -76,11 +77,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
     const config = loadConfig();
 
     // Validate address
-    if (!ethers.isAddress(poolAddress)) {
+    if (!isAddress(poolAddress)) {
       return errorResponse(400, 'Invalid pool address');
     }
 
-    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';
     const wrappedNativeSymbol = config.dex?.wrappedNative?.symbol || 'WETH';
     const networkSlug = config.network?.slug || 'ethereum';
@@ -89,26 +89,22 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
     await connectDB();
 
     // Get pool token info
-    const pairContract = new ethers.Contract(poolAddress, PAIR_ABI, provider);
 
     let token0Address, token1Address;
     try {
       [token0Address, token1Address] = await Promise.all([
-        pairContract.token0(),
-        pairContract.token1(),
+        callContract(PAIR_ABI, poolAddress, 'token0'),
+        callContract(PAIR_ABI, poolAddress, 'token1'),
       ]);
     } catch {
       return errorResponse(404, 'Pool not found');
     }
 
-    const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
-    const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
-
     const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
-      token0Contract.symbol(),
-      token0Contract.decimals(),
-      token1Contract.symbol(),
-      token1Contract.decimals(),
+      callContract(ERC20_ABI, token0Address, 'symbol'),
+      callContract(ERC20_ABI, token0Address, 'decimals'),
+      callContract(ERC20_ABI, token1Address, 'symbol'),
+      callContract(ERC20_ABI, token1Address, 'decimals'),
     ]);
 
     // Determine base/quote tokens (native is always base)
@@ -166,15 +162,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
           kind = 'buy';
           fromTokenAddress = quoteAddress.toLowerCase();
           toTokenAddress = baseAddress.toLowerCase();
-          fromAmount = ethers.formatUnits(amount1In, quoteDecimals);
-          toAmount = ethers.formatUnits(amount0Out, baseDecimals);
+          fromAmount = formatUnits(BigInt(amount1In), quoteDecimals);
+          toAmount = formatUnits(BigInt(amount0Out), baseDecimals);
         } else {
           // Selling native (trading base for quote)
           kind = 'sell';
           fromTokenAddress = baseAddress.toLowerCase();
           toTokenAddress = quoteAddress.toLowerCase();
-          fromAmount = ethers.formatUnits(amount0In, baseDecimals);
-          toAmount = ethers.formatUnits(amount1Out, quoteDecimals);
+          fromAmount = formatUnits(BigInt(amount0In), baseDecimals);
+          toAmount = formatUnits(BigInt(amount1Out), quoteDecimals);
         }
       } else {
         // token1 is base (native)
@@ -183,15 +179,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ pool
           kind = 'buy';
           fromTokenAddress = quoteAddress.toLowerCase();
           toTokenAddress = baseAddress.toLowerCase();
-          fromAmount = ethers.formatUnits(amount0In, quoteDecimals);
-          toAmount = ethers.formatUnits(amount1Out, baseDecimals);
+          fromAmount = formatUnits(BigInt(amount0In), quoteDecimals);
+          toAmount = formatUnits(BigInt(amount1Out), baseDecimals);
         } else {
           // Selling native
           kind = 'sell';
           fromTokenAddress = baseAddress.toLowerCase();
           toTokenAddress = quoteAddress.toLowerCase();
-          fromAmount = ethers.formatUnits(amount1In, baseDecimals);
-          toAmount = ethers.formatUnits(amount0Out, quoteDecimals);
+          fromAmount = formatUnits(BigInt(amount1In), baseDecimals);
+          toAmount = formatUnits(BigInt(amount0Out), quoteDecimals);
         }
       }
 

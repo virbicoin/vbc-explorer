@@ -8,6 +8,7 @@ import {
   decodeFunctionResult,
   encodeFunctionData,
   http,
+  parseAbi,
   type Abi,
   type PublicClient,
 } from 'viem';
@@ -57,10 +58,25 @@ function lowerAddresses(value: unknown): unknown {
   return value;
 }
 
+const parsedAbis = new WeakMap<readonly unknown[], Abi>();
+
+/** A JSON ABI as it is; a human-readable one ('function name() view returns (string)') parsed once. */
+function toAbi(abi: Abi | readonly unknown[]): Abi {
+  if (!abi.some((item) => typeof item === 'string')) return abi as Abi;
+  let parsed = parsedAbis.get(abi);
+  if (!parsed) {
+    parsed = parseAbi(abi as readonly string[]);
+    parsedAbis.set(abi, parsed);
+  }
+  return parsed;
+}
+
 /**
- * Calls a view function (eth_call). One output comes back as its value; several come back as an
- * object keyed by position and by name (`result[0]`, `result.reserve0`), as web3.js returned them.
- * Addresses are in lower case. A revert or an empty answer throws.
+ * Calls a view function (eth_call). The ABI is JSON or human-readable. One output comes back as
+ * its value; several come back as an array that also carries the output names (`result[0]`,
+ * `result.reserve0`, `const [a, b] = result`), as web3.js and ethers returned them. Integers are
+ * bigint (number up to 48 bits, e.g. `decimals()`), addresses in lower case. A revert or an
+ * empty answer throws.
  */
 export async function callContract(
   abi: Abi | readonly unknown[],
@@ -69,7 +85,7 @@ export async function callContract(
   args: readonly unknown[] = [],
   options: { blockNumber?: bigint; from?: string } = {}
 ): Promise<any> {
-  const typedAbi = abi as Abi;
+  const typedAbi = toAbi(abi);
   const data = encodeFunctionData({ abi: typedAbi, functionName, args: args as unknown[] });
   const result = await getClient().call({
     to: address as `0x${string}`,
@@ -84,11 +100,10 @@ export async function callContract(
   ) as { outputs?: Array<{ name?: string }> } | undefined;
   const outputs = fragment?.outputs ?? [];
   if (outputs.length <= 1) return lowerAddresses(decoded);
-  const values = decoded as readonly unknown[];
-  const named: Record<string, unknown> = {};
-  outputs.forEach((output, index) => {
-    named[index] = lowerAddresses(values[index]);
-    if (output.name) named[output.name] = named[index];
-  });
-  return named;
+  const values = (decoded as readonly unknown[]).map(lowerAddresses) as unknown[] &
+    Record<string, unknown>;
+  for (const [index, output] of outputs.entries()) {
+    if (output.name && !(output.name in values)) values[output.name] = values[index];
+  }
+  return values;
 }

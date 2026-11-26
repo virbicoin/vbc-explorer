@@ -100,7 +100,6 @@ async function addToken(tokenAddress: string) {
     }
 
     // Verify it's a valid ERC20 contract
-    const contract = { abi: ERC20_ABI as readonly unknown[], address: tokenAddress as string };
 
     let name: string;
     let symbol: string;
@@ -108,7 +107,7 @@ async function addToken(tokenAddress: string) {
     let totalSupply: bigint;
 
     try {
-      name = (await callContract(contract.abi, contract.address, 'name', [])) as string;
+      name = (await callContract(ERC20_ABI, tokenAddress, 'name', [])) as string;
       console.log(`   Name: ${name}`);
     } catch (e) {
       console.error('❌ Failed to get token name. This may not be a valid ERC20 token.');
@@ -116,7 +115,7 @@ async function addToken(tokenAddress: string) {
     }
 
     try {
-      symbol = (await callContract(contract.abi, contract.address, 'symbol', [])) as string;
+      symbol = (await callContract(ERC20_ABI, tokenAddress, 'symbol', [])) as string;
       console.log(`   Symbol: ${symbol}`);
     } catch (e) {
       console.error('❌ Failed to get token symbol. This may not be a valid ERC20 token.');
@@ -124,7 +123,7 @@ async function addToken(tokenAddress: string) {
     }
 
     try {
-      decimals = Number(await callContract(contract.abi, contract.address, 'decimals', []));
+      decimals = Number(await callContract(ERC20_ABI, tokenAddress, 'decimals', []));
       console.log(`   Decimals: ${decimals}`);
     } catch (e) {
       console.log('⚠️ Could not get decimals, defaulting to 18');
@@ -132,12 +131,7 @@ async function addToken(tokenAddress: string) {
     }
 
     try {
-      totalSupply = (await callContract(
-        contract.abi,
-        contract.address,
-        'totalSupply',
-        []
-      )) as bigint;
+      totalSupply = (await callContract(ERC20_ABI, tokenAddress, 'totalSupply', [])) as bigint;
       console.log(`   Total Supply: ${totalSupply.toString()}`);
     } catch (e) {
       console.log('⚠️ Could not get totalSupply, defaulting to 0');

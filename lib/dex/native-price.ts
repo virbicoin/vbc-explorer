@@ -2,7 +2,7 @@
  * The native coin's USD price read from a DEX pool (wrapped native coin
  * against a stablecoin). Used by tools/price.ts.
  */
-import { ethers } from 'ethers';
+import { formatUnits } from 'viem';
 
 /**
  * The view functions the price is read with.
@@ -17,7 +17,7 @@ export const PAIR_VIEW_ABI = [
   'function token0() view returns (address)',
   'function token1() view returns (address)',
   'function getReserves() view returns (uint256 reserve0, uint256 reserve1)',
-];
+] as const;
 
 /** A pair's tokens (lowercase addresses), their decimals and its reserves. */
 export interface PairSnapshot {
@@ -70,8 +70,8 @@ export function nativePriceFromReserves(
   if (!isNativeStablePair(pair, wrappedNative, stablecoin)) return null;
   if (pair.reserve0 <= 0n || pair.reserve1 <= 0n) return null;
 
-  const amount0 = Number(ethers.formatUnits(pair.reserve0, pair.decimals0));
-  const amount1 = Number(ethers.formatUnits(pair.reserve1, pair.decimals1));
+  const amount0 = Number(formatUnits(BigInt(pair.reserve0), pair.decimals0));
+  const amount1 = Number(formatUnits(BigInt(pair.reserve1), pair.decimals1));
   const stableIsToken0 = pair.token0 === stablecoin.toLowerCase();
   const price = stableIsToken0 ? amount0 / amount1 : amount1 / amount0;
   return Number.isFinite(price) && price > 0 ? price : null;

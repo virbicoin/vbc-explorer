@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { ethers } from 'ethers';
+import { formatEther, parseEther } from 'viem';
 import Image from 'next/image';
 import { useFarming, type PoolData } from '@/hooks/useFarming';
 import { useTokenConfig } from '@/hooks/useTokenConfig';
@@ -120,7 +120,7 @@ function FarmPoolCard({
     allowance === 0n ||
     (depositAmount &&
       parseFloat(depositAmount) > 0 &&
-      ethers.parseEther(depositAmount || '0') > allowance);
+      parseEther(depositAmount || '0') > allowance);
 
   const handleDeposit = () => {
     if (depositAmount && parseFloat(depositAmount) > 0) {
@@ -272,13 +272,13 @@ function FarmPoolCard({
                 Balance: {formatLPAmount(lpBalance)} {getLPUnit(lpBalance)}
               </span>
               <button
-                onClick={() => setDepositAmount(ethers.formatEther(lpBalance / 2n))}
+                onClick={() => setDepositAmount(formatEther(lpBalance / 2n))}
                 className="text-xs text-blue-400 hover:text-blue-300 font-medium px-2 py-0.5 bg-blue-500/10 rounded"
               >
                 HALF
               </button>
               <button
-                onClick={() => setDepositAmount(ethers.formatEther(lpBalance))}
+                onClick={() => setDepositAmount(formatEther(lpBalance))}
                 className="text-xs text-blue-400 hover:text-blue-300 font-medium px-2 py-0.5 bg-blue-500/10 rounded"
               >
                 MAX
@@ -322,13 +322,13 @@ function FarmPoolCard({
                 Staked: {formatLPAmount(userStaked)} {getLPUnit(userStaked)}
               </span>
               <button
-                onClick={() => setWithdrawAmount(ethers.formatEther(userStaked / 2n))}
+                onClick={() => setWithdrawAmount(formatEther(userStaked / 2n))}
                 className="text-xs text-blue-400 hover:text-blue-300 font-medium px-2 py-0.5 bg-blue-500/10 rounded"
               >
                 HALF
               </button>
               <button
-                onClick={() => setWithdrawAmount(ethers.formatEther(userStaked))}
+                onClick={() => setWithdrawAmount(formatEther(userStaked))}
                 className="text-xs text-blue-400 hover:text-blue-300 font-medium px-2 py-0.5 bg-blue-500/10 rounded"
               >
                 MAX

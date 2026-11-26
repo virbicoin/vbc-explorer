@@ -3,8 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { formatUnits, parseUnits, type Address, isAddress } from 'viem';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
-import { ethers } from 'ethers';
+import {
+  useAccount,
+  usePublicClient,
+  useReadContract,
+  useWriteContract,
+  useWaitForTransactionReceipt,
+} from 'wagmi';
 import { TokenFactoryV2ABI, LaunchpadTokenV2ABI } from '@/abi/TokenFactoryV2ABI';
 import { TokenFactoryABI, ERC20ABI } from '@/abi/TokenFactoryABI';
 import { useLaunchpadConfig, type LegacyFactory } from '@/hooks/useLaunchpadConfig';
@@ -59,6 +64,7 @@ function TokenDetailContent() {
   const params = useParams();
   const tokenAddress = params.address as string;
   const { address, isConnected } = useAccount();
+  const publicClient = usePublicClient();
   const { config, isLoading: isConfigLoading, activeFactoryAddress } = useLaunchpadConfig();
 
   const [copied, setCopied] = useState(false);
@@ -160,23 +166,27 @@ function TokenDetailContent() {
           ]
         )[1] !== '';
 
-      if (hasV2Data || isDetailsLoading || legacyFactories.length === 0 || !tokenAddress) {
+      if (
+        hasV2Data ||
+        isDetailsLoading ||
+        legacyFactories.length === 0 ||
+        !tokenAddress ||
+        !publicClient
+      ) {
         return;
       }
 
       setIsLegacyLoading(true);
       try {
-        const configResponse = await fetch('/api/config/client');
-        if (!configResponse.ok) return;
-        const configData = await configResponse.json();
-        const rpcUrl = configData.network?.rpcUrl || 'http://localhost:8545';
-        const provider = new ethers.JsonRpcProvider(rpcUrl);
-
         for (const factory of legacyFactories) {
           try {
-            const factoryContract = new ethers.Contract(factory.address, TokenFactoryABI, provider);
-            const tokenInfo = await factoryContract.tokenInfo(tokenAddress);
-            const [creator, name, symbol, decimals, totalSupply, createdAt] = tokenInfo;
+            const [creator, name, symbol, decimals, totalSupply, createdAt] =
+              await publicClient.readContract({
+                address: factory.address as Address,
+                abi: TokenFactoryABI,
+                functionName: 'tokenInfo',
+                args: [tokenAddress as Address],
+              });
 
             // Check if we got valid data
             if (name && name !== '') {
@@ -203,7 +213,7 @@ function TokenDetailContent() {
     };
 
     fetchFromLegacy();
-  }, [tokenDetails, isDetailsLoading, legacyFactories, tokenAddress]);
+  }, [tokenDetails, isDetailsLoading, legacyFactories, tokenAddress, publicClient]);
 
   // Fetch mutable metadata directly from token contract (logoUrl, description, website)
   const { data: tokenLogoUrl, refetch: refetchLogoUrl } = useReadContract({

@@ -4,20 +4,6 @@
  * Common formatting functions for displaying blockchain data.
  */
 
-import { formatUnits } from 'ethers';
-
-/**
- * Format token balance with proper decimals
- */
-export function formatTokenBalance(rawBalance: string | bigint, decimals: number = 18): string {
-  try {
-    const balance = BigInt(rawBalance);
-    return formatUnits(balance, decimals);
-  } catch {
-    return '0';
-  }
-}
-
 /**
  * Format large numbers with commas
  */
@@ -25,17 +11,6 @@ export function formatNumber(num: number | string): string {
   const n = typeof num === 'string' ? parseFloat(num) : num;
   if (isNaN(n)) return '0';
   return n.toLocaleString('en-US', { maximumFractionDigits: 18 });
-}
-
-/**
- * Format wei to ether with proper precision
- */
-export function formatEther(wei: string | bigint): string {
-  try {
-    return formatUnits(BigInt(wei), 18);
-  } catch {
-    return '0';
-  }
 }
 
 /**

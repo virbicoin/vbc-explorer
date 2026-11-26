@@ -23,7 +23,8 @@
  *   (scan_progress 'internal-transactions') is handled by lib/sync/range-scan.ts.
  */
 
-import { ethers } from 'ethers';
+import { createClient, http, webSocket, type Transport } from 'viem';
+import { ipc } from 'viem/node';
 import { Block, InternalTransaction, Transaction } from '../../models/index';
 
 /** One frame of a `trace_transaction` answer. */
@@ -255,7 +256,13 @@ export function isMethodMissing(error: unknown): boolean {
   const visit = (value: unknown): boolean => {
     if (!value || typeof value !== 'object' || seen.has(value)) return false;
     seen.add(value);
-    const record = value as { code?: unknown; message?: unknown; error?: unknown; info?: unknown };
+    const record = value as {
+      code?: unknown;
+      message?: unknown;
+      error?: unknown;
+      info?: unknown;
+      cause?: unknown;
+    };
     if (record.code === -32601) return true;
     if (
       typeof record.message === 'string' &&
@@ -265,7 +272,7 @@ export function isMethodMissing(error: unknown): boolean {
     ) {
       return true;
     }
-    return visit(record.error) || visit(record.info);
+    return visit(record.error) || visit(record.info) || visit(record.cause);
   };
   return visit(error);
 }
@@ -280,14 +287,6 @@ export interface TraceSource {
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000;
-
-function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms} ms`)), ms);
-  });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
-}
 
 /**
  * Where the traces come from, without credentials: an IPC socket path
@@ -307,28 +306,26 @@ export function describeTraceSource(url: string): string {
 
 /** A trace source over the node's IPC socket or JSON-RPC URL (reconnects after a failure). */
 export function createTraceSource(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): TraceSource {
-  let provider: ethers.JsonRpcApiProvider | null = null;
-  const options = { staticNetwork: true, batchMaxCount: 1 };
-  const open = () => {
-    if (provider) return provider;
-    if (/^https?:\/\//i.test(url)) provider = new ethers.JsonRpcProvider(url, undefined, options);
-    else if (/^wss?:\/\//i.test(url))
-      provider = new ethers.WebSocketProvider(url, undefined, options);
-    else provider = new ethers.IpcSocketProvider(url.replace(/^ipc:\/\//i, ''), undefined, options);
-    return provider;
-  };
+  // one request per call and no retries: the indexer decides what a failure means
+  const options = { timeout: timeoutMs, retryCount: 0 };
+  const transport: Transport = /^https?:\/\//i.test(url)
+    ? http(url, options)
+    : /^wss?:\/\//i.test(url)
+      ? webSocket(url, options)
+      : ipc(url.replace(/^ipc:\/\//i, ''), options);
+  const client = createClient({ transport });
+  // a socket (ws / ipc) is closed so that the next call connects again; http has none
   const close = () => {
-    try {
-      provider?.destroy();
-    } catch {
-      // already gone
-    }
-    provider = null;
+    const socket = client.transport as { getRpcClient?: () => Promise<{ close(): void }> };
+    socket.getRpcClient?.().then(
+      (rpc) => rpc.close(),
+      () => undefined
+    );
   };
   // 'parity' once trace_transaction answered, 'geth' once the node said it has no such method
   let flavor: 'parity' | 'geth' | null = null;
   const send = (method: string, params: unknown[]) =>
-    withTimeout(open().send(method, params), timeoutMs, method);
+    client.request({ method, params } as never) as Promise<unknown>;
   return {
     async traceTransaction(hash) {
       try {

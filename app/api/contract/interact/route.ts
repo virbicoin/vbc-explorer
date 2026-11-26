@@ -11,6 +11,16 @@ import {
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { callContract, getCode } from '@/lib/web3/provider';
 
+/** A call result for JSON, which has no bigint: integers as decimal strings, as Etherscan shows them. */
+function jsonValue(value: unknown): unknown {
+  if (typeof value === 'bigint') return value.toString();
+  if (Array.isArray(value)) return value.map(jsonValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, jsonValue(item)]));
+  }
+  return value;
+}
+
 // Allowed methods for security (read-only methods only)
 const ALLOWED_METHODS = new Set([
   'name',
@@ -131,7 +141,7 @@ export async function POST(request: NextRequest) {
       result = await callContract(contract.abi, contract.address, method, params || []);
     }
 
-    return NextResponse.json({ result }, { headers: getSecurityHeaders() });
+    return NextResponse.json({ result: jsonValue(result) }, { headers: getSecurityHeaders() });
   } catch (error) {
     console.error('Contract interaction error:', error);
     return NextResponse.json(

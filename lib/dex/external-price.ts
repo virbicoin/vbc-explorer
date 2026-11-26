@@ -107,13 +107,7 @@ async function calculateTvlFromBlockchain(nativePriceUsd: number): Promise<numbe
     }
     const STABLECOIN_ADDRESSES = new Set(stablecoinAddresses);
 
-    const factory = { abi: FACTORY_ABI as readonly unknown[], address: factoryAddress as string };
-    const pairsLengthResult = await callContract(
-      factory.abi,
-      factory.address,
-      'allPairsLength',
-      []
-    );
+    const pairsLengthResult = await callContract(FACTORY_ABI, factoryAddress, 'allPairsLength', []);
     const numPairs = Number(pairsLengthResult);
 
     let totalTvlUsd = 0;
@@ -123,18 +117,13 @@ async function calculateTvlFromBlockchain(nativePriceUsd: number): Promise<numbe
 
     for (let i = 0; i < maxPairs; i++) {
       try {
-        const pairAddressResult = await callContract(factory.abi, factory.address, 'allPairs', [i]);
+        const pairAddressResult = await callContract(FACTORY_ABI, factoryAddress, 'allPairs', [i]);
         const pairAddress = String(pairAddressResult);
 
-        const pairContract = {
-          abi: PAIR_ABI as readonly unknown[],
-          address: pairAddress as string,
-        };
-
         const [token0AddressResult, token1AddressResult, reservesResult] = await Promise.all([
-          callContract(pairContract.abi, pairContract.address, 'token0', []),
-          callContract(pairContract.abi, pairContract.address, 'token1', []),
-          callContract(pairContract.abi, pairContract.address, 'getReserves', []),
+          callContract(PAIR_ABI, pairAddress, 'token0', []),
+          callContract(PAIR_ABI, pairAddress, 'token1', []),
+          callContract(PAIR_ABI, pairAddress, 'getReserves', []),
         ]);
 
         const token0Address = String(token0AddressResult).toLowerCase();
@@ -149,18 +138,10 @@ async function calculateTvlFromBlockchain(nativePriceUsd: number): Promise<numbe
         }
 
         // Get decimals for both tokens
-        const token0Contract = {
-          abi: ERC20_ABI as readonly unknown[],
-          address: token0Address as string,
-        };
-        const token1Contract = {
-          abi: ERC20_ABI as readonly unknown[],
-          address: token1Address as string,
-        };
 
         const [decimals0Result, decimals1Result] = await Promise.all([
-          callContract(token0Contract.abi, token0Contract.address, 'decimals', []),
-          callContract(token1Contract.abi, token1Contract.address, 'decimals', []),
+          callContract(ERC20_ABI, token0Address, 'decimals', []),
+          callContract(ERC20_ABI, token1Address, 'decimals', []),
         ]);
 
         const decimals0 = Number(decimals0Result);

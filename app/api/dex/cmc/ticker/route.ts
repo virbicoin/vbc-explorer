@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { formatUnits } from 'viem';
+import { callContract } from '@/lib/web3/provider';
 import { loadConfig, getCurrencySymbol, getWrappedNativeSymbol } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
@@ -25,7 +26,6 @@ export async function GET() {
 
   try {
     const config = loadConfig();
-    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const lpTokens = (config.dex?.lpTokens || {}) as Record<
       string,
       {
@@ -41,24 +41,19 @@ export async function GET() {
 
     for (const [key, lpToken] of Object.entries(lpTokens)) {
       try {
-        const pairContract = new ethers.Contract(lpToken.address, PAIR_ABI, provider);
-
-        const reserves = await pairContract.getReserves();
-        const token0Address = await pairContract.token0();
-        const token1Address = await pairContract.token1();
-
-        const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
-        const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
+        const reserves = await callContract(PAIR_ABI, lpToken.address, 'getReserves');
+        const token0Address = await callContract(PAIR_ABI, lpToken.address, 'token0');
+        const token1Address = await callContract(PAIR_ABI, lpToken.address, 'token1');
 
         const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
-          token0Contract.symbol(),
-          token0Contract.decimals(),
-          token1Contract.symbol(),
-          token1Contract.decimals(),
+          callContract(ERC20_ABI, token0Address, 'symbol'),
+          callContract(ERC20_ABI, token0Address, 'decimals'),
+          callContract(ERC20_ABI, token1Address, 'symbol'),
+          callContract(ERC20_ABI, token1Address, 'decimals'),
         ]);
 
-        const reserve0 = Number(ethers.formatUnits(reserves[0], decimals0));
-        const reserve1 = Number(ethers.formatUnits(reserves[1], decimals1));
+        const reserve0 = Number(formatUnits(BigInt(reserves[0]), decimals0));
+        const reserve1 = Number(formatUnits(BigInt(reserves[1]), decimals1));
 
         if (reserve0 <= 0 || reserve1 <= 0) continue;
 

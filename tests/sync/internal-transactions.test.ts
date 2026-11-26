@@ -6,7 +6,8 @@
  */
 import fs from 'node:fs';
 import http from 'node:http';
-import type { AddressInfo } from 'node:net';
+import net, { type AddressInfo } from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import mongoose from 'mongoose';
@@ -613,14 +614,42 @@ describe('Geth call traces', () => {
       seen.length = 0;
       const second = await source.traceTransaction('0x' + 'c'.repeat(64));
       expect(second).toHaveLength(7);
-      // after the first wave only debug_traceTransaction is asked (ethers also sends eth_chainId)
-      expect(seen.filter((method) => method !== 'eth_chainId').sort()).toEqual([
-        'debug_traceTransaction',
-        'eth_getTransactionByHash',
-      ]);
+      // after the first wave only debug_traceTransaction is asked
+      expect(seen.sort()).toEqual(['debug_traceTransaction', 'eth_getTransactionByHash']);
     } finally {
       source.close();
       await new Promise((resolve) => node.close(resolve));
+    }
+  });
+
+  it('reads traces over an IPC socket, where Ovbc serves its trace API', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trace-ipc-'));
+    const socketPath = path.join(dir, 'node.ipc');
+    const frames = [{ type: 'call', traceAddress: [], transactionHash: '0x' + 'a'.repeat(64) }];
+    const node = net.createServer((socket) => {
+      let pending = '';
+      socket.on('data', (chunk) => {
+        pending += chunk;
+        let call: { id: number; method: string };
+        try {
+          call = JSON.parse(pending);
+        } catch {
+          return; // the rest of the request is still on its way
+        }
+        pending = '';
+        const result = call.method === 'trace_transaction' ? frames : null;
+        socket.write(JSON.stringify({ jsonrpc: '2.0', id: call.id, result }));
+      });
+    });
+    await new Promise<void>((resolve) => node.listen(socketPath, resolve));
+    const source = createTraceSource(`ipc://${socketPath}`);
+    try {
+      expect(await source.traceTransaction('0x' + 'a'.repeat(64))).toEqual(frames);
+    } finally {
+      // the server only closes once the source has let go of its connection
+      source.close();
+      await new Promise((resolve) => node.close(resolve));
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 

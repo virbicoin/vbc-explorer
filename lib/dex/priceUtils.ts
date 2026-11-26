@@ -5,15 +5,10 @@
  * Uses DEX pool prices instead of external APIs for accuracy.
  */
 
-import { ethers } from 'ethers';
+import { formatUnits } from 'viem';
 import { loadConfig } from '@/lib/config';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
-import {
-  getProvider,
-  getCachedPoolInfo,
-  getCachedTokenInfo,
-  getLPAddresses,
-} from './cache-service';
+import { getCachedPoolInfo, getCachedTokenInfo, getLPAddresses } from './cache-service';
 
 type DexConfigLike = {
   factory?: string;
@@ -119,11 +114,11 @@ export async function getNativePriceFromDex(): Promise<number> {
     // Determine which token is stablecoin and which is wrapped native
     const isToken0Stablecoin = token0.address.toLowerCase() === ADDRESSES.STABLECOIN;
     const stablecoinReserve = isToken0Stablecoin
-      ? Number(ethers.formatUnits(reserve0, token0.decimals))
-      : Number(ethers.formatUnits(reserve1, token1.decimals));
+      ? Number(formatUnits(BigInt(reserve0), token0.decimals))
+      : Number(formatUnits(BigInt(reserve1), token1.decimals));
     const nativeReserve = isToken0Stablecoin
-      ? Number(ethers.formatUnits(reserve1, token1.decimals))
-      : Number(ethers.formatUnits(reserve0, token0.decimals));
+      ? Number(formatUnits(BigInt(reserve1), token1.decimals))
+      : Number(formatUnits(BigInt(reserve0), token0.decimals));
 
     if (nativeReserve === 0) return 0;
 
@@ -159,11 +154,11 @@ export async function getSecondaryPriceFromDex(): Promise<number> {
     // Determine which token is wrapped native and which is secondary
     const isToken0Native = token0.address.toLowerCase() === ADDRESSES.WRAPPED_NATIVE;
     const nativeReserve = isToken0Native
-      ? Number(ethers.formatUnits(reserve0, token0.decimals))
-      : Number(ethers.formatUnits(reserve1, token1.decimals));
+      ? Number(formatUnits(BigInt(reserve0), token0.decimals))
+      : Number(formatUnits(BigInt(reserve1), token1.decimals));
     const secondaryReserve = isToken0Native
-      ? Number(ethers.formatUnits(reserve1, token1.decimals))
-      : Number(ethers.formatUnits(reserve0, token0.decimals));
+      ? Number(formatUnits(BigInt(reserve1), token1.decimals))
+      : Number(formatUnits(BigInt(reserve0), token0.decimals));
 
     if (secondaryReserve === 0) return 0;
 
@@ -256,8 +251,8 @@ async function calculateTokenPriceFromPools(tokenAddress: string): Promise<numbe
       if (!isToken0 && !isToken1) continue;
 
       const pairedToken = isToken0 ? token1.address.toLowerCase() : token0.address.toLowerCase();
-      const reserveNum0 = Number(ethers.formatUnits(reserve0, token0.decimals));
-      const reserveNum1 = Number(ethers.formatUnits(reserve1, token1.decimals));
+      const reserveNum0 = Number(formatUnits(BigInt(reserve0), token0.decimals));
+      const reserveNum1 = Number(formatUnits(BigInt(reserve1), token1.decimals));
 
       // Paired with stablecoin
       if (pairedToken === ADDRESSES.STABLECOIN) {
@@ -292,8 +287,8 @@ export async function calculatePoolTvlUsd(
   const normalized0 = token0Address.toLowerCase();
   const normalized1 = token1Address.toLowerCase();
 
-  const reserveNum0 = Number(ethers.formatUnits(reserve0, decimals0));
-  const reserveNum1 = Number(ethers.formatUnits(reserve1, decimals1));
+  const reserveNum0 = Number(formatUnits(BigInt(reserve0), decimals0));
+  const reserveNum1 = Number(formatUnits(BigInt(reserve1), decimals1));
 
   // Check if either token is a stablecoin
   const token0Info = await getCachedTokenInfo(normalized0);

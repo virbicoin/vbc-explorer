@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import {
+  decodeFunctionData,
+  toFunctionSelector,
+  toFunctionSignature,
+  type Abi,
+  type Hex,
+} from 'viem';
 import { Transaction, Block, InternalTransaction, connectDB } from '../../../../models/index';
 import { getTransactionTypeGlobal, METHOD_IDS } from '../../../../lib/transaction-utils';
 import { tryGetDb } from '../../../../lib/db/get-db';
@@ -22,6 +28,8 @@ const config = loadConfig();
 function stringifyDecodedValue(value: unknown): string {
   if (typeof value === 'bigint') return value.toString();
   if (Array.isArray(value)) return `[${value.map(stringifyDecodedValue).join(', ')}]`;
+  // a tuple with named components decodes as an object
+  if (value && typeof value === 'object') return stringifyDecodedValue(Object.values(value));
   return String(value);
 }
 
@@ -54,16 +62,20 @@ async function decodeInputData(
             )
         : null;
       if (verified?.abi) {
-        const iface = new ethers.Interface(JSON.parse(verified.abi as string));
-        const parsed = iface.parseTransaction({ data: input });
-        if (parsed) {
+        const abi = JSON.parse(verified.abi as string) as Abi;
+        const selector = input.slice(0, 10).toLowerCase();
+        const fragment = abi.find(
+          (item) => item.type === 'function' && toFunctionSelector(item) === selector
+        );
+        if (fragment?.type === 'function') {
+          const { args = [] } = decodeFunctionData({ abi: [fragment], data: input as Hex });
           return {
-            methodName: parsed.name,
-            signature: parsed.signature,
-            params: parsed.fragment.inputs.map((param, i) => ({
+            methodName: fragment.name,
+            signature: toFunctionSignature(fragment),
+            params: fragment.inputs.map((param, i) => ({
               name: param.name || `arg${i}`,
               type: param.type,
-              value: stringifyDecodedValue(parsed.args[i]),
+              value: stringifyDecodedValue(args[i]),
             })),
           };
         }

@@ -54,14 +54,13 @@ const nextConfig: NextConfig = {
       'react-dom',
       '@heroicons/react',
       'react-icons',
-      'ethers',
       'viem',
       '@tanstack/react-query',
     ],
   },
 
   // Server-side packages that must not be bundled
-  serverExternalPackages: ['mongoose', 'web3', 'pino', 'thread-stream', 'pino-pretty', 'solc'],
+  serverExternalPackages: ['mongoose', 'pino', 'thread-stream', 'pino-pretty', 'solc'],
 
   // Solidity is compiled in worker_threads (lib/contract/solc-worker.cjs). The worker is started
   // by path and requires solc/wrapper itself, so the bundler never sees it; list both explicitly

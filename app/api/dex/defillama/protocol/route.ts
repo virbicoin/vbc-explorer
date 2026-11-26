@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { loadConfig, getNetworkName, getChainId } from '@/lib/config';
 import { getLPAddresses, getCachedPoolInfo, getCachedPoolStats } from '@/lib/dex/cache-service';
 import { getNativePriceFromDex, calculatePoolTvlUsd, ADDRESSES } from '@/lib/dex/priceUtils';
-import { ethers } from 'ethers';
 
 /**
  * DefiLlama Protocol API

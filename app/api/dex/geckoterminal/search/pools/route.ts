@@ -2,7 +2,7 @@
 // Format: https://docs.geckoterminal.com/reference/get_search-pools
 // Optimized with centralized caching
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { formatUnits } from 'viem';
 import { loadConfig, getNetworkSlug } from '@/lib/config';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import {
@@ -115,8 +115,8 @@ export async function GET(request: Request) {
         const baseAddress = isToken0Native ? token0.address : token1.address;
         const quoteAddress = isToken0Native ? token1.address : token0.address;
 
-        const reserve0Num = Number(ethers.formatUnits(reserve0, token0.decimals));
-        const reserve1Num = Number(ethers.formatUnits(reserve1, token1.decimals));
+        const reserve0Num = Number(formatUnits(BigInt(reserve0), token0.decimals));
+        const reserve1Num = Number(formatUnits(BigInt(reserve1), token1.decimals));
 
         let reserveUsd = '0';
         if (isToken0Native && nativePriceUsd > 0) {

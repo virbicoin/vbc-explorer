@@ -1,7 +1,8 @@
 // GeckoTerminal Simple Token Price API - Returns token prices in USD
 // Format: https://docs.geckoterminal.com/reference/get_simple-networks-network-token_prices-addresses
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { formatUnits, isAddress } from 'viem';
+import { callContract } from '@/lib/web3/provider';
 import { loadConfig, getNetworkSlug } from '@/lib/config';
 import { connectDB } from '@/models/index';
 import { getNativePrice } from '@/lib/price-service';
@@ -63,7 +64,6 @@ export async function GET(request: Request) {
 
     const config = loadConfig();
 
-    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';
     const usdtAddress = config.dex?.tokens?.usdt?.address?.toLowerCase() || '';
     const networkSlug = getNetworkSlug();
@@ -85,7 +85,7 @@ export async function GET(request: Request) {
     for (const address of addresses) {
       try {
         // Validate address format
-        if (!ethers.isAddress(address)) {
+        if (!isAddress(address)) {
           tokenPrices[address] = null;
           continue;
         }
@@ -104,12 +104,11 @@ export async function GET(request: Request) {
           for (const [, lpInfo] of Object.entries(lpTokens)) {
             try {
               const lpAddress = (lpInfo as { address: string }).address;
-              const pairContract = new ethers.Contract(lpAddress, PAIR_ABI, provider);
 
               const [token0, token1, reserves] = await Promise.all([
-                pairContract.token0(),
-                pairContract.token1(),
-                pairContract.getReserves(),
+                callContract(PAIR_ABI, lpAddress, 'token0'),
+                callContract(PAIR_ABI, lpAddress, 'token1'),
+                callContract(PAIR_ABI, lpAddress, 'getReserves'),
               ]);
 
               const token0Lower = token0.toLowerCase();
@@ -119,15 +118,13 @@ export async function GET(request: Request) {
                 const isToken0 = token0Lower === address;
                 const pairedToken = isToken0 ? token1Lower : token0Lower;
 
-                const token0Contract = new ethers.Contract(token0, ERC20_ABI, provider);
-                const token1Contract = new ethers.Contract(token1, ERC20_ABI, provider);
                 const [dec0, dec1] = await Promise.all([
-                  token0Contract.decimals(),
-                  token1Contract.decimals(),
+                  callContract(ERC20_ABI, token0, 'decimals'),
+                  callContract(ERC20_ABI, token1, 'decimals'),
                 ]);
 
-                const reserve0 = Number(ethers.formatUnits(reserves[0], dec0));
-                const reserve1 = Number(ethers.formatUnits(reserves[1], dec1));
+                const reserve0 = Number(formatUnits(BigInt(reserves[0]), dec0));
+                const reserve1 = Number(formatUnits(BigInt(reserves[1]), dec1));
 
                 if (reserve0 > 0 && reserve1 > 0) {
                   if (pairedToken === wrappedNativeAddress && nativePriceUsd > 0) {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { formatUnits } from 'viem';
+import { callContract } from '@/lib/web3/provider';
 import { loadConfig } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
@@ -50,7 +51,6 @@ export async function GET() {
     }
 
     const config = loadConfig();
-    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
 
     // Get LP tokens from config
     const lpTokens = (config.dex?.lpTokens || {}) as Record<
@@ -68,29 +68,25 @@ export async function GET() {
 
     for (const [key, lpToken] of Object.entries(lpTokens)) {
       try {
-        const pairContract = new ethers.Contract(lpToken.address, PAIR_ABI, provider);
-
         // Get reserves
-        const reserves = await pairContract.getReserves();
+        const reserves = await callContract(PAIR_ABI, lpToken.address, 'getReserves');
         const reserve0 = reserves[0];
         const reserve1 = reserves[1];
-        const token0Address = await pairContract.token0();
-        const token1Address = await pairContract.token1();
+        const token0Address = await callContract(PAIR_ABI, lpToken.address, 'token0');
+        const token1Address = await callContract(PAIR_ABI, lpToken.address, 'token1');
 
         // Get token info
-        const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
-        const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
 
         const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
-          token0Contract.symbol(),
-          token0Contract.decimals(),
-          token1Contract.symbol(),
-          token1Contract.decimals(),
+          callContract(ERC20_ABI, token0Address, 'symbol'),
+          callContract(ERC20_ABI, token0Address, 'decimals'),
+          callContract(ERC20_ABI, token1Address, 'symbol'),
+          callContract(ERC20_ABI, token1Address, 'decimals'),
         ]);
 
         // Calculate price
-        const reserve0Formatted = Number(ethers.formatUnits(reserve0, decimals0));
-        const reserve1Formatted = Number(ethers.formatUnits(reserve1, decimals1));
+        const reserve0Formatted = Number(formatUnits(BigInt(reserve0), decimals0));
+        const reserve1Formatted = Number(formatUnits(BigInt(reserve1), decimals1));
 
         if (reserve0Formatted === 0 || reserve1Formatted === 0) continue;
 

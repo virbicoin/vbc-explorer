@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { formatUnits } from 'viem';
+import { callContract } from '@/lib/web3/provider';
 import dbConnect from '@/lib/db';
 import { requireDb, tryGetDb } from '@/lib/db/get-db';
 import { loadConfig, getCurrencySymbol, getWrappedNativeSymbol } from '@/lib/config';
@@ -74,20 +75,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ pair
       return NextResponse.json({ error: 'Trading pair not found' }, { status: 404 });
     }
 
-    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
-    const pairContract = new ethers.Contract(matchedPair.address, PAIR_ABI, provider);
-
-    const token0Address = await pairContract.token0();
-    const token1Address = await pairContract.token1();
-
-    const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
-    const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
+    const token0Address = await callContract(PAIR_ABI, matchedPair.address, 'token0');
+    const token1Address = await callContract(PAIR_ABI, matchedPair.address, 'token1');
 
     const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
-      token0Contract.symbol(),
-      token0Contract.decimals(),
-      token1Contract.symbol(),
-      token1Contract.decimals(),
+      callContract(ERC20_ABI, token0Address, 'symbol'),
+      callContract(ERC20_ABI, token0Address, 'decimals'),
+      callContract(ERC20_ABI, token1Address, 'symbol'),
+      callContract(ERC20_ABI, token1Address, 'decimals'),
     ]);
 
     const displaySymbol0 = symbol0 === wrappedSymbol ? nativeSymbol : symbol0;
@@ -126,25 +121,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ pair
         if (isToken0Base) {
           if (tokenInIsToken0) {
             // Selling base (token0) for quote (token1)
-            baseVolume = Number(ethers.formatUnits(swap.amountIn || 0, decimals0));
-            quoteVolume = Number(ethers.formatUnits(swap.amountOut || 0, decimals1));
+            baseVolume = Number(formatUnits(BigInt(swap.amountIn || 0), decimals0));
+            quoteVolume = Number(formatUnits(BigInt(swap.amountOut || 0), decimals1));
             tradeType = 'sell';
           } else {
             // Buying base (token0) with quote (token1)
-            baseVolume = Number(ethers.formatUnits(swap.amountOut || 0, decimals0));
-            quoteVolume = Number(ethers.formatUnits(swap.amountIn || 0, decimals1));
+            baseVolume = Number(formatUnits(BigInt(swap.amountOut || 0), decimals0));
+            quoteVolume = Number(formatUnits(BigInt(swap.amountIn || 0), decimals1));
             tradeType = 'buy';
           }
         } else {
           if (tokenInIsToken0) {
             // Buying base (token1) with quote (token0)
-            baseVolume = Number(ethers.formatUnits(swap.amountOut || 0, decimals1));
-            quoteVolume = Number(ethers.formatUnits(swap.amountIn || 0, decimals0));
+            baseVolume = Number(formatUnits(BigInt(swap.amountOut || 0), decimals1));
+            quoteVolume = Number(formatUnits(BigInt(swap.amountIn || 0), decimals0));
             tradeType = 'buy';
           } else {
             // Selling base (token1) for quote (token0)
-            baseVolume = Number(ethers.formatUnits(swap.amountIn || 0, decimals1));
-            quoteVolume = Number(ethers.formatUnits(swap.amountOut || 0, decimals0));
+            baseVolume = Number(formatUnits(BigInt(swap.amountIn || 0), decimals1));
+            quoteVolume = Number(formatUnits(BigInt(swap.amountOut || 0), decimals0));
             tradeType = 'sell';
           }
         }

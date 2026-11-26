@@ -1,7 +1,7 @@
 // GeckoTerminal Pools API - Returns pool data in GeckoTerminal compatible format
 // Optimized version with centralized caching to reduce RPC calls
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { formatUnits } from 'viem';
 import { loadConfig, getNetworkSlug } from '@/lib/config';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import {
@@ -132,8 +132,8 @@ export async function GET() {
 
             const { token0, token1, reserve0, reserve1 } = poolInfo;
 
-            const reserveNum0 = Number(ethers.formatUnits(reserve0, token0.decimals));
-            const reserveNum1 = Number(ethers.formatUnits(reserve1, token1.decimals));
+            const reserveNum0 = Number(formatUnits(BigInt(reserve0), token0.decimals));
+            const reserveNum1 = Number(formatUnits(BigInt(reserve1), token1.decimals));
 
             if (reserveNum0 === 0 || reserveNum1 === 0) return null;
 

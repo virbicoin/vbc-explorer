@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { callContract } from '@/lib/web3/provider';
 import { loadConfig } from '@/lib/config';
 
 export const dynamic = 'force-dynamic';
@@ -46,7 +46,6 @@ export async function GET() {
     }
 
     const config = loadConfig();
-    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const assets: Record<string, Asset> = {};
 
     // Add native token
@@ -92,8 +91,10 @@ export async function GET() {
         };
 
         // Verify token exists on-chain
-        const tokenContract = new ethers.Contract(tokenData.address, ERC20_ABI, provider);
-        const [name, symbol] = await Promise.all([tokenContract.name(), tokenContract.symbol()]);
+        const [name, symbol] = await Promise.all([
+          callContract(ERC20_ABI, tokenData.address, 'name'),
+          callContract(ERC20_ABI, tokenData.address, 'symbol'),
+        ]);
 
         assets[symbol] = {
           name: name,

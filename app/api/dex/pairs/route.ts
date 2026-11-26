@@ -145,11 +145,10 @@ async function getTokenInfo(
   }
 
   try {
-    const contract = { abi: ERC20_ABI as readonly unknown[], address: address as string };
     const [nameResult, symbolResult, decimalsResult] = await Promise.all([
-      callContract(contract.abi, contract.address, 'name', []),
-      callContract(contract.abi, contract.address, 'symbol', []),
-      callContract(contract.abi, contract.address, 'decimals', []),
+      callContract(ERC20_ABI, address, 'name', []),
+      callContract(ERC20_ABI, address, 'symbol', []),
+      callContract(ERC20_ABI, address, 'decimals', []),
     ]);
 
     const name = String(nameResult);
@@ -213,8 +212,7 @@ export async function GET() {
     // Get native token info
     const nativeToken = getNativeToken(appConfig.currency);
 
-    const factory = { abi: FACTORY_ABI as readonly unknown[], address: factoryAddress as string };
-    const pairsLength = await callContract(factory.abi, factory.address, 'allPairsLength', []);
+    const pairsLength = await callContract(FACTORY_ABI, factoryAddress, 'allPairsLength', []);
     const numPairs = Number(pairsLength);
 
     const pairs: PairInfo[] = [];
@@ -224,7 +222,7 @@ export async function GET() {
 
     for (let i = 0; i < maxPairs; i++) {
       try {
-        const pairAddressResult = await callContract(factory.abi, factory.address, 'allPairs', [i]);
+        const pairAddressResult = await callContract(FACTORY_ABI, factoryAddress, 'allPairs', [i]);
         const pairAddress = String(pairAddressResult);
 
         // Skip blacklisted LP pairs
@@ -232,17 +230,12 @@ export async function GET() {
           continue;
         }
 
-        const pairContract = {
-          abi: PAIR_ABI as readonly unknown[],
-          address: pairAddress as string,
-        };
-
         const [token0AddressResult, token1AddressResult, reservesResult, totalSupplyResult] =
           await Promise.all([
-            callContract(pairContract.abi, pairContract.address, 'token0', []),
-            callContract(pairContract.abi, pairContract.address, 'token1', []),
-            callContract(pairContract.abi, pairContract.address, 'getReserves', []),
-            callContract(pairContract.abi, pairContract.address, 'totalSupply', []),
+            callContract(PAIR_ABI, pairAddress, 'token0', []),
+            callContract(PAIR_ABI, pairAddress, 'token1', []),
+            callContract(PAIR_ABI, pairAddress, 'getReserves', []),
+            callContract(PAIR_ABI, pairAddress, 'totalSupply', []),
           ]);
 
         const token0Address = String(token0AddressResult);
@@ -378,16 +371,7 @@ export async function GET() {
     // Check each token's contract for logoUrl
     for (const tokenInfo of tokensNeedingIcons) {
       try {
-        const tokenContract = {
-          abi: ERC20_ABI as readonly unknown[],
-          address: tokenInfo.address as string,
-        };
-        const logoUrl = (await callContract(
-          tokenContract.abi,
-          tokenContract.address,
-          'logoUrl',
-          []
-        )) as string;
+        const logoUrl = (await callContract(ERC20_ABI, tokenInfo.address, 'logoUrl', [])) as string;
         if (logoUrl && logoUrl !== '') {
           if (tokenInfo.isBase) {
             pairs[tokenInfo.pairIndex].baseToken.logoURI = logoUrl;

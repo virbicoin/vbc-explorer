@@ -3,7 +3,7 @@
  * the price arithmetic.
  */
 import { describe, expect, it } from 'vitest';
-import { ethers } from 'ethers';
+import { decodeFunctionResult, parseAbi, type Hex } from 'viem';
 import {
   PAIR_VIEW_ABI,
   configuredAddress,
@@ -33,28 +33,32 @@ const pair = (overrides: Partial<PairSnapshot> = {}): PairSnapshot => ({
 });
 
 describe('PAIR_VIEW_ABI', () => {
-  const pairInterface = new ethers.Interface(PAIR_VIEW_ABI);
+  const abi = parseAbi(PAIR_VIEW_ABI);
+  const decode = (answer: string) =>
+    decodeFunctionResult({ abi, functionName: 'getReserves', data: answer as Hex });
 
   it('decodes the two-word answer of the pairs of this DEX', () => {
     const answer = `0x${word(NATIVE_RESERVE)}${word(STABLE_RESERVE)}`;
-    const [reserve0, reserve1] = pairInterface.decodeFunctionResult('getReserves', answer);
+    const [reserve0, reserve1] = decode(answer);
     expect(reserve0).toBe(NATIVE_RESERVE);
     expect(reserve1).toBe(STABLE_RESERVE);
   });
 
   it('decodes the three-word answer of a Uniswap V2 pair', () => {
     const answer = `0x${word(NATIVE_RESERVE)}${word(STABLE_RESERVE)}${word(1_760_000_000n)}`;
-    const [reserve0, reserve1] = pairInterface.decodeFunctionResult('getReserves', answer);
+    const [reserve0, reserve1] = decode(answer);
     expect(reserve0).toBe(NATIVE_RESERVE);
     expect(reserve1).toBe(STABLE_RESERVE);
   });
 
   it('is the declaration a three-value one cannot replace', () => {
-    const uniswap = new ethers.Interface([
+    const uniswap = parseAbi([
       'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
     ]);
-    const answer = `0x${word(NATIVE_RESERVE)}${word(STABLE_RESERVE)}`;
-    expect(() => uniswap.decodeFunctionResult('getReserves', answer)).toThrow();
+    const answer = `0x${word(NATIVE_RESERVE)}${word(STABLE_RESERVE)}` as Hex;
+    expect(() =>
+      decodeFunctionResult({ abi: uniswap, functionName: 'getReserves', data: answer })
+    ).toThrow();
   });
 });
 

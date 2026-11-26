@@ -91,16 +91,12 @@ async function detectContractType(address: string): Promise<ContractInfo> {
     }
 
     // Check for ERC-165 (NFT detection)
-    const erc165Contract = { abi: ERC165_ABI as readonly unknown[], address: address as string };
 
     // Check for ERC-721
     try {
-      const isERC721 = await callContract(
-        erc165Contract.abi,
-        erc165Contract.address,
-        'supportsInterface',
-        [ERC721_INTERFACE_ID]
-      );
+      const isERC721 = await callContract(ERC165_ABI, address, 'supportsInterface', [
+        ERC721_INTERFACE_ID,
+      ]);
       if (isERC721) {
         result.tokenType = 'ERC721';
       }
@@ -111,12 +107,9 @@ async function detectContractType(address: string): Promise<ContractInfo> {
     // Check for ERC-1155
     if (result.tokenType === 'Contract') {
       try {
-        const isERC1155 = await callContract(
-          erc165Contract.abi,
-          erc165Contract.address,
-          'supportsInterface',
-          [ERC1155_INTERFACE_ID]
-        );
+        const isERC1155 = await callContract(ERC165_ABI, address, 'supportsInterface', [
+          ERC1155_INTERFACE_ID,
+        ]);
         if (isERC1155) {
           result.tokenType = 'ERC1155';
         }
@@ -126,13 +119,12 @@ async function detectContractType(address: string): Promise<ContractInfo> {
     }
 
     // Try to get token metadata (works for both ERC-20 and NFTs)
-    const erc20Contract = { abi: ERC20_ABI as readonly unknown[], address: address as string };
 
     try {
       const [name, symbol, decimals] = await Promise.all([
-        callContract(erc20Contract.abi, erc20Contract.address, 'name', []).catch(() => null),
-        callContract(erc20Contract.abi, erc20Contract.address, 'symbol', []).catch(() => null),
-        callContract(erc20Contract.abi, erc20Contract.address, 'decimals', []).catch(() => null),
+        callContract(ERC20_ABI, address, 'name', []).catch(() => null),
+        callContract(ERC20_ABI, address, 'symbol', []).catch(() => null),
+        callContract(ERC20_ABI, address, 'decimals', []).catch(() => null),
       ]);
 
       if (name) result.name = String(name);

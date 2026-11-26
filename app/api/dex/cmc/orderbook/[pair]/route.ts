@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { formatUnits } from 'viem';
+import { callContract } from '@/lib/web3/provider';
 import { loadConfig } from '@/lib/config';
 
 interface LpToken {
@@ -89,25 +90,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ pair
       return NextResponse.json({ error: 'Trading pair not found' }, { status: 404 });
     }
 
-    const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
-    const pairContract = new ethers.Contract(matchedPair.address, PAIR_ABI, provider);
-
-    const [reserve0, reserve1] = await pairContract.getReserves();
-    const token0Address = await pairContract.token0();
-    const token1Address = await pairContract.token1();
-
-    const token0Contract = new ethers.Contract(token0Address, ERC20_ABI, provider);
-    const token1Contract = new ethers.Contract(token1Address, ERC20_ABI, provider);
+    const [reserve0, reserve1] = await callContract(PAIR_ABI, matchedPair.address, 'getReserves');
+    const token0Address = await callContract(PAIR_ABI, matchedPair.address, 'token0');
+    const token1Address = await callContract(PAIR_ABI, matchedPair.address, 'token1');
 
     const [symbol0, decimals0, symbol1, decimals1] = await Promise.all([
-      token0Contract.symbol(),
-      token0Contract.decimals(),
-      token1Contract.symbol(),
-      token1Contract.decimals(),
+      callContract(ERC20_ABI, token0Address, 'symbol'),
+      callContract(ERC20_ABI, token0Address, 'decimals'),
+      callContract(ERC20_ABI, token1Address, 'symbol'),
+      callContract(ERC20_ABI, token1Address, 'decimals'),
     ]);
 
-    const reserve0Num = Number(ethers.formatUnits(reserve0, decimals0));
-    const reserve1Num = Number(ethers.formatUnits(reserve1, decimals1));
+    const reserve0Num = Number(formatUnits(BigInt(reserve0), decimals0));
+    const reserve1Num = Number(formatUnits(BigInt(reserve1), decimals1));
 
     // Determine which token is base and which is quote
     const displaySymbol0 = symbol0 === wrappedNativeSymbol ? nativeSymbol : symbol0;

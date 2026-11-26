@@ -184,11 +184,10 @@ async function isNftContract(address: string): Promise<boolean> {
   }
 
   try {
-    const erc165 = { abi: ERC165_ABI as readonly unknown[], address: address as string };
     for (const interfaceId of [ERC721_INTERFACE_ID, ERC1155_INTERFACE_ID]) {
       try {
         const supported = await withTimeout(
-          callContract(erc165.abi, erc165.address, 'supportsInterface', [interfaceId]),
+          callContract(ERC165_ABI, address, 'supportsInterface', [interfaceId]),
           5000
         );
         if (supported === true) return true;

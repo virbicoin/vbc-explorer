@@ -2,7 +2,7 @@
 // Format: https://docs.geckoterminal.com/reference/get_networks-network-new_pools
 // Optimized with centralized caching
 import { NextResponse } from 'next/server';
-import { ethers } from 'ethers';
+import { formatUnits } from 'viem';
 import { loadConfig } from '@/lib/config';
 import { connectDB, DexSwap } from '@/models/index';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
@@ -110,8 +110,8 @@ export async function GET(request: Request) {
         const baseAddress = isToken0Native ? token0.address : token1.address;
         const quoteAddress = isToken0Native ? token1.address : token0.address;
 
-        const reserve0Num = Number(ethers.formatUnits(reserve0, token0.decimals));
-        const reserve1Num = Number(ethers.formatUnits(reserve1, token1.decimals));
+        const reserve0Num = Number(formatUnits(BigInt(reserve0), token0.decimals));
+        const reserve1Num = Number(formatUnits(BigInt(reserve1), token1.decimals));
 
         // Calculate TVL using proper method
         // For stablecoin pairs, use stablecoin reserve * 2

@@ -71,7 +71,7 @@ import {
   Transaction,
 } from '../models/index';
 import { syncLaunchpadTokens } from '../lib/launchpad/sync';
-import { loadConfig, getFeatures, getWeb3ProviderURL } from '../lib/config';
+import { loadConfig, getFeatures } from '../lib/config';
 import {
   createErc1155Node,
   syncErc1155ToConfirmedHead,
@@ -782,13 +782,9 @@ async function registerTokenContract(
       return 'none';
     }
 
-    const tokenContract = {
-      abi: minimalErc721Abi as readonly unknown[],
-      address: contractAddress as string,
-    };
     try {
-      const name = await callContract(tokenContract.abi, tokenContract.address, 'name', []);
-      const symbol = await callContract(tokenContract.abi, tokenContract.address, 'symbol', []);
+      const name = await callContract(minimalErc721Abi, contractAddress, 'name', []);
+      const symbol = await callContract(minimalErc721Abi, contractAddress, 'symbol', []);
       const decimals = 0;
       const totalSupply = 0;
 
@@ -1063,27 +1059,21 @@ const ERC20_BASIC_ABI = [
 // Helper function to get pair-based LP token name and symbol
 async function getLPPairInfo(pairAddress: string): Promise<{ name: string; symbol: string }> {
   try {
-    const lpContract = { abi: LP_TOKEN_ABI as readonly unknown[], address: pairAddress as string };
-
     // Get token0 and token1 addresses
     const [token0Address, token1Address] = await Promise.all([
-      callContract(lpContract.abi, lpContract.address, 'token0', []),
-      callContract(lpContract.abi, lpContract.address, 'token1', []),
+      callContract(LP_TOKEN_ABI, pairAddress, 'token0', []),
+      callContract(LP_TOKEN_ABI, pairAddress, 'token1', []),
     ]);
 
     // Get symbols for both tokens
-    const token0Contract = {
-      abi: ERC20_BASIC_ABI as readonly unknown[],
-      address: String(token0Address) as string,
-    };
-    const token1Contract = {
-      abi: ERC20_BASIC_ABI as readonly unknown[],
-      address: String(token1Address) as string,
-    };
 
     const [symbol0, symbol1] = await Promise.all([
-      callContract(token0Contract.abi, token0Contract.address, 'symbol', []).catch(() => 'UNKNOWN'),
-      callContract(token1Contract.abi, token1Contract.address, 'symbol', []).catch(() => 'UNKNOWN'),
+      callContract(ERC20_BASIC_ABI, String(token0Address) as string, 'symbol', []).catch(
+        () => 'UNKNOWN'
+      ),
+      callContract(ERC20_BASIC_ABI, String(token1Address) as string, 'symbol', []).catch(
+        () => 'UNKNOWN'
+      ),
     ]);
 
     const s0 = String(symbol0);
@@ -1116,13 +1106,7 @@ async function syncLPTokensFromFactory() {
 
     console.log(`📍 Using factory address: ${factoryAddress}`);
 
-    const factory = { abi: FACTORY_ABI as readonly unknown[], address: factoryAddress as string };
-    const pairsLengthResult = await callContract(
-      factory.abi,
-      factory.address,
-      'allPairsLength',
-      []
-    );
+    const pairsLengthResult = await callContract(FACTORY_ABI, factoryAddress, 'allPairsLength', []);
     const pairsLength = Number(pairsLengthResult);
     console.log(`📊 Found ${pairsLength} LP pairs in factory`);
 
@@ -1136,7 +1120,7 @@ async function syncLPTokensFromFactory() {
     // Process each pair
     for (let i = 0; i < pairsLength; i++) {
       try {
-        const pairAddressResult = await callContract(factory.abi, factory.address, 'allPairs', [i]);
+        const pairAddressResult = await callContract(FACTORY_ABI, factoryAddress, 'allPairs', [i]);
         const pairAddress = String(pairAddressResult);
         const normalizedAddress = pairAddress.toLowerCase();
 
@@ -1173,10 +1157,9 @@ async function syncLPTokensFromFactory() {
         }
 
         // Get LP token info from contract
-        const lpToken = { abi: LP_TOKEN_ABI as readonly unknown[], address: pairAddress as string };
         const [decimals, totalSupplyResult] = await Promise.all([
-          callContract(lpToken.abi, lpToken.address, 'decimals', []),
-          callContract(lpToken.abi, lpToken.address, 'totalSupply', []),
+          callContract(LP_TOKEN_ABI, pairAddress, 'decimals', []),
+          callContract(LP_TOKEN_ABI, pairAddress, 'totalSupply', []),
         ]);
 
         // Get human-readable name and symbol from pair tokens
@@ -1251,10 +1234,9 @@ async function adoptContractsCreatedByContracts(): Promise<number> {
       if ((await registerTokenContract(address, blockNumber, existing)) !== 'created') continue;
       registered++;
       // a pair contract: LP token named after its tokens
-      const pair = { abi: LP_TOKEN_ABI as readonly unknown[], address: address as string };
       const isPair = await Promise.all([
-        callContract(pair.abi, pair.address, 'token0', []),
-        callContract(pair.abi, pair.address, 'token1', []),
+        callContract(LP_TOKEN_ABI, address, 'token0', []),
+        callContract(LP_TOKEN_ABI, address, 'token1', []),
       ])
         .then(() => true)
         .catch(() => false);
@@ -1297,7 +1279,7 @@ async function runErc1155Sync(): Promise<void> {
     const { confirmations } = resolveSyncSettings(
       (loadConfig() as { sync?: { confirmations?: unknown; maxReorgDepth?: unknown } }).sync
     );
-    erc1155Node ??= createErc1155Node(getWeb3ProviderURL());
+    erc1155Node ??= createErc1155Node();
     const result = await syncErc1155ToConfirmedHead(erc1155Node, { confirmations });
     if (result.ranges > 0) {
       console.log(

@@ -177,10 +177,8 @@ async function getTokensWithPairs(
   const WRAPPED_NATIVE_ADDRESS = dexConfig.wrappedNative.toLowerCase();
 
   try {
-    const factory = { abi: FACTORY_ABI as readonly unknown[], address: DEX_FACTORY as string };
-
     // Get total number of pairs
-    const pairsLength = await callContract(factory.abi, factory.address, 'allPairsLength', []);
+    const pairsLength = await callContract(FACTORY_ABI, DEX_FACTORY, 'allPairsLength', []);
     const numPairs = Number(pairsLength);
 
     console.log(`Found ${numPairs} pairs in DEX factory`);
@@ -188,14 +186,13 @@ async function getTokensWithPairs(
     // Get all pairs and extract tokens
     for (let i = 0; i < numPairs; i++) {
       try {
-        const pairAddress = (await callContract(factory.abi, factory.address, 'allPairs', [
+        const pairAddress = (await callContract(FACTORY_ABI, DEX_FACTORY, 'allPairs', [
           i,
         ])) as string;
-        const pair = { abi: PAIR_ABI as readonly unknown[], address: pairAddress as string };
 
         const [token0, token1] = await Promise.all([
-          callContract(pair.abi, pair.address, 'token0', []),
-          callContract(pair.abi, pair.address, 'token1', []),
+          callContract(PAIR_ABI, pairAddress, 'token0', []),
+          callContract(PAIR_ABI, pairAddress, 'token1', []),
         ]);
 
         // Add both tokens to the set (lowercase for consistency)

@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { formatUnits, type Address } from 'viem';
-import { useReadContract, useReadContracts } from 'wagmi';
-import { ethers } from 'ethers';
+import { formatUnits, parseAbi, type Address } from 'viem';
+import { usePublicClient, useReadContract, useReadContracts } from 'wagmi';
 import { TokenFactoryV2ABI } from '@/abi/TokenFactoryV2ABI';
 import { TokenFactoryABI, ERC20ABI } from '@/abi/TokenFactoryABI';
 import { useLaunchpadConfig, type LegacyFactory } from '@/hooks/useLaunchpadConfig';
@@ -12,6 +11,15 @@ import Link from 'next/link';
 
 // Dead address - tokens sent here are considered burned
 const DEAD_ADDRESS = '0x000000000000000000000000000000000000dead' as const;
+
+// What a token of a legacy factory is asked (old tokens have no metadata functions)
+const LEGACY_TOKEN_READS = parseAbi([
+  'function totalSupply() view returns (uint256)',
+  'function balanceOf(address) view returns (uint256)',
+  'function logoUrl() view returns (string)',
+  'function description() view returns (string)',
+  'function website() view returns (string)',
+]);
 
 interface TokenInfo {
   address: string;
@@ -37,6 +45,7 @@ export function TokenList() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const tokensPerPage = 10;
+  const publicClient = usePublicClient();
 
   // Fetch blacklist and legacy factories from config
   useEffect(() => {
@@ -63,25 +72,27 @@ export function TokenList() {
   // Fetch tokens from legacy factories
   useEffect(() => {
     const fetchLegacyTokens = async () => {
-      if (legacyFactories.length === 0) return;
+      if (legacyFactories.length === 0 || !publicClient) return;
 
       setIsLegacyLoading(true);
       const allLegacyTokens: TokenInfo[] = [];
 
       try {
-        // Get RPC URL from config
-        const configResponse = await fetch('/api/config/client');
-        if (!configResponse.ok) return;
-        const configData = await configResponse.json();
-        const rpcUrl = configData.network?.rpcUrl || 'http://localhost:8545';
-        const provider = new ethers.JsonRpcProvider(rpcUrl);
-
         for (const factory of legacyFactories) {
           try {
-            const factoryContract = new ethers.Contract(factory.address, TokenFactoryABI, provider);
-
+            const factoryAddress = factory.address as Address;
             // Get all tokens from legacy factory
-            const tokens = await factoryContract.getAllTokens();
+            const tokens = await publicClient.readContract({
+              address: factoryAddress,
+              abi: TokenFactoryABI,
+              functionName: 'getAllTokens',
+            });
+            // the metadata functions of a V2 token (all return a string)
+            const metadata = (
+              token: Address,
+              functionName: 'logoUrl' | 'description' | 'website'
+            ) =>
+              publicClient.readContract({ address: token, abi: LEGACY_TOKEN_READS, functionName });
 
             for (const tokenAddr of tokens) {
               // Skip blacklisted
@@ -89,26 +100,29 @@ export function TokenList() {
 
               try {
                 // Get token info from factory
-                const tokenInfo = await factoryContract.tokenInfo(tokenAddr);
-                const [creator, name, symbol, decimals, , createdAt] = tokenInfo;
+                const [creator, name, symbol, decimals, , createdAt] =
+                  await publicClient.readContract({
+                    address: factoryAddress,
+                    abi: TokenFactoryABI,
+                    functionName: 'tokenInfo',
+                    args: [tokenAddr],
+                  });
 
                 // Get actual total supply from token contract
-                const tokenContract = new ethers.Contract(
-                  tokenAddr,
-                  [
-                    'function totalSupply() view returns (uint256)',
-                    'function balanceOf(address) view returns (uint256)',
-                    'function logoUrl() view returns (string)',
-                    'function description() view returns (string)',
-                    'function website() view returns (string)',
-                  ],
-                  provider
-                );
-                const actualTotalSupply = BigInt(await tokenContract.totalSupply());
+                const actualTotalSupply = await publicClient.readContract({
+                  address: tokenAddr,
+                  abi: LEGACY_TOKEN_READS,
+                  functionName: 'totalSupply',
+                });
                 if (actualTotalSupply <= 0n) continue;
 
                 // Get dead balance
-                const deadBalance = BigInt(await tokenContract.balanceOf(DEAD_ADDRESS));
+                const deadBalance = await publicClient.readContract({
+                  address: tokenAddr,
+                  abi: LEGACY_TOKEN_READS,
+                  functionName: 'balanceOf',
+                  args: [DEAD_ADDRESS],
+                });
                 const circulatingSupply = actualTotalSupply - deadBalance;
                 if (circulatingSupply <= 0n) continue;
 
@@ -117,9 +131,9 @@ export function TokenList() {
                 let description: string | undefined;
                 let website: string | undefined;
                 try {
-                  logoUrl = await tokenContract.logoUrl();
-                  description = await tokenContract.description();
-                  website = await tokenContract.website();
+                  logoUrl = await metadata(tokenAddr, 'logoUrl');
+                  description = await metadata(tokenAddr, 'description');
+                  website = await metadata(tokenAddr, 'website');
                 } catch {
                   // Metadata functions don't exist on this token
                 }
@@ -155,7 +169,7 @@ export function TokenList() {
     };
 
     fetchLegacyTokens();
-  }, [legacyFactories, blacklistedTokens]);
+  }, [legacyFactories, blacklistedTokens, publicClient]);
 
   // Always use V2 factory ABI
   const factoryABI = TokenFactoryV2ABI;

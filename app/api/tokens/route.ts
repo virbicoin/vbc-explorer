@@ -296,13 +296,9 @@ export async function GET(request: NextRequest) {
 
   for (const factoryAddress of uniqueFactoryAddresses) {
     try {
-      const factory = {
-        abi: TokenFactoryV2ABI as readonly unknown[],
-        address: factoryAddress as string,
-      };
       const factoryTokens = (await callContract(
-        factory.abi,
-        factory.address,
+        TokenFactoryV2ABI,
+        factoryAddress,
         'getAllTokens',
         []
       )) as string[];
@@ -314,10 +310,6 @@ export async function GET(request: NextRequest) {
 
       for (const tokenAddress of missingFactoryTokens) {
         const lower = tokenAddress.toLowerCase();
-        const tokenContract = {
-          abi: ERC20_META_ABI as readonly unknown[],
-          address: tokenAddress as string,
-        };
 
         let name = 'Unknown';
         let symbol = 'UNKNOWN';
@@ -325,36 +317,22 @@ export async function GET(request: NextRequest) {
         let totalSupply = '0';
 
         try {
-          name = (await callContract(
-            tokenContract.abi,
-            tokenContract.address,
-            'name',
-            []
-          )) as string;
+          name = (await callContract(ERC20_META_ABI, tokenAddress, 'name', [])) as string;
         } catch {
           /* ignore */
         }
         try {
-          symbol = (await callContract(
-            tokenContract.abi,
-            tokenContract.address,
-            'symbol',
-            []
-          )) as string;
+          symbol = (await callContract(ERC20_META_ABI, tokenAddress, 'symbol', [])) as string;
         } catch {
           /* ignore */
         }
         try {
-          decimals = Number(
-            await callContract(tokenContract.abi, tokenContract.address, 'decimals', [])
-          );
+          decimals = Number(await callContract(ERC20_META_ABI, tokenAddress, 'decimals', []));
         } catch {
           /* ignore */
         }
         try {
-          totalSupply = String(
-            await callContract(tokenContract.abi, tokenContract.address, 'totalSupply', [])
-          );
+          totalSupply = String(await callContract(ERC20_META_ABI, tokenAddress, 'totalSupply', []));
         } catch {
           /* ignore */
         }

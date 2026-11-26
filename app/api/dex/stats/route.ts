@@ -8,7 +8,6 @@ import {
   ADDRESSES,
 } from '@/lib/dex/priceUtils';
 import { connectDB, DexSwap } from '@/models/index';
-import { ethers } from 'ethers';
 
 /**
  * DEX Stats API

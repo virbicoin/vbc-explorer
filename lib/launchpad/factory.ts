@@ -12,7 +12,7 @@
  * a fake and the sync tool / API share one implementation.
  */
 
-import { Interface } from 'ethers';
+import { decodeFunctionResult, encodeFunctionData, parseAbi, type Hex } from 'viem';
 import { loadConfig, type AppConfig } from '../config';
 import { getClient, getCode } from '../web3/provider';
 
@@ -78,20 +78,22 @@ export class FactoryRpcError extends Error {
   }
 }
 
-const FACTORY_IFACE = new Interface([
+const FACTORY_ABI = parseAbi([
   'function isFactoryToken(address token) view returns (bool)',
   'function tokenInfo(address token) view returns (address creator, string name, string symbol, uint8 decimals, uint256 totalSupply, uint256 createdAt, string logoUrl, string description, string website)',
   'function getAllTokens() view returns (address[] tokens)',
 ]);
 
-const LEGACY_TOKEN_INFO_IFACE = new Interface([
+const LEGACY_TOKEN_INFO_ABI = parseAbi([
   'function tokenInfo(address token) view returns (address creator, string name, string symbol, uint8 decimals, uint256 totalSupply, uint256 createdAt)',
 ]);
 
-const ERC20_IFACE = new Interface([
+const ERC20_ABI = parseAbi([
   'function balanceOf(address owner) view returns (uint256)',
   'function totalSupply() view returns (uint256)',
 ]);
+
+const asAddress = (value: string) => value as Hex;
 
 export function isHexAddress(value: unknown): value is string {
   return typeof value === 'string' && ADDRESS_RE.test(value);
@@ -130,7 +132,6 @@ export function getLaunchpadFactories(config: AppConfig = loadConfig()): Factory
   return factories;
 }
 
-/** JSON-RPC level errors (revert, unknown method) carry a numeric code in `innerError`. */
 /** True when the node answered with a JSON-RPC error (a revert), not when it could not be reached. */
 function isJsonRpcError(error: unknown): boolean {
   for (
@@ -177,11 +178,18 @@ export function createWeb3FactoryClient(): FactoryClient {
 
 /** Lowercase addresses of every token a factory created (`getAllTokens()`). */
 export async function listFactoryTokens(client: FactoryClient, factory: string): Promise<string[]> {
-  const result = await client.call(factory, FACTORY_IFACE.encodeFunctionData('getAllTokens'));
+  const result = await client.call(
+    factory,
+    encodeFunctionData({ abi: FACTORY_ABI, functionName: 'getAllTokens' })
+  );
   if (isEmptyResult(result)) return [];
   try {
-    const [tokens] = FACTORY_IFACE.decodeFunctionResult('getAllTokens', result);
-    return Array.from(tokens as readonly string[], (t) => String(t).toLowerCase());
+    const tokens = decodeFunctionResult({
+      abi: FACTORY_ABI,
+      functionName: 'getAllTokens',
+      data: result as Hex,
+    });
+    return tokens.map((t) => t.toLowerCase());
   } catch {
     return [];
   }
@@ -198,12 +206,19 @@ export async function isFactoryToken(
 ): Promise<boolean> {
   const result = await client.call(
     factory,
-    FACTORY_IFACE.encodeFunctionData('isFactoryToken', [token])
+    encodeFunctionData({
+      abi: FACTORY_ABI,
+      functionName: 'isFactoryToken',
+      args: [asAddress(token)],
+    })
   );
   if (!isEmptyResult(result) || result === `0x${'0'.repeat(64)}`) {
     try {
-      const [known] = FACTORY_IFACE.decodeFunctionResult('isFactoryToken', result);
-      return Boolean(known);
+      return decodeFunctionResult({
+        abi: FACTORY_ABI,
+        functionName: 'isFactoryToken',
+        data: result as Hex,
+      });
     } catch {
       // fall through to the token list
     }
@@ -218,22 +233,30 @@ export async function readBalanceOf(
   token: string,
   holder: string
 ): Promise<bigint> {
-  const result = await client.call(token, ERC20_IFACE.encodeFunctionData('balanceOf', [holder]));
+  const result = await client.call(
+    token,
+    encodeFunctionData({ abi: ERC20_ABI, functionName: 'balanceOf', args: [asAddress(holder)] })
+  );
   if (isEmptyResult(result)) return 0n;
   try {
-    const [balance] = ERC20_IFACE.decodeFunctionResult('balanceOf', result);
-    return BigInt(balance as bigint);
+    return decodeFunctionResult({ abi: ERC20_ABI, functionName: 'balanceOf', data: result as Hex });
   } catch {
     return 0n;
   }
 }
 
 async function readTotalSupply(client: FactoryClient, token: string): Promise<string | null> {
-  const result = await client.call(token, ERC20_IFACE.encodeFunctionData('totalSupply'));
+  const result = await client.call(
+    token,
+    encodeFunctionData({ abi: ERC20_ABI, functionName: 'totalSupply' })
+  );
   if (isEmptyResult(result)) return null;
   try {
-    const [supply] = ERC20_IFACE.decodeFunctionResult('totalSupply', result);
-    return BigInt(supply as bigint).toString();
+    return decodeFunctionResult({
+      abi: ERC20_ABI,
+      functionName: 'totalSupply',
+      data: result as Hex,
+    }).toString();
   } catch {
     return null;
   }
@@ -260,28 +283,46 @@ function decodeTokenInfo(result: string): RawTokenInfo | null {
   if (isEmptyResult(result)) return null;
   const decoders: Array<() => RawTokenInfo> = [
     () => {
-      const r = FACTORY_IFACE.decodeFunctionResult('tokenInfo', result);
+      const [
+        creator,
+        name,
+        symbol,
+        decimals,
+        totalSupply,
+        createdAt,
+        logoUrl,
+        description,
+        website,
+      ] = decodeFunctionResult({
+        abi: FACTORY_ABI,
+        functionName: 'tokenInfo',
+        data: result as Hex,
+      });
       return {
-        creator: String(r.creator).toLowerCase(),
-        name: String(r.name),
-        symbol: String(r.symbol),
-        decimals: Number(r.decimals),
-        totalSupply: BigInt(r.totalSupply as bigint).toString(),
-        createdAt: Number(r.createdAt) > 0 ? new Date(Number(r.createdAt) * 1000) : null,
-        logoUrl: optionalText(r.logoUrl),
-        description: optionalText(r.description),
-        website: optionalText(r.website),
+        creator: creator.toLowerCase(),
+        name,
+        symbol,
+        decimals,
+        totalSupply: totalSupply.toString(),
+        createdAt: createdAt > 0n ? new Date(Number(createdAt) * 1000) : null,
+        logoUrl: optionalText(logoUrl),
+        description: optionalText(description),
+        website: optionalText(website),
       };
     },
     () => {
-      const r = LEGACY_TOKEN_INFO_IFACE.decodeFunctionResult('tokenInfo', result);
+      const [creator, name, symbol, decimals, totalSupply, createdAt] = decodeFunctionResult({
+        abi: LEGACY_TOKEN_INFO_ABI,
+        functionName: 'tokenInfo',
+        data: result as Hex,
+      });
       return {
-        creator: String(r.creator).toLowerCase(),
-        name: String(r.name),
-        symbol: String(r.symbol),
-        decimals: Number(r.decimals),
-        totalSupply: BigInt(r.totalSupply as bigint).toString(),
-        createdAt: Number(r.createdAt) > 0 ? new Date(Number(r.createdAt) * 1000) : null,
+        creator: creator.toLowerCase(),
+        name,
+        symbol,
+        decimals,
+        totalSupply: totalSupply.toString(),
+        createdAt: createdAt > 0n ? new Date(Number(createdAt) * 1000) : null,
         logoUrl: null,
         description: null,
         website: null,
@@ -309,7 +350,14 @@ export async function describeFactoryToken(
 ): Promise<FactoryTokenInfo> {
   const address = token.toLowerCase();
   const info = decodeTokenInfo(
-    await client.call(factory.address, FACTORY_IFACE.encodeFunctionData('tokenInfo', [address]))
+    await client.call(
+      factory.address,
+      encodeFunctionData({
+        abi: FACTORY_ABI,
+        functionName: 'tokenInfo',
+        args: [asAddress(address)],
+      })
+    )
   );
   const liveSupply = await readTotalSupply(client, address);
   return {

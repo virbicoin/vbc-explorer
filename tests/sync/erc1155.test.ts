@@ -6,7 +6,15 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import mongoose from 'mongoose';
-import { ethers } from 'ethers';
+import {
+  encodeAbiParameters,
+  encodeFunctionResult,
+  keccak256,
+  parseAbi,
+  parseAbiParameters,
+  toFunctionSelector,
+  toHex,
+} from 'viem';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Block, Contract, ScanProgress, Token, TokenHolder, TokenTransfer } from '@/models/index';
 import {
@@ -30,12 +38,12 @@ const ALICE = pad('a11ce', 40);
 const BOB = pad('b0b', 40);
 const ZERO = pad('', 40);
 const BIG_ID = (2n ** 255n + 7n).toString();
-const abi = ethers.AbiCoder.defaultAbiCoder();
-const views = new ethers.Interface([
+const views = parseAbi([
   'function supportsInterface(bytes4) view returns (bool)',
   'function name() view returns (string)',
   'function symbol() view returns (string)',
 ]);
+const selectorOf = (name: string) => toFunctionSelector(views.find((item) => item.name === name)!);
 
 let logCounter = 0;
 function single(
@@ -50,7 +58,7 @@ function single(
   return {
     address,
     topics: [TRANSFER_SINGLE_TOPIC, topic(OPERATOR), topic(from), topic(to)],
-    data: abi.encode(['uint256', 'uint256'], [id, value]),
+    data: encodeAbiParameters(parseAbiParameters('uint256, uint256'), [id, value]),
     blockNumber: `0x${block.toString(16)}`,
     transactionHash: pad(`${block}`, 64),
     logIndex: `0x${logCounter.toString(16)}`,
@@ -68,7 +76,7 @@ function batch(
   return {
     address,
     topics: [TRANSFER_BATCH_TOPIC, topic(OPERATOR), topic(from), topic(to)],
-    data: abi.encode(['uint256[]', 'uint256[]'], [ids, values]),
+    data: encodeAbiParameters(parseAbiParameters('uint256[], uint256[]'), [ids, values]),
     blockNumber: `0x${block.toString(16)}`,
     transactionHash: pad(`b${block}`, 64),
     logIndex: `0x${logCounter.toString(16)}`,
@@ -89,15 +97,19 @@ class FakeNode implements Erc1155Node {
   async call(to: string, data: string) {
     this.calls += 1;
     const selector = data.slice(0, 10);
-    if (selector === views.getFunction('supportsInterface')!.selector) {
-      return views.encodeFunctionResult('supportsInterface', [this.supports.has(to)]);
+    if (selector === selectorOf('supportsInterface')) {
+      return encodeFunctionResult({
+        abi: views,
+        functionName: 'supportsInterface',
+        result: this.supports.has(to),
+      });
     }
     if (to !== MULTI) return null;
-    if (selector === views.getFunction('name')!.selector) {
-      return views.encodeFunctionResult('name', ['Game Items']);
+    if (selector === selectorOf('name')) {
+      return encodeFunctionResult({ abi: views, functionName: 'name', result: 'Game Items' });
     }
-    if (selector === views.getFunction('symbol')!.selector) {
-      return views.encodeFunctionResult('symbol', ['ITEM']);
+    if (selector === selectorOf('symbol')) {
+      return encodeFunctionResult({ abi: views, functionName: 'symbol', result: 'ITEM' });
     }
     return null;
   }
@@ -162,7 +174,10 @@ describe('erc1155TransfersFromLog', () => {
     const log = single(MULTI, 5, ZERO, ALICE, 1n, 1n);
     expect(erc1155TransfersFromLog({ ...log, removed: true }, 1)).toEqual([]);
     expect(
-      erc1155TransfersFromLog({ ...log, topics: [ethers.id('Other()'), ...log.topics.slice(1)] }, 1)
+      erc1155TransfersFromLog(
+        { ...log, topics: [keccak256(toHex('Other()')), ...log.topics.slice(1)] },
+        1
+      )
     ).toEqual([]);
     expect(erc1155TransfersFromLog({ ...log, data: '0x1234' }, 1)).toEqual([]);
     expect(erc1155TransfersFromLog({ ...log, topics: log.topics.slice(0, 3) }, 1)).toEqual([]);
