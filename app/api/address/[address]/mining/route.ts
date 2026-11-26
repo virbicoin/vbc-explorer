@@ -4,6 +4,7 @@ import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { validatePagination } from '@/lib/security/validation';
 import { rejectDeepPagination } from '@/lib/security/pagination';
 import { getBlockRewardForHeight, minerRewardWei, transactionFeesWei } from '@/lib/reward-schedule';
+import { getRewardSchedule } from '@/lib/config';
 import { weiToFixed8 } from '@/lib/bigint-utils';
 
 export async function GET(
@@ -56,9 +57,11 @@ export async function GET(
     }
 
     // What consensus credits the miner: block reward + fees + 1/32 of the reward per included uncle
+    const schedule = getRewardSchedule();
     const miningRewards = minedBlocks.map((block) => {
       const number = block.number as number;
       const reward = minerRewardWei(
+        schedule,
         number,
         (block.uncles as string[] | undefined)?.length ?? 0,
         transactionFeesWei(txsByBlock.get(number) ?? [])
@@ -73,7 +76,7 @@ export async function GET(
         type: 'mining_reward',
         status: 'success',
         details: {
-          blockReward: getBlockRewardForHeight(number),
+          blockReward: getBlockRewardForHeight(schedule, number),
           gasFees: weiToFixed8(reward.fees),
           uncleInclusionReward: weiToFixed8(reward.uncleInclusionReward),
           totalReward: weiToFixed8(reward.total),

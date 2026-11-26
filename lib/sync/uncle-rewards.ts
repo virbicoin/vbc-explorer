@@ -15,7 +15,8 @@
 
 import { Block, ScanProgress } from '../../models/index';
 import { logger } from '../logger';
-import { calculateUncleIssuanceWei } from '../reward-schedule';
+import { getRewardSchedule } from '../config';
+import { calculateUncleIssuanceWei, type RewardSchedule } from '../reward-schedule';
 import { toHex, toNumber, type BlockDoc, type ChainNode, type RawBlock } from './normalize';
 
 /** scan_progress entry written by the backfill. */
@@ -32,7 +33,8 @@ export const EMPTY_UNCLES_HASH =
  */
 export async function fetchUncleReward(
   node: Pick<ChainNode, 'getUncle'>,
-  raw: Pick<RawBlock, 'number' | 'hash' | 'uncles'>
+  raw: Pick<RawBlock, 'number' | 'hash' | 'uncles'>,
+  schedule: RewardSchedule = getRewardSchedule()
 ): Promise<string | undefined> {
   const expected = (raw.uncles ?? []).map(toHex);
   if (expected.length === 0) return undefined;
@@ -51,7 +53,7 @@ export async function fetchUncleReward(
       return toNumber(uncle.number);
     })
   );
-  return calculateUncleIssuanceWei(blockNumber, uncleNumbers).toString();
+  return calculateUncleIssuanceWei(schedule, blockNumber, uncleNumbers).toString();
 }
 
 /**

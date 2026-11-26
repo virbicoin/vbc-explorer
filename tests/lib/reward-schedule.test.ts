@@ -1,16 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
-  FIRST_REDUCTION_BLOCK,
-  REWARD_REDUCTION_INTERVAL,
-  REDUCTION_FORK_NAMES,
+  ETHEREUM_REWARDS,
+  RewardScheduleError,
+  blockRewardWei,
+  calculateTotalMiningRewardWei,
+  calculateUncleIssuanceWei,
+  formatCoins,
   getBlockRewardForHeight,
   getBlockRewardWeiForHeight,
-  getNextRewardReductionBlock,
-  calculateTotalMiningReward,
-  getUncleRewardWei,
   getNephewRewardWei,
-  calculateUncleIssuanceWei,
+  getNextRewardChange,
+  getUncleRewardWei,
   minerRewardWei,
+  parseRewardSchedule,
   transactionFeesWei,
 } from '@/lib/reward-schedule';
 
@@ -19,144 +21,225 @@ const coins = (value: string) => {
   return BigInt(whole) * 10n ** 18n + BigInt(fraction.padEnd(18, '0'));
 };
 
-describe('getBlockRewardForHeight', () => {
-  it('returns the base reward before the first reduction', () => {
-    expect(getBlockRewardForHeight(0)).toBe(8);
-    expect(getBlockRewardForHeight(FIRST_REDUCTION_BLOCK - 1)).toBe(8);
-  });
+// A chain that starts at 8 coins and loses 1 coin every 2,100,000 blocks from 4,200,000, down to
+// 1 coin. Written like an OpenEthereum chainspec for some entries (hex block, hex wei).
+const STEPPED = parseRewardSchedule({
+  blockReward: {
+    '0': '8',
+    '0x401640': '0x6124fee993bc0000', // 4,200,000: 7 coins in wei
+    '6300000': 6,
+    '8400000': '5',
+    '10500000': '4',
+    '12600000': '3',
+    '14700000': '2',
+    '16800000': '1',
+  },
+  forkNames: { '4200000': 'First', '0x602160': 'Second' },
+});
+const FIRST = 4_200_000;
+const INTERVAL = 2_100_000;
 
-  it('reduces the reward by 1 VBC at each reduction block', () => {
-    expect(getBlockRewardForHeight(FIRST_REDUCTION_BLOCK)).toBe(7);
-    expect(getBlockRewardForHeight(FIRST_REDUCTION_BLOCK + REWARD_REDUCTION_INTERVAL)).toBe(6);
-    expect(getBlockRewardForHeight(12_600_000)).toBe(3);
-  });
-
-  it('floors at the minimum reward', () => {
-    expect(getBlockRewardForHeight(16_800_000)).toBe(1);
-    expect(getBlockRewardForHeight(100_000_000)).toBe(1);
-  });
+// Era-based schedule with a flat uncle reward from era 2 (ECIP-1017 style)
+const ERAS = parseRewardSchedule({
+  blockReward: {
+    '0': '5',
+    '5000001': '4',
+    '10000001': '3.2',
+    '15000001': '2.56',
+    '20000001': '2.048',
+  },
+  flatUncleRewardFrom: 5000001,
 });
 
-describe('getBlockRewardWeiForHeight', () => {
-  it('converts the reward to wei', () => {
-    expect(getBlockRewardWeiForHeight(0)).toBe('8000000000000000000');
-    expect(getBlockRewardWeiForHeight(16_800_000)).toBe('1000000000000000000');
-  });
-});
+const ETHEREUM = parseRewardSchedule(null);
 
-describe('getNextRewardReductionBlock', () => {
-  it('returns the first reduction block before any reduction', () => {
-    expect(getNextRewardReductionBlock(0)).toBe(FIRST_REDUCTION_BLOCK);
-    expect(getNextRewardReductionBlock(FIRST_REDUCTION_BLOCK - 1)).toBe(FIRST_REDUCTION_BLOCK);
+describe('parseRewardSchedule', () => {
+  it("uses Ethereum's schedule without a blockReward map", () => {
+    expect(parseRewardSchedule(undefined)).toEqual(parseRewardSchedule(ETHEREUM_REWARDS));
+    expect(parseRewardSchedule({ blockReward: {} })).toEqual(ETHEREUM);
+    expect(ETHEREUM.steps.map((step) => [step.from, formatCoins(step.reward)])).toEqual([
+      [0, '5'],
+      [4_370_000, '3'],
+      [7_280_000, '2'],
+      [15_537_394, '0'],
+    ]);
   });
 
-  it('returns the following reduction block within an era', () => {
-    expect(getNextRewardReductionBlock(FIRST_REDUCTION_BLOCK)).toBe(
-      FIRST_REDUCTION_BLOCK + REWARD_REDUCTION_INTERVAL
+  it('reads decimal and hex blocks, coin amounts and hex wei', () => {
+    expect(blockRewardWei(STEPPED, FIRST)).toBe(coins('7'));
+    expect(blockRewardWei(STEPPED, 6_300_000)).toBe(coins('6'));
+    expect(blockRewardWei(ERAS, 10_000_001)).toBe(coins('3.2'));
+    expect(STEPPED.forkNames).toEqual({ 4_200_000: 'First', 6_300_000: 'Second' });
+    expect(STEPPED.flatUncleRewardFrom).toBeNull();
+    expect(ERAS.flatUncleRewardFrom).toBe(5_000_001);
+  });
+
+  it('rejects schedules it cannot use', () => {
+    expect(() => parseRewardSchedule({ blockReward: { '10': '5' } })).toThrow(RewardScheduleError);
+    expect(() => parseRewardSchedule({ blockReward: { '0': '5', '0x0': '4' } })).toThrow(
+      RewardScheduleError
     );
-    expect(getNextRewardReductionBlock(16_799_999)).toBe(16_800_000);
+    expect(() => parseRewardSchedule({ blockReward: { '0': 'five' } })).toThrow(
+      RewardScheduleError
+    );
+    expect(() => parseRewardSchedule({ blockReward: { '0': '1e18' } })).toThrow(
+      RewardScheduleError
+    );
+    expect(() => parseRewardSchedule({ blockReward: { x: '5' } })).toThrow(RewardScheduleError);
+  });
+});
+
+describe('block reward at a height', () => {
+  it('pays the reward of the last step at or below the height', () => {
+    expect(getBlockRewardForHeight(STEPPED, 0)).toBe(8);
+    expect(getBlockRewardForHeight(STEPPED, FIRST - 1)).toBe(8);
+    expect(getBlockRewardForHeight(STEPPED, FIRST)).toBe(7);
+    expect(getBlockRewardForHeight(STEPPED, FIRST + INTERVAL)).toBe(6);
+    expect(getBlockRewardForHeight(STEPPED, 12_600_000)).toBe(3);
+    expect(getBlockRewardForHeight(STEPPED, 100_000_000)).toBe(1);
+    expect(getBlockRewardForHeight(ERAS, 12_000_000)).toBe(3.2);
+    expect(getBlockRewardForHeight(ETHEREUM, 20_000_000)).toBe(0);
   });
 
-  it('returns null once the minimum reward is reached', () => {
-    expect(getNextRewardReductionBlock(16_800_000)).toBeNull();
-    expect(getNextRewardReductionBlock(100_000_000)).toBeNull();
+  it('gives the reward in wei', () => {
+    expect(getBlockRewardWeiForHeight(STEPPED, 0)).toBe('8000000000000000000');
+    expect(getBlockRewardWeiForHeight(STEPPED, 16_800_000)).toBe('1000000000000000000');
+    expect(getBlockRewardWeiForHeight(ERAS, 20_000_001)).toBe('2048000000000000000');
   });
 
-  it('always points at a block with a lower reward', () => {
+  it('formats coins without trailing zeros', () => {
+    expect(formatCoins(coins('8'))).toBe('8');
+    expect(formatCoins(coins('2.048'))).toBe('2.048');
+    expect(formatCoins(0n)).toBe('0');
+    expect(formatCoins(1n)).toBe('0.000000000000000001');
+  });
+});
+
+describe('getNextRewardChange', () => {
+  it('finds the next block where the reward changes', () => {
+    expect(getNextRewardChange(STEPPED, 0)).toEqual({
+      block: FIRST,
+      periodStart: 0,
+      currentReward: coins('8'),
+      nextReward: coins('7'),
+      name: 'First',
+    });
+    expect(getNextRewardChange(STEPPED, FIRST)).toMatchObject({
+      block: FIRST + INTERVAL,
+      periodStart: FIRST,
+      nextReward: coins('6'),
+      name: 'Second',
+    });
+    expect(getNextRewardChange(STEPPED, 16_799_999)?.block).toBe(16_800_000);
+    // unnamed change
+    expect(getNextRewardChange(STEPPED, 9_000_000)?.name).toBeUndefined();
+  });
+
+  it('is null when nothing else is scheduled', () => {
+    expect(getNextRewardChange(STEPPED, 16_800_000)).toBeNull();
+    expect(getNextRewardChange(ETHEREUM, 15_537_394)).toBeNull();
+  });
+
+  it('skips steps that repeat the current reward', () => {
+    const repeated = parseRewardSchedule({ blockReward: { '0': '2', '100': '2', '200': '1' } });
+    expect(getNextRewardChange(repeated, 150)).toMatchObject({ block: 200, periodStart: 0 });
+  });
+
+  it('always points at a block with a different reward', () => {
     for (const block of [0, 1, 4_199_999, 4_200_000, 9_000_000, 16_799_999]) {
-      const next = getNextRewardReductionBlock(block);
+      const next = getNextRewardChange(STEPPED, block);
       expect(next).not.toBeNull();
-      expect(next!).toBeGreaterThan(block);
-      expect(getBlockRewardForHeight(next!)).toBe(getBlockRewardForHeight(block) - 1);
+      expect(next!.block).toBeGreaterThan(block);
+      expect(getBlockRewardForHeight(STEPPED, next!.block)).toBe(
+        getBlockRewardForHeight(STEPPED, block) - 1
+      );
     }
   });
 });
 
-describe('REDUCTION_FORK_NAMES', () => {
-  it('names every reduction block in the schedule', () => {
-    let block: number | null = 0;
-    const seen: string[] = [];
-    while ((block = getNextRewardReductionBlock(block)) !== null) {
-      expect(REDUCTION_FORK_NAMES[block]).toBeDefined();
-      seen.push(REDUCTION_FORK_NAMES[block]);
-    }
-    expect(seen).toEqual(['Quiche', 'Miche', 'Rusk', 'Celestia', 'Mafuyu', 'Kipfel', 'Lumina']);
-  });
-});
+describe('calculateTotalMiningRewardWei', () => {
+  const total = (schedule: typeof STEPPED, block: number) =>
+    calculateTotalMiningRewardWei(schedule, block);
 
-describe('calculateTotalMiningReward', () => {
-  it('returns 0 for the genesis block', () => {
-    expect(calculateTotalMiningReward(0)).toBe(0);
+  it('is 0 up to the genesis block', () => {
+    expect(total(STEPPED, 0)).toBe(0n);
+    expect(total(STEPPED, -5)).toBe(0n);
   });
 
-  it('accumulates 8 VBC per block in the first era', () => {
-    expect(calculateTotalMiningReward(100)).toBe(800);
-    expect(calculateTotalMiningReward(FIRST_REDUCTION_BLOCK - 1)).toBe(
-      (FIRST_REDUCTION_BLOCK - 1) * 8
-    );
+  it('pays the first step for blocks 1..n', () => {
+    expect(total(STEPPED, 100)).toBe(coins('800'));
+    expect(total(STEPPED, FIRST - 1)).toBe(BigInt(FIRST - 1) * coins('8'));
   });
 
-  it('pays the reduced reward on the reduction block itself', () => {
-    const beforeReduction = (FIRST_REDUCTION_BLOCK - 1) * 8;
-    expect(calculateTotalMiningReward(FIRST_REDUCTION_BLOCK)).toBe(beforeReduction + 7);
-    expect(calculateTotalMiningReward(FIRST_REDUCTION_BLOCK + 10)).toBe(beforeReduction + 11 * 7);
+  it('pays the new reward on the block where it changes', () => {
+    const before = BigInt(FIRST - 1) * coins('8');
+    expect(total(STEPPED, FIRST)).toBe(before + coins('7'));
+    expect(total(STEPPED, FIRST + 10)).toBe(before + 11n * coins('7'));
   });
 
-  it('equals the sum of the per-block rewards around every reduction', () => {
-    const boundaries = [0, 1, 2, 3, 4, 5, 6].map(
-      (k) => FIRST_REDUCTION_BLOCK + k * REWARD_REDUCTION_INTERVAL
-    );
-    for (const boundary of boundaries) {
-      let expected = calculateTotalMiningReward(boundary - 3);
-      for (let block = boundary - 2; block <= boundary + 2; block++) {
-        expected += getBlockRewardForHeight(block);
-        expect(calculateTotalMiningReward(block)).toBe(expected);
+  it('equals the sum of the per-block rewards around every change', () => {
+    for (const schedule of [STEPPED, ERAS, ETHEREUM]) {
+      for (const { from } of schedule.steps.slice(1)) {
+        let expected = total(schedule, from - 3);
+        for (let block = from - 2; block <= from + 2; block++) {
+          expected += blockRewardWei(schedule, block);
+          expect(total(schedule, block)).toBe(expected);
+        }
       }
     }
   });
 
-  it('stays at the minimum reward after the last reduction', () => {
-    const lastReduction = FIRST_REDUCTION_BLOCK + 6 * REWARD_REDUCTION_INTERVAL;
-    expect(
-      calculateTotalMiningReward(lastReduction + 1_000_000) -
-        calculateTotalMiningReward(lastReduction)
-    ).toBe(1_000_000);
+  it('keeps paying the last step', () => {
+    expect(total(STEPPED, 17_800_000) - total(STEPPED, 16_800_000)).toBe(coins('1000000'));
+    expect(total(ETHEREUM, 20_000_000)).toBe(total(ETHEREUM, 15_537_393));
+  });
+
+  it("adds up Ethereum's proof-of-work issuance", () => {
+    expect(total(ETHEREUM, 15_537_393)).toBe(
+      4_369_999n * coins('5') + 2_910_000n * coins('3') + 8_257_394n * coins('2')
+    );
   });
 });
 
 describe('uncle issuance', () => {
   it('pays (uncle + 8 - block) / 8 of the block reward to the uncle miner', () => {
-    expect(getUncleRewardWei(99, 100)).toBe(coins('7'));
-    expect(getUncleRewardWei(98, 100)).toBe(coins('6'));
-    expect(getUncleRewardWei(94, 100)).toBe(coins('2'));
+    expect(getUncleRewardWei(STEPPED, 99, 100)).toBe(coins('7'));
+    expect(getUncleRewardWei(STEPPED, 98, 100)).toBe(coins('6'));
+    expect(getUncleRewardWei(STEPPED, 94, 100)).toBe(coins('2'));
   });
 
   it('pays 1/32 of the block reward per uncle to the including miner', () => {
-    expect(getNephewRewardWei(100)).toBe(coins('0.25'));
+    expect(getNephewRewardWei(STEPPED, 100)).toBe(coins('0.25'));
   });
 
-  it('scales with the reduced reward of the including block', () => {
-    // Quiche: 7 VBC per block
-    expect(getUncleRewardWei(FIRST_REDUCTION_BLOCK - 1, FIRST_REDUCTION_BLOCK)).toBe(
-      coins('6.125')
-    );
-    expect(getNephewRewardWei(FIRST_REDUCTION_BLOCK)).toBe(coins('0.21875'));
+  it('scales with the reward of the including block', () => {
+    expect(getUncleRewardWei(STEPPED, FIRST - 1, FIRST)).toBe(coins('6.125'));
+    expect(getNephewRewardWei(STEPPED, FIRST)).toBe(coins('0.21875'));
+  });
+
+  it('pays a flat 1/32 to uncles from flatUncleRewardFrom on', () => {
+    // era 1: depth-based
+    expect(getUncleRewardWei(ERAS, 4_999_999, 5_000_000)).toBe(coins('4.375'));
+    // era 2 onward: 1/32 of the block reward at any depth
+    expect(getUncleRewardWei(ERAS, 5_000_000, 5_000_001)).toBe(coins('0.125'));
+    expect(getUncleRewardWei(ERAS, 9_999_995, 10_000_001)).toBe(coins('0.1'));
+    expect(getNephewRewardWei(ERAS, 10_000_001)).toBe(coins('0.1'));
   });
 
   it('rejects heights a block cannot include as uncles', () => {
-    expect(() => getUncleRewardWei(100, 100)).toThrow(RangeError);
-    expect(() => getUncleRewardWei(92, 100)).toThrow(RangeError);
+    expect(() => getUncleRewardWei(STEPPED, 100, 100)).toThrow(RangeError);
+    expect(() => getUncleRewardWei(STEPPED, 92, 100)).toThrow(RangeError);
   });
 
-  // Mainnet blocks whose miner balance changes were checked against these values
-  it('matches the balance changes seen on mainnet', () => {
-    // block 3397822: two uncles at 3397821 → 7 + 7 to the uncle miner, 2 × 0.25 to the block miner
-    expect(calculateUncleIssuanceWei(3397822, [3397821, 3397821])).toBe(coins('14.5'));
-    // block 3397819: two uncles at 3397816 → 5 + 5, plus 0.5
-    expect(calculateUncleIssuanceWei(3397819, [3397816, 3397816])).toBe(coins('10.5'));
-    // block 3397818: uncles at 3397815 and 3397816 → 5 + 6, plus 0.5
-    expect(calculateUncleIssuanceWei(3397818, [3397815, 3397816])).toBe(coins('11.5'));
-    expect(calculateUncleIssuanceWei(3397818, [])).toBe(0n);
+  // Blocks of a live chain with an 8-coin reward whose miner balance changes were checked
+  it('matches balance changes seen on chain', () => {
+    // two uncles one block back → 7 + 7 to the uncle miners, 2 × 0.25 to the block miner
+    expect(calculateUncleIssuanceWei(STEPPED, 3397822, [3397821, 3397821])).toBe(coins('14.5'));
+    // two uncles three blocks back → 5 + 5, plus 0.5
+    expect(calculateUncleIssuanceWei(STEPPED, 3397819, [3397816, 3397816])).toBe(coins('10.5'));
+    // uncles three and two blocks back → 5 + 6, plus 0.5
+    expect(calculateUncleIssuanceWei(STEPPED, 3397818, [3397815, 3397816])).toBe(coins('11.5'));
+    expect(calculateUncleIssuanceWei(STEPPED, 3397818, [])).toBe(0n);
   });
 });
 
@@ -174,14 +257,15 @@ describe('miner reward', () => {
 
   it('is the reward at the height plus fees plus 1/32 of it per included uncle', () => {
     const fees = 21000n * 10n ** 9n;
-    expect(minerRewardWei(100, 0, 0n).total).toBe(coins('8'));
-    expect(minerRewardWei(3397818, 2, fees)).toEqual({
+    expect(minerRewardWei(STEPPED, 100, 0, 0n).total).toBe(coins('8'));
+    expect(minerRewardWei(STEPPED, 3397818, 2, fees)).toEqual({
       blockReward: coins('8'),
       fees,
       uncleInclusionReward: coins('0.5'),
       total: coins('8.5') + fees,
     });
-    // after the first reduction the block reward is 7, not a fixed 8
-    expect(minerRewardWei(FIRST_REDUCTION_BLOCK, 1, 0n).total).toBe(coins('7') + coins('7') / 32n);
+    // after a change the reward follows the schedule, not the first value
+    expect(minerRewardWei(STEPPED, FIRST, 1, 0n).total).toBe(coins('7') + coins('7') / 32n);
+    expect(minerRewardWei(ETHEREUM, 16_000_000, 0, fees).total).toBe(fees);
   });
 });

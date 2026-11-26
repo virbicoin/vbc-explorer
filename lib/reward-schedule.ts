@@ -1,70 +1,153 @@
 /**
- * VirBiCoin block reward schedule (mirrors go-virbicoin
- * consensus/ethash/consensus.go and params/config.go).
+ * Block reward schedule: what a chain pays for blocks and uncles.
  *
- * Pure module with no server-side imports so it can be used from both
- * API handlers and client components.
+ * Nothing here is tied to one chain. The schedule comes from the `rewards` section of
+ * config.json (on the server through `getRewardSchedule()` in lib/config.ts, in the browser
+ * through `/api/config/client`):
+ * - `blockReward`: the reward keyed by the first block it applies to, the same shape as the
+ *   `blockReward` map of an OpenEthereum chainspec. Keys are decimal or 0x-hex block numbers;
+ *   values are coins as a decimal string or number ("5", "3.2") or wei as a 0x-hex string.
+ * - `flatUncleRewardFrom`: from this block on an uncle earns 1/32 of the block reward whatever
+ *   its depth (Ethereum Classic's ECIP-1017 from era 2, block 5,000,001). Before it, or when it
+ *   is not set, an uncle earns (uncle + 8 - block) / 8 of the reward (Ethash).
+ * - `forkNames`: optional names for the blocks where the reward changes.
+ * The miner of a block that includes uncles gets 1/32 of the block reward per uncle on top.
+ * Without a `rewards` section the schedule is Ethereum's proof-of-work one (ETHEREUM_REWARDS).
+ *
+ * Pure module with no server-side imports, so client components can use it too.
  */
 
-export const FIRST_REDUCTION_BLOCK = 4_200_000;
-export const REWARD_REDUCTION_INTERVAL = 2_100_000;
-export const BASE_REWARD = 8;
-export const MIN_REWARD = 1;
-
-/** Fork names for each reward reduction block (go-virbicoin params/config.go). */
-export const REDUCTION_FORK_NAMES: Record<number, string> = {
-  4_200_000: 'Quiche',
-  6_300_000: 'Miche',
-  8_400_000: 'Rusk',
-  10_500_000: 'Celestia',
-  12_600_000: 'Mafuyu',
-  14_700_000: 'Kipfel',
-  16_800_000: 'Lumina',
-};
-
-/**
- * Returns the block reward in VBC for a given block number.
- * First reduction at block 4,200,000, then every 2,100,000 blocks.
- * Schedule: 8 -> 7 -> 6 -> 5 -> 4 -> 3 -> 2 -> 1 VBC
- */
-export function getBlockRewardForHeight(blockNumber: number): number {
-  if (blockNumber < FIRST_REDUCTION_BLOCK) return BASE_REWARD;
-  const reductions =
-    Math.floor((blockNumber - FIRST_REDUCTION_BLOCK) / REWARD_REDUCTION_INTERVAL) + 1;
-  if (reductions >= 7) return MIN_REWARD;
-  return BASE_REWARD - reductions;
+export interface RewardScheduleConfig {
+  blockReward?: Record<string, string | number>;
+  flatUncleRewardFrom?: number | string | null;
+  forkNames?: Record<string, string>;
 }
+
+export interface RewardStep {
+  /** First block that pays this reward. */
+  from: number;
+  /** Reward in wei. */
+  reward: bigint;
+}
+
+export interface RewardSchedule {
+  /** Ascending by `from`; the first step starts at block 0. */
+  steps: readonly RewardStep[];
+  flatUncleRewardFrom: number | null;
+  forkNames: Readonly<Record<number, string>>;
+}
+
+/** Ethereum: 5 coins from Frontier, 3 from Byzantium, 2 from Constantinople, none after the Merge. */
+export const ETHEREUM_REWARDS: RewardScheduleConfig = {
+  blockReward: { '0': '5', '4370000': '3', '7280000': '2', '15537394': '0' },
+  forkNames: { '4370000': 'Byzantium', '7280000': 'Constantinople', '15537394': 'Paris' },
+};
 
 const WEI_PER_COIN = 10n ** 18n;
 
-function blockRewardWei(blockNumber: number): bigint {
-  return BigInt(getBlockRewardForHeight(blockNumber)) * WEI_PER_COIN;
+export class RewardScheduleError extends Error {
+  constructor(message: string) {
+    super(`config.json rewards: ${message}`);
+    this.name = 'RewardScheduleError';
+  }
+}
+
+function parseBlockNumber(value: string | number): number {
+  const text = String(value).trim();
+  const parsed = /^0x[0-9a-f]+$/i.test(text)
+    ? Number.parseInt(text, 16)
+    : /^\d+$/.test(text)
+      ? Number(text)
+      : NaN;
+  if (!Number.isSafeInteger(parsed)) throw new RewardScheduleError(`bad block number "${text}"`);
+  return parsed;
+}
+
+/** Coins ("5", "3.2", 2.048) or 0x-hex wei → wei. */
+function parseReward(value: string | number): bigint {
+  const text = String(value).trim();
+  if (/^0x[0-9a-f]+$/i.test(text)) return BigInt(text);
+  const match = /^(\d+)(?:\.(\d{1,18}))?$/.exec(text);
+  if (!match) throw new RewardScheduleError(`bad reward "${text}"`);
+  return BigInt(match[1]) * WEI_PER_COIN + BigInt((match[2] ?? '').padEnd(18, '0') || '0');
+}
+
+/** Builds the schedule from config.json's `rewards`; Ethereum's when the section is missing. */
+export function parseRewardSchedule(config?: RewardScheduleConfig | null): RewardSchedule {
+  const source =
+    config?.blockReward && Object.keys(config.blockReward).length > 0 ? config : ETHEREUM_REWARDS;
+  const steps = Object.entries(source.blockReward ?? {})
+    .map(([block, reward]) => ({ from: parseBlockNumber(block), reward: parseReward(reward) }))
+    .sort((a, b) => a.from - b.from);
+  if (steps[0]?.from !== 0) throw new RewardScheduleError('blockReward needs an entry for block 0');
+  if (new Set(steps.map((step) => step.from)).size !== steps.length) {
+    throw new RewardScheduleError('blockReward lists the same block twice');
+  }
+  const flat = source.flatUncleRewardFrom;
+  const forkNames: Record<number, string> = {};
+  for (const [block, name] of Object.entries(source.forkNames ?? {})) {
+    forkNames[parseBlockNumber(block)] = String(name);
+  }
+  return {
+    steps,
+    flatUncleRewardFrom:
+      flat === undefined || flat === null || flat === '' ? null : parseBlockNumber(flat),
+    forkNames,
+  };
+}
+
+/** Block reward in wei at a height. */
+export function blockRewardWei(schedule: RewardSchedule, blockNumber: number): bigint {
+  let reward = 0n;
+  for (const step of schedule.steps) {
+    if (step.from > blockNumber) break;
+    reward = step.reward;
+  }
+  return reward;
+}
+
+/** Wei as a plain decimal coin amount without trailing zeros ("8", "3.2"). */
+export function formatCoins(wei: bigint): string {
+  const whole = wei / WEI_PER_COIN;
+  const fraction = (wei % WEI_PER_COIN).toString().padStart(18, '0').replace(/0+$/, '');
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
+/** Block reward in coins at a height, as a number (API fields and display). */
+export function getBlockRewardForHeight(schedule: RewardSchedule, blockNumber: number): number {
+  return Number(formatCoins(blockRewardWei(schedule, blockNumber)));
+}
+
+/** Block reward in wei at a height, as a decimal string (API fields). */
+export function getBlockRewardWeiForHeight(schedule: RewardSchedule, blockNumber: number): string {
+  return blockRewardWei(schedule, blockNumber).toString();
 }
 
 /**
- * Returns the block reward in wei (string) for API responses.
+ * Reward paid to the miner of uncle `uncleNumber` when block `blockNumber` includes it:
+ * (uncle + 8 - block) / 8 of the including block's reward (Ethash), or 1/32 of it from
+ * `flatUncleRewardFrom` on (ECIP-1017).
  */
-export function getBlockRewardWeiForHeight(blockNumber: number): string {
-  return blockRewardWei(blockNumber).toString();
-}
-
-/**
- * Reward paid to the miner of uncle `uncleNumber` when block `blockNumber`
- * includes it: (uncle + 8 - block) / 8 of the including block's reward
- * (go-virbicoin consensus/ethash accumulateRewards).
- */
-export function getUncleRewardWei(uncleNumber: number, blockNumber: number): bigint {
+export function getUncleRewardWei(
+  schedule: RewardSchedule,
+  uncleNumber: number,
+  blockNumber: number
+): bigint {
   const depth = blockNumber - uncleNumber;
   // Consensus keeps uncles within six generations; the formula is defined for 1..7.
   if (!Number.isInteger(depth) || depth < 1 || depth > 7) {
     throw new RangeError(`block ${blockNumber} cannot include an uncle at height ${uncleNumber}`);
   }
-  return (BigInt(8 - depth) * blockRewardWei(blockNumber)) / 8n;
+  const reward = blockRewardWei(schedule, blockNumber);
+  if (schedule.flatUncleRewardFrom !== null && blockNumber >= schedule.flatUncleRewardFrom) {
+    return reward / 32n;
+  }
+  return (BigInt(8 - depth) * reward) / 8n;
 }
 
 /** Extra reward the including block's miner receives per uncle: 1/32 of the block reward. */
-export function getNephewRewardWei(blockNumber: number): bigint {
-  return blockRewardWei(blockNumber) / 32n;
+export function getNephewRewardWei(schedule: RewardSchedule, blockNumber: number): bigint {
+  return blockRewardWei(schedule, blockNumber) / 32n;
 }
 
 /** Sum of gasUsed × gasPrice over a block's transactions, in wei. */
@@ -85,12 +168,17 @@ export interface MinerReward {
 }
 
 /**
- * What consensus credits the miner of a block (go-virbicoin accumulateRewards): the block
- * reward, the block's transaction fees and 1/32 of the reward for each uncle it includes.
+ * What consensus credits the miner of a block: the block reward, the block's transaction fees
+ * and 1/32 of the reward for each uncle it includes.
  */
-export function minerRewardWei(blockNumber: number, uncleCount: number, fees: bigint): MinerReward {
-  const blockReward = blockRewardWei(blockNumber);
-  const uncleInclusionReward = BigInt(uncleCount) * getNephewRewardWei(blockNumber);
+export function minerRewardWei(
+  schedule: RewardSchedule,
+  blockNumber: number,
+  uncleCount: number,
+  fees: bigint
+): MinerReward {
+  const blockReward = blockRewardWei(schedule, blockNumber);
+  const uncleInclusionReward = BigInt(uncleCount) * getNephewRewardWei(schedule, blockNumber);
   return {
     blockReward,
     fees,
@@ -100,59 +188,79 @@ export function minerRewardWei(blockNumber: number, uncleCount: number, fees: bi
 }
 
 /**
- * Coins created for the uncles of one block: each uncle's reward plus the
- * nephew reward for including it. This issuance comes on top of the block
- * reward schedule and is the only other way new coins are created.
+ * Coins created for the uncles of one block: each uncle's reward plus the nephew reward for
+ * including it. This issuance comes on top of the block rewards and is the only other way new
+ * coins are created.
  */
 export function calculateUncleIssuanceWei(
+  schedule: RewardSchedule,
   blockNumber: number,
   uncleNumbers: readonly number[]
 ): bigint {
   return uncleNumbers.reduce(
     (total, uncle) =>
-      total + getUncleRewardWei(uncle, blockNumber) + getNephewRewardWei(blockNumber),
+      total +
+      getUncleRewardWei(schedule, uncle, blockNumber) +
+      getNephewRewardWei(schedule, blockNumber),
     0n
   );
 }
 
-/**
- * Returns the next block at which the reward decreases,
- * or null once the minimum reward has been reached.
- */
-export function getNextRewardReductionBlock(blockNumber: number): number | null {
-  if (getBlockRewardForHeight(blockNumber) <= MIN_REWARD) return null;
-  if (blockNumber < FIRST_REDUCTION_BLOCK) return FIRST_REDUCTION_BLOCK;
-  const k = Math.floor((blockNumber - FIRST_REDUCTION_BLOCK) / REWARD_REDUCTION_INTERVAL) + 1;
-  return FIRST_REDUCTION_BLOCK + k * REWARD_REDUCTION_INTERVAL;
+export interface RewardChange {
+  /** Block where the reward changes. */
+  block: number;
+  /** First block of the period that ends there (for progress bars). */
+  periodStart: number;
+  /** Reward until then and from then on, in wei. */
+  currentReward: bigint;
+  nextReward: bigint;
+  /** Name of the fork at that block, when config.json gives one. */
+  name?: string;
+}
+
+/** The next block after `blockNumber` where the reward changes, or null when none is scheduled. */
+export function getNextRewardChange(
+  schedule: RewardSchedule,
+  blockNumber: number
+): RewardChange | null {
+  const currentReward = blockRewardWei(schedule, blockNumber);
+  // The current period starts where the reward last changed (steps that repeat it do not count)
+  let periodStart = 0;
+  let previous: bigint | null = null;
+  for (const step of schedule.steps) {
+    if (step.from > blockNumber) break;
+    if (step.reward !== previous) periodStart = step.from;
+    previous = step.reward;
+  }
+  for (const step of schedule.steps) {
+    if (step.from <= blockNumber || step.reward === currentReward) continue;
+    return {
+      block: step.from,
+      periodStart,
+      currentReward,
+      nextReward: step.reward,
+      name: schedule.forkNames[step.from],
+    };
+  }
+  return null;
 }
 
 /**
- * Calculates the cumulative block reward of blocks 1..blockNumber (the genesis
- * block pays nothing), i.e. the sum of getBlockRewardForHeight over that range.
+ * Total block reward of blocks 1..blockNumber in wei (the genesis block pays nothing).
  *
- * Uncle rewards are not included: they depend on which uncles each block
- * included and cannot be derived from the height alone.
+ * Uncle rewards are not included: they depend on which uncles each block included and cannot be
+ * derived from the height alone.
  */
-export function calculateTotalMiningReward(blockNumber: number): number {
-  if (blockNumber <= 0) return 0;
-
-  // Blocks below the first reduction pay the base reward.
-  let total = Math.min(blockNumber, FIRST_REDUCTION_BLOCK - 1) * BASE_REWARD;
-
-  // Each era starts on a reduction block, which already pays the reduced reward.
-  for (
-    let eraStart = FIRST_REDUCTION_BLOCK;
-    eraStart <= blockNumber;
-    eraStart += REWARD_REDUCTION_INTERVAL
-  ) {
-    const reward = getBlockRewardForHeight(eraStart);
-    if (reward <= MIN_REWARD) {
-      total += (blockNumber - eraStart + 1) * MIN_REWARD;
-      break;
-    }
-    const eraEnd = Math.min(blockNumber, eraStart + REWARD_REDUCTION_INTERVAL - 1);
-    total += (eraEnd - eraStart + 1) * reward;
-  }
-
+export function calculateTotalMiningRewardWei(
+  schedule: RewardSchedule,
+  blockNumber: number
+): bigint {
+  let total = 0n;
+  schedule.steps.forEach((step, index) => {
+    const first = Math.max(step.from, 1);
+    const next = schedule.steps[index + 1]?.from ?? Infinity;
+    const last = Math.min(blockNumber, next - 1);
+    if (last >= first) total += BigInt(last - first + 1) * step.reward;
+  });
   return total;
 }

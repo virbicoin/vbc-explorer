@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ArrowTrendingDownIcon } from '@heroicons/react/24/outline';
 import {
-  FIRST_REDUCTION_BLOCK,
-  REWARD_REDUCTION_INTERVAL,
-  REDUCTION_FORK_NAMES,
-  getBlockRewardForHeight,
-  getNextRewardReductionBlock,
+  formatCoins,
+  getNextRewardChange,
+  parseRewardSchedule,
+  blockRewardWei,
+  type RewardScheduleConfig,
 } from '@/lib/reward-schedule';
 
 const DEFAULT_BLOCK_TIME = 12; // seconds (network target)
@@ -79,30 +79,48 @@ function CountdownTimer({ blocksRemaining, blockTime }: CountdownTimerProps) {
 interface HalvingCountdownProps {
   latestBlock?: number;
   avgBlockTime?: string;
+  /** config.json `rewards` (from /api/config/client); null or missing = Ethereum's schedule */
+  rewards?: RewardScheduleConfig | null;
+  /** Native currency symbol from config.json */
+  symbol?: string;
 }
 
-export default function HalvingCountdown({ latestBlock, avgBlockTime }: HalvingCountdownProps) {
-  const hasBlock = typeof latestBlock === 'number' && latestBlock > 0;
-  const currentReward = hasBlock ? getBlockRewardForHeight(latestBlock) : null;
-  const nextBlock = hasBlock ? getNextRewardReductionBlock(latestBlock) : null;
-  const atMinimum = hasBlock && nextBlock === null;
+/** Countdown to the next block where the block reward changes, from the configured schedule. */
+export default function HalvingCountdown({
+  latestBlock,
+  avgBlockTime,
+  rewards,
+  symbol = '',
+}: HalvingCountdownProps) {
+  const schedule = useMemo(() => {
+    try {
+      return parseRewardSchedule(rewards);
+    } catch {
+      return null; // the server logs the configuration error
+    }
+  }, [rewards]);
+  const hasBlock = schedule !== null && typeof latestBlock === 'number' && latestBlock > 0;
+  const currentReward = hasBlock ? formatCoins(blockRewardWei(schedule, latestBlock)) : null;
+  const change = hasBlock ? getNextRewardChange(schedule, latestBlock) : null;
+  const nextBlock = change?.block ?? null;
+  const noFurtherChange = hasBlock && change === null;
+  const unit = symbol ? ` ${symbol}` : '';
 
   const parsedBlockTime = avgBlockTime !== undefined ? parseFloat(avgBlockTime) : NaN;
   const blockTime =
     !isNaN(parsedBlockTime) && parsedBlockTime > 0 ? parsedBlockTime : DEFAULT_BLOCK_TIME;
 
   const blocksRemaining = hasBlock && nextBlock !== null ? nextBlock - latestBlock : null;
-  const eraStart =
-    nextBlock !== null
-      ? nextBlock === FIRST_REDUCTION_BLOCK
-        ? 0
-        : nextBlock - REWARD_REDUCTION_INTERVAL
-      : null;
   const progress =
-    hasBlock && nextBlock !== null && eraStart !== null
-      ? Math.min(100, Math.max(0, ((latestBlock - eraStart) / (nextBlock - eraStart)) * 100))
+    hasBlock && change !== null
+      ? Math.min(
+          100,
+          Math.max(
+            0,
+            ((latestBlock - change.periodStart) / (change.block - change.periodStart)) * 100
+          )
+        )
       : null;
-  const forkName = nextBlock !== null ? REDUCTION_FORK_NAMES[nextBlock] : undefined;
 
   return (
     <div className="bg-gray-800 rounded-lg border border-gray-700 p-6">
@@ -114,31 +132,41 @@ export default function HalvingCountdown({ latestBlock, avgBlockTime }: HalvingC
             <div className="text-gray-400 text-sm">Block Reward</div>
             <div className="text-2xl font-bold flex items-center gap-2">
               {currentReward !== null ? (
-                atMinimum ? (
-                  <span className="text-teal-400">{currentReward} VBC</span>
+                change === null ? (
+                  <span className="text-teal-400">
+                    {currentReward}
+                    {unit}
+                  </span>
                 ) : (
                   <>
-                    <span className="text-gray-100">{currentReward} VBC</span>
+                    <span className="text-gray-100">
+                      {currentReward}
+                      {unit}
+                    </span>
                     <span className="text-gray-500">→</span>
-                    <span className="text-teal-400">{currentReward - 1} VBC</span>
+                    <span className="text-teal-400">
+                      {formatCoins(change.nextReward)}
+                      {unit}
+                    </span>
                   </>
                 )
               ) : (
                 <span className="text-gray-100">N/A</span>
               )}
             </div>
-            {forkName && nextBlock !== null && (
+            {change !== null && (
               <div className="text-xs text-gray-400 mt-1">
-                Next reduction: {forkName} fork at block {nextBlock.toLocaleString()}
+                Next change: {change.name ? `${change.name} fork at block` : 'block'}{' '}
+                {change.block.toLocaleString()}
               </div>
             )}
           </div>
         </div>
 
         {/* Countdown timer */}
-        {atMinimum ? (
+        {noFurtherChange ? (
           <div className="text-lg font-semibold text-gray-400">
-            Final reward era — no further reductions
+            No further reward change scheduled
           </div>
         ) : blocksRemaining !== null && hasBlock ? (
           <CountdownTimer
@@ -152,7 +180,7 @@ export default function HalvingCountdown({ latestBlock, avgBlockTime }: HalvingC
       </div>
 
       {/* Progress bar */}
-      {!atMinimum && (
+      {!noFurtherChange && (
         <div className="mt-6">
           <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
             <div

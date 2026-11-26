@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Account, Transaction, Contract, Block } from '../../../../models/index';
 import { tryGetDb } from '../../../../lib/db/get-db';
 import { getWeb3 } from '../../../../lib/web3';
-import { loadConfig } from '../../../../lib/config';
+import { loadConfig, getRewardSchedule } from '../../../../lib/config';
 import { calculateTotalSupply } from '../../../../lib/supply';
 import {
   sanitizeAddress,
@@ -349,8 +349,10 @@ export async function GET(
     .select('blockNumber gasUsed gasPrice')
     .lean()) as Array<{ blockNumber: number; gasUsed?: number; gasPrice?: string }>;
 
+  const schedule = getRewardSchedule();
   const miningRewards = minedBlocks.map((block) => {
     const reward = minerRewardWei(
+      schedule,
       block.number,
       block.uncles?.length ?? 0,
       transactionFeesWei(minedBlockTxs.filter((tx) => tx.blockNumber === block.number))
@@ -366,7 +368,7 @@ export async function GET(
       type: 'mining_reward',
       status: 'success',
       details: {
-        blockReward: getBlockRewardForHeight(block.number),
+        blockReward: getBlockRewardForHeight(schedule, block.number),
         gasFees: weiToFixed8(reward.fees),
         totalReward: weiToFixed8(reward.total),
       },

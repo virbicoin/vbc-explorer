@@ -20,6 +20,14 @@ import {
 } from '@/models/index';
 import { publicClient } from '@/lib/api/blockscout/shared';
 import { GET, POST } from '@/app/api/route';
+import { parseRewardSchedule } from '@/lib/reward-schedule';
+
+// Block rewards come from config.json; pin a flat 2-coin schedule for the mined-block actions
+const REWARDS = parseRewardSchedule({ blockReward: { '0': '2' } });
+vi.mock('@/lib/config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/config')>()),
+  getRewardSchedule: () => REWARDS,
+}));
 
 let mongod: MongoMemoryServer;
 let ipCounter = 0;
@@ -540,6 +548,27 @@ describe('transaction module', () => {
 });
 
 describe('block, stats and gas', () => {
+  it('getminedblocks reports what the miner got: the scheduled reward plus fees', async () => {
+    const { body } = await api(
+      `module=account&action=getminedblocks&address=${DAVE}&page=1&offset=3`
+    );
+    const reward = 2n * 10n ** 18n;
+    expect(body.result).toEqual([
+      { blockNumber: '10', timeStamp: String(GENESIS_TIME + 100), blockReward: String(reward) },
+      // 21,000 gas at 5 gwei and at 3 gwei
+      {
+        blockNumber: '9',
+        timeStamp: String(GENESIS_TIME + 90),
+        blockReward: String(reward + 21_000n * 5_000_000_000n),
+      },
+      {
+        blockNumber: '8',
+        timeStamp: String(GENESIS_TIME + 80),
+        blockReward: String(reward + 21_000n * 3_000_000_000n),
+      },
+    ]);
+  });
+
   it('getblockcountdown estimates the time to a future block', async () => {
     const { body } = await api(`module=block&action=getblockcountdown&blockno=${HEAD + 10}`);
     expect(body.result).toEqual({

@@ -123,9 +123,4 @@ export function confirmations(head: number, blockNumber: unknown): string {
 // Block Reward Schedule
 // ============================================
 
-// Implementation lives in a pure module so client components can use it too.
-export {
-  getBlockRewardForHeight,
-  getBlockRewardWeiForHeight,
-  calculateTotalMiningReward,
-} from '@/lib/reward-schedule';
+// The schedule comes from config.json `rewards`; the functions live in lib/reward-schedule.ts.

@@ -4,7 +4,7 @@
 
 ## プロジェクト概要
 
-VBC Explorer は、VirBiCoin 向けのモダンなブロックチェーンエクスプローラーです（EVM 互換であれば他のネットワークでも動作します）。Next.js 16 App Router・TypeScript・MongoDB で構築しています。
+VBC Explorer は、VirBiCoin 向けに作られたモダンなブロックチェーンエクスプローラーです。**ETH・ETC やそのフォークコインでもそのまま動く汎用プロジェクト**なので、チェーン固有の値（ネットワーク名・通貨記号・ラップドトークン名・RPC ポート・チェーン ID・報酬スケジュール・フォーク名・premine）はすべて `config.json` に置き、コードには Ethereum 互換の既定値だけを書く（本番の設定で値が埋まっていて表に出ない直書きも不具合として扱う）。Next.js 16 App Router・TypeScript・MongoDB で構築しています。
 
 主な機能は次のとおりです。
 
@@ -127,7 +127,7 @@ lib/                    # ユーティリティライブラリ
   launchpad-token-source.ts # Launchpad トークンデータ
   models.ts             # モデルインターフェース
   price-service.ts      # 価格データサービス
-  reward-schedule.ts    # ブロック報酬スケジュール（純粋モジュール、クライアント/サーバー共用）
+  reward-schedule.ts    # ブロック報酬スケジュールの計算（純粋モジュール、クライアント/サーバー共用。値は config.json の rewards、サーバーは getRewardSchedule()）
   stats.ts              # 統計ユーティリティ
   supply.ts             # 供給量計算
   transaction-utils.ts  # トランザクションユーティリティ
@@ -548,7 +548,8 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 `/api/total_supply` などの供給量がアンクル報酬とネフュー報酬を数えておらず、2026-11-24 時点で実際の発行量より 4% 以上少なかった（11 月以降はアンクルがほぼ毎ブロック付き、1 ブロックあたり約 7 VBC が上乗せで発行されている）ことへの対策。
 
 ### 設計ルール（必ず守る）
-- **新規発行はブロック報酬とアンクル報酬だけ**。供給量 = premine + `calculateTotalMiningReward(head)`（ブロック 1..head）+ `Block.uncleReward` の合計。式は `lib/reward-schedule.ts`（`getUncleRewardWei` = (uncle + 8 − block) / 8 × 報酬、`getNephewRewardWei` = 報酬 / 32、`calculateUncleIssuanceWei`）。go-virbicoin の `accumulateRewards` と同じで、本番ブロックの採掘者残高の増分と 1 wei まで一致することを確認済み
+- **新規発行はブロック報酬とアンクル報酬だけ**。供給量 = premine + `calculateTotalMiningRewardWei(schedule, head)`（ブロック 1..head）+ `Block.uncleReward` の合計。式は `lib/reward-schedule.ts`（`getUncleRewardWei` = (uncle + 8 − block) / 8 × 報酬、`flatUncleRewardFrom` 以降は報酬 / 32（ETC の ECIP-1017）、`getNephewRewardWei` = 報酬 / 32、`calculateUncleIssuanceWei`）。VirBiCoin では go-virbicoin の `accumulateRewards` と同じで、本番ブロックの採掘者残高の増分と 1 wei まで一致することを確認済み
+- **報酬スケジュールをコードに書かない**。値は `config.json` の `rewards`（`blockReward` = 適用開始ブロック → 報酬の表。OpenEthereum の chainspec の `blockReward` と同じ形で、16 進のブロック番号・wei も読める。`flatUncleRewardFrom`、`forkNames`）。サーバーは `getRewardSchedule()`（lib/config.ts）、画面は `/api/config/client` の `rewards` を `parseRewardSchedule()` に渡す。`rewards` が無ければ Ethereum のスケジュール（5 / 3 / 2 / 0）で、起動時に警告を出す。書き方の例（Ethereum・ETC・VirBiCoin）は README の「Block reward schedule」
 - **供給量をルートごとに計算しない**。`lib/supply.ts` の `calculateTotalSupply()` / `calculateTotalSupplyWei()` / `calculateCirculatingSupplyWei()` を使う（`/api/v2/stats`、blockscout `ethsupply` も同じ値）。wei で返す API は wei 版を使い、`Math.floor` で端数を落とさない
 - **採掘報酬を固定値で書かない**。mining API（`/api/address/[address]/mining`）と blockscout `getblockreward` は報酬スケジュール＋手数料（保存済み Transaction の gasUsed × gasPrice）＋ネフュー報酬で計算する。`getblockreward` の `blockReward` は Etherscan と同じく静的報酬＋手数料＋uncle inclusion reward
 - `Block.uncleReward` は wei の 10 進文字列で、アンクルを持つブロックにだけ付く（スパース索引 `{ uncleReward: 1 }`）。アンクルの高さはブロックに含まれないので `ChainNode.getUncle()` でノードに問い合わせる（`lib/sync/uncle-rewards.ts`）
@@ -702,12 +703,11 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 
 ## 新機能（2026-06）
 
-### ハービングカウントダウン
-- 次のブロック報酬削減フォーク（Quiche / Miche / Rusk / Celestia / Mafuyu / Kipfel / Lumina）までのライブカウントダウンとエラ進捗を `/stats` ページに表示
-- 報酬スケジュール（8 VBC からブロック 4,200,000 を起点に 2,100,000 ブロックごとに 1 VBC ずつ減少、最低 1 VBC）は `lib/reward-schedule.ts` に集約。サーバー専用依存のない純粋モジュールで、クライアントコンポーネントからも利用可能
-- `lib/api/blockscout/shared.ts` の報酬関数は `lib/reward-schedule.ts` からの再エクスポート（既存 API ハンドラのインポートは変更不要）
-- コンポーネント: `components/HalvingCountdown.tsx`。データは既存の `GET /api/stats?enhanced=true`（`latestBlock` / `avgBlockTime`）を使用し、新規 API は不要
-- go-virbicoin 側で報酬スケジュールやアンクル報酬の式が変更された場合は `lib/reward-schedule.ts` を更新すること（テスト: `tests/lib/reward-schedule.test.ts`）
+### ブロック報酬のカウントダウン
+- `config.json` の `rewards` で次に報酬が変わるブロック（`forkNames` があればフォーク名）までのライブカウントダウンと期間内の進捗を `/stats` ページに表示（2026-11 までは VirBiCoin の 8→1 VBC のスケジュールとフォーク名がコードに固定されていた）
+- 計算は `lib/reward-schedule.ts`（`getNextRewardChange()`）。サーバー専用依存のない純粋モジュールで、クライアントコンポーネントからも利用可能
+- コンポーネント: `components/HalvingCountdown.tsx`（`rewards` と通貨記号を props で受け取る）。ブロック高と平均ブロックタイムは既存の `GET /api/stats?enhanced=true`
+- VirBiCoin の報酬スケジュールが変わったら（go-virbicoin / open-virbicoin のフォーク追加など）本番の `config.json` の `rewards` を更新する。コードは変えない（テスト: `tests/lib/reward-schedule.test.ts`）
 
 ## 新機能（2026-01）
 

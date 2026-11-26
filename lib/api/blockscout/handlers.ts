@@ -24,6 +24,7 @@ import {
   confirmations,
 } from './shared';
 import { getUncleRewardWei, minerRewardWei, transactionFeesWei } from '@/lib/reward-schedule';
+import { getRewardSchedule } from '@/lib/config';
 import { calculateTotalSupplyWei } from '@/lib/supply';
 import { etherscanEvmVersion } from '@/lib/contract/solc-utils';
 
@@ -58,14 +59,23 @@ export async function getBlockReward(blockno: string) {
         return {
           miner: uncle.miner.toLowerCase(),
           unclePosition: String(index),
-          blockreward: getUncleRewardWei(hexToNumber(uncle.number), blockNum).toString(),
+          blockreward: getUncleRewardWei(
+            getRewardSchedule(),
+            hexToNumber(uncle.number),
+            blockNum
+          ).toString(),
         };
       })
     );
     const txs = (await Transaction.find({ blockNumber: blockNum })
       .select('gasUsed gasPrice')
       .lean()) as Array<{ gasUsed?: number; gasPrice?: string }>;
-    const reward = minerRewardWei(blockNum, uncles.length, transactionFeesWei(txs));
+    const reward = minerRewardWei(
+      getRewardSchedule(),
+      blockNum,
+      uncles.length,
+      transactionFeesWei(txs)
+    );
 
     // Etherscan semantics: blockReward = static reward + fees + uncle inclusion reward
     const result = {

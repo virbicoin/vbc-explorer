@@ -17,8 +17,13 @@
  */
 
 import { createPublicClient, http, formatEther, parseEther, type Address } from 'viem';
-import { loadConfig } from './config';
-import { calculateTotalMiningReward, getBlockRewardForHeight } from './reward-schedule';
+import { loadConfig, getRewardSchedule } from './config';
+import {
+  calculateTotalMiningRewardWei,
+  formatCoins,
+  getBlockRewardForHeight,
+  type RewardSchedule,
+} from './reward-schedule';
 import { connectDB, Block, ScanProgress } from '../models/index';
 import { UNCLE_REWARD_SCAN } from './sync/uncle-rewards';
 
@@ -63,7 +68,7 @@ const supplyConfig: SupplyConfig = {
 };
 
 // RPC URL from config
-const RPC_URL = config.network?.rpcUrl || config.web3Provider?.url || 'http://localhost:8329';
+const RPC_URL = config.network?.rpcUrl || config.web3Provider?.url || 'http://localhost:8545';
 
 // ============================================
 // Viem Client Setup
@@ -221,19 +226,18 @@ export async function getUncleIssuanceWei(): Promise<bigint> {
 }
 
 /**
- * Calculate Total Supply
- * Pre-mine + scheduled block rewards (8 -> 7 -> ... -> 1 VBC, every 2,100,000
- * blocks from 4,200,000) + uncle issuance.
+ * Pre-mine + block rewards of blocks 1..blockNumber (config.json `rewards`) + uncle issuance,
+ * in wei.
  */
-/** Pre-mine + scheduled block rewards of blocks 1..blockNumber + uncle issuance, in wei. */
 export function computeTotalSupplyWei(
   blockNumber: number,
   premineAmount: number,
-  uncleIssuanceWei: bigint
+  uncleIssuanceWei: bigint,
+  schedule: RewardSchedule = getRewardSchedule()
 ): bigint {
   return (
     parseEther(String(premineAmount)) +
-    BigInt(calculateTotalMiningReward(blockNumber)) * 10n ** 18n +
+    calculateTotalMiningRewardWei(schedule, blockNumber) +
     uncleIssuanceWei
   );
 }
@@ -352,9 +356,11 @@ export async function getSupplyDetails(): Promise<{
 
   return {
     blockNumber: blockNumber.toString(),
-    blockReward: getBlockRewardForHeight(Number(blockNumber)),
+    blockReward: getBlockRewardForHeight(getRewardSchedule(), Number(blockNumber)),
     premineAmount: supplyConfig.premineAmount,
-    blockRewards: calculateTotalMiningReward(Number(blockNumber)),
+    blockRewards: Number(
+      formatCoins(calculateTotalMiningRewardWei(getRewardSchedule(), Number(blockNumber)))
+    ),
     uncleRewards: formatEther(uncleIssuance),
     // null until `npm run backfill-uncle-rewards` has run: blocks synced before then are not counted
     uncleRewardsBackfill: backfill

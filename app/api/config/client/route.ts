@@ -93,6 +93,8 @@ export async function GET(request: NextRequest) {
         explorer: config.network?.explorer || '',
         blockTime: config.network?.blockTime || 12,
       },
+      // Block reward schedule (lib/reward-schedule.ts); null = Ethereum's
+      rewards: config.rewards ?? null,
       // Centralized token icons configuration
       tokenIcons,
       // Public name tags for known addresses (Etherscan-style), derived from

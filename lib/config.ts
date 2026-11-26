@@ -2,6 +2,11 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { MissingMongoUriError } from './db/uri';
+import {
+  parseRewardSchedule,
+  type RewardSchedule,
+  type RewardScheduleConfig,
+} from './reward-schedule';
 
 /**
  * Resolve environment variables in config values
@@ -296,6 +301,8 @@ export interface AppConfig {
   dex?: DexConfig;
   launchpad?: LaunchpadConfig;
   supply?: SupplyConfig;
+  /** Block reward schedule (lib/reward-schedule.ts); Ethereum's when missing */
+  rewards?: RewardScheduleConfig;
   social?: SocialConfig;
   images?: ImagesConfig;
   sync?: SyncConfig;
@@ -555,6 +562,26 @@ export const loadConfig = readConfig;
  */
 export const clearConfigCache = (): void => {
   cachedConfig = null;
+  cachedRewardSchedule = null;
+};
+
+let cachedRewardSchedule: RewardSchedule | null = null;
+
+/**
+ * The chain's block reward schedule from config.json `rewards`. Without that section the
+ * schedule is Ethereum's, which is wrong for other chains, so say so once.
+ */
+export const getRewardSchedule = (): RewardSchedule => {
+  if (!cachedRewardSchedule) {
+    const rewards = readConfig().rewards;
+    if (!rewards?.blockReward) {
+      console.warn(
+        "config.json has no rewards.blockReward: using Ethereum's block rewards for supply and mining figures"
+      );
+    }
+    cachedRewardSchedule = parseRewardSchedule(rewards);
+  }
+  return cachedRewardSchedule;
 };
 
 // ---------------------------------------------------------------------------

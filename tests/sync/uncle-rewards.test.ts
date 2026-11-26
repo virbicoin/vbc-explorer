@@ -3,7 +3,7 @@
  * cleared when a replacement has no uncles, filled by the backfill, and summed
  * by the supply calculation. mongodb-memory-server + the fake node.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Block, ScanProgress, Transaction } from '@/models/index';
@@ -15,7 +15,15 @@ import {
   replaceBlock,
   upsertBlocks,
 } from '@/lib/sync';
-import { calculateTotalMiningReward } from '@/lib/reward-schedule';
+import { calculateTotalMiningRewardWei, parseRewardSchedule } from '@/lib/reward-schedule';
+
+// The supply and uncle code read the schedule from config.json; pin one with an 8-coin reward
+// that drops to 7 at block 4,200,000 so the expected amounts do not depend on the local config.
+const SCHEDULE = parseRewardSchedule({ blockReward: { '0': '8', '4200000': '7' } });
+vi.mock('@/lib/config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/config')>()),
+  getRewardSchedule: () => SCHEDULE,
+}));
 import { clearSupplyCache, computeTotalSupplyWei, getUncleIssuanceWei } from '@/lib/supply';
 import { FakeNode, addUncles, block, canonicalChain, seed } from './helpers';
 
@@ -187,12 +195,12 @@ describe('supply', () => {
   });
 
   it('adds pre-mine, the reward schedule and uncle issuance in wei', () => {
-    // 1 VBC pre-mine + 8 VBC × 100 blocks + 7.25 VBC of uncle issuance
+    // 1 coin pre-mine + 8 coins × 100 blocks + 7.25 coins of uncle issuance
     expect(computeTotalSupplyWei(100, 1, coins(7, 1))).toBe(coins(808, 1));
-    // blocks 1..4,200,000: 8 VBC each except the reduction block itself (7 VBC)
+    // blocks 1..4,200,000: 8 coins each except the block where the reward drops (7 coins)
     expect(computeTotalSupplyWei(4_200_000, 0, 0n)).toBe(
-      BigInt(calculateTotalMiningReward(4_200_000)) * COIN
+      calculateTotalMiningRewardWei(SCHEDULE, 4_200_000)
     );
-    expect(calculateTotalMiningReward(4_200_000)).toBe(4_199_999 * 8 + 7);
+    expect(calculateTotalMiningRewardWei(SCHEDULE, 4_200_000)).toBe(coins(4_199_999 * 8 + 7));
   });
 });

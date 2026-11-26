@@ -325,6 +325,20 @@
     "cacheDuration": 60,
     "_comment": "Supply calculation for /api/total_supply and /api/circulating_supply endpoints (CoinGecko/CMC compatible)"
   },
+  "rewards": {
+    "blockReward": {
+      "0": "5",
+      "4370000": "3",
+      "7280000": "2",
+      "15537394": "0"
+    },
+    "forkNames": {
+      "4370000": "Byzantium",
+      "7280000": "Constantinople",
+      "15537394": "Paris"
+    },
+    "_comment": "Block reward schedule used for the supply endpoints, mining rewards and the reward countdown. blockReward: reward in coins (or 0x wei) keyed by the first block it applies to, like an OpenEthereum chainspec's blockReward. flatUncleRewardFrom: block from which uncles earn a flat 1/32 of the block reward (Ethereum Classic ECIP-1017: 5000001). forkNames: optional names for the blocks where the reward changes. Without this section the explorer uses Ethereum's schedule shown here."
+  },
   "knownTokens": {
     "0x...tokenAddress1": {
       "name": "Token Name",

@@ -3,6 +3,8 @@
  * These functions can be used in client components without fs dependencies
  */
 
+import type { RewardScheduleConfig } from './reward-schedule';
+
 // Cache for currency config
 let currencyCache: {
   symbol: string;
@@ -10,6 +12,9 @@ let currencyCache: {
   decimals: number;
   gasUnit: string;
 } | null = null;
+
+// Block reward schedule from config.json (null = Ethereum's, see lib/reward-schedule.ts)
+let rewardsCache: RewardScheduleConfig | null = null;
 
 // Cache for network config
 let networkCache: {
@@ -36,6 +41,7 @@ export async function initializeCurrencyConfig(): Promise<void> {
         decimals: config.currency?.decimals || 18,
         gasUnit: config.currency?.gasUnit || 'Gwei',
       };
+      rewardsCache = config.rewards ?? null;
       networkCache = {
         name: config.network?.name || 'Ethereum',
         chainId: config.network?.chainId || 1,
@@ -60,6 +66,14 @@ export async function initializeCurrencyConfig(): Promise<void> {
       blockTime: 12,
     };
   }
+}
+
+/**
+ * Block reward schedule section of config.json after initializeCurrencyConfig() (null = the
+ * Ethereum schedule; pass it to parseRewardSchedule())
+ */
+export function getRewardsConfig(): RewardScheduleConfig | null {
+  return rewardsCache;
 }
 
 /**

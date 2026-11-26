@@ -17,7 +17,12 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
-import { getCurrencySymbol, initializeCurrencyConfig } from '../../lib/client-config';
+import {
+  getCurrencySymbol,
+  getRewardsConfig,
+  initializeCurrencyConfig,
+} from '../../lib/client-config';
+import type { RewardScheduleConfig } from '../../lib/reward-schedule';
 import { initializeCurrency } from '../../lib/bigint-utils';
 import HalvingCountdown from '../../components/HalvingCountdown';
 
@@ -87,6 +92,7 @@ export default function StatsPage() {
   const [loading, setLoading] = useState(true);
   const [dailyStatsLoading, setDailyStatsLoading] = useState(false);
   const [currencySymbol, setCurrencySymbol] = useState<string>('');
+  const [rewardsConfig, setRewardsConfig] = useState<RewardScheduleConfig | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d'>('30d');
 
   useEffect(() => {
@@ -94,6 +100,7 @@ export default function StatsPage() {
       await initializeCurrency();
       await initializeCurrencyConfig();
       setCurrencySymbol(getCurrencySymbol());
+      setRewardsConfig(getRewardsConfig());
     };
     init();
   }, []);
@@ -384,13 +391,18 @@ export default function StatsPage() {
           </div>
         </section>
 
-        {/* Halving Countdown */}
+        {/* Block reward countdown */}
         <section className="mb-8">
           <h2 className="text-xl font-semibold text-gray-100 mb-4 flex items-center gap-2">
             <ClockIcon className="w-6 h-6 text-teal-400" />
-            Halving Countdown
+            Block Reward Countdown
           </h2>
-          <HalvingCountdown latestBlock={stats?.latestBlock} avgBlockTime={stats?.avgBlockTime} />
+          <HalvingCountdown
+            latestBlock={stats?.latestBlock}
+            avgBlockTime={stats?.avgBlockTime}
+            rewards={rewardsConfig}
+            symbol={currencySymbol}
+          />
         </section>
 
         {/* Gas Tracker */}

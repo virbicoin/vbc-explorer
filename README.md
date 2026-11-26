@@ -317,7 +317,7 @@ Edit `config.json` for your blockchain:
 - **Rich List** - Real-time wealth distribution and account rankings
 - **Price Tracking** - Multi-API price feeds with historical data
 - **Gas Analytics** - Gas price tracking with unit customization (Gniku/niku)
-- **Halving Countdown** - Live countdown to the next block reward reduction with era progress
+- **Block Reward Countdown** - Live countdown to the next change in the configured block reward schedule
 - **Performance Metrics** - Transaction throughput and network performance
 
 ### 🔗 **Advanced Integration**
@@ -1719,7 +1719,7 @@ Returns the total supply of VBC as a plain text number.
 
 **Calculation:** `Pre-mine Amount + block rewards of blocks 1..head + uncle issuance`
 
-- Block rewards follow the schedule in `lib/reward-schedule.ts` (8 VBC, then 1 VBC less every 2,100,000 blocks from block 4,200,000, down to 1 VBC).
+- Block rewards follow the `rewards` schedule in `config.json` (see [Block reward schedule](#block-reward-schedule-configjson-rewards)); without it the explorer uses Ethereum's and logs a warning.
 - Uncle issuance is the sum of `Block.uncleReward` (uncle rewards plus nephew rewards). Blocks stored before the field existed count only after `npm run backfill-uncle-rewards` has run; `uncleRewardsBackfill` in the debug output shows how far it got (`null` = never run).
 - Block and uncle rewards are the only ways new coins are created, so this is the issued supply. `/api/v2/stats` and the Etherscan-compatible `stats/ethsupply` return the same figure in wei.
 
@@ -1773,6 +1773,38 @@ Returns the circulating supply of VBC as a plain text number.
     ],
     "cacheDuration": 60
   }
+}
+```
+
+#### Block reward schedule (config.json `rewards`)
+
+The explorer runs on Ethereum, Ethereum Classic and their forks, so it does not know a chain's block rewards. The supply endpoints, mining rewards (`getblockreward`, `getminedblocks`, the address and mining pages) and the reward countdown on `/stats` read them from `rewards`:
+
+- `blockReward`: the reward keyed by the first block it applies to, the same shape as an OpenEthereum chainspec's `blockReward` (decimal or `0x` block numbers; rewards in coins, or in wei as `0x` hex, so a chainspec map can be copied as is).
+- `flatUncleRewardFrom` (optional): from this block on an uncle earns a flat 1/32 of the block reward (ECIP-1017). Before it, an uncle earns (uncle + 8 − block) / 8 of the reward (Ethash). The including miner always gets 1/32 per uncle.
+- `forkNames` (optional): names shown by the countdown for the blocks where the reward changes.
+
+Without `rewards` the schedule is Ethereum's:
+```json
+"rewards": {
+  "blockReward": { "0": "5", "4370000": "3", "7280000": "2", "15537394": "0" },
+  "forkNames": { "4370000": "Byzantium", "7280000": "Constantinople", "15537394": "Paris" }
+}
+```
+
+Ethereum Classic (ECIP-1017: 20% less every 5,000,000 blocks; add eras as needed):
+```json
+"rewards": {
+  "blockReward": { "0": "5", "5000001": "4", "10000001": "3.2", "15000001": "2.56", "20000001": "2.048", "25000001": "1.6384" },
+  "flatUncleRewardFrom": 5000001
+}
+```
+
+VirBiCoin (8 VBC, 1 VBC less every 2,100,000 blocks from block 4,200,000, down to 1 VBC):
+```json
+"rewards": {
+  "blockReward": { "0": "8", "4200000": "7", "6300000": "6", "8400000": "5", "10500000": "4", "12600000": "3", "14700000": "2", "16800000": "1" },
+  "forkNames": { "4200000": "Quiche", "6300000": "Miche", "8400000": "Rusk", "10500000": "Celestia", "12600000": "Mafuyu", "14700000": "Kipfel", "16800000": "Lumina" }
 }
 ```
 

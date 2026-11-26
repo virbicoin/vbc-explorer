@@ -10,7 +10,7 @@ import {
   getClientIp,
   getSecurityHeaders,
 } from '../../../../lib/security';
-import { loadConfig } from '../../../../lib/config';
+import { loadConfig, getRewardSchedule } from '../../../../lib/config';
 import { getWeb3 } from '../../../../lib/web3';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { createWeb3FactoryClient, resolveFactoryToken } from '@/lib/launchpad/factory';
@@ -157,6 +157,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           .select('gasUsed gasPrice')
           .lean()) as Array<{ gasUsed?: number; gasPrice?: string }>;
         const reward = minerRewardWei(
+          getRewardSchedule(),
           block.number,
           block.uncles?.length ?? 0,
           transactionFeesWei(blockTxs)

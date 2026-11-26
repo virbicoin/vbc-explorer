@@ -29,8 +29,9 @@ import {
   methodId,
   getHeadNumber,
   confirmations,
-  getBlockRewardWeiForHeight,
 } from './shared';
+import { getRewardSchedule } from '@/lib/config';
+import { minerRewardWei, transactionFeesWei } from '@/lib/reward-schedule';
 
 /** Paging, order and block range shared by the list actions. */
 export interface ListOptions {
@@ -403,11 +404,27 @@ export async function getMinedBlocks(address: string, page = 1, offset = 10) {
       .lean();
     if (blocks.length === 0) return emptyListResponse();
 
-    const result = blocks.map((block: Record<string, unknown>) => ({
-      blockNumber: String(block.number),
-      timeStamp: String(block.timestamp || ''),
-      blockReward: getBlockRewardWeiForHeight(Number(block.number)),
-    }));
+    // Etherscan's blockReward is what the miner got: reward + fees + uncle inclusion reward
+    const txs = (await Transaction.find({
+      blockNumber: { $in: blocks.map((block: Record<string, unknown>) => Number(block.number)) },
+    })
+      .select('blockNumber gasUsed gasPrice')
+      .lean()) as Array<{ blockNumber: number; gasUsed?: number; gasPrice?: string }>;
+    const schedule = getRewardSchedule();
+    const result = blocks.map((block: Record<string, unknown>) => {
+      const number = Number(block.number);
+      const reward = minerRewardWei(
+        schedule,
+        number,
+        (block.uncles as string[] | undefined)?.length ?? 0,
+        transactionFeesWei(txs.filter((tx) => tx.blockNumber === number))
+      );
+      return {
+        blockNumber: String(block.number),
+        timeStamp: String(block.timestamp || ''),
+        blockReward: reward.total.toString(),
+      };
+    });
 
     return successResponse(result);
   } catch (error) {
