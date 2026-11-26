@@ -310,12 +310,14 @@ For a plain block explorer, leave the `dex`, `launchpad` and `bridge` sections o
 
 A part that is off has no pages and no API: its paths answer 404 (`proxy.ts`; JSON in the API's error format, the not-found page for pages), the header hides its link, the sitemap leaves it out, and the tools skip its work. `/api/v2/stats` reports `total_addresses` as null without the richlist, which is what keeps the account balances.
 
-Start only the apps it needs:
+Pages are prerendered when the app is built, so after changing a switch run `npm run build` and restart the explorer, as for any `config.json` value shown on pages (the 404s follow the running config after a restart; the header and the sitemap follow the build). Then start only the apps it needs:
 
 ```bash
 pm2 start ecosystem.config.json --only explorer,sync,stats,tokens
 # with a trace node (traces.url): add internal-txs; with a price API (currency.priceApi): add price
 ```
+
+Checked on a fresh install (2026-11-27): with all four parts off, their pages and API routes answer 404, the header and the sitemap list none of them, the stats page has no Rich List card, `tokens` skips the LP and Launchpad syncs, and the `richlist` app exits at once.
 
 ### Supported Networks
 - ✅ Your Chain (native support)

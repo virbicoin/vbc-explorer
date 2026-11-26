@@ -521,7 +521,7 @@ DEX・Token Launchpad・ブリッジ・richlist は任意の機能で、すべ�
 ### 設計ルール（必ず守る）
 - **機能の有無は `resolveFeatures()`（`lib/features.ts`）だけが決める。** サーバーは `getFeatures()`（lib/config.ts）、画面は `/api/config/client` の `features` を使う。`config.dex?.enabled` などを個別に読まない。DEX・Launchpad・ブリッジは各セクションの `enabled: true` で有効、richlist は `richlist.enabled: false` で無効（本番の config.json を変えずに済むよう、既定は有効）
 - **無効な機能のページと API は `proxy.ts` がまとめて 404 にする**（API は `{ error: { code: 'FEATURE_DISABLED' } }`、`/api/dex/geckoterminal` は JSON:API の `errors`、ページは存在しないパスへの rewrite で not-found ページ）。ルートごとに有効かを確かめない（2026-11-27 までは DEX の 14 ルートが個別に確かめ、CMC・DefiLlama などは確かめていなかった）。機能のページや API を足すときは `FEATURE_PATHS` に足す
-- リンクも同じ判定で隠す: ヘッダー（`Header.tsx` → `HeaderNav` の `features`）、stats ページの Rich List カード、`sitemap.ts`
+- リンクも同じ判定で隠す: ヘッダー（`Header.tsx` → `HeaderNav` の `features`）、stats ページの Rich List カード、`sitemap.ts`。ヘッダーとサイトマップはビルド時に静的に作られるので、切り替えを変えたら `npm run build` と再起動が要る（404 は再起動だけで新しい設定に従う。2026-11-27 に TK01 で確認）
 - ツールは `getFeatures()` で処理を飛ばす: `tokens` の Launchpad 同期と LP 同期、`price` の DEX 価格とスワップ同期、`sync.ts richlist`（何もせず終わる。pm2 では起動しない）
 - richlist を切ると `Account`（残高）が作られない。`/api/v2/stats` の `total_addresses` は null、`listaccounts` は空、ホームの集計（`lib/stats.ts`）は最近の取引から数える。`loadAddressFacts()` のコントラクト判定は Contract と tokens で足りる
 - テスト: `tests/lib/features.test.ts`（判定、proxy の 404 と通過、サイトマップ）、`tests/api/v2-blocks-stats.test.ts`（richlist なしの `total_addresses`）
