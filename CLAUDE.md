@@ -943,6 +943,9 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 `app/api/route.ts` が振り分け、処理は `lib/api/blockscout/`（`account.ts` / `handlers.ts` / `proxy.ts` / `shared.ts`）にある。対応している action の一覧は `app/api/route.ts` の先頭と README の「Etherscan API」節。
 
 設計ルール（2026-11 に、形だけ互換で中身が違っていた箇所を直したときのもの。必ず守る）:
+- **action は `app/api/route.ts` の表（`ACTIONS` / `POST_ACTIONS`、proxy は `PROXY_ACTIONS`）に 1 行で足す。** 引数は `Params`（`lib/api/blockscout/params.ts`）で読む。欠落・不正は `ParamError` を投げれば、振り分け側がエラーの形にする（proxy は JSON-RPC の `-32602`）。action ごとに「Missing / Invalid」の if を書かない（2026-11 までは 600 行近い if の連なりで、同じ検査が 40 か所以上あった）
+- **エラーは `errorResponse(reason)`。** `message` に理由（Blockscout）、`result` に Etherscan の文言（`Error! Invalid address format`、`Contract source code not verified`、`Error! Missing Or invalid Action name` など。対応表は shared.ts の `ETHERSCAN_ERROR_TEXT`、無ければ理由と同じ文）。Hardhat / Foundry は `result` の文で判定するので、`result: null` に戻さない
+- **プロキシはチェーンから読む。** `proxyInfo()`（handlers.ts → `lib/contract/proxy-detect.ts`。EIP-1967 実装 / beacon、EIP-1822、zos、EIP-1167）を getsourcecode の `Proxy` / `Implementation` と `verifyproxycontract` / `checkproxyverification`（OpenZeppelin upgrades の流れ）が使う。関係を DB に保存しない（アップグレードがすぐ反映されるように）。ノードへの呼び出しは `publicClient.request` 経由（viem の getCode などの高水準関数はテストのモックを通らない）
 - **項目名と意味は Etherscan / Blockscout の公式に合わせる。データが無いものを別のデータで埋めない。** `txlistinternal` は `InternalTransaction`（コールトレース由来）、`token1155tx` は VRC-1155 の移動だけを返す。通常の取引を内部取引として返さない（利用側が同じ送金を二重に数える）
 - **成否は `Transaction.status`（数値 1 / 0、レシートなしは null）から `txStatusFields()` で求める。** 真偽値との比較（`status === false`）は常に成功になる
 - **トークン移動は `tokentransfers`、保有者は `tokenholders` から返す。** `Transaction` や `Account` から作らない。種別の絞り込みは `transferKindFilter()`（`lib/api/blockscout/account.ts`）だけを使う: `tokenId` なし = ERC-20（`tokentx`）、`tokenId` あり・`tokenType` なし = ERC-721（`tokennfttx`）、`tokenType: 'VRC-1155'` = ERC-1155（`token1155tx`）。`tokenId` の有無だけで NFT を判定しない（VRC-1155 が VRC-721 に混ざる）

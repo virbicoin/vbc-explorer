@@ -1438,6 +1438,8 @@ The explorer provides a Blockscout/Etherscan compatible API endpoint at `/api`. 
 }
 ```
 
+Errors serve both kinds of clients: `message` carries the reason (as Blockscout does) and `result` Etherscan's text, which Hardhat and Foundry match on (`{"status":"0","message":"Invalid address format","result":"Error! Invalid address format"}`, `"Contract source code not verified"`, `"Error! Missing Or invalid Action name"`). Lists without rows answer `{"status":"0","message":"No transactions found","result":[]}`. In the `proxy` module a refused parameter is a JSON-RPC error with code `-32602`.
+
 #### Account Module
 
 | Action | Description | Parameters |
@@ -1452,7 +1454,16 @@ The explorer provides a Blockscout/Etherscan compatible API endpoint at `/api`. 
 | `txlistinternal` | Internal transactions: calls that moved value, contract creations and selfdestructs | `txhash`, `address` or `startblock` / `endblock`; `page`, `offset`, `sort` |
 | `tokenlist` | Tokens an address holds (Blockscout) | `address` |
 | `tokenbalance` | Get specific token balance | `address`, `contractaddress` |
-| `getminedblocks` | Get blocks mined by address | `address`, `page`, `offset` |
+| `balancehistory` | Native balance at a block (needs an archive node) | `address`, `blockno` |
+| `tokenbalancehistory` | Token balance at a block (needs an archive node) | `address`, `contractaddress`, `blockno` |
+| `addresstokenbalance` | ERC-20 holdings (`TokenAddress`, `TokenName`, `TokenSymbol`, `TokenQuantity`, `TokenDivisor`) | `address`, `page`, `offset` |
+| `addresstokennftbalance` | NFT collections held (`TokenQuantity` = items) | `address`, `page`, `offset` |
+| `addresstokennftinventory` | Token ids an address owns in a collection | `address`, `contractaddress`, `page`, `offset` |
+| `fundedby` | First transfer of the native coin into the address (transaction or internal) | `address` |
+| `pendingtxlist` | Pending transactions from or to the address (node pool: `txpool_content` or `parity_pendingTransactions`) | `address`, `page`, `offset` |
+| `txsBeaconWithdrawal` | Always empty: a proof-of-work chain has no beacon withdrawals | `address` |
+| `listaccounts` | Addresses by balance, largest first (Blockscout) | `page`, `offset` |
+| `getminedblocks` | Get blocks mined by address (`blockReward` = reward + fees + uncle inclusion) | `address`, `page`, `offset` |
 
 The list actions follow Etherscan's paging: a call without `page` / `offset` returns up to 10000 rows, `offset` may be at most 10000 and `page × offset` at most 100000. Calls that ask for more than 1000 rows per page are additionally limited to 10 per minute per client. `sort` is `desc` unless `asc` is given. A list without rows is answered with `{"status":"0","message":"No transactions found","result":[]}`.
 
@@ -1528,6 +1539,7 @@ curl "https://explorer.example.com/api?module=transaction&action=gettxreceiptsta
 | `tokeninfo` | Token information in the Etherscan layout (one-element array: `tokenName`, `divisor`, `tokenType`, ...) | `contractaddress` |
 | `gettokenholders` | Holders by rank (Blockscout: `address`, `value`) | `contractaddress`, `page`, `offset` |
 | `tokenholderlist` | Holders by rank (Etherscan: `TokenHolderAddress`, `TokenHolderQuantity`) | `contractaddress`, `page`, `offset` |
+| `tokenholdercount` | Holders with a positive balance | `contractaddress` |
 | `tokenlist` | Get all tokens list (tokens hidden as spam are left out) | `page`, `offset` |
 
 Token types are reported with their ERC name (`ERC-20`, `ERC-721`, `ERC-1155`).
@@ -1554,6 +1566,7 @@ curl "https://explorer.example.com/api?module=token&action=tokenlist&page=1&offs
 | `coinprice` | The same price with Blockscout's field names (`coin_usd`, `coin_btc`) | - |
 | `chainsize` | Get chain size statistics | - |
 | `dailytx` | Get daily transaction count | `startdate`, `enddate`, `sort` |
+| `totalfees` | Transaction fees paid on a UTC day, in wei (Blockscout) | `date` (YYYY-MM-DD) |
 
 **Examples:**
 ```bash
@@ -1587,8 +1600,13 @@ curl "https://explorer.example.com/api?module=gastracker&action=gasoracle"
 | `getabi` | Get contract ABI | `address` |
 | `getsourcecode` | Get contract source code | `address` |
 | `getcontractcreation` | Get contract creation info | `contractaddresses` (max 5, comma separated) |
-| `verifysourcecode` | Submit contract for verification | See below |
+| `listcontracts` | Contracts with their verified source, newest first (Blockscout) | `filter` (`verified`, `unverified`, `decompiled`, `not_decompiled`), `page`, `offset` (max 1000) |
+| `verifysourcecode` | Submit contract for verification (POST) | See below |
 | `checkverifystatus` | Check verification status | `guid` |
+| `verifyproxycontract` | Link a proxy to its implementation (POST; EIP-1967, beacon, EIP-1822, zos, EIP-1167 are read from the chain) | `address`, `expectedimplementation` (optional) |
+| `checkproxyverification` | Result of `verifyproxycontract` | `guid` |
+
+`getsourcecode` reports `Proxy` / `Implementation` for any proxy it recognises, read from the chain on each request (cached for five minutes), so an upgrade shows at once.
 
 **Examples:**
 ```bash

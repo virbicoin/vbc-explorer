@@ -1,44 +1,53 @@
 /**
- * Blockscout-compatible API Endpoint
+ * Etherscan / Blockscout RPC-style API: `/api?module=<module>&action=<action>&...`.
  *
- * This API follows the Blockscout/Etherscan API standard format.
- * All responses are in JSON format with status, message, and result fields
- * (the `proxy` module and the `eth_*` actions use the JSON-RPC envelope).
+ * Every action is a row of the tables below. Parameters are read through `Params`, which throws
+ * `ParamError` for a missing or malformed value; the dispatcher answers that with the API's error
+ * envelope (`status: '0'`, the reason in `message`, Etherscan's text in `result`), or with a
+ * JSON-RPC "invalid params" error in the `proxy` module. Unknown modules and actions get
+ * Etherscan's "Error! Missing Or invalid Module/Action name".
  *
- * Usage: /api?module=<module>&action=<action>&...params
- *
- * Supported modules:
- * - account: balance, balancemulti, eth_get_balance, txlist, txlistinternal, tokentx,
- *            tokennfttx, token1155tx, tokenbalance, tokenlist, getminedblocks
+ * Modules and actions (Etherscan and Blockscout names; both are accepted where they differ):
+ * - account: balance, balancemulti, balancehistory, eth_get_balance, txlist, txlistinternal,
+ *   pendingtxlist, txsbeaconwithdrawal, tokentx, tokennfttx, token1155tx, tokenbalance,
+ *   tokenbalancehistory, tokenlist, addresstokenbalance, addresstokennftbalance,
+ *   addresstokennftinventory, fundedby, listaccounts, getminedblocks
  * - block: getblockreward, getblockcountdown, getblocknobytime, eth_block_number
  * - transaction: gettxinfo, gettxreceiptstatus, getstatus
- * - token: getToken, getTokenHolders, tokeninfo, tokenholderlist, tokenlist
- * - stats: ethsupply, coinsupply, tokensupply, ethprice, coinprice, chainsize, dailytx
+ * - token: getToken, getTokenHolders, tokeninfo, tokenholderlist, tokenholdercount, tokenlist
+ * - stats: ethsupply, coinsupply, tokensupply, ethprice, coinprice, chainsize, dailytx,
+ *   dailytxncount, totalfees
  * - gastracker: gasoracle
- * - contract: getabi, getsourcecode, getcontractcreation, verifysourcecode, checkverifystatus
+ * - contract: getabi, getsourcecode, getcontractcreation, listcontracts, checkverifystatus,
+ *   checkproxyverification; POST verifysourcecode, verifyproxycontract
  * - logs: getLogs
- * - proxy: eth_blockNumber, eth_getBlockByNumber, eth_getUncleByBlockNumberAndIndex,
- *          eth_getBlockTransactionCountByNumber, eth_getTransactionByHash,
- *          eth_getTransactionByBlockNumberAndIndex, eth_getTransactionCount,
- *          eth_getTransactionReceipt, eth_call, eth_getCode, eth_getStorageAt,
- *          eth_gasPrice, eth_estimateGas
+ * - proxy: the JSON-RPC reads in lib/api/blockscout/proxy.ts
  *
- * txlistinternal reads the internal transactions tools/internal-txs.ts indexes
- * from call traces, token1155tx the VRC-1155 transfers tools/tokens.ts syncs.
+ * txlistinternal reads the internal transactions tools/internal-txs.ts indexes from call traces,
+ * token1155tx the VRC-1155 transfers tools/tokens.ts syncs.
  */
 
-import { NextResponse, type NextRequest } from 'next/server';
-import { isValidAddress, isValidHash, validatePagination } from '@/lib/security';
-import { errorResponse } from '@/lib/api/blockscout/shared';
+import { NextRequest, NextResponse } from 'next/server';
+import { validatePagination } from '@/lib/security';
+import { errorResponse, emptyListResponse, rpcErrorResponse } from '@/lib/api/blockscout/shared';
+import { Params, ParamError, RespondWith } from '@/lib/api/blockscout/params';
 import {
   getBalance,
   getBalanceMulti,
+  getBalanceHistory,
   getEthGetBalance,
   getTxList,
   getTokenTransfers,
   getInternalTransactions,
+  getPendingTxList,
   getAccountTokenList,
   getTokenBalance,
+  getTokenBalanceHistory,
+  getAddressTokenBalance,
+  getAddressNftBalance,
+  getAddressNftInventory,
+  getFundedBy,
+  listAccounts,
   getMinedBlocks,
   type ListOptions,
 } from '@/lib/api/blockscout/account';
@@ -53,35 +62,28 @@ import {
   getTokenInfo,
   getTokenInfoEtherscan,
   getTokenHolders,
+  getTokenHolderCount,
   getEthSupply,
   getTokenSupply,
   getEthPrice,
   getChainSize,
   getDailyTx,
+  getTotalFees,
   getTokenList,
   getGasOracle,
   getContractCreation,
+  listContracts,
   getLogs,
   getAbi,
   getSourceCode,
 } from '@/lib/api/blockscout/handlers';
+import { PROXY_ACTIONS, forwardRpc } from '@/lib/api/blockscout/proxy';
 import {
-  proxyEthBlockNumber,
-  proxyEthGetBlockByNumber,
-  proxyEthGetUncleByBlockNumberAndIndex,
-  proxyEthGetBlockTransactionCountByNumber,
-  proxyEthGetTransactionByHash,
-  proxyEthGetTransactionByBlockNumberAndIndex,
-  proxyEthGetTransactionCount,
-  proxyEthGetTransactionReceipt,
-  proxyEthCall,
-  proxyEthGetCode,
-  proxyEthGetStorageAt,
-  proxyEthGasPrice,
-  proxyEthEstimateGas,
-  toBlockParameter,
-} from '@/lib/api/blockscout/proxy';
-import { verifySourceCode, checkVerifyStatus } from '@/lib/api/blockscout/verification';
+  verifySourceCode,
+  checkVerifyStatus,
+  verifyProxyContract,
+  checkProxyVerification,
+} from '@/lib/api/blockscout/verification';
 import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
 
 /** Rows per page Etherscan allows, and returns when a list is asked for without paging. */
@@ -89,488 +91,309 @@ const MAX_ROWS = 10000;
 /** Pages above this size also count against the stricter `bulk` bucket. */
 const BULK_ROWS = 1000;
 
-/** `startblock` / `endblock`: undefined when absent, null when malformed. */
-function blockBound(value: string | null): number | undefined | null {
-  if (value === null || value === '') return undefined;
-  if (!/^\d{1,15}$/.test(value)) return null;
+/** `startblock` / `endblock`: undefined when absent. */
+function blockBound(p: Params, name: string): number | undefined {
+  const value = p.optional(name);
+  if (value === undefined) return undefined;
+  if (!/^\d{1,15}$/.test(value)) throw new ParamError('Invalid startblock or endblock');
   return Number(value);
 }
 
 /**
- * Paging (`page`, `offset`), order (`sort`) and block range (`startblock`,
- * `endblock`) of the list actions, with Etherscan's limits. Returns the
- * response to send when the parameters are refused.
+ * Paging (`page`, `offset`), order (`sort`) and block range (`startblock`, `endblock`) of the list
+ * actions, with Etherscan's limits; `maxRows` caps actions whose rows are large.
  */
-function listOptions(
-  request: NextRequest,
-  searchParams: URLSearchParams
-):
-  { options: ListOptions; response?: undefined } | { options?: undefined; response: NextResponse } {
-  const pagination = validatePagination(
-    searchParams.get('page'),
-    searchParams.get('offset'),
-    MAX_ROWS,
-    { defaultLimit: MAX_ROWS }
-  );
+function listOptions(request: NextRequest, p: Params, maxRows = MAX_ROWS): ListOptions {
+  const pagination = validatePagination(p.optional('page'), p.optional('offset'), maxRows, {
+    defaultLimit: maxRows,
+  });
   if (pagination.tooDeep) {
-    return {
-      response: errorResponse(
-        `Page too deep: page × offset must not exceed ${pagination.maxOffset}`
-      ),
-    };
+    throw new ParamError(`Page too deep: page × offset must not exceed ${pagination.maxOffset}`);
   }
-  const startblock = blockBound(searchParams.get('startblock'));
-  const endblock = blockBound(searchParams.get('endblock'));
-  if (startblock === null || endblock === null) {
-    return { response: errorResponse('Invalid startblock or endblock') };
-  }
+  const startblock = blockBound(p, 'startblock');
+  const endblock = blockBound(p, 'endblock');
   if (pagination.limit > BULK_ROWS) {
     const limited = enforceRateLimit(request, 'bulk', { format: 'etherscan' });
-    if (limited) return { response: limited };
+    if (limited) throw new RespondWith(limited);
   }
   return {
-    options: {
-      page: pagination.page,
-      offset: pagination.limit,
-      sort: searchParams.get('sort')?.toLowerCase() === 'asc' ? 'asc' : 'desc',
-      startblock,
-      endblock,
-    },
+    page: pagination.page,
+    offset: pagination.limit,
+    sort: p.optional('sort')?.toLowerCase() === 'asc' ? 'asc' : 'desc',
+    startblock,
+    endblock,
   };
 }
 
-// ============================================
-// Main Handler
-// ============================================
+type Action = (p: Params, request: NextRequest) => Promise<Response> | Response;
+
+const TRANSFER_KINDS = { tokentx: 'erc20', tokennfttx: 'erc721', token1155tx: 'erc1155' } as const;
+
+const ACTIONS: Record<string, Record<string, Action>> = {
+  account: {
+    balance: (p) => getBalance(p.address()),
+    balancemulti: (p) => getBalanceMulti(p.addresses('address').join(',')),
+    balancehistory: (p) => getBalanceHistory(p.address(), p.integer('blockno')),
+    eth_get_balance: (p) => getEthGetBalance(p.address(), p.blockTag('block')),
+    txlist: (p, request) => getTxList(p.address(), listOptions(request, p)),
+    txlistinternal: (p, request) => {
+      const address = p.optionalAddress('address');
+      const txhash = p.optional('txhash') === undefined ? undefined : p.hash('txhash');
+      const options = listOptions(request, p);
+      if (
+        !address &&
+        !txhash &&
+        options.startblock === undefined &&
+        options.endblock === undefined
+      ) {
+        throw new ParamError('Missing address, txhash or startblock / endblock parameter');
+      }
+      return getInternalTransactions({ address, txhash }, options);
+    },
+    pendingtxlist: (p, request) => getPendingTxList(p.address(), listOptions(request, p)),
+    // a proof-of-work chain has no beacon withdrawals
+    txsbeaconwithdrawal: (p) => {
+      p.address();
+      return emptyListResponse();
+    },
+    ...Object.fromEntries(
+      Object.entries(TRANSFER_KINDS).map(([action, kind]): [string, Action] => [
+        action,
+        (p, request) => {
+          const address = p.optionalAddress('address');
+          const contract = p.optionalAddress('contractaddress');
+          if (!address && !contract) {
+            throw new ParamError('Missing address or contractaddress parameter');
+          }
+          return getTokenTransfers(kind, address, contract, listOptions(request, p));
+        },
+      ])
+    ),
+    tokenbalance: (p) => getTokenBalance(p.address(), p.address('contractaddress')),
+    tokenbalancehistory: (p) =>
+      getTokenBalanceHistory(p.address(), p.address('contractaddress'), p.integer('blockno')),
+    tokenlist: (p) => getAccountTokenList(p.address()),
+    addresstokenbalance: (p, request) =>
+      getAddressTokenBalance(p.address(), listOptions(request, p)),
+    addresstokennftbalance: (p, request) =>
+      getAddressNftBalance(p.address(), listOptions(request, p)),
+    addresstokennftinventory: (p, request) =>
+      getAddressNftInventory(p.address(), p.address('contractaddress'), listOptions(request, p)),
+    fundedby: (p) => getFundedBy(p.address()),
+    listaccounts: (p, request) => listAccounts(listOptions(request, p)),
+    getminedblocks: (p, request) => {
+      const { page, offset } = listOptions(request, p);
+      return getMinedBlocks(p.address(), page, offset);
+    },
+  },
+
+  block: {
+    getblockreward: (p) => getBlockReward(String(p.integer('blockno'))),
+    getblockcountdown: (p) => getBlockCountdown(String(p.integer('blockno'))),
+    getblocknobytime: (p) =>
+      getBlockNoByTime(
+        String(p.integer('timestamp')),
+        p.optional('closest') === 'after' ? 'after' : 'before'
+      ),
+    eth_block_number: () => getEthBlockNumber(),
+  },
+
+  transaction: {
+    gettxinfo: (p) => getTxInfo(p.hash()),
+    getstatus: (p) => getTxStatus(p.hash()),
+    gettxreceiptstatus: (p) => getTxReceiptStatus(p.hash()),
+  },
+
+  token: {
+    gettoken: (p) => getTokenInfo(p.address('contractaddress')),
+    tokeninfo: (p) => getTokenInfoEtherscan(p.address('contractaddress')),
+    gettokenholders: (p, request) => {
+      const { page, offset } = listOptions(request, p);
+      return getTokenHolders(p.address('contractaddress'), page, offset, 'blockscout');
+    },
+    tokenholderlist: (p, request) => {
+      const { page, offset } = listOptions(request, p);
+      return getTokenHolders(p.address('contractaddress'), page, offset, 'etherscan');
+    },
+    tokenholdercount: (p) => getTokenHolderCount(p.address('contractaddress')),
+    tokenlist: (p, request) => {
+      const { page, offset } = listOptions(request, p);
+      return getTokenList(page, offset);
+    },
+  },
+
+  stats: {
+    ethsupply: () => getEthSupply(),
+    coinsupply: () => getEthSupply(),
+    tokensupply: (p) => getTokenSupply(p.address('contractaddress')),
+    ethprice: () => getEthPrice('etherscan'),
+    coinprice: () => getEthPrice('blockscout'),
+    chainsize: () => getChainSize(),
+    dailytx: (p) =>
+      getDailyTx(p.optional('startdate'), p.optional('enddate'), p.optional('sort') ?? 'asc'),
+    dailytxncount: (p) =>
+      getDailyTx(p.optional('startdate'), p.optional('enddate'), p.optional('sort') ?? 'asc'),
+    totalfees: (p) => getTotalFees(p.required('date')),
+  },
+
+  gastracker: {
+    gasoracle: () => getGasOracle(),
+  },
+
+  contract: {
+    getabi: (p) => getAbi(p.address()),
+    getsourcecode: (p) => getSourceCode(p.address()),
+    getcontractcreation: (p) => getContractCreation(p.addresses('contractaddresses', 5).join(',')),
+    listcontracts: (p, request) => {
+      const { page, offset } = listOptions(request, p, 1000);
+      return listContracts(p.optional('filter')?.toLowerCase(), page, offset);
+    },
+    checkverifystatus: (p) => checkVerifyStatus(p.required('guid')),
+    checkproxyverification: (p) => checkProxyVerification(p.required('guid')),
+  },
+
+  logs: {
+    getlogs: (p) => {
+      const address = p.optionalAddress('address');
+      // only the default `and` between topics can be expressed as one node filter
+      for (const operator of [
+        'topic0_1_opr',
+        'topic0_2_opr',
+        'topic0_3_opr',
+        'topic1_2_opr',
+        'topic1_3_opr',
+        'topic2_3_opr',
+      ]) {
+        const value = p.optional(operator);
+        if (value && value.toLowerCase() !== 'and') {
+          throw new ParamError(`Unsupported ${operator}: only "and" is available`);
+        }
+      }
+      return getLogs(
+        address,
+        p.optional('fromBlock'),
+        p.optional('toBlock'),
+        p.optional('topic0'),
+        p.optional('topic1'),
+        p.optional('topic2'),
+        p.optional('topic3'),
+        p.integer('page', 1),
+        p.integer('offset', 1000)
+      );
+    },
+  },
+};
+
+/** POST actions (Etherscan sends contract verification as a form). */
+const POST_ACTIONS: Record<
+  string,
+  Record<string, (params: Record<string, string>) => Promise<Response>>
+> = {
+  contract: {
+    verifysourcecode: (params) =>
+      verifySourceCode({
+        contractaddress: params.contractaddress || params.address || '',
+        sourceCode: params.sourceCode || params.sourcecode || '',
+        codeformat: params.codeformat || 'solidity-single-file',
+        contractname: params.contractname || '',
+        compilerversion: params.compilerversion || '',
+        optimizationUsed: params.optimizationUsed || params.optimizationused || '0',
+        runs: params.runs || '200',
+        constructorArguements: params.constructorArguements || params.constructorarguments || '',
+        // '' = not given: a standard JSON input keeps its own settings, a single file gets
+        // config.json compiler.defaultEvmVersion or the compiler's default
+        evmversion: params.evmversion || '',
+        licenseType: params.licenseType || params.licensetype || '',
+        libraryname1: params.libraryname1 || '',
+        libraryaddress1: params.libraryaddress1 || '',
+      }),
+    verifyproxycontract: async (params) => {
+      const p = new Params(new URLSearchParams(params));
+      return verifyProxyContract(p.address('address'), p.optionalAddress('expectedimplementation'));
+    },
+  },
+};
+
+/** Answers a refused request in the module's format. */
+function refusal(error: unknown, proxyModule: boolean): Response {
+  if (error instanceof RespondWith) return error.response;
+  if (error instanceof ParamError) {
+    return proxyModule ? rpcErrorResponse(error.message, -32602) : errorResponse(error.message);
+  }
+  console.error('[Etherscan API] Error:', error);
+  return errorResponse('Internal server error');
+}
 
 export async function GET(request: NextRequest) {
   const limited = enforceRateLimit(request, 'api', { format: 'etherscan' });
   if (limited) return limited;
 
-  const { searchParams } = new URL(request.url);
-  const apiModule = searchParams.get('module')?.toLowerCase();
-  const action = searchParams.get('action')?.toLowerCase();
+  const p = new Params(new URL(request.url).searchParams);
+  const apiModule = p.optional('module')?.toLowerCase() ?? '';
+  const action = p.optional('action')?.toLowerCase() ?? '';
 
-  if (!apiModule || !action) {
-    return errorResponse('Missing required parameters: module and action');
+  if (apiModule === 'proxy') {
+    const build = PROXY_ACTIONS[action];
+    if (!build) return errorResponse('Unknown action');
+    try {
+      return await forwardRpc(build(p));
+    } catch (error) {
+      return refusal(error, true);
+    }
   }
 
-  // Validate module and action names (alphanumeric only)
-  if (!/^[a-z0-9_]+$/.test(apiModule) || !/^[a-z0-9_]+$/.test(action)) {
-    return errorResponse('Invalid module or action format');
-  }
-
+  const actions = ACTIONS[apiModule];
+  if (!actions) return errorResponse('Unknown module');
+  const handler = actions[action];
+  if (!handler) return errorResponse('Unknown action');
   try {
-    // Account module
-    if (apiModule === 'account') {
-      if (action === 'balance') {
-        const address = searchParams.get('address');
-        if (!address) return errorResponse('Missing address parameter');
-        if (!isValidAddress(address)) return errorResponse('Invalid address format');
-        return getBalance(address);
-      }
-      if (action === 'balancemulti') {
-        const addresses = searchParams.get('address');
-        if (!addresses) return errorResponse('Missing address parameter');
-        // Validate all addresses
-        const addressList = addresses.split(',');
-        for (const addr of addressList) {
-          if (!isValidAddress(addr.trim())) {
-            return errorResponse(`Invalid address format: ${addr}`);
-          }
-        }
-        return getBalanceMulti(addresses);
-      }
-      if (action === 'eth_get_balance') {
-        const address = searchParams.get('address');
-        if (!address) return errorResponse('Missing address parameter');
-        if (!isValidAddress(address)) return errorResponse('Invalid address format');
-        const block = toBlockParameter(searchParams.get('block'));
-        if (!block) return errorResponse('Invalid block parameter');
-        return getEthGetBalance(address, block);
-      }
-      if (action === 'txlist') {
-        const address = searchParams.get('address');
-        if (!address) return errorResponse('Missing address parameter');
-        if (!isValidAddress(address)) return errorResponse('Invalid address format');
-        const list = listOptions(request, searchParams);
-        if (list.response) return list.response;
-        return getTxList(address, list.options);
-      }
-      if (action === 'txlistinternal') {
-        const address = searchParams.get('address') || undefined;
-        const txhash = searchParams.get('txhash') || undefined;
-        if (address && !isValidAddress(address)) return errorResponse('Invalid address format');
-        if (txhash && !isValidHash(txhash)) return errorResponse('Invalid txhash format');
-        const list = listOptions(request, searchParams);
-        if (list.response) return list.response;
-        const { startblock, endblock } = list.options;
-        if (!address && !txhash && startblock === undefined && endblock === undefined) {
-          return errorResponse('Missing address, txhash or startblock / endblock parameter');
-        }
-        return getInternalTransactions({ address, txhash }, list.options);
-      }
-      if (action === 'tokentx' || action === 'tokennfttx' || action === 'token1155tx') {
-        const address = searchParams.get('address') || undefined;
-        const contractaddress = searchParams.get('contractaddress') || undefined;
-        if (!address && !contractaddress) {
-          return errorResponse('Missing address or contractaddress parameter');
-        }
-        if (address && !isValidAddress(address)) return errorResponse('Invalid address format');
-        if (contractaddress && !isValidAddress(contractaddress)) {
-          return errorResponse('Invalid contractaddress format');
-        }
-        const list = listOptions(request, searchParams);
-        if (list.response) return list.response;
-        return getTokenTransfers(
-          action === 'tokennfttx' ? 'erc721' : action === 'token1155tx' ? 'erc1155' : 'erc20',
-          address,
-          contractaddress,
-          list.options
-        );
-      }
-      if (action === 'tokenbalance') {
-        const address = searchParams.get('address');
-        const contractaddress = searchParams.get('contractaddress');
-        if (!address) return errorResponse('Missing address parameter');
-        if (!contractaddress) return errorResponse('Missing contractaddress parameter');
-        if (!isValidAddress(address)) return errorResponse('Invalid address format');
-        if (!isValidAddress(contractaddress))
-          return errorResponse('Invalid contractaddress format');
-        return getTokenBalance(address, contractaddress);
-      }
-      if (action === 'tokenlist') {
-        const address = searchParams.get('address');
-        if (!address) return errorResponse('Missing address parameter');
-        if (!isValidAddress(address)) return errorResponse('Invalid address format');
-        return getAccountTokenList(address);
-      }
-      if (action === 'getminedblocks') {
-        const address = searchParams.get('address');
-        if (!address) return errorResponse('Missing address parameter');
-        if (!isValidAddress(address)) return errorResponse('Invalid address format');
-        const list = listOptions(request, searchParams);
-        if (list.response) return list.response;
-        return getMinedBlocks(address, list.options.page, list.options.offset);
-      }
-    }
-
-    // Block module
-    if (apiModule === 'block') {
-      if (action === 'getblockreward') {
-        const blockno = searchParams.get('blockno');
-        if (!blockno) return errorResponse('Missing blockno parameter');
-        return getBlockReward(blockno);
-      }
-      if (action === 'getblockcountdown') {
-        const blockno = searchParams.get('blockno');
-        if (!blockno) return errorResponse('Missing blockno parameter');
-        return getBlockCountdown(blockno);
-      }
-      if (action === 'getblocknobytime') {
-        const timestamp = searchParams.get('timestamp');
-        if (!timestamp) return errorResponse('Missing timestamp parameter');
-        const closest = searchParams.get('closest') || 'before';
-        return getBlockNoByTime(timestamp, closest);
-      }
-      if (action === 'eth_block_number') {
-        return getEthBlockNumber();
-      }
-    }
-
-    // Transaction module
-    if (apiModule === 'transaction') {
-      if (action === 'gettxinfo' || action === 'getstatus' || action === 'gettxreceiptstatus') {
-        const txhash = searchParams.get('txhash');
-        if (!txhash) return errorResponse('Missing txhash parameter');
-        if (!isValidHash(txhash)) return errorResponse('Invalid txhash format');
-        if (action === 'gettxinfo') return getTxInfo(txhash);
-        if (action === 'getstatus') return getTxStatus(txhash);
-        return getTxReceiptStatus(txhash);
-      }
-    }
-
-    // Token module
-    if (apiModule === 'token') {
-      if (action === 'gettoken' || action === 'tokeninfo') {
-        const contractaddress = searchParams.get('contractaddress');
-        if (!contractaddress) return errorResponse('Missing contractaddress parameter');
-        if (!isValidAddress(contractaddress))
-          return errorResponse('Invalid contractaddress format');
-        return action === 'tokeninfo'
-          ? getTokenInfoEtherscan(contractaddress)
-          : getTokenInfo(contractaddress);
-      }
-      if (action === 'gettokenholders' || action === 'tokenholderlist') {
-        const contractaddress = searchParams.get('contractaddress');
-        if (!contractaddress) return errorResponse('Missing contractaddress parameter');
-        if (!isValidAddress(contractaddress))
-          return errorResponse('Invalid contractaddress format');
-        const list = listOptions(request, searchParams);
-        if (list.response) return list.response;
-        return getTokenHolders(
-          contractaddress,
-          list.options.page,
-          list.options.offset,
-          action === 'tokenholderlist' ? 'etherscan' : 'blockscout'
-        );
-      }
-      if (action === 'tokenlist') {
-        const list = listOptions(request, searchParams);
-        if (list.response) return list.response;
-        return getTokenList(list.options.page, list.options.offset);
-      }
-    }
-
-    // Stats module
-    if (apiModule === 'stats') {
-      if (action === 'ethsupply' || action === 'coinsupply') {
-        return getEthSupply();
-      }
-      if (action === 'tokensupply') {
-        const contractaddress = searchParams.get('contractaddress');
-        if (!contractaddress) return errorResponse('Missing contractaddress parameter');
-        if (!isValidAddress(contractaddress))
-          return errorResponse('Invalid contractaddress format');
-        return getTokenSupply(contractaddress);
-      }
-      if (action === 'ethprice') {
-        return getEthPrice('etherscan');
-      }
-      if (action === 'coinprice') {
-        return getEthPrice('blockscout');
-      }
-      if (action === 'chainsize') {
-        return getChainSize();
-      }
-      if (action === 'dailytx' || action === 'dailytxncount') {
-        const startdate = searchParams.get('startdate') || undefined;
-        const enddate = searchParams.get('enddate') || undefined;
-        const sort = searchParams.get('sort') || 'asc';
-        return getDailyTx(startdate, enddate, sort);
-      }
-    }
-
-    // Gas tracker module
-    if (apiModule === 'gastracker') {
-      if (action === 'gasoracle') {
-        return getGasOracle();
-      }
-    }
-
-    // Contract module
-    if (apiModule === 'contract') {
-      if (action === 'getabi') {
-        const address = searchParams.get('address');
-        if (!address) return errorResponse('Missing address parameter');
-        if (!isValidAddress(address)) return errorResponse('Invalid address format');
-        return getAbi(address);
-      }
-      if (action === 'getsourcecode') {
-        const address = searchParams.get('address');
-        if (!address) return errorResponse('Missing address parameter');
-        if (!isValidAddress(address)) return errorResponse('Invalid address format');
-        return getSourceCode(address);
-      }
-      if (action === 'getcontractcreation') {
-        const addresses = searchParams.get('contractaddresses');
-        if (!addresses) return errorResponse('Missing contractaddresses parameter');
-        // Validate all addresses
-        const addressList = addresses.split(',');
-        for (const addr of addressList) {
-          if (!isValidAddress(addr.trim())) {
-            return errorResponse(`Invalid address format: ${addr}`);
-          }
-        }
-        return getContractCreation(addresses);
-      }
-      // Check verification status (Etherscan/Hardhat compatible)
-      if (action === 'checkverifystatus') {
-        const guid = searchParams.get('guid');
-        if (!guid) return errorResponse('Missing guid parameter');
-        return checkVerifyStatus(guid);
-      }
-    }
-
-    // Logs module
-    if (apiModule === 'logs') {
-      if (action === 'getlogs') {
-        const address = searchParams.get('address') || undefined;
-        if (address && !isValidAddress(address)) return errorResponse('Invalid address format');
-        const fromBlock = searchParams.get('fromBlock') || undefined;
-        const toBlock = searchParams.get('toBlock') || undefined;
-        const topic0 = searchParams.get('topic0') || undefined;
-        const topic1 = searchParams.get('topic1') || undefined;
-        const topic2 = searchParams.get('topic2') || undefined;
-        const topic3 = searchParams.get('topic3') || undefined;
-        // only the default `and` between topics can be expressed as one node filter
-        for (const operator of [
-          'topic0_1_opr',
-          'topic0_2_opr',
-          'topic0_3_opr',
-          'topic1_2_opr',
-          'topic1_3_opr',
-          'topic2_3_opr',
-        ]) {
-          const value = searchParams.get(operator);
-          if (value && value.toLowerCase() !== 'and') {
-            return errorResponse(`Unsupported ${operator}: only "and" is available`);
-          }
-        }
-        const page = parseInt(searchParams.get('page') || '1');
-        const offset = parseInt(searchParams.get('offset') || '1000');
-        return getLogs(address, fromBlock, toBlock, topic0, topic1, topic2, topic3, page, offset);
-      }
-    }
-
-    // Proxy module (JSON-RPC)
-    if (apiModule === 'proxy') {
-      if (action === 'eth_blocknumber') {
-        return proxyEthBlockNumber();
-      }
-      if (action === 'eth_getblockbynumber') {
-        return proxyEthGetBlockByNumber(
-          searchParams.get('tag'),
-          searchParams.get('boolean') === 'true'
-        );
-      }
-      if (action === 'eth_getunclebyblocknumberandindex') {
-        return proxyEthGetUncleByBlockNumberAndIndex(
-          searchParams.get('tag'),
-          searchParams.get('index')
-        );
-      }
-      if (action === 'eth_getblocktransactioncountbynumber') {
-        return proxyEthGetBlockTransactionCountByNumber(searchParams.get('tag'));
-      }
-      if (action === 'eth_gettransactionbyhash') {
-        const txhash = searchParams.get('txhash');
-        if (!txhash) return errorResponse('Missing txhash parameter');
-        return proxyEthGetTransactionByHash(txhash);
-      }
-      if (action === 'eth_gettransactionbyblocknumberandindex') {
-        return proxyEthGetTransactionByBlockNumberAndIndex(
-          searchParams.get('tag'),
-          searchParams.get('index')
-        );
-      }
-      if (action === 'eth_gettransactioncount') {
-        const address = searchParams.get('address');
-        if (!address) return errorResponse('Missing address parameter');
-        return proxyEthGetTransactionCount(address, searchParams.get('tag'));
-      }
-      if (action === 'eth_gettransactionreceipt') {
-        const txhash = searchParams.get('txhash');
-        if (!txhash) return errorResponse('Missing txhash parameter');
-        return proxyEthGetTransactionReceipt(txhash);
-      }
-      if (action === 'eth_call') {
-        const to = searchParams.get('to');
-        const data = searchParams.get('data');
-        if (!to) return errorResponse('Missing to parameter');
-        if (!data) return errorResponse('Missing data parameter');
-        return proxyEthCall(to, data, searchParams.get('tag'));
-      }
-      if (action === 'eth_getcode') {
-        const address = searchParams.get('address');
-        if (!address) return errorResponse('Missing address parameter');
-        return proxyEthGetCode(address, searchParams.get('tag'));
-      }
-      if (action === 'eth_getstorageat') {
-        const address = searchParams.get('address');
-        if (!address) return errorResponse('Missing address parameter');
-        return proxyEthGetStorageAt(address, searchParams.get('position'), searchParams.get('tag'));
-      }
-      if (action === 'eth_gasprice') {
-        return proxyEthGasPrice();
-      }
-      if (action === 'eth_estimategas') {
-        const to = searchParams.get('to');
-        if (!to) return errorResponse('Missing to parameter');
-        return proxyEthEstimateGas(
-          to,
-          searchParams.get('data') || undefined,
-          searchParams.get('value') || undefined,
-          searchParams.get('from') || undefined,
-          searchParams.get('gas') || undefined,
-          searchParams.get('gasPrice') || undefined
-        );
-      }
-    }
-
-    return errorResponse(`Unknown module/action: ${apiModule}/${action}`);
+    return await handler(p, request);
   } catch (error) {
-    console.error('[Blockscout API] Error:', error);
-    return errorResponse('Internal server error');
+    return refusal(error, false);
   }
 }
 
-// POST Handler for contract verification (Etherscan/Hardhat compatible)
+/** Form or JSON body; null when it is neither. */
+async function readBody(request: NextRequest): Promise<Record<string, string> | null> {
+  const contentType = request.headers.get('content-type') || '';
+  if (
+    contentType.includes('application/x-www-form-urlencoded') ||
+    contentType.includes('multipart/form-data')
+  ) {
+    const params: Record<string, string> = {};
+    (await request.formData()).forEach((value, key) => {
+      params[key] = value.toString();
+    });
+    return params;
+  }
+  try {
+    return (await request.json()) as Record<string, string>;
+  } catch {
+    return null;
+  }
+}
+
+// Contract verification (Etherscan / Hardhat / Foundry compatible)
 export const POST = withRateLimit(
   'verify',
   async (request: NextRequest) => {
     try {
-      const contentType = request.headers.get('content-type') || '';
-      let params: Record<string, string> = {};
-
-      // Get module and action from URL query params first
-      const { searchParams } = new URL(request.url);
-      const queryModule = searchParams.get('module')?.toLowerCase() || '';
-      const queryAction = searchParams.get('action')?.toLowerCase() || '';
-
-      // Handle both JSON and form-data (Etherscan uses form-data)
-      if (contentType.includes('application/json')) {
-        params = await request.json();
-      } else if (
-        contentType.includes('application/x-www-form-urlencoded') ||
-        contentType.includes('multipart/form-data')
-      ) {
-        const formData = await request.formData();
-        formData.forEach((value, key) => {
-          params[key] = value.toString();
-        });
-      } else {
-        // Try to parse as JSON anyway
-        try {
-          params = await request.json();
-        } catch {
-          return errorResponse('Invalid content type. Expected application/json or form-data');
-        }
+      const params = await readBody(request);
+      if (!params) {
+        return errorResponse('Invalid content type. Expected application/json or form-data');
       }
+      // module / action may come from the query (/api?module=contract&action=...) or the body
+      const query = new URL(request.url).searchParams;
+      const apiModule = (query.get('module') || params.module || '').toLowerCase();
+      const action = (query.get('action') || params.action || '').toLowerCase();
 
-      // Module and action can come from URL query params OR body params
-      // URL query params take precedence (for /api?module=contract&action=verifysourcecode style)
-      const apiModule = queryModule || (params.module || '').toLowerCase();
-      const action = queryAction || (params.action || '').toLowerCase();
-
-      // Contract verification
-      if (apiModule === 'contract' && action === 'verifysourcecode') {
-        return verifySourceCode({
-          contractaddress: params.contractaddress || params.address || '',
-          sourceCode: params.sourceCode || params.sourcecode || '',
-          codeformat: params.codeformat || 'solidity-single-file',
-          contractname: params.contractname || '',
-          compilerversion: params.compilerversion || '',
-          optimizationUsed: params.optimizationUsed || params.optimizationused || '0',
-          runs: params.runs || '200',
-          constructorArguements: params.constructorArguements || params.constructorarguments || '',
-          // '' = not given: standard JSON input keeps its own settings, single files use paris
-          evmversion: params.evmversion || '',
-          licenseType: params.licenseType || params.licensetype || '',
-          libraryname1: params.libraryname1 || '',
-          libraryaddress1: params.libraryaddress1 || '',
-        });
-      }
-
-      // Verify proxy contract (placeholder for future implementation)
-      if (apiModule === 'contract' && action === 'verifyproxycontract') {
-        return errorResponse('Proxy contract verification not yet implemented');
-      }
-
-      return errorResponse(`Unknown POST module/action: ${apiModule}/${action}`);
+      const actions = POST_ACTIONS[apiModule];
+      if (!actions) return errorResponse('Unknown module');
+      const handler = actions[action];
+      if (!handler) return errorResponse('Unknown action');
+      return await handler(params);
     } catch (error) {
-      console.error('[Blockscout API POST] Error:', error);
-      return errorResponse('Internal server error');
+      return refusal(error, false);
     }
   },
   { format: 'etherscan' }

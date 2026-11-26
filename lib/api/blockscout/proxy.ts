@@ -1,43 +1,87 @@
 /**
- * JSON-RPC proxy handlers for the Blockscout/Etherscan-compatible API.
+ * Etherscan's `proxy` module: each action names a JSON-RPC method and builds its parameters from
+ * the request; the node's result is returned unchanged in the JSON-RPC envelope, as Etherscan
+ * does. A refused parameter throws ParamError, which the dispatcher answers with a JSON-RPC
+ * "invalid params" (-32602) error.
  *
- * Each function validates the parameters of an Etherscan `proxy` action and
- * forwards the call to the node. The node's result is returned unchanged in
- * the JSON-RPC envelope, as Etherscan does. Extracted from `app/api/route.ts`
- * to keep that dispatcher thin.
- *
- * `eth_sendRawTransaction` is not offered here: transactions are broadcast
- * through the public RPC endpoint.
+ * `eth_sendRawTransaction` is not offered here: transactions are broadcast through the public RPC
+ * endpoint.
  */
 
-import { isValidAddress, isValidHash } from '@/lib/security';
-import { publicClient, errorResponse, rpcResponse, rpcErrorResponse } from './shared';
+import { Params, ParamError } from './params';
+import { publicClient, rpcResponse, rpcErrorResponse } from './shared';
 
-const BLOCK_TAGS = new Set(['latest', 'earliest', 'pending', 'safe', 'finalized']);
+export { toQuantity, toBlockParameter } from './params';
 
-/**
- * Hex quantity for a decimal or hex number (leading zeros removed, which the
- * node rejects); null when the value is not a number.
- */
-export function toQuantity(value: string | null | undefined): string | null {
-  if (value === null || value === undefined) return null;
-  const text = value.trim();
-  if (!/^\d+$/.test(text) && !/^0x[0-9a-fA-F]+$/.test(text)) return null;
-  return `0x${BigInt(text).toString(16)}`;
+interface RpcCall {
+  method: string;
+  params: unknown[];
 }
 
-/** Block parameter: a tag, or a height as a hex quantity; `latest` when absent; null when malformed. */
-export function toBlockParameter(tag: string | null | undefined): string | null {
-  if (tag === null || tag === undefined || tag.trim() === '') return 'latest';
-  const text = tag.trim().toLowerCase();
-  return BLOCK_TAGS.has(text) ? text : toQuantity(text);
+/** Call object of eth_call / eth_estimateGas (only the fields that were given). */
+function callObject(p: Params, withAmounts: boolean): Record<string, string> {
+  const call: Record<string, string> = { to: p.address('to') };
+  const from = p.optionalAddress('from');
+  if (from) call.from = from;
+  const data = p.optional('data');
+  if (data !== undefined) call.data = p.hexData('data');
+  if (withAmounts) {
+    for (const name of ['value', 'gas', 'gasPrice']) {
+      if (p.optional(name) !== undefined) call[name] = p.quantity(name);
+    }
+  }
+  return call;
 }
 
-function isHexData(value: string): boolean {
-  return /^0x([0-9a-fA-F]{2})*$/.test(value);
-}
+/** Etherscan proxy actions (lower case) → the JSON-RPC call they make. */
+export const PROXY_ACTIONS: Record<string, (p: Params) => RpcCall> = {
+  eth_blocknumber: () => ({ method: 'eth_blockNumber', params: [] }),
+  eth_getblockbynumber: (p) => ({
+    method: 'eth_getBlockByNumber',
+    params: [p.blockTag('tag'), p.optional('boolean') === 'true'],
+  }),
+  eth_getunclebyblocknumberandindex: (p) => ({
+    method: 'eth_getUncleByBlockNumberAndIndex',
+    params: [p.blockTag('tag'), p.quantity('index')],
+  }),
+  eth_getblocktransactioncountbynumber: (p) => ({
+    method: 'eth_getBlockTransactionCountByNumber',
+    params: [p.blockTag('tag')],
+  }),
+  eth_gettransactionbyhash: (p) => ({
+    method: 'eth_getTransactionByHash',
+    params: [p.hash('txhash')],
+  }),
+  eth_gettransactionbyblocknumberandindex: (p) => ({
+    method: 'eth_getTransactionByBlockNumberAndIndex',
+    params: [p.blockTag('tag'), p.quantity('index')],
+  }),
+  eth_gettransactioncount: (p) => ({
+    method: 'eth_getTransactionCount',
+    params: [p.address('address'), p.blockTag('tag')],
+  }),
+  eth_gettransactionreceipt: (p) => ({
+    method: 'eth_getTransactionReceipt',
+    params: [p.hash('txhash')],
+  }),
+  eth_call: (p) => {
+    if (p.optional('data') === undefined) throw new ParamError('Missing data parameter');
+    return { method: 'eth_call', params: [callObject(p, false), p.blockTag('tag')] };
+  },
+  eth_getcode: (p) => ({
+    method: 'eth_getCode',
+    params: [p.address('address'), p.blockTag('tag')],
+  }),
+  eth_getstorageat: (p) => ({
+    method: 'eth_getStorageAt',
+    params: [p.address('address'), p.quantity('position'), p.blockTag('tag')],
+  }),
+  eth_gasprice: () => ({ method: 'eth_gasPrice', params: [] }),
+  eth_estimategas: (p) => ({ method: 'eth_estimateGas', params: [callObject(p, true)] }),
+};
 
-async function forward(method: string, params: unknown[]) {
+/** Sends the call to the node and wraps the answer (or the node's error message) as JSON-RPC. */
+export async function forwardRpc({ method, params }: RpcCall) {
   try {
     const result = await publicClient.request({ method, params } as never);
     return rpcResponse(result ?? null);
@@ -48,114 +92,4 @@ async function forward(method: string, params: unknown[]) {
       typeof details === 'string' && details ? details : 'Node request failed'
     );
   }
-}
-
-export async function proxyEthBlockNumber() {
-  return forward('eth_blockNumber', []);
-}
-
-export async function proxyEthGetBlockByNumber(tag: string | null, full = false) {
-  const block = toBlockParameter(tag);
-  if (!block) return errorResponse('Invalid tag parameter');
-  return forward('eth_getBlockByNumber', [block, full]);
-}
-
-export async function proxyEthGetUncleByBlockNumberAndIndex(
-  tag: string | null,
-  index: string | null
-) {
-  const block = toBlockParameter(tag);
-  const position = toQuantity(index);
-  if (!block) return errorResponse('Invalid tag parameter');
-  if (!position) return errorResponse('Invalid index parameter');
-  return forward('eth_getUncleByBlockNumberAndIndex', [block, position]);
-}
-
-export async function proxyEthGetBlockTransactionCountByNumber(tag: string | null) {
-  const block = toBlockParameter(tag);
-  if (!block) return errorResponse('Invalid tag parameter');
-  return forward('eth_getBlockTransactionCountByNumber', [block]);
-}
-
-export async function proxyEthGetTransactionByHash(txhash: string) {
-  if (!isValidHash(txhash)) return errorResponse('Invalid txhash format');
-  return forward('eth_getTransactionByHash', [txhash.toLowerCase()]);
-}
-
-export async function proxyEthGetTransactionByBlockNumberAndIndex(
-  tag: string | null,
-  index: string | null
-) {
-  const block = toBlockParameter(tag);
-  const position = toQuantity(index);
-  if (!block) return errorResponse('Invalid tag parameter');
-  if (!position) return errorResponse('Invalid index parameter');
-  return forward('eth_getTransactionByBlockNumberAndIndex', [block, position]);
-}
-
-export async function proxyEthGetTransactionCount(address: string, tag: string | null) {
-  const block = toBlockParameter(tag);
-  if (!isValidAddress(address)) return errorResponse('Invalid address format');
-  if (!block) return errorResponse('Invalid tag parameter');
-  return forward('eth_getTransactionCount', [address.toLowerCase(), block]);
-}
-
-export async function proxyEthGetTransactionReceipt(txhash: string) {
-  if (!isValidHash(txhash)) return errorResponse('Invalid txhash format');
-  return forward('eth_getTransactionReceipt', [txhash.toLowerCase()]);
-}
-
-export async function proxyEthCall(to: string, data: string, tag: string | null = 'latest') {
-  const block = toBlockParameter(tag);
-  if (!isValidAddress(to)) return errorResponse('Invalid to parameter');
-  if (!isHexData(data)) return errorResponse('Invalid data parameter');
-  if (!block) return errorResponse('Invalid tag parameter');
-  return forward('eth_call', [{ to: to.toLowerCase(), data }, block]);
-}
-
-export async function proxyEthGetCode(address: string, tag: string | null = 'latest') {
-  const block = toBlockParameter(tag);
-  if (!isValidAddress(address)) return errorResponse('Invalid address format');
-  if (!block) return errorResponse('Invalid tag parameter');
-  return forward('eth_getCode', [address.toLowerCase(), block]);
-}
-
-export async function proxyEthGetStorageAt(
-  address: string,
-  position: string | null,
-  tag: string | null
-) {
-  const block = toBlockParameter(tag);
-  const slot = toQuantity(position);
-  if (!isValidAddress(address)) return errorResponse('Invalid address format');
-  if (!slot) return errorResponse('Invalid position parameter');
-  if (!block) return errorResponse('Invalid tag parameter');
-  return forward('eth_getStorageAt', [address.toLowerCase(), slot, block]);
-}
-
-export async function proxyEthGasPrice() {
-  return forward('eth_gasPrice', []);
-}
-
-export async function proxyEthEstimateGas(
-  to: string,
-  data?: string,
-  value?: string,
-  from?: string,
-  gas?: string,
-  gasPrice?: string
-) {
-  if (!isValidAddress(to)) return errorResponse('Invalid to parameter');
-  if (from !== undefined && !isValidAddress(from)) return errorResponse('Invalid from parameter');
-  if (data !== undefined && !isHexData(data)) return errorResponse('Invalid data parameter');
-  const call: Record<string, string> = { to: to.toLowerCase() };
-  if (from) call.from = from.toLowerCase();
-  if (data) call.data = data;
-  for (const [name, amount] of Object.entries({ value, gas, gasPrice })) {
-    if (amount === undefined) continue;
-    const quantity = toQuantity(amount);
-    if (!quantity) return errorResponse(`Invalid ${name} parameter`);
-    call[name] = quantity;
-  }
-  return forward('eth_estimateGas', [call]);
 }

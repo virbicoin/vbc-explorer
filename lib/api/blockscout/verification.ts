@@ -8,10 +8,9 @@
  * lib/contract/compile-worker.ts (verified release build, worker thread).
  */
 
-import { NextResponse } from 'next/server';
 import { type Address } from 'viem';
 import { connectDB, Contract, VerificationJob } from '@/models/index';
-import { isValidAddress, getSecurityHeaders } from '@/lib/security';
+import { isValidAddress } from '@/lib/security';
 import { randomUUID } from 'crypto';
 import {
   compileSettingsRecord,
@@ -23,6 +22,7 @@ import { isAlreadyVerified } from '@/lib/contract/verified';
 import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
 import { publicClient, successResponse, errorResponse } from './shared';
 import { getCompilerConfig } from '@/lib/config';
+import { proxyInfo } from './handlers';
 
 export async function verifySourceCode(params: {
   contractaddress: string;
@@ -355,61 +355,65 @@ async function processVerification(guid: string) {
 export async function checkVerifyStatus(guid: string) {
   try {
     await connectDB();
-
-    const job = await VerificationJob.findOne({ guid }).lean();
-
-    if (!job) {
-      // Etherscan returns status 0 with result as string for not found
-      return NextResponse.json(
-        {
-          status: '0',
-          message: 'GUID not found',
-          result: 'Fail - GUID not found',
-        },
-        { headers: getSecurityHeaders() }
-      );
-    }
-
-    // Etherscan-style response - result must ALWAYS be a string, never null
-    if (job.status === 'pending') {
-      return NextResponse.json(
-        {
-          status: '0',
-          message: 'Pending in queue',
-          result: 'Pending in queue',
-        },
-        { headers: getSecurityHeaders() }
-      );
-    } else if (job.status === 'pass') {
-      return NextResponse.json(
-        {
-          status: '1',
-          message: 'OK',
-          result: 'Pass - Verified',
-        },
-        { headers: getSecurityHeaders() }
-      );
-    } else {
-      // Fail status - result must be a string describing the failure
-      const failMessage = job.message || 'Fail - Unable to verify';
-      return NextResponse.json(
-        {
-          status: '0',
-          message: failMessage,
-          result: `Fail - ${failMessage}`,
-        },
-        { headers: getSecurityHeaders() }
-      );
-    }
+    const job = await VerificationJob.findOne({ guid, codeFormat: { $ne: 'proxy' } }).lean();
+    // Etherscan's answers; result is always a string
+    if (!job) return errorResponse('GUID not found', 'Fail - GUID not found');
+    if (job.status === 'pending') return errorResponse('Pending in queue', 'Pending in queue');
+    if (job.status === 'pass') return successResponse('Pass - Verified');
+    const failMessage = job.message || 'Unable to verify';
+    return errorResponse(failMessage, `Fail - ${failMessage}`);
   } catch (error) {
     console.error('[checkVerifyStatus] Error:', error);
-    return NextResponse.json(
-      {
-        status: '0',
-        message: 'Error checking verification status',
-        result: 'Fail - Error checking verification status',
-      },
-      { headers: getSecurityHeaders() }
+    return errorResponse(
+      'Error checking verification status',
+      'Fail - Error checking verification status'
     );
+  }
+}
+
+/**
+ * Etherscan `contract/verifyproxycontract` (used by OpenZeppelin's upgrades plugin): reads the
+ * implementation behind the proxy from the chain (EIP-1967, beacon, EIP-1822, zos, EIP-1167) and
+ * keeps the outcome under a GUID for `checkproxyverification`. Nothing is stored on the contract:
+ * getsourcecode reads the proxy relation from the chain every time, so an upgrade shows at once.
+ */
+export async function verifyProxyContract(address: string, expectedImplementation?: string) {
+  try {
+    await connectDB();
+    const proxy = await proxyInfo(address);
+    let status: 'pass' | 'fail';
+    let message: string;
+    if (!proxy) {
+      status = 'fail';
+      message =
+        'A corresponding implementation contract was unfortunately not detected for the proxy address.';
+    } else if (expectedImplementation && expectedImplementation !== proxy.implementation) {
+      status = 'fail';
+      message = `The implementation contract at ${proxy.implementation} does not match the expected implementation contract address ${expectedImplementation}.`;
+    } else {
+      status = 'pass';
+      message = `The proxy's (${address}) implementation contract is found at ${proxy.implementation} and is successfully updated.`;
+    }
+    const guid = randomUUID();
+    await VerificationJob.create({ guid, address, status, message, codeFormat: 'proxy' });
+    return successResponse(guid);
+  } catch (error) {
+    console.error('[verifyProxyContract] Error:', error);
+    return errorResponse('Error verifying proxy contract');
+  }
+}
+
+/** Etherscan `contract/checkproxyverification`. */
+export async function checkProxyVerification(guid: string) {
+  try {
+    await connectDB();
+    const job = await VerificationJob.findOne({ guid, codeFormat: 'proxy' }).lean();
+    if (!job) return errorResponse('GUID not found', 'Fail - GUID not found');
+    return job.status === 'pass'
+      ? successResponse(job.message)
+      : errorResponse('NOTOK', job.message || 'Proxy verification failed');
+  } catch (error) {
+    console.error('[checkProxyVerification] Error:', error);
+    return errorResponse('Error checking proxy verification');
   }
 }

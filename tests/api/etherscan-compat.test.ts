@@ -9,6 +9,7 @@ import mongoose from 'mongoose';
 import { NextRequest } from 'next/server';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import {
+  Account,
   Block,
   Contract,
   Market,
@@ -441,6 +442,7 @@ describe('contract module', () => {
       },
       { upsert: true }
     );
+    nodeAnswers({ eth_getCode: '0x' }); // not a proxy
     const { body } = await api(`module=contract&action=getsourcecode&address=${VERIFIED}`);
     expect(body.result[0]).toMatchObject({
       ContractName: 'Token',
@@ -495,6 +497,7 @@ describe('contract module', () => {
       abi: '[]',
       verified: true,
     });
+    nodeAnswers({ eth_getCode: '0x' }); // not a proxy
     const { body } = await api(`module=contract&action=getsourcecode&address=${VERIFIED_BEFORE}`);
     expect(body.result[0]).toMatchObject({
       ContractName: 'Old',
@@ -773,10 +776,196 @@ describe('proxy module', () => {
   });
 });
 
-it('names an unknown action', async () => {
-  const { body } = await api('module=account&action=nosuchaction');
-  expect(body).toMatchObject({
-    status: '0',
-    message: 'Unknown module/action: account/nosuchaction',
+describe('error envelope', () => {
+  it("answers unknown modules and actions with Etherscan's result text", async () => {
+    expect((await api('module=account&action=nosuchaction')).body).toEqual({
+      status: '0',
+      message: 'Unknown action',
+      result: 'Error! Missing Or invalid Action name',
+    });
+    expect((await api('module=nosuch&action=x')).body).toEqual({
+      status: '0',
+      message: 'Unknown module',
+      result: 'Error! Missing Or invalid Module name',
+    });
+  });
+
+  it('keeps the reason in message (Blockscout) and the Etherscan text in result', async () => {
+    expect((await api('module=account&action=balance&address=0xZZ')).body).toEqual({
+      status: '0',
+      message: 'Invalid address format',
+      result: 'Error! Invalid address format',
+    });
+    expect((await api('module=account&action=balance')).body).toMatchObject({
+      status: '0',
+      message: 'Missing address parameter',
+    });
+    expect((await api(`module=contract&action=getabi&address=${DAVE}`)).body).toEqual({
+      status: '0',
+      message: 'Contract source code not verified',
+      result: 'Contract source code not verified',
+    });
+  });
+
+  it('refuses proxy parameters with a JSON-RPC invalid-params error', async () => {
+    const node = nodeAnswers({});
+    const { body } = await api('module=proxy&action=eth_getTransactionByHash&txhash=0x12');
+    expect(body).toMatchObject({ jsonrpc: '2.0', id: 1, error: { code: -32602 }, status: '0' });
+    expect(body.error.message).toBe('Invalid txhash format');
+    expect(node).not.toHaveBeenCalled();
+  });
+});
+
+describe('further account, token, stats and contract actions', () => {
+  it('listaccounts orders addresses by balance', async () => {
+    await Account.collection.insertMany([
+      { address: ALICE, balance: '300', type: 0 },
+      { address: BOB, balance: '1000000000000000000000', type: 0 },
+      { address: CAROL, balance: '0', type: 0 },
+    ]);
+    const { body } = await api('module=account&action=listaccounts&page=1&offset=10');
+    expect(body.result).toEqual([
+      { address: BOB, balance: '1000000000000000000000' },
+      { address: ALICE, balance: '300' },
+    ]);
+  });
+
+  it('fundedby names the first transfer of the native coin into the address', async () => {
+    const { body } = await api(`module=account&action=fundedby&address=${BOB}`);
+    expect(body.result).toEqual({
+      block: '5',
+      timeStamp: String(GENESIS_TIME + 50),
+      fundingAddress: ALICE,
+      fundingTxn: TX_OK,
+      value: '100',
+    });
+    const none = await api(`module=account&action=fundedby&address=${DAVE}`);
+    expect(none.body.status).toBe('0');
+  });
+
+  it('addresstokenbalance and addresstokennftbalance split fungible and NFT holdings', async () => {
+    const fungible = await api(`module=account&action=addresstokenbalance&address=${ALICE}`);
+    expect(fungible.body.result).toEqual([
+      {
+        TokenAddress: FUNGIBLE,
+        TokenName: 'Good Token',
+        TokenSymbol: 'GOOD',
+        TokenQuantity: '2500000',
+        TokenDivisor: '6',
+      },
+    ]);
+    const nft = await api(`module=account&action=addresstokennftbalance&address=${ALICE}`);
+    expect(nft.body.result).toEqual([
+      { TokenAddress: NFT, TokenName: 'Collectible', TokenSymbol: 'COL', TokenQuantity: '1' },
+    ]);
+    const inventory = await api(
+      `module=account&action=addresstokennftinventory&address=${ALICE}&contractaddress=${NFT}`
+    );
+    expect(inventory.body.result).toEqual([{ TokenAddress: NFT, TokenId: '7' }]);
+  });
+
+  it('balancehistory asks the node for the balance at the block', async () => {
+    const node = nodeAnswers({ eth_getBalance: '0x10' });
+    const { body } = await api(`module=account&action=balancehistory&address=${ALICE}&blockno=5`);
+    expect(body).toMatchObject({ status: '1', result: '16' });
+    expect(node).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'eth_getBalance', params: [ALICE, '0x5'] })
+    );
+  });
+
+  it('txsbeaconwithdrawal is an empty list on a proof-of-work chain', async () => {
+    const { body } = await api(`module=account&action=txsBeaconWithdrawal&address=${ALICE}`);
+    expect(body).toEqual({ status: '0', message: 'No transactions found', result: [] });
+  });
+
+  it('tokenholdercount counts holders with a balance', async () => {
+    const { body } = await api(`module=token&action=tokenholdercount&contractaddress=${FUNGIBLE}`);
+    expect(body).toMatchObject({ status: '1', result: '2' });
+  });
+
+  it('totalfees sums the fees of a UTC day', async () => {
+    const day = new Date(GENESIS_TIME * 1000).toISOString().slice(0, 10);
+    const { body } = await api(`module=stats&action=totalfees&date=${day}`);
+    // 21,000 gas at 1, 1 and 3 gwei, 50,000 at 1 gwei and 21,000 at 5 gwei
+    expect(body).toMatchObject({ status: '1', result: '260000000000000' });
+    expect((await api('module=stats&action=totalfees&date=2025-02-30')).body.status).toBe('0');
+  });
+
+  it('listcontracts filters verified and unverified contracts', async () => {
+    await Contract.collection.insertMany([
+      {
+        address: DEPLOYED,
+        contractName: 'Token',
+        compilerVersion: '0.8.30',
+        optimization: true,
+        sourceCode: 'contract Token {}',
+        abi: '[]',
+        verified: true,
+        blockNumber: 7,
+      },
+      { address: CAROL, verified: false, blockNumber: 8 },
+    ]);
+    const verified = await api('module=contract&action=listcontracts&filter=verified');
+    expect(verified.body.result).toEqual([
+      {
+        ABI: '[]',
+        Address: DEPLOYED,
+        CompilerVersion: 'v0.8.30',
+        ContractName: 'Token',
+        FileName: '',
+        OptimizationUsed: 'true',
+        SourceCode: 'contract Token {}',
+      },
+    ]);
+    const unverified = await api('module=contract&action=listcontracts&filter=unverified');
+    expect(unverified.body.result).toEqual([
+      { ABI: 'Contract source code not verified', Address: CAROL },
+    ]);
+    expect(
+      (await api('module=contract&action=listcontracts&filter=decompiled')).body.result
+    ).toEqual([]);
+  });
+
+  it('getsourcecode reports the implementation behind an EIP-1967 proxy', async () => {
+    const implementation = pad('1a7e', 40);
+    nodeAnswers({
+      eth_getCode: '0x6080',
+      eth_getStorageAt: `0x${implementation.slice(2).padStart(64, '0')}`,
+    });
+    const proxy = pad('9a0c', 40);
+    const { body } = await api(`module=contract&action=getsourcecode&address=${proxy}`);
+    expect(body.result[0]).toMatchObject({ Proxy: '1', Implementation: implementation });
+  });
+
+  it('verifyproxycontract and checkproxyverification follow the Etherscan flow', async () => {
+    const implementation = pad('1b7e', 40);
+    const proxy = pad('9b0c', 40);
+    nodeAnswers({
+      eth_getCode: '0x6080',
+      eth_getStorageAt: `0x${implementation.slice(2).padStart(64, '0')}`,
+    });
+    ipCounter += 1;
+    const request = new NextRequest('https://explorer.example/api', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-client-ip': `198.51.201.${ipCounter % 250}`,
+      },
+      body: new URLSearchParams({
+        module: 'contract',
+        action: 'verifyproxycontract',
+        address: proxy,
+      }).toString(),
+    });
+    const submitted = await (await POST(request, undefined)).json();
+    expect(submitted.status).toBe('1');
+    const { body } = await api(
+      `module=contract&action=checkproxyverification&guid=${submitted.result}`
+    );
+    expect(body).toEqual({
+      status: '1',
+      message: 'OK',
+      result: `The proxy's (${proxy}) implementation contract is found at ${implementation} and is successfully updated.`,
+    });
   });
 });

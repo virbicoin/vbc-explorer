@@ -50,13 +50,26 @@ export function successResponse(result: unknown, message = 'OK') {
   );
 }
 
-/** Etherscan-style error envelope: `{ status: '0', message, result }`. */
-export function errorResponse(message: string, result: unknown = null) {
+/** Etherscan's wording for the reasons whose `result` text clients match on. */
+const ETHERSCAN_ERROR_TEXT: Record<string, string> = {
+  'Invalid address format': 'Error! Invalid address format',
+  'Unknown module': 'Error! Missing Or invalid Module name',
+  'Unknown action': 'Error! Missing Or invalid Action name',
+};
+
+/**
+ * Error envelope for both kinds of clients: Blockscout puts the reason in `message`, Etherscan
+ * answers `message: "NOTOK"` with the reason in `result`, and tools such as Hardhat and Foundry
+ * match on that `result` text ("Contract source code not verified", "Error! Invalid address
+ * format", ...). So `message` carries the reason and `result` Etherscan's text for it, unless the
+ * caller passes a result (an empty list, for example).
+ */
+export function errorResponse(message: string, result?: unknown) {
   return NextResponse.json(
     {
       status: '0',
       message,
-      result,
+      result: result === undefined ? (ETHERSCAN_ERROR_TEXT[message] ?? message) : result,
     },
     { headers: getSecurityHeaders() }
   );
@@ -80,10 +93,13 @@ export function rpcResponse(result: unknown) {
   );
 }
 
-/** JSON-RPC error in the same envelope (the node's message, never a stack). */
-export function rpcErrorResponse(message: string) {
+/**
+ * JSON-RPC error in the same envelope (the node's message, never a stack). -32602 is "invalid
+ * params" (a refused request parameter), -32000 a node-side failure.
+ */
+export function rpcErrorResponse(message: string, code = -32000) {
   return NextResponse.json(
-    { jsonrpc: '2.0', id: 1, error: { code: -32000, message }, status: '0', message, result: null },
+    { jsonrpc: '2.0', id: 1, error: { code, message }, status: '0', message, result: null },
     { headers: getSecurityHeaders() }
   );
 }

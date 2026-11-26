@@ -1,15 +1,16 @@
 /**
  * Account module handlers for the Blockscout/Etherscan-compatible API.
  *
- * Implements the `account` actions (balance, balancemulti, eth_get_balance,
- * txlist, txlistinternal, tokentx, tokennfttx, token1155tx, tokenbalance,
- * tokenlist, getminedblocks). Extracted from `app/api/route.ts` to keep the
- * dispatcher thin.
+ * Implements the `account` actions: balance, balancemulti, eth_get_balance, balancehistory,
+ * txlist, txlistinternal, pendingtxlist, txsBeaconWithdrawal, tokentx, tokennfttx, token1155tx,
+ * tokenbalance, tokenbalancehistory, tokenlist, addresstokenbalance, addresstokennftbalance,
+ * addresstokennftinventory, fundedby, listaccounts and getminedblocks.
  */
 
-import { type Address } from 'viem';
+import { decodeFunctionResult, encodeFunctionData, numberToHex, type Address } from 'viem';
 import {
   connectDB,
+  Account,
   Block,
   InternalTransaction,
   Transaction,
@@ -17,6 +18,9 @@ import {
   TokenHolder,
   TokenTransfer,
 } from '@/models/index';
+import { requireDb } from '@/lib/db/get-db';
+import { getNftOwnershipFromDb } from '@/lib/services/nft.service';
+import { getWeb3 } from '@/lib/web3/provider';
 import { ercTokenType } from '@/lib/api/token-standard';
 import {
   publicClient,
@@ -429,5 +433,286 @@ export async function getMinedBlocks(address: string, page = 1, offset = 10) {
     return successResponse(result);
   } catch (error) {
     return errorResponse('Error fetching mined blocks');
+  }
+}
+
+// ============================================
+// Further account actions (Etherscan PRO-style and Blockscout ones)
+// ============================================
+
+interface Paging {
+  page: number;
+  offset: number;
+}
+
+const ERC20_BALANCE_OF = [
+  {
+    inputs: [{ name: 'account', type: 'address' }],
+    name: 'balanceOf',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
+
+/** Node error text for a historical query (a pruned node cannot answer). */
+function historyError(error: unknown): string {
+  const details = (error as { details?: unknown }).details;
+  return typeof details === 'string' &&
+    /missing trie node|state|pruned|not available/i.test(details)
+    ? 'Historical state is not available from the node'
+    : 'Error fetching historical balance';
+}
+
+/** Etherscan `account/balancehistory`: the native balance at a block (archive node needed). */
+export async function getBalanceHistory(address: string, blockno: number) {
+  try {
+    const balance = (await publicClient.request({
+      method: 'eth_getBalance',
+      params: [address as Address, numberToHex(blockno)],
+    } as never)) as string;
+    return successResponse(BigInt(balance).toString());
+  } catch (error) {
+    return errorResponse(historyError(error));
+  }
+}
+
+/** Etherscan `account/tokenbalancehistory`: a token balance at a block (archive node needed). */
+export async function getTokenBalanceHistory(
+  address: string,
+  contractaddress: string,
+  blockno: number
+) {
+  try {
+    const data = (await publicClient.request({
+      method: 'eth_call',
+      params: [
+        {
+          to: contractaddress,
+          data: encodeFunctionData({
+            abi: ERC20_BALANCE_OF,
+            functionName: 'balanceOf',
+            args: [address as Address],
+          }),
+        },
+        numberToHex(blockno),
+      ],
+    } as never)) as `0x${string}`;
+    const balance = decodeFunctionResult({
+      abi: ERC20_BALANCE_OF,
+      functionName: 'balanceOf',
+      data,
+    });
+    return successResponse(balance.toString());
+  } catch (error) {
+    return errorResponse(historyError(error));
+  }
+}
+
+/** Holdings of an address with a positive balance, joined with their token records. */
+async function positiveHoldings(address: string) {
+  await connectDB();
+  const holdings = (
+    (await TokenHolder.find({ holderAddress: address }).lean()) as Array<Record<string, unknown>>
+  ).filter((holding) => /^[1-9]\d*$/.test(String(holding.balance)));
+  const tokens = (await Token.find({
+    address: { $in: holdings.map((holding) => String(holding.tokenAddress)) },
+    hidden: { $ne: true },
+  }).lean()) as Array<Record<string, unknown>>;
+  const byAddress = new Map(tokens.map((token) => [String(token.address), token]));
+  return holdings
+    .filter((holding) => byAddress.has(String(holding.tokenAddress)))
+    .map((holding) => ({ holding, token: byAddress.get(String(holding.tokenAddress))! }))
+    .sort((a, b) => String(a.holding.tokenAddress).localeCompare(String(b.holding.tokenAddress)));
+}
+
+function pageOf<T>(rows: T[], paging: Paging): T[] {
+  return rows.slice((paging.page - 1) * paging.offset, paging.page * paging.offset);
+}
+
+/** Etherscan `account/addresstokenbalance`: the ERC-20 tokens an address holds. */
+export async function getAddressTokenBalance(address: string, paging: Paging) {
+  try {
+    const rows = (await positiveHoldings(address))
+      .filter(({ token }) => ercTokenType(token.type as string | undefined) === 'ERC-20')
+      .map(({ holding, token }) => ({
+        TokenAddress: String(holding.tokenAddress),
+        TokenName: String(token.name ?? ''),
+        TokenSymbol: String(token.symbol ?? ''),
+        TokenQuantity: String(holding.balance),
+        TokenDivisor: String(token.decimals ?? 18),
+      }));
+    const page = pageOf(rows, paging);
+    return page.length > 0 ? successResponse(page) : emptyListResponse('No tokens found');
+  } catch {
+    return errorResponse('Error fetching token balances');
+  }
+}
+
+/** Etherscan `account/addresstokennftbalance`: the NFT collections an address holds. */
+export async function getAddressNftBalance(address: string, paging: Paging) {
+  try {
+    const rows = (await positiveHoldings(address))
+      .filter(({ token }) =>
+        ['ERC-721', 'ERC-1155'].includes(ercTokenType(token.type as string | undefined))
+      )
+      .map(({ holding, token }) => ({
+        TokenAddress: String(holding.tokenAddress),
+        TokenName: String(token.name ?? ''),
+        TokenSymbol: String(token.symbol ?? ''),
+        TokenQuantity: String(holding.balance),
+      }));
+    const page = pageOf(rows, paging);
+    return page.length > 0 ? successResponse(page) : emptyListResponse('No tokens found');
+  } catch {
+    return errorResponse('Error fetching NFT balances');
+  }
+}
+
+/** Etherscan `account/addresstokennftinventory`: the token ids an address owns in a collection. */
+export async function getAddressNftInventory(
+  address: string,
+  contractaddress: string,
+  paging: Paging
+) {
+  try {
+    await connectDB();
+    const { items } = await getNftOwnershipFromDb(requireDb(), contractaddress);
+    const owned = items
+      .filter((item) => item.owner === address)
+      .sort((a, b) => a.tokenId - b.tokenId)
+      .map((item) => ({ TokenAddress: contractaddress, TokenId: String(item.tokenId) }));
+    const page = pageOf(owned, paging);
+    return page.length > 0 ? successResponse(page) : emptyListResponse('No tokens found');
+  } catch {
+    return errorResponse('Error fetching NFT inventory');
+  }
+}
+
+/**
+ * Etherscan `account/fundedby`: the first transfer of the native coin into the address, from a
+ * transaction or an internal transaction, whichever came first.
+ */
+export async function getFundedBy(address: string) {
+  try {
+    await connectDB();
+    const [tx, internal] = await Promise.all([
+      Transaction.findOne({ to: address, value: { $nin: ['0', '0x0', ''] }, status: { $ne: 0 } })
+        .sort({ blockNumber: 1, transactionIndex: 1 })
+        .lean() as Promise<Record<string, unknown> | null>,
+      InternalTransaction.findOne({
+        to: address,
+        value: { $nin: ['0', '0x0', ''] },
+        reverted: { $ne: true },
+      })
+        .sort({ blockNumber: 1, transactionIndex: 1, index: 1 })
+        .lean() as Promise<Record<string, unknown> | null>,
+    ]);
+    const candidates = [
+      tx && {
+        block: Number(tx.blockNumber),
+        position: Number(tx.transactionIndex ?? 0),
+        timeStamp: toUnixSeconds(tx.timestamp),
+        fundingAddress: String(tx.from),
+        fundingTxn: String(tx.hash),
+        value: String(tx.value),
+      },
+      internal && {
+        block: Number(internal.blockNumber),
+        position: Number(internal.transactionIndex ?? 0),
+        timeStamp: toUnixSeconds(internal.timestamp),
+        fundingAddress: String(internal.from),
+        fundingTxn: String(internal.transactionHash),
+        value: String(internal.value),
+      },
+    ].filter((row): row is NonNullable<typeof row> => Boolean(row));
+    if (candidates.length === 0) return errorResponse('No funding transaction found', '');
+    candidates.sort((a, b) => a.block - b.block || a.position - b.position);
+    const { position: _position, ...first } = candidates[0];
+    return successResponse({ ...first, block: String(first.block) });
+  } catch {
+    return errorResponse('Error fetching funding transaction');
+  }
+}
+
+/** Blockscout `account/listaccounts`: addresses by balance, largest first. */
+export async function listAccounts(paging: Paging) {
+  try {
+    await connectDB();
+    const rows = (await Account.aggregate([
+      { $match: { balance: { $nin: ['0', '', null] } } },
+      { $addFields: { balanceDecimal: { $toDecimal: '$balance' } } },
+      { $sort: { balanceDecimal: -1, address: 1 } },
+      { $skip: (paging.page - 1) * paging.offset },
+      { $limit: paging.offset },
+      { $project: { _id: 0, address: 1, balance: 1 } },
+    ])) as Array<{ address: string; balance: string }>;
+    if (rows.length === 0) return emptyListResponse('No accounts found');
+    return successResponse(
+      rows.map((row) => ({ address: row.address, balance: String(row.balance) }))
+    );
+  } catch {
+    return errorResponse('Error fetching accounts');
+  }
+}
+
+interface PendingTx {
+  hash?: string;
+  nonce?: string;
+  from?: string;
+  to?: string | null;
+  value?: string;
+  gas?: string;
+  gasPrice?: string;
+  input?: string;
+}
+
+/**
+ * Pending transactions from the node's pool: `txpool_content` (Geth-style) or
+ * `parity_pendingTransactions` (OpenEthereum-style); empty when the node offers neither.
+ */
+async function nodePendingTransactions(): Promise<PendingTx[]> {
+  const send = (method: string) =>
+    getWeb3().requestManager.send({ method, params: [] } as never) as Promise<unknown>;
+  try {
+    const pool = (await send('txpool_content')) as {
+      pending?: Record<string, Record<string, PendingTx>>;
+    };
+    return Object.values(pool?.pending ?? {}).flatMap((byNonce) => Object.values(byNonce));
+  } catch {
+    // not a Geth-style node
+  }
+  try {
+    const list = await send('parity_pendingTransactions');
+    return Array.isArray(list) ? (list as PendingTx[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+const hexToDecimal = (value: string | undefined | null) => (value ? BigInt(value).toString() : '');
+
+/** Blockscout `account/pendingtxlist`: pending transactions from or to the address. */
+export async function getPendingTxList(address: string, paging: Paging) {
+  try {
+    const rows = (await nodePendingTransactions())
+      .filter((tx) => tx.from?.toLowerCase() === address || tx.to?.toLowerCase() === address)
+      .map((tx) => ({
+        hash: String(tx.hash ?? '').toLowerCase(),
+        nonce: hexToDecimal(tx.nonce),
+        from: String(tx.from ?? '').toLowerCase(),
+        to: tx.to ? tx.to.toLowerCase() : '',
+        value: hexToDecimal(tx.value),
+        gas: hexToDecimal(tx.gas),
+        gasPrice: hexToDecimal(tx.gasPrice),
+        input: tx.input ?? '0x',
+        contractAddress: '',
+        cumulativeGasUsed: '',
+        gasUsed: '',
+      }));
+    const page = pageOf(rows, paging);
+    return page.length > 0 ? successResponse(page) : emptyListResponse();
+  } catch {
+    return errorResponse('Error fetching pending transactions');
   }
 }

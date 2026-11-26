@@ -26,6 +26,8 @@ import {
 import { getUncleRewardWei, minerRewardWei, transactionFeesWei } from '@/lib/reward-schedule';
 import { getRewardSchedule } from '@/lib/config';
 import { calculateTotalSupplyWei } from '@/lib/supply';
+import { detectProxy, type ProxyInfo, type ProxyNode } from '@/lib/contract/proxy-detect';
+import { apiCache, CACHE_TTL } from '@/lib/cache';
 import { etherscanEvmVersion } from '@/lib/contract/solc-utils';
 
 // ============================================
@@ -788,38 +790,76 @@ export async function getAbi(address: string) {
   }
 }
 
+/** Proxy detection's node calls, made through the same JSON-RPC client as the proxy module. */
+const nodeForProxies: ProxyNode = {
+  getStorageAt: ({ address, slot }) =>
+    publicClient.request({
+      method: 'eth_getStorageAt',
+      params: [address, slot, 'latest'],
+    } as never) as Promise<`0x${string}`>,
+  getCode: ({ address }) =>
+    publicClient.request({
+      method: 'eth_getCode',
+      params: [address, 'latest'],
+    } as never) as Promise<`0x${string}`>,
+  call: async ({ to, data }) => ({
+    data: (await publicClient.request({
+      method: 'eth_call',
+      params: [{ to, data }, 'latest'],
+    } as never)) as `0x${string}`,
+  }),
+};
+
+/**
+ * The implementation a proxy delegates to, read from the chain (cached for five minutes); null
+ * when the address is not a recognised proxy or the node cannot answer.
+ */
+export async function proxyInfo(address: string): Promise<ProxyInfo | null> {
+  return apiCache.getOrSet(
+    `proxy:${address.toLowerCase()}`,
+    async () => {
+      try {
+        return await detectProxy(nodeForProxies, address);
+      } catch {
+        return null;
+      }
+    },
+    CACHE_TTL.LONG
+  );
+}
+
 export async function getSourceCode(address: string) {
   try {
     await connectDB();
-    const contract = (await Contract.findOne({
-      address: address.toLowerCase(),
-      verified: true,
-    }).lean()) as Record<string, unknown> | null;
+    const [contract, proxy] = await Promise.all([
+      Contract.findOne({ address: address.toLowerCase(), verified: true }).lean() as Promise<Record<
+        string,
+        unknown
+      > | null>,
+      proxyInfo(address),
+    ]);
 
-    if (!contract) {
-      // Etherscan returns empty array for unverified contracts
-      return successResponse([
-        {
-          SourceCode: '',
-          ABI: 'Contract source code not verified',
-          ContractName: '',
-          CompilerVersion: '',
-          OptimizationUsed: '',
-          Runs: '',
-          ConstructorArguments: '',
-          EVMVersion: '',
-          Library: '',
-          LicenseType: '',
-          Proxy: '0',
-          Implementation: '',
-          SwarmSource: '',
-        },
-      ]);
-    }
+    // Etherscan's shape for an unverified contract; a detected proxy is reported either way
+    const unverified = {
+      SourceCode: '',
+      ABI: 'Contract source code not verified',
+      ContractName: '',
+      CompilerVersion: '',
+      OptimizationUsed: '',
+      Runs: '',
+      ConstructorArguments: '',
+      EVMVersion: '',
+      Library: '',
+      LicenseType: '',
+      Proxy: proxy ? '1' : '0',
+      Implementation: proxy?.implementation ?? '',
+      SwarmSource: '',
+    };
+    if (!contract) return successResponse([unverified]);
 
-    // Etherscan-compatible response format
-    const result = [
+    return successResponse([
       {
+        ...unverified,
         SourceCode: contract.sourceCode || '',
         ABI: typeof contract.abi === 'string' ? contract.abi : JSON.stringify(contract.abi || []),
         ContractName: contract.contractName || '',
@@ -831,16 +871,107 @@ export async function getSourceCode(address: string) {
           typeof contract.optimizationRuns === 'number' ? String(contract.optimizationRuns) : '',
         ConstructorArguments: contract.constructorArguments || '',
         EVMVersion: etherscanEvmVersion(contract.evmVersion),
-        Library: '',
         LicenseType: contract.license || '',
-        Proxy: '0',
-        Implementation: '',
-        SwarmSource: '',
       },
-    ];
-
-    return successResponse(result);
+    ]);
   } catch (error) {
     return errorResponse('Error fetching source code');
+  }
+}
+
+// ============================================
+// listcontracts, tokenholdercount, totalfees
+// ============================================
+
+const LIST_CONTRACT_FILTERS = new Set(['verified', 'unverified', 'decompiled', 'not_decompiled']);
+
+/**
+ * Blockscout `contract/listcontracts`: contracts with their verified source, newest first.
+ * `filter` is verified / unverified / not_decompiled (all) / decompiled (none: nothing here is
+ * decompiled).
+ */
+export async function listContracts(filter: string | undefined, page: number, offset: number) {
+  if (filter !== undefined && !LIST_CONTRACT_FILTERS.has(filter)) {
+    return errorResponse('Invalid filter: use verified, unverified, decompiled or not_decompiled');
+  }
+  if (filter === 'decompiled') return emptyListResponse('No contracts found');
+  try {
+    await connectDB();
+    const query: Record<string, unknown> = { hidden: { $ne: true } };
+    if (filter === 'verified') query.verified = true;
+    if (filter === 'unverified') query.verified = { $ne: true };
+    const contracts = (await Contract.find(query)
+      .sort({ blockNumber: -1, address: 1 })
+      .skip((page - 1) * offset)
+      .limit(offset)
+      .lean()) as Array<Record<string, unknown>>;
+    if (contracts.length === 0) return emptyListResponse('No contracts found');
+    return successResponse(
+      contracts.map((contract) =>
+        contract.verified
+          ? {
+              ABI:
+                typeof contract.abi === 'string'
+                  ? contract.abi
+                  : JSON.stringify(contract.abi || []),
+              Address: String(contract.address),
+              CompilerVersion: `v${contract.compilerVersion || ''}`,
+              ContractName: String(contract.contractName ?? ''),
+              FileName: '',
+              OptimizationUsed: contract.optimization ? 'true' : 'false',
+              SourceCode: String(contract.sourceCode ?? ''),
+            }
+          : { ABI: 'Contract source code not verified', Address: String(contract.address) }
+      )
+    );
+  } catch {
+    return errorResponse('Error fetching contracts');
+  }
+}
+
+/** Etherscan `token/tokenholdercount`: holders with a positive balance. */
+export async function getTokenHolderCount(contractaddress: string) {
+  try {
+    await connectDB();
+    const count = await TokenHolder.countDocuments({
+      tokenAddress: contractaddress,
+      balance: { $nin: ['0', '', null] },
+    });
+    return successResponse(String(count));
+  } catch {
+    return errorResponse('Error fetching holder count');
+  }
+}
+
+/** Blockscout `stats/totalfees`: transaction fees paid on a UTC day (YYYY-MM-DD), in wei. */
+export async function getTotalFees(date: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  const start = match ? Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : NaN;
+  if (!match || Number.isNaN(start) || new Date(start).toISOString().slice(0, 10) !== date) {
+    return errorResponse('Invalid date: use YYYY-MM-DD');
+  }
+  try {
+    await connectDB();
+    const from = Math.floor(start / 1000);
+    const [row] = (await Transaction.aggregate([
+      { $match: { timestamp: { $gte: from, $lt: from + 86400 } } },
+      {
+        $group: {
+          _id: null,
+          fees: {
+            $sum: {
+              $multiply: [
+                { $toDecimal: { $ifNull: ['$gasUsed', 0] } },
+                { $toDecimal: { $ifNull: ['$gasPrice', '0'] } },
+              ],
+            },
+          },
+        },
+      },
+    ])) as Array<{ fees?: { toString(): string } }>;
+    const fees = row?.fees ? row.fees.toString().split('.')[0] : '0';
+    return successResponse(fees);
+  } catch {
+    return errorResponse('Error calculating total fees');
   }
 }
