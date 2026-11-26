@@ -304,6 +304,30 @@ describe('main page', () => {
     expect(body.finished_indexing).toBe(true);
   });
 
+  it('allows the internal transaction indexer to poll a block or two behind', async () => {
+    await Block.collection.insertMany(Array.from({ length: 2000 }, (_, i) => block(i)));
+    traces.url = '/tmp/node.ipc';
+    // its target is 1999 - 12 - 1 = 1986; 0.1 % of 1,987 blocks is 1
+    await ScanProgress.collection.insertOne({
+      scanType: 'internal-transactions',
+      lastScannedBlock: 1985,
+    });
+    const read = async () =>
+      (await indexingStatusGet(request('/api/v2/main-page/indexing-status'))).json();
+    expect(await read()).toMatchObject({
+      finished_indexing: true,
+      indexed_internal_transactions_ratio: '1.00',
+    });
+    await ScanProgress.collection.updateOne(
+      { scanType: 'internal-transactions' },
+      { $set: { lastScannedBlock: 1980 } }
+    );
+    expect(await read()).toMatchObject({
+      finished_indexing: false,
+      indexed_internal_transactions_ratio: '0.99',
+    });
+  });
+
   it('allows the estimated count to trail the stored height by 0.1 %', async () => {
     // 1..1999 stored, genesis missing: 1 of 2,000 (2 allowed)
     await Block.collection.insertMany(Array.from({ length: 1999 }, (_, i) => block(i + 1)));

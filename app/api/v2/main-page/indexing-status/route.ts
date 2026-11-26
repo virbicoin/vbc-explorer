@@ -13,11 +13,12 @@ function ratio(done: number, total: number): string {
 }
 
 /**
- * Blocks the collection's estimated count may trail a running sync by (it is not updated with
- * every write: on TK04 it was 32 blocks behind an exact count with no block missing). Within it,
- * blocks count as indexed; it is 0.1 % of the chain, at most 1,000 blocks.
+ * How far behind an indexer may be and still count as done: 0.1 % of the chain, at most 1,000
+ * blocks. The collection's estimated count trails a running sync (on TK04 it was 32 blocks behind
+ * an exact count with no block missing), and the internal transaction indexer polls, so it is
+ * usually a few blocks behind its target; rounding either down made indexing never finish.
  */
-const estimateLag = (total: number) => Math.min(1000, Math.floor(total / 1000));
+const allowedLag = (total: number) => Math.min(1000, Math.floor(total / 1000));
 
 /** The node's height, or null when it does not answer within 3 s. */
 async function nodeHead(): Promise<number | null> {
@@ -43,12 +44,15 @@ export async function GET(request: NextRequest) {
       nodeHead(),
     ]);
     const total = Math.max(chainHead ?? 0, storedHead) + 1;
-    const blocks = total - stored <= estimateLag(total) ? '1.00' : ratio(stored, total);
+    const blocks = total - stored <= allowedLag(total) ? '1.00' : ratio(stored, total);
     let internal = '1.00';
     if (getTraceSourceUrl()) {
       const { confirmations } = resolveSyncSettings(readConfig().sync);
       const target = Math.max(0, storedHead - confirmations - 1);
-      internal = internalHead >= target ? '1.00' : ratio(internalHead + 1, target + 1);
+      internal =
+        target - internalHead <= allowedLag(target + 1)
+          ? '1.00'
+          : ratio(internalHead + 1, target + 1);
     }
     return json({
       finished_indexing: blocks === '1.00' && internal === '1.00',
