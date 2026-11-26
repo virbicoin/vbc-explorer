@@ -220,15 +220,6 @@ export async function GET() {
     // Load configuration
     const appConfig = loadConfig();
 
-    // Check if DEX is enabled
-    if (!appConfig.dex?.enabled) {
-      return NextResponse.json({
-        tokens: [],
-        total: 0,
-        message: 'DEX feature is not enabled',
-      });
-    }
-
     // Get tokenIcons from config for icon lookup
     const tokenIcons =
       (appConfig as { tokenIcons?: Record<string, { icon?: string; color?: string }> })

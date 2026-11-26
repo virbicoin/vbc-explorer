@@ -28,10 +28,6 @@ export async function GET() {
   try {
     const config = loadConfig();
 
-    if (!config.dex?.enabled) {
-      return errorResponse(404, 'DEX feature is not enabled');
-    }
-
     const networkSlug = config.network?.slug || 'ethereum';
     const chainId = config.network?.chainId || 1;
     const networkName = config.network?.name || 'Ethereum';

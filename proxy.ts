@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { getFeatures } from '@/lib/config';
+import { FEATURE_NAMES, featureOfPath, type Feature } from '@/lib/features';
 
 /**
  * Security Proxy
@@ -10,6 +12,12 @@ import type { NextRequest } from 'next/server';
  */
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+
+  // Parts switched off in config.json (lib/features.ts): their pages and API routes do not exist
+  const feature = featureOfPath(pathname);
+  if (feature && !getFeatures()[feature]) {
+    return withSecurityHeaders(featureOff(request, feature), pathname);
+  }
 
   // Handle /address/[address] redirects to /contract/ or /token/
   if (pathname.startsWith('/address/')) {
@@ -58,10 +66,27 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  // Get response
-  const response = NextResponse.next();
+  return withSecurityHeaders(NextResponse.next(), pathname);
+}
 
-  // Add security headers
+/**
+ * The answer for a part that is off: a 404 in the API's error format (GeckoTerminal's JSON:API
+ * errors under /api/dex/geckoterminal), or the not-found page for a page.
+ */
+function featureOff(request: NextRequest, feature: Feature): NextResponse {
+  const pathname = request.nextUrl.pathname;
+  const message = `${FEATURE_NAMES[feature]} is not enabled on this explorer`;
+  if (pathname.startsWith('/api/dex/geckoterminal')) {
+    return NextResponse.json({ errors: [{ status: '404', title: message }] }, { status: 404 });
+  }
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: { code: 'FEATURE_DISABLED', message } }, { status: 404 });
+  }
+  // no route answers this path, so the app's not-found page is rendered with status 404
+  return NextResponse.rewrite(new URL('/_feature-disabled', request.url));
+}
+
+function withSecurityHeaders(response: NextResponse, pathname: string): NextResponse {
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('X-XSS-Protection', '1; mode=block');
@@ -74,7 +99,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Content Security Policy for API routes
-  if (request.nextUrl.pathname.startsWith('/api/')) {
+  if (pathname.startsWith('/api/')) {
     response.headers.set('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
   }
 

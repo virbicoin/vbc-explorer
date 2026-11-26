@@ -284,6 +284,39 @@ Edit `config.json` for your blockchain:
 }
 ```
 
+### Plain block explorer
+
+The DEX, the Token Launchpad, the bridge and the richlist are optional. Without them the explorer is a plain block explorer: blocks, transactions, addresses, tokens and NFTs, contracts and their verification, internal transactions (with a trace node), stats, and the Etherscan / Blockscout APIs.
+
+Each part has a switch in `config.json`; [lib/features.ts](lib/features.ts) reads them:
+
+| Part | Switch | Default |
+|------|--------|---------|
+| DEX (pages, `/api/dex/*` incl. the GeckoTerminal / CMC / DefiLlama APIs, the DEX price, swap and LP sync) | `dex.enabled` | off (the section also needs the contract addresses) |
+| Token Launchpad (pages, `/api/launchpad/*`, the factory sync) | `launchpad.enabled` | off |
+| Bridge page | `bridge.enabled` | off |
+| Richlist (page, `/api/richlist`, the `richlist` app that keeps account balances) | `richlist.enabled` | on |
+
+For a plain block explorer, leave the `dex`, `launchpad` and `bridge` sections out (or set `enabled` to false), switch the richlist off, and turn off the DEX price source:
+
+```json
+{
+  "richlist": { "enabled": false },
+  "currency": {
+    "priceApi": { "dex": { "enabled": false } }
+  }
+}
+```
+
+A part that is off has no pages and no API: its paths answer 404 (`proxy.ts`; JSON in the API's error format, the not-found page for pages), the header hides its link, the sitemap leaves it out, and the tools skip its work. `/api/v2/stats` reports `total_addresses` as null without the richlist, which is what keeps the account balances.
+
+Start only the apps it needs:
+
+```bash
+pm2 start ecosystem.config.json --only explorer,sync,stats,tokens
+# with a trace node (traces.url): add internal-txs; with a price API (currency.priceApi): add price
+```
+
 ### Supported Networks
 - ✅ Your Chain (native support)
 - ✅ Any EVM-compatible blockchain

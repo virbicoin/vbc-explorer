@@ -11,6 +11,7 @@ import {
   getUncleIssuanceWei,
 } from '@/lib/supply';
 import { getWeb3 } from '@/lib/web3/provider';
+import { getFeatures } from '@/lib/config';
 
 // Function to read config
 
@@ -44,7 +45,8 @@ export async function GET(request: NextRequest) {
 
     // Totals from collection metadata (lib/db/count.ts), not a full index walk
     const totalTransactions = await countAll(Transaction);
-    const totalAddresses = await countAll(Account);
+    // Account balances are kept by the richlist tool; without it the total is not known
+    const totalAddresses = getFeatures().richlist ? await countAll(Account) : null;
 
     // Get verified contracts count
     const verifiedContracts = await Contract.countDocuments({
@@ -125,7 +127,7 @@ export async function GET(request: NextRequest) {
       transactions_today: tx24h.toString(),
 
       // Address info
-      total_addresses: totalAddresses.toString(),
+      total_addresses: totalAddresses === null ? null : totalAddresses.toString(),
 
       // Contract info
       total_verified_contracts: verifiedContracts.toString(),

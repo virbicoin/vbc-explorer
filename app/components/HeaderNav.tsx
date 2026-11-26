@@ -16,6 +16,7 @@ import {
   Bars3Icon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import type { Features } from '@/lib/features';
 
 // Standalone icon so the DEX link matches the heroicons signature.
 function DexIcon({ className }: { className?: string }) {
@@ -50,17 +51,14 @@ interface NavItem {
 interface HeaderNavProps {
   explorerName: string;
   currencySymbol: string;
-  dexEnabled: boolean;
-  bridgeEnabled: boolean;
-  launchpadEnabled: boolean;
+  /** The optional parts that are on (lib/features.ts). */
+  features: Features;
 }
 
 export default function HeaderNav({
   explorerName,
   currencySymbol,
-  dexEnabled,
-  bridgeEnabled,
-  launchpadEnabled,
+  features,
 }: HeaderNavProps): React.ReactNode {
   const [open, setOpen] = useState(false);
 
@@ -68,13 +66,13 @@ export default function HeaderNav({
   const items: NavItem[] = [
     { href: '/blocks', label: 'Blocks', Icon: CubeIcon },
     { href: '/transactions', label: 'Transactions', Icon: ArrowPathIcon },
-    { href: '/richlist', label: 'Richlist', Icon: TrophyIcon },
+    ...(features.richlist ? [{ href: '/richlist', label: 'Richlist', Icon: TrophyIcon }] : []),
     { href: '/tokens', label: 'Tokens', Icon: CubeTransparentIcon },
     { href: '/contracts', label: 'Contracts', Icon: CodeBracketIcon },
     { href: '/stats', label: 'Stats', Icon: ChartBarIcon },
-    ...(dexEnabled ? [{ href: '/dex', label: 'DEX', Icon: DexIcon }] : []),
-    ...(bridgeEnabled ? [{ href: '/bridge', label: 'Bridge', Icon: ArrowsRightLeftIcon }] : []),
-    ...(launchpadEnabled
+    ...(features.dex ? [{ href: '/dex', label: 'DEX', Icon: DexIcon }] : []),
+    ...(features.bridge ? [{ href: '/bridge', label: 'Bridge', Icon: ArrowsRightLeftIcon }] : []),
+    ...(features.launchpad
       ? [{ href: '/launchpad', label: 'Launchpad', Icon: RocketLaunchIcon }]
       : []),
     { href: '/api-docs', label: 'API', Icon: DocumentTextIcon },

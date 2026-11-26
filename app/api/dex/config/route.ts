@@ -28,18 +28,6 @@ export async function GET(request: Request) {
     // Load configuration from config.json
     const appConfig = loadConfig();
 
-    // Check if DEX is enabled
-    if (!appConfig.dex?.enabled) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'DEX feature is not enabled',
-          message: 'Set dex.enabled to true in config.json to enable DEX features',
-        },
-        { status: 404 }
-      );
-    }
-
     // Set minimal config from config.json
     setMinimalConfig({
       chainId: appConfig.network?.chainId || 1,

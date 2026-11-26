@@ -1,5 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { siteMetadataBase } from '@/lib/seo';
+import { getFeatures } from '@/lib/config';
+import { featureOfPath } from '@/lib/features';
 
 /**
  * /sitemap.xml — the stable hub/landing routes worth advertising to crawlers.
@@ -26,7 +28,13 @@ const HUB_ROUTES: HubRoute[] = [
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const base = siteMetadataBase();
-  return HUB_ROUTES.map(({ path, priority, changeFrequency }) => ({
+  const features = getFeatures();
+  // routes of parts switched off in config.json are not listed
+  const routes = HUB_ROUTES.filter(({ path }) => {
+    const feature = featureOfPath(path);
+    return feature === null || features[feature];
+  });
+  return routes.map(({ path, priority, changeFrequency }) => ({
     url: base ? new URL(path, base).toString() : path,
     changeFrequency,
     priority,

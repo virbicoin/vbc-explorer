@@ -192,13 +192,6 @@ export async function GET() {
   try {
     const appConfig = loadConfig();
 
-    if (!appConfig.dex?.enabled) {
-      return NextResponse.json(
-        { success: false, error: 'DEX feature is not enabled' },
-        { status: 404 }
-      );
-    }
-
     const RPC_URL =
       appConfig.network?.rpcUrl || appConfig.web3Provider?.url || 'http://localhost:8545';
     const web3 = new Web3(RPC_URL);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { loadConfig, getCompilerConfig } from '../../../../lib/config';
+import { loadConfig, getCompilerConfig, getFeatures } from '../../../../lib/config';
 import { buildAddressTags, type AddressTagSources } from '../../../../lib/address-tags';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 
@@ -95,6 +95,8 @@ export async function GET(request: NextRequest) {
       },
       // Block reward schedule (lib/reward-schedule.ts); null = Ethereum's
       rewards: config.rewards ?? null,
+      // The optional parts that are on (lib/features.ts): DEX, Launchpad, bridge, richlist
+      features: getFeatures(),
       // Contract verification defaults (null = the compiler's EVM version)
       verification: { defaultEvmVersion: getCompilerConfig().defaultEvmVersion },
       // Centralized token icons configuration

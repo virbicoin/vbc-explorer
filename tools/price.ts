@@ -13,7 +13,13 @@ import '../lib/env'; // .env / .env.local before any other module reads process.
 import { Market, DexSwap } from '../models/index';
 import mongoose from 'mongoose';
 import { connectDB, ensureIndexesOnStartup } from '../models/index';
-import { loadConfig, getCurrencyConfig, AppConfig, CurrencyConfig } from '../lib/config';
+import {
+  loadConfig,
+  getCurrencyConfig,
+  getFeatures,
+  AppConfig,
+  CurrencyConfig,
+} from '../lib/config';
 import { ethers, EventLog } from 'ethers';
 import {
   PAIR_VIEW_ABI,
@@ -261,7 +267,8 @@ const fetchCoinpaprikaPrice = async (): Promise<Quote | null> => {
 // 4. DEX on-chain price: the wrapped native / stablecoin pool
 const fetchDexPrice = async (): Promise<Quote | null> => {
   const dexPrice = currencyConfig?.priceApi?.dex;
-  if (dexPrice?.enabled === false) return null;
+  // the DEX source needs the DEX itself (dex.enabled), which a plain block explorer has not
+  if (!getFeatures().dex || dexPrice?.enabled === false) return null;
 
   const wrappedNative = configuredAddress(config.dex?.wrappedNative?.address);
   const stablecoin =
@@ -575,7 +582,7 @@ async function processSwapEvents(
 }
 
 const syncDexSwaps = async (nativePrice: number): Promise<void> => {
-  if (!checkMemory()) return;
+  if (!getFeatures().dex || !checkMemory()) return;
 
   const lpAddresses = getLPAddresses();
   if (lpAddresses.length === 0) return;

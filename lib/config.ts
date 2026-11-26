@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { resolveFeatures, type Features } from './features';
 import { MissingMongoUriError } from './db/uri';
 import {
   parseRewardSchedule,
@@ -318,6 +319,8 @@ export interface AppConfig {
   network?: NetworkConfig;
   dex?: DexConfig;
   launchpad?: LaunchpadConfig;
+  /** Richlist page, API and tool; on unless `enabled` is false (lib/features.ts) */
+  richlist?: { enabled?: boolean };
   supply?: SupplyConfig;
   /** Block reward schedule (lib/reward-schedule.ts); Ethereum's when missing */
   rewards?: RewardScheduleConfig;
@@ -611,6 +614,9 @@ let cachedRewardSchedule: RewardSchedule | null = null;
  * The chain's block reward schedule from config.json `rewards`. Without that section the
  * schedule is Ethereum's, which is wrong for other chains, so say so once.
  */
+/** The optional parts switched on in config.json (lib/features.ts). */
+export const getFeatures = (): Features => resolveFeatures(readConfig());
+
 export const getRewardSchedule = (): RewardSchedule => {
   if (!cachedRewardSchedule) {
     const rewards = readConfig().rewards;

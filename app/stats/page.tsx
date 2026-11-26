@@ -82,6 +82,8 @@ export default function StatsPage() {
   const [stats, setStats] = useState<NetworkStats | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStats[]>([]);
   const [gasStats, setGasStats] = useState<GasStats | null>(null);
+  // hidden until the client config says the richlist is on (`features.richlist`)
+  const [richlistEnabled, setRichlistEnabled] = useState(false);
   const [chainInfo, setChainInfo] = useState<ChainInfo>({
     chainId: 0,
     networkName: '',
@@ -133,6 +135,7 @@ export default function StatsPage() {
           const configRes = await fetch('/api/config/client');
           if (configRes.ok) {
             const configData = await configRes.json();
+            setRichlistEnabled(configData.features?.richlist !== false);
             setChainInfo({
               chainId: configData.network?.chainId || 0,
               networkName: configData.network?.name || configData.currency?.name || '',
@@ -668,18 +671,20 @@ export default function StatsPage() {
               </div>
             </Link>
 
-            <Link
-              href="/richlist"
-              className="bg-gray-800 rounded-lg border border-gray-700 p-6 hover:bg-gray-700 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <CurrencyDollarIcon className="w-8 h-8 text-yellow-400" />
-                <div>
-                  <div className="font-semibold text-gray-100">Rich List</div>
-                  <div className="text-sm text-gray-400">Top holders by balance</div>
+            {richlistEnabled && (
+              <Link
+                href="/richlist"
+                className="bg-gray-800 rounded-lg border border-gray-700 p-6 hover:bg-gray-700 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <CurrencyDollarIcon className="w-8 h-8 text-yellow-400" />
+                  <div>
+                    <div className="font-semibold text-gray-100">Rich List</div>
+                    <div className="text-sm text-gray-400">Top holders by balance</div>
+                  </div>
                 </div>
-              </div>
-            </Link>
+              </Link>
+            )}
 
             <Link
               href="/api-docs"

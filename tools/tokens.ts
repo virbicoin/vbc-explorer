@@ -72,7 +72,7 @@ import {
   Transaction,
 } from '../models/index';
 import { syncLaunchpadTokens } from '../lib/launchpad/sync';
-import { loadConfig, getWeb3ProviderURL } from '../lib/config';
+import { loadConfig, getFeatures, getWeb3ProviderURL } from '../lib/config';
 import {
   createErc1155Node,
   syncErc1155ToConfirmedHead,
@@ -1268,8 +1268,8 @@ async function syncLPTokensFromFactory() {
     const config = loadConfig();
     const factoryAddress = config.dex?.factory;
 
-    // config.example.json ships the DEX disabled with zero addresses
-    if (!config.dex?.enabled || !factoryAddress || /^0x0{40}$/i.test(factoryAddress)) {
+    // a plain block explorer has no DEX; config.example.json ships it with zero addresses
+    if (!getFeatures().dex || !factoryAddress || /^0x0{40}$/i.test(factoryAddress)) {
       console.log('⚠️ DEX disabled or no factory configured, skipping LP token sync');
       return;
     }
@@ -1464,6 +1464,8 @@ async function runErc1155Sync(): Promise<void> {
 
 const LAUNCHPAD_SYNC_INTERVAL = 60 * 60 * 1000; // 1 hour
 async function runLaunchpadSync(): Promise<void> {
+  // a plain block explorer has no Launchpad (launchpad.enabled in config.json)
+  if (!getFeatures().launchpad) return;
   try {
     console.log('🔄 Syncing Launchpad tokens from the TokenFactory contracts...');
     const result = await syncLaunchpadTokens();

@@ -514,6 +514,18 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 - `proxy.ts` の `/address` タイプ判定 fetch に AbortController（2s）を追加 → DB 停止時も `/address` がハングしない（従来 ~15s）。
 - DEX サブシステム（`geckoterminal/info`・`pool`、`dex` ページ、`useFarming` のウォレット追加 `nativeCurrency`）の真のハードコード固有名を config 由来に。クライアントは `lib/client-config`（`getNetworkName`/`getCurrencyConfig`）または `useDexConfig`（`currency` フィールド追加）から取得。設定済みの本番では出力は不変。
 
+## 新機能（2026-11）: 単純なブロックエクスプローラーとしての構成
+
+DEX・Token Launchpad・ブリッジ・richlist は任意の機能で、すべて切ると単純なブロックエクスプローラー（ブロック・取引・アドレス・トークン / NFT・コントラクトと検証・内部取引・統計・Etherscan / Blockscout API）になる。設定例と pm2 の起動は README の「Plain block explorer」。
+
+### 設計ルール（必ず守る）
+- **機能の有無は `resolveFeatures()`（`lib/features.ts`）だけが決める。** サーバーは `getFeatures()`（lib/config.ts）、画面は `/api/config/client` の `features` を使う。`config.dex?.enabled` などを個別に読まない。DEX・Launchpad・ブリッジは各セクションの `enabled: true` で有効、richlist は `richlist.enabled: false` で無効（本番の config.json を変えずに済むよう、既定は有効）
+- **無効な機能のページと API は `proxy.ts` がまとめて 404 にする**（API は `{ error: { code: 'FEATURE_DISABLED' } }`、`/api/dex/geckoterminal` は JSON:API の `errors`、ページは存在しないパスへの rewrite で not-found ページ）。ルートごとに有効かを確かめない（2026-11-27 までは DEX の 14 ルートが個別に確かめ、CMC・DefiLlama などは確かめていなかった）。機能のページや API を足すときは `FEATURE_PATHS` に足す
+- リンクも同じ判定で隠す: ヘッダー（`Header.tsx` → `HeaderNav` の `features`）、stats ページの Rich List カード、`sitemap.ts`
+- ツールは `getFeatures()` で処理を飛ばす: `tokens` の Launchpad 同期と LP 同期、`price` の DEX 価格とスワップ同期、`sync.ts richlist`（何もせず終わる。pm2 では起動しない）
+- richlist を切ると `Account`（残高）が作られない。`/api/v2/stats` の `total_addresses` は null、`listaccounts` は空、ホームの集計（`lib/stats.ts`）は最近の取引から数える。`loadAddressFacts()` のコントラクト判定は Contract と tokens で足りる
+- テスト: `tests/lib/features.test.ts`（判定、proxy の 404 と通過、サイトマップ）、`tests/api/v2-blocks-stats.test.ts`（richlist なしの `total_addresses`）
+
 ## 新機能（2026-11）: 内部取引と VRC-1155 の同期
 
 それまで `txlistinternal` / `token1155tx` / v2 の内部取引は常に空だった。本番（TK04）の全 46,470 取引をトレースした結果、内部取引は 11,059 件（値の移動 1,079 件、計約 4,628,000 VBC）、コントラクトが作ったコントラクトが 44 件（うち 23 件は Contract にも tokens にも無く、VRC-20 が 6 件・旧ファクトリーの LP が 2 件含まれていた）。VRC-1155 のイベントはチェーン上にまだ無い（2026-11-26 時点）。

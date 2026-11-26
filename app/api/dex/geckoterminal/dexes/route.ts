@@ -28,10 +28,6 @@ export async function GET() {
   try {
     const config = loadConfig();
 
-    if (!config.dex?.enabled) {
-      return errorResponse(404, 'DEX feature is not enabled');
-    }
-
     const networkSlug = getNetworkSlug();
     const dexName = config.dex?.name || config.dexInfo?.name || `${getNetworkName()} DEX`;
 

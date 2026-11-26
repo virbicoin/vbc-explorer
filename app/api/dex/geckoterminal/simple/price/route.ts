@@ -62,9 +62,6 @@ export async function GET(request: Request) {
     }
 
     const config = loadConfig();
-    if (!config.dex?.enabled) {
-      return errorResponse(404, 'DEX feature is not enabled');
-    }
 
     const provider = new ethers.JsonRpcProvider(config.network?.rpcUrl || config.web3Provider?.url);
     const wrappedNativeAddress = config.dex?.wrappedNative?.address?.toLowerCase() || '';

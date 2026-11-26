@@ -4,13 +4,20 @@
  * decides `next_page_params` from one extra row, and totals come from
  * countAll() (estimatedDocumentCount). mongodb-memory-server; no node.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import mongoose from 'mongoose';
 import { NextRequest } from 'next/server';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Account, Block, Contract, Market, Transaction } from '@/models/index';
 import { countAll } from '@/lib/db/count';
 import { GET as blocksGet } from '@/app/api/v2/blocks/route';
+
+// the richlist (which keeps Account) can be switched off; it is on unless a test turns it off
+const richlist = vi.hoisted(() => ({ on: true }));
+vi.mock('@/lib/config', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/config')>();
+  return { ...actual, getFeatures: () => ({ ...actual.getFeatures(), richlist: richlist.on }) };
+});
 
 let statsGet: (request: NextRequest) => Promise<Response>;
 let mongod: MongoMemoryServer;
@@ -144,6 +151,19 @@ describe('GET /api/v2/stats', () => {
       total_verified_contracts: '1',
     });
     expect(typeof body.gas_prices).toBe('object');
+  });
+
+  it('reports no address total without the richlist, which keeps the balances', async () => {
+    await Block.collection.insertMany([1, 2].map(block));
+    await Account.collection.insertOne({ address: '0xa', balance: '1', type: 0 });
+    richlist.on = false;
+    try {
+      const body = await (await statsGet(request('/api/v2/stats'))).json();
+      expect(body.total_addresses).toBeNull();
+      expect(body.total_blocks).toBe('2');
+    } finally {
+      richlist.on = true;
+    }
   });
 });
 

@@ -107,6 +107,9 @@
     "blockTime": 12,
     "_comment": "slug is used for URL-friendly identifiers (e.g., virbicoin for VirBiCoin network)"
   },
+  "richlist": {
+    "enabled": true
+  },
   "dex": {
     "enabled": false,
     "factory": "0x0000000000000000000000000000000000000000",

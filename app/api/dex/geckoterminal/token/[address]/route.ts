@@ -52,9 +52,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
     const { address: tokenAddress } = await params;
 
     const config = loadConfig();
-    if (!config.dex?.enabled) {
-      return errorResponse(404, 'DEX feature is not enabled');
-    }
 
     // Validate address
     if (!ethers.isAddress(tokenAddress)) {

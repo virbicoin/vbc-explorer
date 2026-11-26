@@ -58,9 +58,6 @@ export async function GET(request: Request) {
     }
 
     const config = loadConfig();
-    if (!config.dex?.enabled) {
-      return errorResponse(404, 'DEX feature is not enabled');
-    }
 
     const wrappedNativeAddress = getWrappedNativeAddress();
     const wrappedNativeSymbol = config.dex?.wrappedNative?.symbol || 'WETH';

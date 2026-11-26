@@ -13,7 +13,7 @@ import { connectDB, ensureIndexesOnStartup, Block, Transaction, Contract } from 
 import { main as statsMain } from './stats';
 import { makeRichList } from './richlist';
 import { main as tokensMain } from './tokens';
-import { readConfig as loadConfig, getWeb3ProviderURL } from '../lib/config';
+import { readConfig as loadConfig, getFeatures, getWeb3ProviderURL } from '../lib/config';
 import { registerContract } from '../lib/sync/contracts';
 import {
   attachUncleReward,
@@ -884,6 +884,11 @@ process.on('SIGINT', async () => {
 
 // Richlist wrapper function
 const runRichlist = async () => {
+  if (!getFeatures().richlist) {
+    // a plain block explorer: keep this app out of pm2 (see README, "Plain block explorer")
+    console.log('Richlist is switched off (richlist.enabled: false in config.json); nothing to do');
+    return;
+  }
   console.log('🚀 Starting richlist calculation...');
 
   // Ensure database connection first
