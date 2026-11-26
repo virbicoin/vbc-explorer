@@ -9,7 +9,6 @@
  * 2. CoinGecko
  * 3. CoinMarketCap (CMC)
  * 4. Coinpaprika
- * 5. WikaEx
  *
  * The DEX pool price is read by tools/price.ts only and reaches this service
  * through the database.
@@ -18,7 +17,7 @@
 import { Market } from '@/models/index';
 import { loadConfig, getCurrencyConfig } from '@/lib/config';
 
-export type PriceOrigin = 'coingecko' | 'cmc' | 'coinpaprika' | 'wikaex' | 'dex';
+export type PriceOrigin = 'coingecko' | 'cmc' | 'coinpaprika' | 'dex';
 
 export interface PriceData {
   symbol: string;
@@ -34,7 +33,6 @@ const SOURCE_LABELS: Record<PriceOrigin, string> = {
   coingecko: 'CoinGecko',
   cmc: 'CoinMarketCap',
   coinpaprika: 'Coinpaprika',
-  wikaex: 'WikaEx',
   dex: 'DEX',
 };
 
@@ -238,56 +236,8 @@ export async function getPriceFromCoinpaprika(): Promise<PriceData | null> {
 }
 
 /**
- * Fetch price from WikaEx API (CoinGecko-compatible endpoint)
- */
-export async function getPriceFromWikaEx(symbol: string): Promise<PriceData | null> {
-  const currencyConfig = getCurrencyConfig();
-  // Check if explicitly disabled
-  if (currencyConfig?.priceApi?.wikaex?.enabled === false) return null;
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-    const response = await fetch('https://wikaex.com/api/spot/coingecko/tickers', {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'VBC-Explorer/1.0', Accept: 'application/json' },
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) return null;
-
-    const tickers = await response.json();
-    const tickerSymbol = currencyConfig?.priceApi?.wikaex?.symbol || symbol;
-
-    const usdtTicker = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}_USDT`
-    );
-    const btcTicker = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}_BTC`
-    );
-
-    if (usdtTicker?.last_price || btcTicker?.last_price) {
-      const priceUSD = usdtTicker?.last_price ? parseFloat(usdtTicker.last_price) : 0;
-      if (priceUSD > 0) {
-        return {
-          symbol,
-          priceUSD,
-          priceBTC: btcTicker?.last_price ? parseFloat(btcTicker.last_price) : 0,
-          timestamp: Date.now(),
-          source: 'wikaex',
-        };
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Get current native token price
- * Priority: Database -> CoinGecko -> CMC -> Coinpaprika -> WikaEx
+ * Priority: Database -> CoinGecko -> CMC -> Coinpaprika
  */
 export async function getNativePrice(): Promise<PriceData | null> {
   // Check memory cache first
@@ -316,33 +266,12 @@ export async function getNativePrice(): Promise<PriceData | null> {
     price = await getPriceFromCoinpaprika();
   }
 
-  // 5. Try WikaEx
-  if (!price) {
-    price = await getPriceFromWikaEx(symbol);
-  }
-
   if (price) {
     priceCache = { data: price, timestamp: Date.now() };
     return price;
   }
 
   return null;
-}
-
-/**
- * Get price with symbol override
- */
-export async function getPrice(symbol?: string): Promise<PriceData | null> {
-  const config = loadConfig();
-  const targetSymbol = symbol || config.currency?.symbol || 'ETH';
-
-  // For native token, use standard flow
-  if (targetSymbol === config.currency?.symbol) {
-    return getNativePrice();
-  }
-
-  // For other tokens, try WikaEx only
-  return getPriceFromWikaEx(targetSymbol);
 }
 
 /**

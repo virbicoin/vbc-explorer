@@ -17,7 +17,7 @@
     "decimals": 18,
     "gasUnit": "Gwei",
     "priceApi": {
-      "_comment": "Price APIs are tried in order: CoinGecko → CMC → Coinpaprika → WikaEx → DEX",
+      "_comment": "Price APIs are tried in order: CoinGecko → CMC → Coinpaprika → DEX",
       "coingecko": {
         "enabled": true,
         "id": "ethereum",
@@ -32,11 +32,6 @@
         "enabled": true,
         "id": "eth-ethereum",
         "_comment": "Coinpaprika coin ID (see https://api.coinpaprika.com/v1/coins)"
-      },
-      "wikaex": {
-        "enabled": false,
-        "symbol": "ETH",
-        "_comment": "WikaEx trading symbol (CoinGecko-compatible API at https://wikaex.com/api/spot/coingecko/tickers)"
       },
       "dex": {
         "enabled": true,

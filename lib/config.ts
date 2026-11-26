@@ -65,10 +65,6 @@ export interface CurrencyConfig {
       enabled: boolean;
       id: string;
     };
-    wikaex?: {
-      enabled: boolean;
-      symbol?: string;
-    };
     /**
      * On-chain price from the wrapped native / stablecoin pool. Without
      * `pairAddress` the pool is looked up among `dex.lpTokens` and

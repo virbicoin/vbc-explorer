@@ -6,8 +6,7 @@
  * 1. CoinGecko (if enabled)
  * 2. CoinMarketCap (if enabled)
  * 3. Coinpaprika (if enabled)
- * 4. WikaEx Exchange API (unless disabled)
- * 5. DEX on-chain price (unless disabled): the wrapped native / stablecoin pool
+ * 4. DEX on-chain price (unless disabled): the wrapped native / stablecoin pool
  */
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
@@ -58,7 +57,7 @@ function getProvider(): ethers.JsonRpcProvider {
 // ============================================
 // Caches
 // ============================================
-type PriceSource = 'coingecko' | 'cmc' | 'coinpaprika' | 'wikaex' | 'dex';
+type PriceSource = 'coingecko' | 'cmc' | 'coinpaprika' | 'dex';
 
 interface Quote {
   quoteUSD: number;
@@ -259,47 +258,7 @@ const fetchCoinpaprikaPrice = async (): Promise<Quote | null> => {
   }
 };
 
-// 4. WikaEx Exchange API (CoinGecko-compatible endpoint)
-const fetchWikaExPrice = async (symbol: string): Promise<Quote | null> => {
-  // Check if explicitly disabled
-  if (currencyConfig?.priceApi?.wikaex?.enabled === false) return null;
-
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-    const response = await fetch('https://wikaex.com/api/spot/coingecko/tickers', {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'VBC-Explorer/1.0', Accept: 'application/json' },
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) return null;
-
-    const tickers = await response.json();
-    const tickerSymbol = currencyConfig?.priceApi?.wikaex?.symbol || symbol;
-    const nativeUsdt = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}_USDT`
-    );
-    const nativeBtc = tickers.find(
-      (t: { ticker_id: string }) => t.ticker_id === `${tickerSymbol}_BTC`
-    );
-
-    if (nativeUsdt?.last_price || nativeBtc?.last_price) {
-      const quoteUSD = parseFloat(nativeUsdt?.last_price || '0');
-      const quoteBTC = parseFloat(nativeBtc?.last_price || '0');
-      if (quoteUSD > 0) {
-        log(`✅ WikaEx: $${quoteUSD}`);
-        return { quoteUSD, quoteBTC };
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-};
-
-// 5. DEX on-chain price: the wrapped native / stablecoin pool
+// 4. DEX on-chain price: the wrapped native / stablecoin pool
 const fetchDexPrice = async (): Promise<Quote | null> => {
   const dexPrice = currencyConfig?.priceApi?.dex;
   if (dexPrice?.enabled === false) return null;
@@ -348,8 +307,7 @@ const fetchDexPrice = async (): Promise<Quote | null> => {
  * 1. CoinGecko
  * 2. CoinMarketCap (CMC)
  * 3. Coinpaprika
- * 4. WikaEx
- * 5. DEX
+ * 4. DEX
  */
 const PRICE_SOURCES: Array<{
   source: PriceSource;
@@ -358,7 +316,6 @@ const PRICE_SOURCES: Array<{
   { source: 'coingecko', fetch: () => fetchCoinGeckoPrice() },
   { source: 'cmc', fetch: () => fetchCMCPrice() },
   { source: 'coinpaprika', fetch: () => fetchCoinpaprikaPrice() },
-  { source: 'wikaex', fetch: (symbol) => fetchWikaExPrice(symbol) },
   { source: 'dex', fetch: () => fetchDexPrice() },
 ];
 

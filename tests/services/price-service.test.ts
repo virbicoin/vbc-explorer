@@ -45,7 +45,6 @@ describe('priceSourceLabel', () => {
   it('names the source of a price fetched directly', () => {
     expect(priceSourceLabel(price({ source: 'dex' }))).toBe('DEX');
     expect(priceSourceLabel(price({ source: 'coingecko' }))).toBe('CoinGecko');
-    expect(priceSourceLabel(price({ source: 'wikaex' }))).toBe('WikaEx');
   });
 
   it('names the origin stored with a database row', () => {

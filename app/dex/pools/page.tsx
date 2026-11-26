@@ -131,7 +131,7 @@ export default function PoolsPage() {
           }
         }
 
-        // Set external TVL and native price from WikaEx/DefiLlama
+        // Set external TVL and native price (price service / DefiLlama)
         if (externalPrice.success && externalPrice.data) {
           setExternalTVL(externalPrice.data.totalTvlUsd);
           setNativePrice(externalPrice.data.nativePriceUsd);

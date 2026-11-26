@@ -57,7 +57,7 @@ A modern, real-time blockchain explorer for any EVM-compatible network built wit
 - **🏷️ Address Name Tags** - Public labels for known addresses (DEX, Launchpad, Bridge, pools) with config-driven overrides
 - **🔍 Decoded Input Data** - Transaction calldata decoded against verified contract ABIs (function signature + arguments)
 - **🛂 Token Approval Checker** - Review and revoke ERC-20 allowances at `/approvals` (BscScan-style, wallet-connected revoke)
-- **💸 Price Tracking** - Live price updates with priority fallback (CoinGecko → CoinMarketCap → Coinpaprika → WikaEx → DEX)
+- **💸 Price Tracking** - Live price updates with priority fallback (CoinGecko → CoinMarketCap → Coinpaprika → DEX)
 - **⚡ Real-time Sync** - Live blockchain synchronization with WebSocket support
 - **📱 Responsive Design** - Mobile-first design optimized for all devices
 - **🔗 EIP-3091 Support** - Direct URI redirection for ethereum: links
@@ -1263,10 +1263,6 @@ All configuration is now centralized in `config.json`. The following settings ar
       "coinpaprika": {
         "enabled": true,
         "id": "eth-ethereum"
-      },
-      "wikaex": {
-        "enabled": true,
-        "symbol": "ETH"
       },
       "dex": {
         "enabled": true
