@@ -1,21 +1,10 @@
 {
-  "nodeAddr": "localhost",
-  "port": 8545,
-  "wsPort": 8546,
-  "bulkSize": 100,
-  "syncAll": true,
-  "quiet": false,
-  "startBlock": 0,
-  "endBlock": null,
   "web3Provider": {
     "url": "http://localhost:8545"
   },
   "currency": {
     "name": "Ethereum",
     "symbol": "ETH",
-    "unit": "wei",
-    "decimals": 18,
-    "gasUnit": "Gwei",
     "priceApi": {
       "_comment": "Price APIs are tried in order: CoinGecko → CMC → Coinpaprika → DEX",
       "coingecko": {
@@ -42,7 +31,6 @@
     },
     "_comment": "For custom networks: name/symbol/unit/gasUnit can be customized (e.g., VirBiCoin/VBC/niku/Gniku)"
   },
-  "priceUpdateInterval": 300000,
   "miners": {
     "0x0000000000000000000000000000000000000001": "Example Pool 1",
     "0x0000000000000000000000000000000000000002": "Example Pool 2"
@@ -52,17 +40,7 @@
     "0x0000000000000000000000000000000000000003": "Team Treasury"
   },
   "database": {
-    "uri": "${MONGODB_URI}",
-    "options": {
-      "maxPoolSize": 50,
-      "serverSelectionTimeoutMS": 15000,
-      "socketTimeoutMS": 60000,
-      "connectTimeoutMS": 15000,
-      "bufferCommands": false,
-      "autoIndex": false,
-      "autoCreate": false
-    },
-    "_comment": "Use environment variable MONGODB_URI for security. Example: mongodb://user:password@localhost:27017/explorerDB?authSource=explorerDB"
+    "uri": "${MONGODB_URI}"
   },
   "explorer": {
     "name": "Blockchain Explorer",
@@ -75,27 +53,6 @@
   "images": {
     "ipfsGateway": "https://ipfs.io/ipfs/",
     "allowedHosts": []
-  },
-  "sync": {
-    "confirmations": 12,
-    "maxReorgDepth": 64,
-    "bulkConcurrency": 8,
-    "bulkDelayMs": 0,
-    "_comment": "Catch-up sync: bulkConcurrency blocks are fetched at a time (bulkSize per database write) with an optional bulkDelayMs pause between rounds for a node that cannot take the load"
-  },
-  "traces": {
-    "url": "",
-    "concurrency": 4,
-    "_comment": "Internal transactions (tools/internal-txs.ts, pm2 app internal-txs): IPC socket path or http(s)/ws(s) URL of a node that answers trace_transaction (OpenEthereum / Ovbc with --tracing on; Ovbc opens the trace API on its IPC socket, e.g. ~/.local/share/openvirbicoin/jsonrpc.ipc). Empty: internal transactions are not indexed. TRACE_RPC_URL overrides."
-  },
-  "compiler": {
-    "cacheDir": "~/.cache/vbc-solc",
-    "concurrency": 1,
-    "maxQueue": 5,
-    "timeoutMs": 60000,
-    "maxOldGenerationSizeMb": 1024,
-    "allowedVersions": [],
-    "_comment": "Solidity compilers for contract verification run in a worker thread. Release builds are downloaded from binaries.soliditylang.org, verified against the sha256 published in list.json and cached as <version>.js + <version>.sha256 in cacheDir (~ expands to the home directory; SOLC_CACHE_DIR overrides). allowedVersions is an optional allow-list such as [\"0.8.30\"] (empty = every release); nightly builds are always refused. defaultEvmVersion (optional, e.g. \"paris\") is used when a verification request names no EVM version; unset = the compiler's default."
   },
   "network": {
     "chainId": 1,
@@ -112,54 +69,9 @@
   },
   "dex": {
     "enabled": false,
-    "factory": "0x0000000000000000000000000000000000000000",
     "router": "0x0000000000000000000000000000000000000000",
     "masterChef": "0x0000000000000000000000000000000000000000",
-    "wrappedNative": {
-      "address": "0x0000000000000000000000000000000000000000",
-      "name": "Wrapped Native Token",
-      "symbol": "WETH",
-      "decimals": 18
-    },
-    "rewardToken": {
-      "address": "0x0000000000000000000000000000000000000000",
-      "symbol": "REWARD",
-      "name": "Reward Token",
-      "decimals": 18
-    },
-    "tokens": {
-      "usdt": {
-        "address": "0x0000000000000000000000000000000000000000",
-        "name": "Tether USD",
-        "symbol": "USDT",
-        "decimals": 6
-      },
-      "usdc": {
-        "address": "0x0000000000000000000000000000000000000000",
-        "name": "USD Coin",
-        "symbol": "USDC",
-        "decimals": 6
-      }
-    },
-    "lpTokens": {
-      "usdtWeth": {
-        "address": "0x0000000000000000000000000000000000000000",
-        "name": "USDT-WETH LP",
-        "symbol": "USDT-ETH LP",
-        "token0": "USDT",
-        "token1": "WETH"
-      }
-    },
-    "farmPools": [
-      {
-        "pid": 0,
-        "name": "Example LP Pool",
-        "lpToken": "0x0000000000000000000000000000000000000000",
-        "token0Symbol": "USDT",
-        "token1Symbol": "ETH"
-      }
-    ],
-    "_comment": "Set enabled: true and configure contract addresses to enable DEX features"
+    "_comment": "The factory, wrapped native token, reward token, tokens, pairs (lpTokens) and farms (farmPools) are read from the router and MasterChef. Write any of them here to use your own value instead of the chain's (a written list is the whole list)."
   },
   "bridge": {
     "enabled": false,
@@ -344,19 +256,5 @@
       "15537394": "Paris"
     },
     "_comment": "Block reward schedule used for the supply endpoints, mining rewards and the reward countdown. blockReward: reward in coins (or 0x wei) keyed by the first block it applies to, like an OpenEthereum chainspec's blockReward. flatUncleRewardFrom: block from which uncles earn a flat 1/32 of the block reward (Ethereum Classic ECIP-1017: 5000001). forkNames: optional names for the blocks where the reward changes. Without this section the explorer uses Ethereum's schedule shown here."
-  },
-  "knownTokens": {
-    "0x...tokenAddress1": {
-      "name": "Token Name",
-      "symbol": "TKN",
-      "decimals": 18,
-      "type": "VRC-20"
-    },
-    "0x...tokenAddress2": {
-      "name": "NFT Collection",
-      "symbol": "NFT",
-      "decimals": 0,
-      "type": "VRC-721"
-    }
   }
 }

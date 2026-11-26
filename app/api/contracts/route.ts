@@ -22,32 +22,12 @@ import { rejectDeepPagination } from '@/lib/security/pagination';
 export const dynamic = 'force-dynamic';
 
 // Known tokens from config.json (address -> token info)
-interface KnownToken {
-  name: string;
-  symbol: string;
-  decimals: number;
-  type: string;
-}
-
-// Get known tokens from config, cached
-let knownTokensCache: Record<string, KnownToken> | null = null;
-function getKnownTokens(): Record<string, KnownToken> {
-  if (knownTokensCache) return knownTokensCache;
-  try {
-    const config = readConfig();
-    const tokens = (config as any).knownTokens || {};
-    // Normalize addresses to lowercase
-    knownTokensCache = Object.entries(tokens).reduce(
-      (acc, [addr, info]) => {
-        acc[addr.toLowerCase()] = info as KnownToken;
-        return acc;
-      },
-      {} as Record<string, KnownToken>
-    );
-    return knownTokensCache;
-  } catch {
-    return {};
-  }
+/** A `tokens` record: what the token job read from the token contract. */
+interface TokenRecord {
+  address: string;
+  name?: string;
+  symbol?: string;
+  type?: string;
 }
 
 // Contracts blacklisted in config.json (blacklist.contracts) are hidden from
@@ -112,14 +92,12 @@ function normalizeTokenType(type: string): string {
 
 // Helper function to convert ERC number to type string
 // Also infers token type from other fields when ERC is not set
-function getContractType(doc: ContractDocument): string {
-  const { address, ERC: erc, type, symbol, decimals, contractName, name, tokenName } = doc;
+function getContractType(doc: ContractDocument, token?: TokenRecord): string {
+  const { ERC: erc, type, symbol, decimals, contractName, name, tokenName } = doc;
 
-  // First, check if this contract is in knownTokens config
-  const knownTokens = getKnownTokens();
-  const knownToken = address ? knownTokens[address.toLowerCase()] : null;
-  if (knownToken?.type) {
-    return normalizeTokenType(knownToken.type);
+  // The token record (read from the chain by the token job) knows the standard
+  if (token?.type) {
+    return normalizeTokenType(token.type);
   }
 
   // If type is already set as a string (not 'Contract'), normalize and use it
@@ -268,27 +246,31 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .toArray();
 
-    // Format contracts
-    const knownTokens = getKnownTokens();
+    // Name, symbol and standard of the tokens among them (the token job reads them from the chain)
+    const tokenRecords = (await db
+      .collection('tokens')
+      .find({
+        address: { $in: contractDocs.map((doc) => String(doc.address).toLowerCase()) },
+        hidden: { $ne: true },
+      })
+      .project({ address: 1, name: 1, symbol: 1, type: 1, _id: 0 })
+      .toArray()) as unknown as TokenRecord[];
+    const tokenByAddress = new Map(tokenRecords.map((token) => [token.address, token]));
     const contracts = contractDocs.map((doc) => {
       const contractDoc = doc as unknown as ContractDocument;
-      const contractType = getContractType(contractDoc);
-
-      // Get known token info if available
-      const knownToken = contractDoc.address
-        ? knownTokens[contractDoc.address.toLowerCase()]
-        : null;
+      const tokenRecord = tokenByAddress.get(String(contractDoc.address).toLowerCase());
+      const contractType = getContractType(contractDoc, tokenRecord);
 
       return {
         address: contractDoc.address,
         name:
-          knownToken?.name ||
+          tokenRecord?.name ||
           contractDoc.contractName ||
           contractDoc.tokenName ||
           contractDoc.name ||
           (contractType !== ContractTypes.CONTRACT ? contractDoc.symbol : null) ||
           'Unknown Contract',
-        symbol: knownToken?.symbol || contractDoc.symbol || null,
+        symbol: tokenRecord?.symbol || contractDoc.symbol || null,
         type: contractType,
         verified: contractDoc.verified || false,
         blockNumber: contractDoc.blockNumber || null,

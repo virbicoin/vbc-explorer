@@ -20,6 +20,7 @@ import {
   AppConfig,
   CurrencyConfig,
 } from '../lib/config';
+import { loadDexSettingsFromChain } from '../lib/dex/cache-service';
 import { ethers, EventLog } from 'ethers';
 import {
   PAIR_VIEW_ABI,
@@ -697,6 +698,8 @@ const showCurrentPrice = async (): Promise<void> => {
 /** Price monitoring, or a one-off with a flag; the worker calls it with no arguments. */
 const main = async (args: string[] = process.argv.slice(2)): Promise<void> => {
   await initDB();
+  // run alone, the DEX settings config.json leaves out are read here (the worker reads them first)
+  if (getFeatures().dex) await loadDexSettingsFromChain({ onlyIfMissing: true });
 
   if (args.includes('--once') || args.includes('-o')) {
     await runOnce();

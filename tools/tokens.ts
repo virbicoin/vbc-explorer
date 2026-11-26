@@ -1293,6 +1293,12 @@ async function runLaunchpadSync(): Promise<void> {
  */
 async function main(args: string[] = process.argv.slice(2)) {
   try {
+    // run alone, the DEX settings config.json leaves out are read here (the worker reads them first)
+    if (getFeatures().dex) {
+      const { loadDexSettingsFromChain } =
+        require('../lib/dex/cache-service') as typeof import('../lib/dex/cache-service');
+      await loadDexSettingsFromChain({ onlyIfMissing: true });
+    }
     // Initialize database connection first
     await initDB();
 

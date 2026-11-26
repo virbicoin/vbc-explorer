@@ -252,9 +252,6 @@ const registerKnownContracts = async (web3Instance: Web3): Promise<void> => {
 
 // Interface definitions
 interface Config {
-  nodeAddr: string;
-  port: number;
-  wsPort: number;
   bulkSize: number;
   syncAll: boolean;
   patch: boolean;

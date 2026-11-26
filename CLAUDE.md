@@ -510,6 +510,16 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 - `proxy.ts` の `/address` タイプ判定 fetch に AbortController（2s）を追加 → DB 停止時も `/address` がハングしない（従来 ~15s）。
 - DEX サブシステム（`geckoterminal/info`・`pool`、`dex` ページ、`useFarming` のウォレット追加 `nativeCurrency`）の真のハードコード固有名を config 由来に。クライアントは `lib/client-config`（`getNetworkName`/`getCurrencyConfig`）または `useDexConfig`（`currency` フィールド追加）から取得。設定済みの本番では出力は不変。
 
+## 新機能（2026-11）: config.json にはチェーンや既定値で足りない値だけを書く
+
+ユーザーの指示（「config.jsonが長すぎるので、オンチェーンから情報を取った方がいい場合はそうしてください」、2026-11-27）。本番の config.json は 392 行、config.example.json は 362 行だった。
+
+### 設計ルール（必ず守る）
+- **DEX は `dex.router` と `dex.masterChef` だけ書けばよい。** ファクトリー（`factory()`）、ラップドトークン（`WETH()`、無ければ通貨記号から作った `W<記号>()`。VirBiCoin は `WVBC()`）、報酬トークン（`rewardToken()`）、ファクトリーの全ペアとそのトークン（`tokens` のキーは小文字のシンボル。`tokens.usdt` が価格の基準）、ファーム（`poolLength()` / `poolInfo()`）は `loadDexSettingsFromChain()`（`lib/dex/cache-service.ts`）がサーバー（`instrumentation.ts`）とワーカーの起動時と 10 分ごとに読み、`mergeDexSettings()`（`lib/config.ts`）が `readConfig()` の値の下に敷く。config.json に書いた項目はそのまま使う（リストは丸ごと。チェーンの分を足さない）。値は globalThis で共有する（Next.js はモジュールをバンドルごとに読み込むため）。DEX を使う側（70 か所以上）は従来どおり `config.dex.*` を読む
+- 単独で動かす price / tokens は `loadDexSettingsFromChain({ onlyIfMissing: true })` を自分で呼ぶ（tokens は DEX が有効なときだけ require する）
+- `knownTokens` は使わない。コントラクト一覧（`/api/contracts`）の名前・シンボル・種別は `tokens` コレクション（トークンジョブがチェーンから読んだもの）から引く
+- 既定値と同じ値・使われていない値を config.example.json に書かない（`nodeAddr` / `port` / `wsPort` はコードからも削除）。既定値の一覧は README の「Application Configuration」
+
 ## 新機能（2026-11）: バックグラウンド処理を explorer 1 つに
 
 2026-11-27 まで、同期・統計・トークン・richlist・価格・内部取引は pm2 の別アプリ 6 つで、どれを起動するかは `ecosystem.config.json` の固定の一覧が決めていた（`config.json` の切り替えとは別管理。本番は 7 プロセス・428 MB）。richlist は計算を 1 回しかせず（本番で残高が 2 日古かった）、`tools/sync.ts` は stats / richlist / tokens / all のモードも持ち、`npm run all` は price と内部取引を含まない半端な重複だった。ユーザーの指示（「単純化」「ファイルを増やさない」）で次の形にした。

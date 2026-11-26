@@ -301,9 +301,6 @@ export interface DexInfoConfig {
 }
 
 export interface AppConfig {
-  nodeAddr: string;
-  port: number;
-  wsPort: number;
   bulkSize: number;
   syncAll: boolean;
   quiet: boolean;
@@ -337,11 +334,56 @@ export interface AppConfig {
 let cachedConfig: AppConfig | null = null;
 
 /**
+ * Settings read from the chain instead of config.json (lib/dex/cache-service.ts
+ * loadDexSettingsFromChain(): the DEX factory, wrapped native token, reward token, tokens, pairs
+ * and farms). Shared through globalThis because Next.js loads this module once per bundle.
+ * Values written in config.json win.
+ */
+export interface ChainSettings {
+  dex?: Partial<DexConfig>;
+}
+const chainStore = globalThis as { __explorerChainSettings?: ChainSettings };
+let merged: { file: AppConfig; chain: ChainSettings; value: AppConfig } | null = null;
+
+export const hasChainSettings = (): boolean => Boolean(chainStore.__explorerChainSettings);
+
+export function setChainSettings(settings: ChainSettings): void {
+  chainStore.__explorerChainSettings = settings;
+}
+
+/**
+ * config.json's `dex` over the chain's: a setting written in config.json is used as written (a
+ * written `lpTokens` list is the whole list), one left out comes from the chain.
+ */
+export function mergeDexSettings(written: DexConfig, fromChain: Partial<DexConfig>): DexConfig {
+  return {
+    ...fromChain,
+    ...written,
+    factory: written.factory ?? fromChain.factory,
+    wrappedNative: written.wrappedNative ?? fromChain.wrappedNative,
+    rewardToken: written.rewardToken ?? fromChain.rewardToken,
+    tokens: written.tokens ?? fromChain.tokens,
+    lpTokens: written.lpTokens ?? fromChain.lpTokens,
+    farmPools: written.farmPools ?? fromChain.farmPools,
+  };
+}
+
+/** config.json with the chain's values under it. */
+function withChainSettings(file: AppConfig): AppConfig {
+  const chain = chainStore.__explorerChainSettings;
+  if (!chain?.dex || !file.dex) return file;
+  if (merged && merged.file === file && merged.chain === chain) return merged.value;
+  const value = { ...file, dex: mergeDexSettings(file.dex, chain.dex) };
+  merged = { file, chain, value };
+  return value;
+}
+
+/**
  * Read configuration from config.json with fallback to defaults
  */
 export const readConfig = (): AppConfig => {
   if (cachedConfig) {
-    return cachedConfig;
+    return withChainSettings(cachedConfig);
   }
 
   try {
@@ -364,9 +406,6 @@ export const readConfig = (): AppConfig => {
 
     // Default configuration (Ethereum fallback)
     const defaultConfig: AppConfig = {
-      nodeAddr: 'localhost',
-      port: 8545,
-      wsPort: 8546,
       bulkSize: 100,
       syncAll: true,
       quiet: false,
@@ -444,16 +483,13 @@ export const readConfig = (): AppConfig => {
       cachedConfig = defaultConfig;
     }
 
-    return cachedConfig;
+    return withChainSettings(cachedConfig);
   } catch (error) {
     console.error('Error reading config:', error);
     console.log('📄 Using minimal default configuration');
 
     // Return minimal config on error (Ethereum-compatible defaults)
     cachedConfig = {
-      nodeAddr: 'localhost',
-      port: 8545,
-      wsPort: 8546,
       bulkSize: 100,
       syncAll: true,
       quiet: false,
@@ -486,7 +522,7 @@ export const readConfig = (): AppConfig => {
     };
 
     // Ensure we return the fallback config we just created
-    return cachedConfig;
+    return withChainSettings(cachedConfig);
   }
 };
 
@@ -514,7 +550,7 @@ export const getMongoDBOptions = (): Record<string, unknown> => {
  */
 export const getWeb3ProviderURL = (): string => {
   const config = readConfig();
-  return config.web3Provider.url || `http://${config.nodeAddr}:${config.port}`;
+  return config.web3Provider?.url || 'http://localhost:8545';
 };
 
 /** Where tools/internal-txs.ts reads call traces from; null when it is not configured. */

@@ -16,7 +16,7 @@
 import '../lib/env'; // .env / .env.local before any other module reads process.env
 import { AsyncLocalStorage } from 'node:async_hooks';
 import mongoose from 'mongoose';
-import { getTraceSourceUrl, readConfig } from '../lib/config';
+import { getFeatures, getTraceSourceUrl, readConfig } from '../lib/config';
 import { planJobs, selectJobs, type JobName } from '../lib/features';
 
 // Loaded only when started (a job that is off is never loaded). The tools are CommonJS modules.
@@ -136,6 +136,18 @@ async function main(args: string[]): Promise<void> {
   process.on('SIGTERM', () => void stop('SIGTERM'));
   // started by the web server (lib/worker-process.ts): stop with it, also if it was killed
   process.on('disconnect', () => void stop('the explorer stopped'));
+
+  // DEX settings config.json leaves out come from the chain (lib/dex/cache-service.ts)
+  if (getFeatures().dex) {
+    const { loadDexSettingsFromChain } =
+      require('../lib/dex/cache-service') as typeof import('../lib/dex/cache-service');
+    const readDex = () =>
+      loadDexSettingsFromChain().catch((error: Error) =>
+        console.error(`[worker] DEX settings not read from the chain: ${error.message}`)
+      );
+    await readDex();
+    setInterval(readDex, 10 * 60_000).unref();
+  }
 
   console.log(`[worker] starting ${selected.join(', ')}`);
   for (const entry of plan.filter((entry) => !selected.includes(entry.name))) {

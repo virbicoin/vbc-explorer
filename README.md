@@ -265,24 +265,18 @@ npm run dev
 
 ### Configuration Example
 
-Edit `config.json` for your blockchain:
+`config.json` holds only what neither the chain nor a default can supply. The smallest one:
 
 ```json
 {
-  "nodeAddr": "localhost",
-  "port": 8545,
-  "currency": {
-    "name": "Ethereum",
-    "symbol": "ETH", 
-    "unit": "wei",
-    "gasUnit": "Gwei",
-    "decimals": 18
-  },
-  "web3Provider": {
-    "url": "http://localhost:8545"
-  }
+  "web3Provider": { "url": "http://localhost:8545" },
+  "currency": { "name": "Ether", "symbol": "ETH" },
+  "network": { "chainId": 1, "name": "Ethereum" },
+  "database": { "uri": "${MONGODB_URI}" }
 }
 ```
+
+`config.example.json` shows the optional sections (DEX, Launchpad, bridge, prices, block rewards, name tags, ...). For a DEX, `dex.router` and `dex.masterChef` are enough: the factory, the wrapped native token (`WETH()`, or the coin's own name such as `WBNB()`), the reward token, every pair with its tokens and the farms are read from those contracts when the explorer and its jobs start and every ten minutes. A value written in `config.json` is used instead of the chain's.
 
 ### Plain block explorer
 
@@ -1194,78 +1188,19 @@ All configuration is now centralized in `config.json`. The following settings ar
 
 ### Application Configuration (config.json)
 
-```json
-{
-  "nodeAddr": "localhost",
-  "port": 8545,
-  "wsPort": 8546,
-  "bulkSize": 50,
-  "syncAll": true,
-  "quiet": false,
-  "startBlock": 0,
-  "endBlock": null,
-  "currency": {
-    "name": "Ethereum",
-    "symbol": "ETH",
-    "unit": "wei",
-    "gasUnit": "Gwei",
-    "decimals": 18,
-    "priceApi": {
-      "coingecko": {
-        "enabled": true,
-        "id": "ethereum"
-      },
-      "cmc": {
-        "enabled": false,
-        "id": "ethereum"
-      },
-      "coinpaprika": {
-        "enabled": true,
-        "id": "eth-ethereum"
-      },
-      "dex": {
-        "enabled": true
-      }
-    }
-  },
-  "priceUpdateInterval": 300000,
-  "web3Provider": {
-    "url": "http://localhost:8545"
-  },
-  "traces": {
-    "url": "/home/explorer/.local/share/openvirbicoin/jsonrpc.ipc"
-  },
-  "miners": {
-    "0x0000000000000000000000000000000000000000": "Unknown",
-    "0x1111111111111111111111111111111111111111": "Example Pool"
-  },
-  "database": {
-    "uri": "${MONGODB_URI}",
-    "options": {
-      "maxPoolSize": 20,
-      "serverSelectionTimeoutMS": 15000,
-      "socketTimeoutMS": 60000,
-      "connectTimeoutMS": 15000,
-      "bufferCommands": false,
-      "autoIndex": false,
-      "autoCreate": false
-    }
-  },
-  "compiler": {
-    "cacheDir": "~/.cache/vbc-solc",
-    "concurrency": 1,
-    "maxQueue": 5,
-    "timeoutMs": 60000,
-    "maxOldGenerationSizeMb": 1024,
-    "allowedVersions": null
-  },
-  "explorer": {
-    "name": "Blockchain Explorer",
-    "description": "Real-time blockchain explorer",
-    "url": "https://your-explorer-domain.com"
-  }
-}
-```
+Start from `config.example.json`. Sections and keys left out take these defaults:
+
+| Key | Default |
+|-----|---------|
+| `web3Provider.url` | `http://localhost:8545` |
+| `currency.unit` / `decimals` / `gasUnit` | `wei` / `18` / `Gwei` |
+| `bulkSize`, `startBlock`, `endBlock`, `syncAll` | `100`, `0`, the head, `true` |
+| `sync.confirmations` / `maxReorgDepth` / `bulkConcurrency` / `bulkDelayMs` | `12` / `64` / `8` / `0` |
+| `traces.url` | none (no internal transactions); `traces.concurrency` `4` |
+| `priceUpdateInterval` | `300000` (5 minutes) |
+| `compiler` | cache `~/.cache/vbc-solc`, one compile at a time, queue 5, 60 s, 1024 MB, every release |
+| `database.options` | the pool settings in `lib/config.ts` |
+| `dex.factory`, `wrappedNative`, `rewardToken`, `tokens`, `lpTokens`, `farmPools` | read from the chain (see "Configuration Example") |
 
 Settings that used to appear here but were never read (`enableNFT`, `enableContractVerification`, `enableTokenTracking`, `apiRateLimit`, `webSocketEnabled`, `useRichList`, `maxRetries`, `retryDelay`, `logLevel`, `features`, `api`, `logging`, `performance`, `caching`, `explorer.version`, `explorer.apiUrl`) have been removed. The behaviour they suggested is configured elsewhere: rate limits in `lib/security/rate-limits.ts`, the log level with `LOG_LEVEL`, tool memory with `MEMORY_LIMIT_MB`, the solc versions with `compiler.allowedVersions`. `quiet` (or `--quiet` for `tools/sync.ts`) silences the progress logs; `priceUpdateInterval` is the price refresh interval in milliseconds (default 5 minutes).
 
@@ -2183,7 +2118,7 @@ import mongoose from 'mongoose';
 
 class CustomSync {
   constructor(config: any) {
-    this.web3 = new Web3(config.nodeAddr);
+    this.web3 = new Web3(config.web3Provider.url);
     this.config = config;
   }
 

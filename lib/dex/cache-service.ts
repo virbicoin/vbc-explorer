@@ -6,7 +6,17 @@
  */
 
 import { ethers } from 'ethers';
-import { loadConfig } from '@/lib/config';
+import {
+  getFeatures,
+  loadConfig,
+  hasChainSettings,
+  setChainSettings,
+  type DexConfig,
+  type FarmPoolConfig,
+  type LPTokenConfig,
+  type TokenConfig,
+} from '@/lib/config';
+import { MASTER_CHEF_ABI } from '@/abi/MasterChefABI';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
 import { connectDB, DexSwap } from '@/models/index';
 import { getNativePrice } from '@/lib/price-service';
@@ -449,4 +459,158 @@ export async function batchGetPoolInfo(addresses: string[]): Promise<Map<string,
   }
 
   return result;
+}
+
+// ============================================
+// DEX settings from the chain
+// ============================================
+
+const FACTORY_READS = [
+  'function allPairsLength() view returns (uint256)',
+  'function allPairs(uint256) view returns (address)',
+];
+const PAIR_READS = [
+  'function token0() view returns (address)',
+  'function token1() view returns (address)',
+];
+const TOKEN_READS = [
+  'function name() view returns (string)',
+  'function symbol() view returns (string)',
+  'function decimals() view returns (uint8)',
+];
+/** Pairs read from the factory at most; a larger DEX lists its first ones. */
+const MAX_PAIRS = 500;
+/** Contracts read at once. */
+const READ_BATCH = 20;
+
+let dexSettingsLoading: Promise<void> | null = null;
+
+/**
+ * Reads from the chain the DEX settings config.json can leave out and puts them under the
+ * values written there (lib/config.ts): the factory and the wrapped native token (from
+ * `dex.router`), the reward token and the farms (from `dex.masterChef`), every pair of the
+ * factory, and the tokens of the pairs keyed by their lower-case symbol (`tokens.usdt`). The
+ * server and the worker call it when they start and every ten minutes.
+ */
+export function loadDexSettingsFromChain(options: { onlyIfMissing?: boolean } = {}): Promise<void> {
+  if (options.onlyIfMissing && hasChainSettings()) return Promise.resolve();
+  dexSettingsLoading ??= readDexSettings().finally(() => {
+    dexSettingsLoading = null;
+  });
+  return dexSettingsLoading;
+}
+
+async function readDexSettings(): Promise<void> {
+  const dex = loadConfig().dex;
+  if (!getFeatures().dex || !dex?.router || !ethers.isAddress(dex.router)) return;
+  const provider = getProvider();
+  const tokenInfo = new Map<string, Promise<TokenConfig | null>>();
+  const readToken = (address: string) => {
+    const key = address.toLowerCase();
+    if (!tokenInfo.has(key)) {
+      const contract = new ethers.Contract(address, TOKEN_READS, provider);
+      tokenInfo.set(
+        key,
+        Promise.all([contract.name(), contract.symbol(), contract.decimals()])
+          .then(([name, symbol, decimals]) => ({
+            address: key as `0x${string}`,
+            name: String(name),
+            symbol: String(symbol),
+            decimals: Number(decimals),
+          }))
+          .catch(() => null)
+      );
+    }
+    return tokenInfo.get(key)!;
+  };
+  const inBatches = async <T, R>(items: T[], read: (item: T) => Promise<R>): Promise<R[]> => {
+    const results: R[] = [];
+    for (let i = 0; i < items.length; i += READ_BATCH) {
+      results.push(...(await Promise.all(items.slice(i, i + READ_BATCH).map(read))));
+    }
+    return results;
+  };
+
+  // Uniswap V2 names the wrapped coin WETH(); forks name it after their coin (WBNB(), WVBC())
+  const wrappedGetter = `W${(loadConfig().currency?.symbol || 'ETH').toUpperCase()}`;
+  const router = new ethers.Contract(
+    dex.router,
+    [
+      'function factory() view returns (address)',
+      'function WETH() view returns (address)',
+      `function ${wrappedGetter}() view returns (address)`,
+    ],
+    provider
+  );
+  const factory = String(await router.factory()).toLowerCase();
+  const wrapped = String(
+    await router.WETH().catch(() => router.getFunction(wrappedGetter).staticCall())
+  ).toLowerCase();
+  const factoryContract = new ethers.Contract(factory, FACTORY_READS, provider);
+  const count = Math.min(Number(await factoryContract.allPairsLength()), MAX_PAIRS);
+  const pairs = await inBatches([...Array(count).keys()], async (index) => {
+    const address = String(await factoryContract.allPairs(index)).toLowerCase();
+    const pair = new ethers.Contract(address, PAIR_READS, provider);
+    const [token0, token1] = await Promise.all([pair.token0(), pair.token1()]);
+    return { address, token0: String(token0), token1: String(token1) };
+  });
+
+  let reward: TokenConfig | null = null;
+  let farms: Array<{ pid: number; lpToken: string }> = [];
+  if (dex.masterChef && ethers.isAddress(dex.masterChef)) {
+    const chef = new ethers.Contract(dex.masterChef, MASTER_CHEF_ABI, provider);
+    const [rewardAddress, poolLength] = await Promise.all([chef.rewardToken(), chef.poolLength()]);
+    reward = await readToken(String(rewardAddress));
+    farms = await inBatches([...Array(Number(poolLength)).keys()], async (pid) => ({
+      pid,
+      lpToken: String((await chef.poolInfo(pid))[0]).toLowerCase(),
+    }));
+  }
+
+  const tokens: Record<string, TokenConfig> = {};
+  const lpTokens: Record<string, LPTokenConfig> = {};
+  const pairSymbols = new Map<string, [string, string]>();
+  for (const pair of pairs) {
+    const [a, b] = await Promise.all([readToken(pair.token0), readToken(pair.token1)]);
+    if (!a || !b) continue;
+    pairSymbols.set(pair.address, [a.symbol, b.symbol]);
+    const key = `${a.symbol.toLowerCase()}${b.symbol.charAt(0).toUpperCase()}${b.symbol.slice(1).toLowerCase()}`;
+    lpTokens[key] = {
+      address: pair.address as `0x${string}`,
+      name: `${a.symbol}-${b.symbol} LP`,
+      symbol: `${a.symbol}-${b.symbol} LP`,
+      token0: a.symbol,
+      token1: b.symbol,
+    };
+    for (const token of [a, b]) {
+      if (token.address !== wrapped && token.address !== reward?.address) {
+        tokens[token.symbol.toLowerCase()] = token;
+      }
+    }
+  }
+  const farmPools: FarmPoolConfig[] = farms.flatMap(({ pid, lpToken }) => {
+    const symbols = pairSymbols.get(lpToken);
+    return symbols
+      ? [
+          {
+            pid,
+            name: `${symbols[0]}-${symbols[1]} LP`,
+            lpToken: lpToken as `0x${string}`,
+            token0Symbol: symbols[0],
+            token1Symbol: symbols[1],
+          },
+        ]
+      : [];
+  });
+  const wrappedNative = await readToken(wrapped);
+  setChainSettings({
+    dex: {
+      factory: factory as `0x${string}`,
+      ...(wrappedNative ? { wrappedNative } : {}),
+      ...(reward ? { rewardToken: reward } : {}),
+      tokens,
+      lpTokens,
+      farmPools,
+    } as Partial<DexConfig>,
+  });
 }

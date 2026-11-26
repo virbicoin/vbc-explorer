@@ -14,6 +14,7 @@ import {
   getNetworkSlug,
   getRewardSchedule,
   getWrappedNativeSymbol,
+  mergeDexSettings,
 } from '@/lib/config';
 import { formatCoins } from '@/lib/reward-schedule';
 
@@ -75,5 +76,66 @@ describe('chain facts from config.json', () => {
       '0',
     ]);
     expect(getCompilerConfig().defaultEvmVersion).toBeNull();
+  });
+});
+
+describe('mergeDexSettings', () => {
+  const chain = {
+    factory: '0xfac' as `0x${string}`,
+    wrappedNative: {
+      address: '0xw' as `0x${string}`,
+      name: 'Wrapped',
+      symbol: 'WCOIN',
+      decimals: 18,
+    },
+    tokens: {
+      usdt: { address: '0xu' as `0x${string}`, name: 'Tether', symbol: 'USDT', decimals: 6 },
+      gold: { address: '0xg' as `0x${string}`, name: 'Gold', symbol: 'GOLD', decimals: 18 },
+    },
+    lpTokens: {
+      goldWcoin: {
+        address: '0xp' as `0x${string}`,
+        name: 'GOLD-WCOIN LP',
+        symbol: 'GOLD-WCOIN LP',
+        token0: 'GOLD',
+        token1: 'WCOIN',
+      },
+    },
+    farmPools: [
+      {
+        pid: 0,
+        name: 'GOLD-WCOIN LP',
+        lpToken: '0xp' as `0x${string}`,
+        token0Symbol: 'GOLD',
+        token1Symbol: 'WCOIN',
+      },
+    ],
+  };
+
+  it('fills what config.json leaves out from the chain', () => {
+    const merged = mergeDexSettings({ enabled: true, router: '0xr' }, chain);
+    expect(merged).toMatchObject({ enabled: true, router: '0xr', factory: '0xfac' });
+    expect(merged.wrappedNative?.symbol).toBe('WCOIN');
+    expect(Object.keys(merged.tokens ?? {})).toEqual(['usdt', 'gold']);
+    expect(merged.farmPools).toHaveLength(1);
+  });
+
+  it('uses every setting written in config.json as written', () => {
+    const merged = mergeDexSettings(
+      {
+        enabled: true,
+        factory: '0xmine',
+        tokens: { usdt: { address: '0xmyusdt', name: 'My USD', symbol: 'USDT', decimals: 6 } },
+        farmPools: [],
+      },
+      chain
+    );
+    expect(merged.factory).toBe('0xmine');
+    // a written list is the whole list: no tokens or pairs are added to it
+    expect(merged.tokens).toEqual({
+      usdt: { address: '0xmyusdt', name: 'My USD', symbol: 'USDT', decimals: 6 },
+    });
+    expect(merged.farmPools).toEqual([]);
+    expect(merged.lpTokens).toBe(chain.lpTokens);
   });
 });

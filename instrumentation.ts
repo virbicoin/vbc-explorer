@@ -9,6 +9,15 @@
  */
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+  // DEX settings config.json leaves out come from the chain (now and every ten minutes)
+  const { loadDexSettingsFromChain } = await import('./lib/dex/cache-service');
+  const readDex = () =>
+    loadDexSettingsFromChain().catch((error: Error) =>
+      console.error(`[explorer] DEX settings not read from the chain: ${error.message}`)
+    );
+  void readDex();
+  setInterval(readDex, 10 * 60_000).unref();
+
   const { workerWanted } = await import('./lib/features');
   if (!workerWanted()) return;
   const { fork } = await import('node:child_process');
