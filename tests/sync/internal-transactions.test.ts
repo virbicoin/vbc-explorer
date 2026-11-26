@@ -572,16 +572,16 @@ describe('Geth call traces', () => {
     await new Promise<void>((resolve) => node.listen(0, '127.0.0.1', resolve));
     const source = createTraceSource(`http://127.0.0.1:${(node.address() as AddressInfo).port}`);
     try {
-      const first = await source.traceTransaction('0x' + 'f'.repeat(64));
-      const second = await source.traceTransaction('0x' + 'e'.repeat(64));
-      expect(first).toHaveLength(7);
+      // the indexer traces several transactions at once: all of the first wave must switch
+      const wave = await Promise.all(
+        ['f', 'e', 'd'].map((digit) => source.traceTransaction('0x' + digit.repeat(64)))
+      );
+      expect(wave.map((frames) => frames?.length)).toEqual([7, 7, 7]);
+      seen.length = 0;
+      const second = await source.traceTransaction('0x' + 'c'.repeat(64));
       expect(second).toHaveLength(7);
-      // asked once, then remembered (ethers also sends eth_chainId once on connecting)
-      expect(seen.filter((method) => method !== 'eth_chainId')).toEqual([
-        'trace_transaction',
-        'debug_traceTransaction',
-        'debug_traceTransaction',
-      ]);
+      // after the first wave only debug_traceTransaction is asked (ethers also sends eth_chainId)
+      expect(seen.filter((method) => method !== 'eth_chainId')).toEqual(['debug_traceTransaction']);
     } finally {
       source.close();
       await new Promise((resolve) => node.close(resolve));

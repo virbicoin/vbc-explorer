@@ -338,7 +338,9 @@ export function createTraceSource(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): 
             flavor = 'parity';
             return Array.isArray(result) ? (result as ParityTrace[]) : null;
           } catch (error) {
-            if (flavor !== null || !isMethodMissing(error)) throw error;
+            // calls run in parallel: every one that was already on its way when the first
+            // answer came back fails the same way and takes the same turn
+            if (flavor === 'parity' || !isMethodMissing(error)) throw error;
             flavor = 'geth';
           }
         }

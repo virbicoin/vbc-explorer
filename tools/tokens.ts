@@ -231,8 +231,10 @@ async function isErc20Token(contractAddress: string): Promise<boolean> {
 
     return true;
   } catch (error: any) {
-    // If name/symbol/decimals fail, it's likely not a standard ERC20 token
-    console.log(`❌ isErc20Token check failed for ${contractAddress}: ${error.message}`);
+    // name/symbol/decimals failing is the normal answer of a contract that is not a token
+    if (!config.quiet) {
+      console.log(`↪ ${contractAddress} is not an ERC-20 token (${error.message})`);
+    }
     return false;
   }
 }
@@ -1332,8 +1334,9 @@ async function syncLPTokensFromFactory() {
     const config = loadConfig();
     const factoryAddress = config.dex?.factory;
 
-    if (!factoryAddress) {
-      console.log('⚠️ No DEX factory address configured, skipping LP token sync');
+    // config.example.json ships the DEX disabled with zero addresses
+    if (!config.dex?.enabled || !factoryAddress || /^0x0{40}$/i.test(factoryAddress)) {
+      console.log('⚠️ DEX disabled or no factory configured, skipping LP token sync');
       return;
     }
 
