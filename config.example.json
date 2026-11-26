@@ -78,7 +78,10 @@
   },
   "sync": {
     "confirmations": 12,
-    "maxReorgDepth": 64
+    "maxReorgDepth": 64,
+    "bulkConcurrency": 8,
+    "bulkDelayMs": 0,
+    "_comment": "Catch-up sync: bulkConcurrency blocks are fetched at a time (bulkSize per database write) with an optional bulkDelayMs pause between rounds for a node that cannot take the load"
   },
   "traces": {
     "url": "",

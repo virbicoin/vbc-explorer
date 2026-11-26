@@ -601,8 +601,15 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
 
   let processedCount = 0;
   let skippedCount = 0;
-  const BATCH_SIZE = Math.min(config.bulkSize, 50); // Reduced for 2GB instances
-  const CONCURRENCY_LIMIT = 3; // Reduced concurrent block fetches for low memory
+  // Blocks per database write, block fetches in flight and a pause between fetch rounds: from
+  // config.json (bulkSize, sync.bulkConcurrency, sync.bulkDelayMs). The old fixed 3 fetches and
+  // 100 ms pause (meant for 2 GB machines) held a fresh sync to about 20 blocks a second.
+  const bulk = (config as { sync?: { bulkConcurrency?: unknown; bulkDelayMs?: unknown } }).sync;
+  const wholeNumber = (value: unknown, fallback: number, min: number) =>
+    typeof value === 'number' && Number.isInteger(value) && value >= min ? value : fallback;
+  const BATCH_SIZE = wholeNumber(config.bulkSize, 100, 1);
+  const CONCURRENCY_LIMIT = wholeNumber(bulk?.bulkConcurrency, 8, 1);
+  const CHUNK_DELAY_MS = wholeNumber(bulk?.bulkDelayMs, 0, 0);
 
   // Process blocks in parallel batches
   for (let batchStart = startBlock; batchStart <= endBlock; batchStart += BATCH_SIZE) {
@@ -650,9 +657,9 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
         const chunkResults = await Promise.all(blockPromises);
         allBlocksData.push(...chunkResults);
 
-        // Small delay between chunks to prevent overwhelming the node
-        if (chunks.length > 1) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
+        // Optional pause between fetch rounds for a node that cannot take the load
+        if (chunks.length > 1 && CHUNK_DELAY_MS > 0) {
+          await new Promise((resolve) => setTimeout(resolve, CHUNK_DELAY_MS));
         }
       }
 
