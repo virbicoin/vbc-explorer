@@ -22,6 +22,7 @@ import {
   Block,
   InternalTransaction,
   ScanProgress,
+  Token,
   TokenTransfer,
   Transaction,
 } from '../../models/index';
@@ -268,6 +269,11 @@ export async function replaceBlock(
   if (uncleReward !== undefined) block.uncleReward = uncleReward;
   await upsertBlocks([block]);
   await upsertTransactions(transactions);
+  // VRC-20 / LP tokens read their Transfer events again from the replaced height
+  await Token.updateMany(
+    { transfersScannedTo: { $gte: height } },
+    { $set: { transfersScannedTo: height - 1 } }
+  );
   // A height the range indexers already covered (a reorg, or a gap filled by repair-chain)
   // must be indexed again; the live head is above their ranges and leaves them alone
   const rewoundScans = await rewindRangeScans(height);

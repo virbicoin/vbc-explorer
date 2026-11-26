@@ -389,6 +389,8 @@ const TokenSchema = new Schema(
     factoryVerified: Boolean, // true: factory vouched; false: audit found no factory; unset: never checked
     hidden: { type: Boolean, default: false },
     hiddenReason: { type: String, default: null },
+    // VRC-20 / LP: the last block whose Transfer events are stored (tools/tokens.ts reads on from there)
+    transfersScannedTo: Number,
   },
   { collection: 'tokens' }
 );

@@ -9,6 +9,7 @@ import {
   Block,
   InternalTransaction,
   ScanProgress,
+  Token,
   TokenTransfer,
   Transaction,
 } from '@/models/index';
@@ -89,6 +90,11 @@ describe('processNewBlock', () => {
       blockNumber: 10,
     });
     await ScanProgress.collection.insertOne({ scanType: 'tokens', lastScannedBlock: 500 });
+    // token transfer markers above the replaced height are rewound, the others kept
+    await Token.collection.insertMany([
+      { address: '0xt1', transfersScannedTo: 500 },
+      { address: '0xt2', transfersScannedTo: 5 },
+    ]);
 
     const node = new FakeNode(canonical);
     const result = await processNewBlock(node, 11, settings);
@@ -100,6 +106,8 @@ describe('processNewBlock', () => {
     expect(await Transaction.countDocuments({ hash: '0xorphantx' })).toBe(0);
     expect(await Transaction.countDocuments({ hash: '0xcan10tx' })).toBe(1);
     expect(await TokenTransfer.countDocuments({})).toBe(0);
+    const markers = await Token.collection.find({}).sort({ address: 1 }).toArray();
+    expect(markers.map((token) => token.transfersScannedTo)).toEqual([9, 5]);
     const scan = (await ScanProgress.findOne({ scanType: 'tokens' }).lean()) as {
       lastScannedBlock: number;
     };

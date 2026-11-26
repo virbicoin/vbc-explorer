@@ -165,53 +165,6 @@ const checkMemory = () => {
   return true;
 };
 
-// Improved batch processing with parallel execution and delay (CPU optimized)
-const processBatchWithDelay = async (
-  batch: any[],
-  processor: (item: unknown) => Promise<unknown>,
-  concurrency: number = 1
-) => {
-  const results = [];
-
-  // Process in smaller chunks for parallel execution
-  for (let i = 0; i < batch.length; i += concurrency) {
-    const chunk = batch.slice(i, i + concurrency);
-
-    try {
-      // Process chunk items in parallel
-      const chunkPromises = chunk.map(async (item, index) => {
-        try {
-          return await processor(item);
-        } catch (error) {
-          console.error(`❌ Error processing item ${i + index}:`, error);
-          return null;
-        }
-      });
-
-      const chunkResults = await Promise.all(chunkPromises);
-
-      // Filter out null results and add to results
-      for (const result of chunkResults) {
-        if (result) {
-          results.push(result);
-        }
-      }
-    } catch (error) {
-      console.error(`❌ Error processing chunk starting at ${i}:`, error);
-    }
-
-    // Memory check and delay between chunks
-    if (!checkMemory()) {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-    } else if (i + concurrency < batch.length) {
-      // Small delay between chunks to prevent overwhelming the node
-      await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS / 10));
-    }
-  }
-
-  return results;
-};
-
 async function isErc20Token(contractAddress: string): Promise<boolean> {
   try {
     const contract = new web3.eth.Contract(ERC20ABI, contractAddress);
@@ -263,68 +216,46 @@ async function isErc721Token(contractAddress: string): Promise<boolean> {
 // ERC721/VRC-721 Transfer event signature
 const ERC721_TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
-// Function to get actual token transfers from blockchain with batching
-async function getTokenTransfers(tokenAddress: string, fromBlock: number = 0): Promise<any[]> {
+/**
+ * The Transfer events of a VRC-721 token in the blocks from..to (one eth_getLogs call), with the
+ * time of their stored block; `complete` is false when they could not be read.
+ */
+async function getTokenTransfers(
+  tokenAddress: string,
+  fromBlock: number,
+  toBlock: number
+): Promise<{ transfers: any[]; complete: boolean }> {
   try {
-    console.log(`🔄 Fetching Transfer events for token ${tokenAddress} from block ${fromBlock}...`);
-
-    // Get Transfer events for this token
-    const logs = await web3.eth.getPastLogs({
-      address: tokenAddress,
-      topics: [ERC721_TRANSFER_TOPIC],
-      fromBlock: fromBlock,
-      toBlock: 'latest',
-    });
-
-    console.log(`🔍 Found ${logs.length} Transfer events for token ${tokenAddress}`);
-
-    // Process logs in batches to reduce memory usage
-    const batchSize = 100;
-    const transfers = [];
-
-    for (let i = 0; i < logs.length; i += batchSize) {
-      const batch = logs.slice(i, i + batchSize);
-
-      const batchTransfers = await processBatchWithDelay(batch, async (log: any) => {
-        try {
-          const block = await web3.eth.getBlock(log.blockNumber);
-
-          // Decode transfer event (from, to, tokenId)
-          const from = '0x' + log.topics[1].slice(26); // Remove padding
-          const to = '0x' + log.topics[2].slice(26); // Remove padding
-          const tokenId = web3.utils.hexToNumber(log.topics[3] || log.data);
-
-          return {
-            transactionHash: log.transactionHash,
-            blockNumber: log.blockNumber,
-            from: from.toLowerCase(),
-            to: to.toLowerCase(),
-            value: '1', // NFTs have value of 1
-            tokenAddress: tokenAddress.toLowerCase(),
-            timestamp: new Date(Number(block.timestamp) * 1000),
-            tokenId: tokenId,
-          };
-        } catch (error) {
-          console.error(`❌ Error processing transfer log:`, error);
-          return null;
-        }
-      });
-
-      transfers.push(...batchTransfers.filter((t) => t !== null));
-
-      // Memory check and delay between batches
-      if (!checkMemory()) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-      }
-    }
-
-    console.log(
-      `✅ Successfully processed ${transfers.length} transfers for token ${tokenAddress}`
+    const logs = await retryWeb3Call(() =>
+      web3.eth.getPastLogs({
+        address: tokenAddress,
+        topics: [ERC721_TRANSFER_TOPIC],
+        fromBlock,
+        toBlock,
+      })
     );
-    return transfers;
+    if (logs.length === 0) return { transfers: [], complete: true };
+    const heights = [...new Set(logs.map((log: any) => Number(log.blockNumber)))];
+    const blocks = (await Block.find({ number: { $in: heights } })
+      .select({ number: 1, timestamp: 1, _id: 0 })
+      .lean()) as Array<{ number: number; timestamp: number }>;
+    const timeOf = new Map(blocks.map((block) => [block.number, block.timestamp]));
+    if (timeOf.size < heights.length) return { transfers: [], complete: false };
+    const transfers = logs.map((log: any) => ({
+      transactionHash: log.transactionHash,
+      blockNumber: Number(log.blockNumber),
+      // from, to and the token id are the three indexed topics
+      from: `0x${log.topics[1].slice(26)}`.toLowerCase(),
+      to: `0x${log.topics[2].slice(26)}`.toLowerCase(),
+      value: '1',
+      tokenAddress: tokenAddress.toLowerCase(),
+      timestamp: new Date(Number(timeOf.get(Number(log.blockNumber))) * 1000),
+      tokenId: web3.utils.hexToNumber(log.topics[3] || log.data),
+    }));
+    return { transfers, complete: true };
   } catch (error) {
     console.error(`❌ Error getting transfers for token ${tokenAddress}:`, error);
-    return [];
+    return { transfers: [], complete: false };
   }
 }
 
@@ -422,64 +353,33 @@ async function retryWeb3Call<T>(
 }
 
 /**
- * Every Transfer event of a VRC-20 token from `fromBlock` on. `complete` is
- * false when the logs could not be fetched or the block of one of them could
- * not be read; callers must then not treat the list as the whole history.
+ * The Transfer events of a VRC-20 token in the blocks from..to (one eth_getLogs call), with the
+ * time of their stored block. `complete` is false when the logs could not be read or a block is
+ * not stored; the caller then keeps its marker and tries again.
  */
 async function getErc20TokenTransfers(
   tokenAddress: string,
-  fromBlock: number = 0
+  fromBlock: number,
+  toBlock: number
 ): Promise<{ transfers: Erc20TransferDoc[]; complete: boolean }> {
   try {
-    console.log(
-      `🔄 Fetching VRC-20 Transfer events for token ${tokenAddress} from block ${fromBlock}...`
-    );
-
-    // Use retry logic for getPastLogs
     const logs = await retryWeb3Call(() =>
-      web3.eth.getPastLogs({
-        address: tokenAddress,
-        topics: [TRANSFER_TOPIC],
-        fromBlock: fromBlock,
-        toBlock: 'latest',
-      })
+      web3.eth.getPastLogs({ address: tokenAddress, topics: [TRANSFER_TOPIC], fromBlock, toBlock })
     );
-
-    console.log(`🔍 Found ${logs.length} Transfer events for VRC-20 token ${tokenAddress}`);
-
-    const transfers: Erc20TransferDoc[] = [];
-    let failed = 0;
-    const batchSize = 50; // Reduced batch size to avoid overwhelming RPC
-
-    for (let i = 0; i < logs.length; i += batchSize) {
-      const batch = logs.slice(i, i + batchSize);
-
-      const batchTransfers = await processBatchWithDelay(batch, async (log: any) => {
-        try {
-          // Use retry logic for getBlock
-          const block = await retryWeb3Call(() => web3.eth.getBlock(log.blockNumber));
-
-          // from / to are in the topics, the amount in the data; one document per event.
-          // null: not a VRC-20 transfer (fewer than three topics), which is skipped
-          return erc20TransferFromLog(log, tokenAddress, block.timestamp);
-        } catch (error) {
-          failed += 1;
-          console.error(`❌ Error processing VRC-20 transfer log:`, error);
-          return null;
-        }
-      });
-
-      transfers.push(...(batchTransfers as Erc20TransferDoc[]));
-
-      // Add delay between batches to reduce RPC load
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      if (!checkMemory()) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-      }
-    }
-
-    return { transfers, complete: failed === 0 };
+    if (logs.length === 0) return { transfers: [], complete: true };
+    const heights = [...new Set(logs.map((log: any) => Number(log.blockNumber)))];
+    const blocks = (await Block.find({ number: { $in: heights } })
+      .select({ number: 1, timestamp: 1, _id: 0 })
+      .lean()) as Array<{ number: number; timestamp: number }>;
+    const timeOf = new Map(blocks.map((block) => [block.number, block.timestamp]));
+    if (timeOf.size < heights.length) return { transfers: [], complete: false };
+    const transfers = logs
+      // null: not a VRC-20 transfer (fewer than three topics)
+      .map((log: any) =>
+        erc20TransferFromLog(log, tokenAddress, timeOf.get(Number(log.blockNumber)) ?? 0)
+      )
+      .filter((transfer): transfer is Erc20TransferDoc => transfer !== null);
+    return { transfers, complete: true };
   } catch (error) {
     console.error(`❌ Error fetching VRC-20 transfers for ${tokenAddress}:`, error);
     return { transfers: [], complete: false };
@@ -544,97 +444,87 @@ async function calculateErc20TokenHolders(transfers: any[], tokenAddress: string
 }
 
 // Function to update VRC-20 token data with real blockchain data
-async function updateErc20TokenWithRealData(tokenAddress: string) {
-  console.log(`🔄 Updating VRC-20 token ${tokenAddress} with real blockchain data...`);
-
+/**
+ * Reads the Transfer events of a VRC-20 / LP token after its marker (`transfersScannedTo`) up to
+ * the confirmed stored head and, when there are new ones, recomputes its holders and supply from
+ * every stored transfer. Until 2026-11-27 it read the whole history every five minutes and asked
+ * the node for the block of every event.
+ */
+async function updateErc20TokenWithRealData(tokenAddress: string, toBlock: number) {
+  const address = tokenAddress.toLowerCase();
   try {
-    const { transfers, complete } = await getErc20TokenTransfers(tokenAddress);
-    console.log(`🔍 Found ${transfers.length} transfers for VRC-20 token ${tokenAddress}`);
-
+    const token = (await Token.findOne({ address }).select('transfersScannedTo').lean()) as {
+      transfersScannedTo?: number;
+    } | null;
+    const fromBlock = (token?.transfersScannedTo ?? -1) + 1;
+    if (fromBlock > toBlock) return;
+    const { transfers, complete } = await getErc20TokenTransfers(address, fromBlock, toBlock);
     if (!complete) {
-      // Balances and supply are derived from the whole history, and the documents from
-      // before the log index was stored may only be replaced by the whole history. An
-      // incomplete list would write wrong figures or leave both kinds of document side
-      // by side, so nothing is written and the next run tries again.
-      console.warn(
-        `⚠️ Transfer history of VRC-20 token ${tokenAddress} could not be read completely; nothing updated in this run`
-      );
+      console.warn(`⚠️ Transfers of VRC-20 token ${address} not read; trying again next round`);
       return;
     }
-
-    if (transfers.length === 0) {
-      console.log(`📊 No transfers found for VRC-20 token ${tokenAddress}`);
-      return;
+    if (transfers.length > 0) {
+      const db = requireDb();
+      // from block 0 the list is the whole history: documents stored without a log index go
+      await storeErc20Transfers(db.collection('tokentransfers'), address, transfers, {
+        complete: fromBlock === 0,
+      });
+      await recomputeErc20Holders(address);
     }
+    await Token.updateOne({ address }, { $set: { transfersScannedTo: toBlock } });
+  } catch (error) {
+    console.error(`❌ Error updating VRC-20 token ${address}:`, error);
+  }
+}
 
-    await connectDB();
-
-    const db = requireDb();
-
-    // One document per event (transaction hash + log index); the token's documents
-    // from before the log index was stored are replaced
-    const stored = await storeErc20Transfers(
-      db.collection('tokentransfers'),
-      tokenAddress,
-      transfers,
-      { complete }
-    );
-    console.log(
-      `✅ Upserted ${stored.stored} VRC-20 transfers` +
-        (stored.legacyRemoved > 0
-          ? ` (replaced ${stored.legacyRemoved} documents stored without a log index)`
-          : '')
-    );
-
-    const holders = await calculateErc20TokenHolders(transfers, tokenAddress);
-    console.log(`📈 Calculated ${holders.length} holders for VRC-20 token ${tokenAddress}`);
-
-    // Upsert holders in batches
-    const holderBatchSize = 200;
-    for (let i = 0; i < holders.length; i += holderBatchSize) {
-      const batch = holders.slice(i, i + holderBatchSize);
-
-      const bulkOps = batch.map((holder) => ({
+/** Holders, supply and holder count of a VRC-20 token from its stored transfers. */
+async function recomputeErc20Holders(address: string): Promise<void> {
+  const db = requireDb();
+  const transfers = await db
+    .collection('tokentransfers')
+    .find({ tokenAddress: address, tokenId: { $exists: false }, logIndex: { $exists: true } })
+    .project({ from: 1, to: 1, value: 1, _id: 0 })
+    .toArray();
+  const holders = await calculateErc20TokenHolders(transfers, address);
+  for (let i = 0; i < holders.length; i += 200) {
+    await db.collection('tokenholders').bulkWrite(
+      holders.slice(i, i + 200).map((holder) => ({
         updateOne: {
           filter: { tokenAddress: holder.tokenAddress, holderAddress: holder.holderAddress },
           update: { $set: holder },
           upsert: true,
         },
-      }));
-
-      await db.collection('tokenholders').bulkWrite(bulkOps);
-    }
-    console.log(`✅ Upserted ${holders.length} VRC-20 holders`);
-
-    // Remove old holders not in the latest set
-    const holderAddresses = holders.map((h) => h.holderAddress);
-    await db.collection('tokenholders').deleteMany({
-      tokenAddress: tokenAddress.toLowerCase(),
-      holderAddress: { $nin: holderAddresses },
-    });
-
-    // Calculate total supply from balances
-    const totalSupply = holders.reduce((sum, h) => sum + BigInt(h.balance), 0n);
-
-    // Update token record
-    await db.collection('tokens').updateOne(
-      { address: tokenAddress.toLowerCase() },
-      {
-        $set: {
-          supply: totalSupply.toString(),
-          totalSupply: totalSupply.toString(),
-          holders: holders.length,
-          updatedAt: new Date(),
-        },
-      }
+      }))
     );
-
-    console.log(
-      `✅ Updated VRC-20 token ${tokenAddress}: supply=${totalSupply.toString()}, holders=${holders.length}`
-    );
-  } catch (error) {
-    console.error(`❌ Error updating VRC-20 token ${tokenAddress}:`, error);
   }
+  await db.collection('tokenholders').deleteMany({
+    tokenAddress: address,
+    holderAddress: { $nin: holders.map((holder) => holder.holderAddress) },
+  });
+  const totalSupply = holders.reduce((sum, holder) => sum + BigInt(holder.balance), 0n);
+  await db.collection('tokens').updateOne(
+    { address },
+    {
+      $set: {
+        supply: totalSupply.toString(),
+        totalSupply: totalSupply.toString(),
+        holders: holders.length,
+        updatedAt: new Date(),
+      },
+    }
+  );
+  console.log(`✅ VRC-20 ${address}: ${transfers.length} transfers, ${holders.length} holders`);
+}
+
+/** The stored head minus the sync confirmations: the blocks up to it no longer change. */
+async function confirmedStoredHead(): Promise<number> {
+  const head = (await Block.findOne().sort({ number: -1 }).select('number').lean()) as {
+    number: number;
+  } | null;
+  const { confirmations } = resolveSyncSettings(
+    (loadConfig() as { sync?: { confirmations?: unknown; maxReorgDepth?: unknown } }).sync
+  );
+  return (head?.number ?? -1) - confirmations - 1;
 }
 
 // Function to update all VRC-20 tokens at once (including LP tokens)
@@ -649,161 +539,101 @@ async function updateAllErc20Tokens() {
     const tokens = await Token.find({
       type: { $in: ['VRC-20', 'ERC20', 'LP', 'SLP', 'SLP-V2', 'UNI-V2', 'CAKE-LP'] },
     });
-    console.log(`💰 Found ${tokens.length} VRC-20/LP tokens to update`);
-
-    // Process tokens sequentially to avoid overwhelming the RPC
-    for (const token of tokens) {
-      try {
-        await updateErc20TokenWithRealData(token.address);
-        // Delay between tokens
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-      } catch (error) {
-        console.error(`❌ Error updating VRC-20 token ${token.address}:`, error);
-      }
-
-      if (!checkMemory()) {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
-      }
-    }
-
-    console.log(`✅ Finished updating all VRC-20 tokens`);
+    // each token reads on from its marker up to the confirmed stored head
+    const toBlock = await confirmedStoredHead();
+    for (const token of tokens) await updateErc20TokenWithRealData(token.address, toBlock);
   } catch (error) {
     console.error('❌ Error in updateAllErc20Tokens:', error);
   }
 }
 
-// Function to update token data with real blockchain data
-async function updateTokenWithRealData(tokenAddress: string) {
-  console.log(`🔄 Updating token ${tokenAddress} with real blockchain data...`);
-
+/**
+ * Reads the Transfer events of a VRC-721 token after its marker (`transfersScannedTo`) up to the
+ * confirmed stored head and, when there are new ones, recomputes its holders and supply from the
+ * stored transfers. Orphaned transfers are removed by replaceBlock(), which also rewinds the
+ * marker. Until 2026-11-27 it read the whole history of every token every 15 minutes, asked the
+ * node for the block of every event and loaded every stored transfer to find stale ones.
+ */
+async function updateTokenWithRealData(tokenAddress: string, toBlock: number) {
+  const address = tokenAddress.toLowerCase();
   try {
-    // Get actual transfers from blockchain
-    const transfers = await getTokenTransfers(tokenAddress);
-    console.log(`🔍 Found ${transfers.length} transfers for token ${tokenAddress}`);
-
-    if (transfers.length === 0) {
-      console.log(`📊 No transfers found for token ${tokenAddress}`);
+    const token = (await Token.findOne({ address }).select('transfersScannedTo').lean()) as {
+      transfersScannedTo?: number;
+    } | null;
+    const fromBlock = (token?.transfersScannedTo ?? -1) + 1;
+    if (fromBlock > toBlock) return;
+    const { transfers, complete } = await getTokenTransfers(address, fromBlock, toBlock);
+    if (!complete) {
+      console.warn(`⚠️ Transfers of VRC-721 token ${address} not read; trying again next round`);
       return;
     }
-
-    // Calculate holders from transfers
-    const holders = await calculateTokenHolders(transfers);
-    console.log(`📈 Calculated ${holders.length} holders for token ${tokenAddress}`);
-
-    // Connect to database
-    await connectDB();
-
-    const db = requireDb();
-
-    console.log('🔗 Database connection confirmed');
-
-    // Upsert real transfers in batches
-    // Note: For NFTs, use tokenAddress + tokenId + blockNumber as unique key
-    // because one transaction can have multiple Transfer events (e.g., batch mint)
-    const transferBatchSize = 200;
-    for (let i = 0; i < transfers.length; i += transferBatchSize) {
-      const batch = transfers.slice(i, i + transferBatchSize);
-
-      const bulkOps = batch.map((transfer) => ({
-        updateOne: {
-          filter: {
-            tokenAddress: transfer.tokenAddress,
-            tokenId: transfer.tokenId,
-            blockNumber: transfer.blockNumber,
-            to: transfer.to, // Include 'to' to distinguish mint/burn/transfer of same tokenId in same block
-          },
-          update: { $set: transfer },
-          upsert: true,
-        },
-      }));
-
-      await db.collection('tokentransfers').bulkWrite(bulkOps);
-
-      // Memory check between batches
-      if (!checkMemory()) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (transfers.length > 0) {
+      const db = requireDb();
+      for (let i = 0; i < transfers.length; i += 200) {
+        await db.collection('tokentransfers').bulkWrite(
+          transfers.slice(i, i + 200).map((transfer) => ({
+            updateOne: {
+              // mint, burn and transfer of one token id in one block differ by `to`
+              filter: {
+                tokenAddress: transfer.tokenAddress,
+                tokenId: transfer.tokenId,
+                blockNumber: transfer.blockNumber,
+                to: transfer.to,
+              },
+              update: { $set: transfer },
+              upsert: true,
+            },
+          }))
+        );
       }
+      await recomputeNftHolders(address);
     }
-    console.log(`✅ Upserted ${transfers.length} real transfers`);
+    await Token.updateOne({ address }, { $set: { transfersScannedTo: toBlock } });
+  } catch (error) {
+    console.error(`❌ Error updating VRC-721 token ${address}:`, error);
+  }
+}
 
-    // Remove old transfers not in the latest set
-    // Create a unique key set from current transfers
-    const currentTransferKeys = new Set(
-      transfers.map((t) => `${t.tokenId}-${t.blockNumber}-${t.to}`)
-    );
-
-    // Find and remove transfers that are no longer valid
-    const existingTransfers = await db
-      .collection('tokentransfers')
-      .find({
-        tokenAddress: tokenAddress.toLowerCase(),
-      })
-      .toArray();
-
-    const transfersToDelete = existingTransfers.filter((t) => {
-      const key = `${t.tokenId}-${t.blockNumber}-${t.to}`;
-      return !currentTransferKeys.has(key);
-    });
-
-    if (transfersToDelete.length > 0) {
-      const idsToDelete = transfersToDelete.map((t) => t._id);
-      await db.collection('tokentransfers').deleteMany({
-        _id: { $in: idsToDelete },
-      });
-      console.log(`🗑️ Removed ${transfersToDelete.length} outdated transfers`);
-    }
-
-    // Upsert real holders in batches
-    const holderBatchSize = 200;
-    for (let i = 0; i < holders.length; i += holderBatchSize) {
-      const batch = holders.slice(i, i + holderBatchSize);
-
-      const bulkOps = batch.map((holder) => ({
+/** Holders, supply (minted tokens) and holder count of a VRC-721 token from its stored transfers. */
+async function recomputeNftHolders(address: string): Promise<void> {
+  const db = requireDb();
+  const transfers = await db
+    .collection('tokentransfers')
+    .find({ tokenAddress: address, tokenId: { $exists: true } })
+    .sort({ blockNumber: 1 })
+    .project({ from: 1, to: 1, tokenId: 1, blockNumber: 1, _id: 0 })
+    .toArray();
+  const holders = await calculateTokenHolders(
+    transfers.map((transfer) => ({ ...transfer, tokenAddress: address }))
+  );
+  for (let i = 0; i < holders.length; i += 200) {
+    await db.collection('tokenholders').bulkWrite(
+      holders.slice(i, i + 200).map((holder) => ({
         updateOne: {
           filter: { tokenAddress: holder.tokenAddress, holderAddress: holder.holderAddress },
           update: { $set: holder },
           upsert: true,
         },
-      }));
-
-      await db.collection('tokenholders').bulkWrite(bulkOps);
-
-      // Memory check between batches
-      if (!checkMemory()) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-    }
-    console.log(`✅ Upserted ${holders.length} real holders`);
-
-    // Remove old holders not in the latest set
-    const holderAddresses = holders.map((h) => h.holderAddress);
-    await db.collection('tokenholders').deleteMany({
-      tokenAddress: tokenAddress.toLowerCase(),
-      holderAddress: { $nin: holderAddresses },
-    });
-
-    // Update token total supply based on mints
-    const mints = transfers.filter((t) => t.from === '0x0000000000000000000000000000000000000000');
-    console.log(`🔍 Found ${mints.length} mint transactions for token ${tokenAddress}`);
-
-    await db.collection('tokens').updateOne(
-      { address: tokenAddress.toLowerCase() },
-      {
-        $set: {
-          supply: mints.length.toString(),
-          totalSupply: mints.length.toString(),
-          holders: holders.length,
-          updatedAt: new Date(),
-        },
-      }
+      }))
     );
-
-    console.log(
-      `✅ Updated token ${tokenAddress}: supply=${mints.length}, holders=${holders.length}, total transfers=${transfers.length}`
-    );
-  } catch (error) {
-    console.error(`❌ Error updating token ${tokenAddress} with real data:`, error);
   }
+  await db.collection('tokenholders').deleteMany({
+    tokenAddress: address,
+    holderAddress: { $nin: holders.map((holder) => holder.holderAddress) },
+  });
+  const minted = transfers.filter((transfer) => transfer.from === ZERO_ADDR).length;
+  await db.collection('tokens').updateOne(
+    { address },
+    {
+      $set: {
+        supply: String(minted),
+        totalSupply: String(minted),
+        holders: holders.length,
+        updatedAt: new Date(),
+      },
+    }
+  );
+  console.log(`✅ VRC-721 ${address}: ${transfers.length} transfers, ${holders.length} holders`);
 }
 
 /**
@@ -1106,29 +936,9 @@ async function updateAllVrc721Tokens() {
     const tokens = await Token.find({ type: { $in: ['VRC-721', 'ERC721', 'VRC721'] } });
     console.log(`🎨 Found ${tokens.length} VRC-721 tokens to update`);
 
-    // Process tokens in batches
-    const batchSize = 10;
-    for (let i = 0; i < tokens.length; i += batchSize) {
-      const batch = tokens.slice(i, i + batchSize);
-
-      const promises = batch.map(async (token) => {
-        try {
-          await updateTokenWithRealData(token.address);
-        } catch (error) {
-          console.error(`❌ Error updating token ${token.address}:`, error);
-        }
-      });
-
-      await Promise.all(promises);
-
-      // Memory check and delay between batches
-      if (!checkMemory()) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-      }
-
-      // Add delay between batches
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
+    // each token reads on from its marker up to the confirmed stored head
+    const toBlock = await confirmedStoredHead();
+    for (const token of tokens) await updateTokenWithRealData(token.address, toBlock);
   } catch (error) {
     console.error('❌ Error in updateAllVrc721Tokens:', error);
   }
@@ -1525,7 +1335,7 @@ Without options, the scanner runs continuously and:
         return;
       }
       console.log(`🔄 Updating single token: ${tokenAddress}`);
-      await updateTokenWithRealData(tokenAddress);
+      await updateTokenWithRealData(tokenAddress, await confirmedStoredHead());
       await disconnect();
       return;
     }
