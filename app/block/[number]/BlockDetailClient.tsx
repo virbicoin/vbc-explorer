@@ -57,7 +57,7 @@ interface Transaction {
   timestamp: number;
   blockNumber: number;
   gasUsed?: number;
-  status?: number | string;
+  status?: number | string | null;
   type?: string;
   action?: string;
 }
@@ -625,6 +625,9 @@ export default function BlockDetailPage({ params }: { params: Promise<{ number: 
                       </td>
                       <td className="py-3 px-4">
                         {(() => {
+                          if (tx.status === null || tx.status === undefined) {
+                            return <span className="text-gray-400">Unknown</span>;
+                          }
                           const isSuccess =
                             tx.status === 1 ||
                             tx.status === '1' ||

@@ -107,14 +107,14 @@ export async function GET(
     // Format transactions data - convert BigInt to string
     const formattedTransactions = await Promise.all(
       (transactions as unknown as EthTransaction[]).map(async (tx, index: number) => {
-        // Get transaction receipt for status
-        let status = 1; // Default to success
+        // Status from the receipt; null when there is none or it could not be read (it used to
+        // default to success, so the page showed unknown transactions as successful)
+        let status: number | null = null;
         try {
           const receipt = await web3.eth.getTransactionReceipt(tx.hash);
-          status = receipt ? Number(receipt.status) : 1;
+          status = receipt ? Number(receipt.status) : null;
         } catch (error) {
           console.warn(`Failed to get receipt for tx ${tx.hash}:`, error);
-          status = 1; // Default to success if receipt fetch fails
         }
 
         // Determine transaction type
@@ -123,7 +123,7 @@ export async function GET(
           to: tx.to,
           value: tx.value ? tx.value.toString() : '0',
           input: tx.input,
-          status: status,
+          status: status ?? undefined,
         });
 
         return {
