@@ -543,7 +543,7 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 
 ## 修正（2026-11）: アンクル報酬を含む供給量・Next.js 16.4.6（v0.8.9）
 
-Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`npm audit` に残る zod（web3 4.x → web3-validator が zod 3 系を要求し、修正は zod 4.6.6 以降のみ）は web3 側の対応待ち。
+Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`npm audit` に残る zod（web3 4.x → web3-validator が zod 3 系を要求し、修正は zod 4.6.6 以降のみ）は web3 側の対応待ち。2026-11-26 時点でも web3 4.16.0 / web3-validator 2.0.6 は zod ^3.21.4 のままで、`npm audit` の high 19 件はすべてこの経路（`npm audit fix --force` が示す web3 4.0.3 への格下げはしない）。同日、使っていなかった devDependency `postinstall`（2016 年の元プロジェクトから残っていたもの。glob / minimatch の勧告の経路）を外し、brace-expansion を範囲内の修正版にした（v0.8.10）。
 
 `/api/total_supply` などの供給量がアンクル報酬とネフュー報酬を数えておらず、2026-11-24 時点で実際の発行量より 4% 以上少なかった（11 月以降はアンクルがほぼ毎ブロック付き、1 ブロックあたり約 7 VBC が上乗せで発行されている）ことへの対策。
 

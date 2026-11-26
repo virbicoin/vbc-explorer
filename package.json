@@ -1,6 +1,6 @@
 {
   "name": "vbc-explorer",
-  "version": "0.8.9",
+  "version": "0.8.10",
   "description": "A modern blockchain explorer for VirBiCoin network with NFT support, contract verification, and real-time statistics",
   "keywords": [
     "blockchain",
@@ -101,7 +101,6 @@
     "mongodb-memory-server": "^11.3.0",
     "postcss": "^8.5.32",
     "postcss-load-config": "^6.0.1",
-    "postinstall": "^0.11.2",
     "prettier": "^3.9.10",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.15",
