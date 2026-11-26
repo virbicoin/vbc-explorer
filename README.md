@@ -1307,14 +1307,12 @@ All configuration is now centralized in `config.json`. The following settings ar
   "explorer": {
     "name": "Blockchain Explorer",
     "description": "Real-time blockchain explorer",
-    "version": "0.6.0",
-    "url": "https://your-explorer-domain.com",
-    "apiUrl": "https://your-explorer-domain.com/api"
+    "url": "https://your-explorer-domain.com"
   }
 }
 ```
 
-Settings that used to appear here but were never read (`enableNFT`, `enableContractVerification`, `enableTokenTracking`, `apiRateLimit`, `webSocketEnabled`, `useRichList`, `maxRetries`, `retryDelay`, `logLevel`, `features`, `api`, `logging`, `performance`, `caching`) have been removed. The behaviour they suggested is configured elsewhere: rate limits in `lib/security/rate-limits.ts`, the log level with `LOG_LEVEL`, tool memory with `MEMORY_LIMIT_MB`, the solc versions with `compiler.allowedVersions`. `quiet` (or `--quiet` for `tools/sync.ts`) silences the progress logs; `priceUpdateInterval` is the price refresh interval in milliseconds (default 5 minutes).
+Settings that used to appear here but were never read (`enableNFT`, `enableContractVerification`, `enableTokenTracking`, `apiRateLimit`, `webSocketEnabled`, `useRichList`, `maxRetries`, `retryDelay`, `logLevel`, `features`, `api`, `logging`, `performance`, `caching`, `explorer.version`, `explorer.apiUrl`) have been removed. The behaviour they suggested is configured elsewhere: rate limits in `lib/security/rate-limits.ts`, the log level with `LOG_LEVEL`, tool memory with `MEMORY_LIMIT_MB`, the solc versions with `compiler.allowedVersions`. `quiet` (or `--quiet` for `tools/sync.ts`) silences the progress logs; `priceUpdateInterval` is the price refresh interval in milliseconds (default 5 minutes).
 
 ## Database Setup
 

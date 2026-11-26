@@ -85,9 +85,7 @@ export interface CurrencyConfig {
 export interface ExplorerConfig {
   name: string;
   description: string;
-  version?: string;
   url?: string;
-  apiUrl?: string;
   copyright?: string;
   github?: string;
   /**

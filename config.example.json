@@ -72,9 +72,7 @@
   "explorer": {
     "name": "Blockchain Explorer",
     "description": "Real-time blockchain explorer for EVM-compatible networks",
-    "version": "0.7.6",
     "url": "https://explorer.example.com",
-    "apiUrl": "https://explorer.example.com/api",
     "copyright": "Your Company Name",
     "github": "https://github.com/virbicoin/vbc-explorer",
     "legacyUrls": []
