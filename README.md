@@ -1009,7 +1009,7 @@ npm run worker -- --plan        # which jobs run with this config.json, and why
 npm run worker -- --only sync   # run jobs in the foreground (e.g. to debug one; stop the explorer's first)
 ```
 
-Each log line of a job starts with its name (`[sync] ...`). The child is started again a minute after it ends and stops with the website. To run the jobs elsewhere (several web servers on one database, or a separate machine), set `EXPLORER_WORKER=off` for the website and run `npm run worker` on one host. In development (`npm run dev`) the jobs start only with `EXPLORER_WORKER=on`. One-off maintenance still uses the separate commands (`npm run sync -- --start`, `npm run tokens -- --rescan`, `npm run internal-txs -- --from`, `RESCAN_FROM=<height> npm run stats`, `npm run richlist -- --from 0`).
+Each log line of a job starts with its name (`[sync] ...`). The child is started again a minute after it ends and stops with the website. Its heap is limited to 512 MB (V8 collects only near its limit, so the limit is what it takes); set `EXPLORER_WORKER_MEMORY_MB` for a large chain. To run the jobs elsewhere (several web servers on one database, or a separate machine), set `EXPLORER_WORKER=off` for the website and run `npm run worker` on one host. In development (`npm run dev`) the jobs start only with `EXPLORER_WORKER=on`. One-off maintenance still uses the separate commands (`npm run sync -- --start`, `npm run tokens -- --rescan`, `npm run internal-txs -- --from`, `RESCAN_FROM=<height> npm run stats`, `npm run richlist -- --from 0`).
 
 Indexes are created automatically the first time the sync tools start (`Block.number` and `Block.hash` take a few minutes on a large chain). To create or verify them by hand:
 

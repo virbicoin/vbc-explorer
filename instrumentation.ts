@@ -14,13 +14,21 @@ export async function register(): Promise<void> {
   const { fork } = await import('node:child_process');
   const path = await import('node:path');
 
+  // V8 collects only near its heap limit, so the limit is what the jobs take: 512 MB by default
+  // (EXPLORER_WORKER_MEMORY_MB for a large chain); the tools pause their batches at 3/4 of it
+  const heapMb = Number(process.env.EXPLORER_WORKER_MEMORY_MB) || 512;
+
   let child: ReturnType<typeof fork> | null = null;
   let stopping = false;
   const spawn = () => {
     // a file run at runtime, not a module of the build (turbopackIgnore keeps the bundler out)
     child = fork(path.join(/* turbopackIgnore: true */ process.cwd(), 'tools', 'worker.ts'), [], {
-      execArgv: ['--import', 'tsx', '--max-old-space-size=2048'],
-      env: { ...process.env, TSX_TSCONFIG_PATH: 'tsconfig.tools.json', MEMORY_LIMIT_MB: '1536' },
+      execArgv: ['--import', 'tsx', `--max-old-space-size=${heapMb}`],
+      env: {
+        ...process.env,
+        TSX_TSCONFIG_PATH: 'tsconfig.tools.json',
+        MEMORY_LIMIT_MB: String(Math.floor((heapMb * 3) / 4)),
+      },
       stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
     });
     child.on('exit', (code, signal) => {
