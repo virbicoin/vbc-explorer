@@ -810,7 +810,7 @@ const apiCategories: ApiCategory[] = [
         path: '/api/dex/cmc/ticker',
         description: 'CMC ticker (24h trading data per pair)',
         response:
-          '{"WVBC_TOKEN":{"base_id":"0x...","quote_id":"0x...","last_price":"...","base_volume":"...","quote_volume":"..."}}',
+          '{"WETH_USDT":{"base_id":"0x...","quote_id":"0x...","last_price":"...","base_volume":"...","quote_volume":"..."}}',
         sampleUrl: '/api/dex/cmc/ticker',
       },
       {
