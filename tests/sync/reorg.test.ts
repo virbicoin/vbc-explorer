@@ -15,13 +15,15 @@ import {
 } from '@/models/index';
 import {
   findCommonAncestor,
+  normalizeBlock,
+  normalizeTransaction,
   processNewBlock,
   replaceBlock,
   resolveSyncSettings,
   verifyConfirmationWindow,
   type SyncSettings,
 } from '@/lib/sync';
-import { FakeNode, block, canonicalChain, dbHash, seed } from './helpers';
+import { FakeNode, block, canonicalChain, dbHash, hashOf, seed, tx } from './helpers';
 
 let mongod: MongoMemoryServer;
 
@@ -76,6 +78,31 @@ describe('upserts', () => {
     };
     expect(doc.from).toBe('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'); // lowercased
     expect(doc.blockNumber).toBe(1);
+  });
+
+  it('stores what the web3.js sync stored from what viem returns', () => {
+    // block 1 of VirBiCoin: viem gives the nonce in hex, the database holds it in decimal
+    const raw = {
+      ...block(1, 'can', hashOf('can', 0)),
+      nonce: '0x69412da3cce24933',
+      size: '0x21c',
+    };
+    expect(normalizeBlock(raw)).toMatchObject({ nonce: '7584393429008927027', size: 540 });
+
+    const creation = { ...tx('0xc1', raw), to: null, value: 0n, gas: 3_000_000n };
+    const receipt = {
+      status: 'success',
+      gasUsed: 2_777_179n,
+      contractAddress: '0xD26488EA362005B023BC9F55157370C63C94D0C7',
+    };
+    expect(normalizeTransaction(creation, receipt, raw)).toMatchObject({
+      to: null,
+      creates: '0xd26488ea362005b023bc9f55157370c63c94d0c7',
+      status: 1,
+      gasUsed: 2_777_179,
+      value: '0',
+      gas: 3_000_000,
+    });
   });
 });
 

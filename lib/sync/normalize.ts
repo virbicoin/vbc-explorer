@@ -126,10 +126,20 @@ export interface TransactionDoc {
   status: number | null;
 }
 
+const HEX_QUANTITY = /^0x[0-9a-f]+$/i;
+
+/** A number from a bigint, a decimal string or a JSON-RPC quantity ('0x886a2', as raw node answers carry). */
 export const toNumber = (value: unknown): number => {
   if (typeof value === 'bigint') return Number(value);
-  if (typeof value === 'string') return parseInt(value, 10) || 0;
+  if (typeof value === 'string')
+    return HEX_QUANTITY.test(value) ? Number(BigInt(value)) : parseInt(value, 10) || 0;
   return Number(value) || 0;
+};
+
+/** The PoW nonce as the decimal string the database has always held (viem returns it in hex). */
+const toDecimalText = (value: unknown): string => {
+  const text = toText(value);
+  return HEX_QUANTITY.test(text) ? BigInt(text).toString() : text;
 };
 
 export const toText = (value: unknown): string => {
@@ -169,7 +179,7 @@ export function normalizeBlock(raw: RawBlock): BlockDoc {
     number: toNumber(raw.number),
     hash: toHex(raw.hash),
     parentHash: toHex(raw.parentHash),
-    nonce: toText(raw.nonce),
+    nonce: toDecimalText(raw.nonce),
     sha3Uncles: toText(raw.sha3Uncles),
     logsBloom: toText(raw.logsBloom),
     transactionsRoot: toText(raw.transactionsRoot),

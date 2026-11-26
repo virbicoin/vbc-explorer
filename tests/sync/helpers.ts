@@ -70,7 +70,8 @@ export function addUncles(node: FakeNode, including: TestBlock, uncleHeights: nu
   const hashes = uncleHeights.map((height, index) => {
     const hash = hashOf(`unc${index}`, height);
     node.uncles.set(`${including.hash}:${index}`, {
-      number: height,
+      // a JSON-RPC quantity, as the node answers eth_getUncleByBlockHashAndIndex
+      number: `0x${height.toString(16)}`,
       hash,
       miner: '0xDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD',
     });

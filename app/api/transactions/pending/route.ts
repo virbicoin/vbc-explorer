@@ -16,6 +16,15 @@ interface PendingTransaction {
   input: string;
 }
 
+/** A quantity as a decimal string: the node answers in hex ('0x5208'), the page reads decimal. */
+function decimal(value: unknown): string {
+  try {
+    return BigInt(String(value ?? 0)).toString();
+  } catch {
+    return '0';
+  }
+}
+
 export async function GET(request: NextRequest) {
   const limited = enforceRateLimit(request, 'api');
   if (limited) return limited;
@@ -35,9 +44,9 @@ export async function GET(request: NextRequest) {
         hash: (tx as { hash?: string }).hash || '',
         from: tx.from?.toString() || '',
         to: tx.to?.toString() || null,
-        value: tx.value?.toString() || '0',
-        gasPrice: tx.gasPrice?.toString() || '0',
-        gas: tx.gas?.toString() || '0',
+        value: decimal(tx.value),
+        gasPrice: decimal(tx.gasPrice),
+        gas: decimal(tx.gas),
         nonce: Number(tx.nonce) || 0,
         input: tx.input?.toString() || '0x',
       }));
@@ -59,9 +68,9 @@ export async function GET(request: NextRequest) {
                 hash: tx.hash || '',
                 from: tx.from || address,
                 to: tx.to || null,
-                value: tx.value || '0',
-                gasPrice: tx.gasPrice || '0',
-                gas: tx.gas || '0',
+                value: decimal(tx.value),
+                gasPrice: decimal(tx.gasPrice),
+                gas: decimal(tx.gas),
                 nonce: parseInt(nonce),
                 input: tx.input || '0x',
               });
