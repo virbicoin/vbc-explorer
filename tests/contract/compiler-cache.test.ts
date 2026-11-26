@@ -16,6 +16,7 @@ import {
   CompilerVersionError,
   clearCompilerListCache,
   getCompiler,
+  listReleaseVersions,
   toShortVersion,
 } from '@/lib/contract/compiler-cache';
 
@@ -183,5 +184,17 @@ describe('getCompiler', () => {
         listTimeoutMs: 2_000,
       })
     ).rejects.toBeInstanceOf(CompilerDownloadError);
+  });
+});
+
+describe('listReleaseVersions', () => {
+  it('lists the releases newest first, without nightlies', async () => {
+    expect(await listReleaseVersions(options())).toEqual(['0.8.99', '0.8.98']);
+  });
+
+  it('honours compiler.allowedVersions', async () => {
+    expect(await listReleaseVersions({ ...options(), allowedVersions: ['0.8.98'] })).toEqual([
+      '0.8.98',
+    ]);
   });
 });

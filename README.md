@@ -1637,9 +1637,7 @@ curl "https://explorer.example.com/api?module=contract&action=checkverifystatus&
 | `constructorArguements` | No | ABI-encoded constructor arguments |
 | `licenseType` | No | SPDX license identifier |
 
-**Supported Compiler Versions:**
-- 0.8.15 - 0.8.33
-- 0.6.12 (legacy support)
+**Supported Compiler Versions:** every release listed in binaries.soliditylang.org's `list.json` (0.4.x to the latest; nightlies are refused), optionally limited by `compiler.allowedVersions`. `GET /api/contract/compiler-versions` returns the list.
 
 #### Logs Module
 
@@ -1847,6 +1845,7 @@ VirBiCoin (8 VBC, 1 VBC less every 2,100,000 blocks from block 4,200,000, down t
 
 ### Contract APIs
 - `GET /api/contract/status/[address]` - Contract verification status
+- `GET /api/contract/compiler-versions` - Solidity releases available for verification (binaries.soliditylang.org, newest first, limited by `compiler.allowedVersions`)
 - `GET /api/contract/[address]` - Contract details and ABI
 - `POST /api/contract/verify` - Submit contract source code for verification
 - `POST /api/contract/interact` - Execute contract function calls

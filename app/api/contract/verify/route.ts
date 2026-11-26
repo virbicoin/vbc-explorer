@@ -48,78 +48,14 @@ const WEB3_PROVIDER_URL =
   process.env.WEB3_PROVIDER_URL || `http://${config.nodeAddr}:${config.port}`;
 const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
 
-// Supported compiler versions
-const SUPPORTED_COMPILER_VERSIONS = [
-  '0.8.33',
-  '0.8.32',
-  '0.8.31',
-  '0.8.30',
-  '0.8.29',
-  '0.8.28',
-  '0.8.27',
-  '0.8.26',
-  '0.8.25',
-  '0.8.24',
-  '0.8.23',
-  '0.8.22',
-  '0.8.21',
-  '0.8.20',
-  '0.8.19',
-  '0.8.18',
-  '0.8.17',
-  '0.8.16',
-  '0.8.15',
-  '0.6.12', // Legacy support
-];
-
-// Helper function to get available compiler versions (0.8.x only - matches installed solc)
-function getAvailableCompilerVersions(): string[] {
-  return [
-    // 0.8.x versions (supported by installed solc)
-    '0.8.30',
-    '0.8.29',
-    '0.8.28',
-    '0.8.27',
-    '0.8.26',
-    '0.8.25',
-    '0.8.24',
-    '0.8.23',
-    '0.8.22',
-    '0.8.21',
-    '0.8.20',
-    '0.8.19',
-    '0.8.18',
-    '0.8.17',
-    '0.8.16',
-    '0.8.15',
-  ];
-}
-
-// Helper function to find best matching compiler version
+/**
+ * The requested compiler version, normalized ("v0.8.30+commit.73712a01" -> "0.8.30"). Any release
+ * on binaries.soliditylang.org can be used (the compiler cache refuses anything else with
+ * CompilerVersionError). Versions outside 0.6 / 0.8 used to be replaced by 0.8.30, so 0.4, 0.5
+ * and 0.7 contracts could not be verified from this page.
+ */
 function findBestCompilerVersion(requestedVersion: string): string {
-  // Normalize the requested version first
-  const normalizedVersion = normalizeCompilerVersion(requestedVersion);
-
-  // Check if the normalized version is in the supported list
-  if (SUPPORTED_COMPILER_VERSIONS.includes(normalizedVersion)) {
-    console.log(`✅ Using requested compiler version: ${normalizedVersion}`);
-    return normalizedVersion;
-  }
-
-  // For non-supported versions, warn and use the requested version anyway
-  // (the compiler cache serves release builds only; unknown versions fail with 400)
-  if (normalizedVersion.startsWith('0.8.') || normalizedVersion.startsWith('0.6.')) {
-    console.warn(
-      `⚠️ Requested version ${normalizedVersion} is not in the pre-defined list, but will try to load it.`
-    );
-    return normalizedVersion;
-  }
-
-  // For completely unsupported versions, use default
-  console.warn(
-    `⚠️ Requested version ${normalizedVersion} is not supported. Falling back to 0.8.30.`
-  );
-  return '0.8.30';
+  return normalizeCompilerVersion(requestedVersion);
 }
 
 export const POST = withRateLimit('verify', async (request: NextRequest) => {

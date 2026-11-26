@@ -254,6 +254,31 @@ async function loadList(options: ResolvedOptions): Promise<SolcList> {
   return list;
 }
 
+/** Compares two short versions ("0.8.30" > "0.8.9"). */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+/**
+ * Release versions published on binaries.soliditylang.org (list.json `releases`), newest first,
+ * limited to `compiler.allowedVersions` when that is set. Every one of them can be fetched by
+ * getCompiler(); the verify page offers this list instead of a hardcoded one.
+ */
+export async function listReleaseVersions(options: CompilerCacheOptions = {}): Promise<string[]> {
+  const resolved = resolveOptions(options);
+  const list = await loadList(resolved);
+  return Object.keys(list.releases)
+    .filter((version) => /^\d+\.\d+\.\d+$/.test(version))
+    .filter((version) => !resolved.allowedVersions || resolved.allowedVersions.includes(version))
+    .sort((a, b) => compareVersions(b, a));
+}
+
 /** The release build of a short version, or CompilerVersionError. */
 export function findReleaseBuild(list: SolcList, short: string): SolcBuild & { sha256: string } {
   const file = list.releases[short];

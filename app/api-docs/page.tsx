@@ -661,6 +661,13 @@ const apiCategories: ApiCategory[] = [
         response: '{"verified":true,"name":"MyContract","compiler":"0.8.20"}',
       },
       {
+        method: 'GET',
+        path: '/api/contract/compiler-versions',
+        description: 'Solidity releases available for verification (newest first)',
+        response: '{"versions":["0.8.38","0.8.37","..."]}',
+        sampleUrl: '/api/contract/compiler-versions',
+      },
+      {
         method: 'POST',
         path: '/api/contract/verify',
         description: 'Submit contract for verification',

@@ -817,6 +817,7 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 - `POST /api/contract/verify` - コントラクトのソースコードを検証（単一ファイルと Standard JSON Input に対応）
 - `GET /api/contract/[address]` - コントラクト情報を取得
 - `GET /api/contract/status/[address]` - コントラクトの検証ステータスを取得
+- `GET /api/contract/compiler-versions` - 検証に使える solc のリリース一覧（binaries.soliditylang.org の list.json、新しい順、`compiler.allowedVersions` で絞る）。検証画面の選択肢はここから取る（以前は 0.8.17〜0.8.30 の固定リストで、0.6 / 0.8 以外の指定は 0.8.30 にすり替えていた）
 
 ### コントラクト検証 API（Etherscan/Hardhat 互換）
 - `POST /api?module=contract&action=verifysourcecode` - 検証のためコントラクトを送信（JSON ボディまたは form-urlencoded）
@@ -839,8 +840,8 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 - VirBiCoin の EVM は Constantinople。検証画面の EVM バージョンには petersburg / constantinople / byzantium も選べる（sugarnft の OsatoNFT は constantinople でコンパイルされている）
 
 **対応コンパイラバージョン:**
-- 0.8.15 - 0.8.33（完全な commit ハッシュマッピング付き）
-- 0.6.12（レガシーサポート）
+- binaries.soliditylang.org の list.json にあるすべてのリリース（0.4 系から最新まで。nightly は不可。`compiler.allowedVersions` で絞れる）。一覧は `GET /api/contract/compiler-versions`
+- `SOLC_RELEASES`（solc-utils.ts）は短い版から commit 付きの名前への対応表で、表示用。検証できる版を制限するものではない
 
 **検証パラメータ:**
 | パラメータ | 必須 | 説明 |

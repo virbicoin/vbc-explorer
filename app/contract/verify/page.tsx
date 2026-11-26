@@ -269,21 +269,22 @@ contract LaunchpadTokenV2 is ERC20, ERC20Burnable, ERC20Pausable, Ownable {
     function _update(address from, address to, uint256 value) internal virtual override(ERC20, ERC20Pausable) { super._update(from, to, value); }
 }`;
 
-const COMPILER_VERSIONS = [
-  { value: '0.8.30', label: '0.8.30 (Latest)' },
-  { value: '0.8.29', label: '0.8.29' },
-  { value: '0.8.28', label: '0.8.28' },
-  { value: '0.8.27', label: '0.8.27' },
-  { value: '0.8.26', label: '0.8.26' },
-  { value: '0.8.25', label: '0.8.25' },
-  { value: '0.8.24', label: '0.8.24' },
-  { value: '0.8.23', label: '0.8.23' },
-  { value: '0.8.22', label: '0.8.22' },
-  { value: '0.8.21', label: '0.8.21' },
-  { value: '0.8.20', label: '0.8.20' },
-  { value: '0.8.19', label: '0.8.19' },
-  { value: '0.8.18', label: '0.8.18' },
-  { value: '0.8.17', label: '0.8.17' },
+// Shown until /api/contract/compiler-versions answers (it lists every solc release)
+const FALLBACK_COMPILER_VERSIONS = [
+  '0.8.30',
+  '0.8.29',
+  '0.8.28',
+  '0.8.27',
+  '0.8.26',
+  '0.8.25',
+  '0.8.24',
+  '0.8.23',
+  '0.8.22',
+  '0.8.21',
+  '0.8.20',
+  '0.8.19',
+  '0.8.18',
+  '0.8.17',
 ];
 
 const LICENSE_TYPES = [
@@ -347,6 +348,17 @@ function useInitFormData(setFormData: React.Dispatch<React.SetStateAction<FormDa
 }
 
 function ContractVerifyPageInner() {
+  const [compilerVersions, setCompilerVersions] = useState<string[]>(FALLBACK_COMPILER_VERSIONS);
+  useEffect(() => {
+    fetch('/api/contract/compiler-versions')
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { versions?: string[] } | null) => {
+        if (data?.versions?.length) setCompilerVersions(data.versions);
+      })
+      .catch(() => {
+        // keep the fallback list
+      });
+  }, []);
   const [networkConfig, setNetworkConfig] = useState<{
     chainId: number;
     name: string;
@@ -611,9 +623,14 @@ function ContractVerifyPageInner() {
                       className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
                       disabled={isLoading}
                     >
-                      {COMPILER_VERSIONS.map((v) => (
-                        <option key={v.value} value={v.value}>
-                          {v.label}
+                      {(compilerVersions.includes(formData.compilerVersion)
+                        ? compilerVersions
+                        : [formData.compilerVersion, ...compilerVersions]
+                      ).map((version, index) => (
+                        <option key={version} value={version}>
+                          {index === 0 && version === compilerVersions[0]
+                            ? `${version} (latest)`
+                            : version}
                         </option>
                       ))}
                     </select>
