@@ -9,6 +9,36 @@ import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { validatePagination, DEFAULT_MAX_OFFSET } from '@/lib/security/validation';
 import { rejectDeepPagination } from '@/lib/security/pagination';
 
+/** Accounts holding coins: `balance` is a wei string, and "0" the only zero. */
+const WITH_BALANCE = { balance: { $gt: '0' } };
+
+/**
+ * A page of accounts in balance order (`address` is unique, so there is nothing to merge; the
+ * balance is compared as a number, not as a string).
+ */
+function accountPage(
+  match: Record<string, unknown>,
+  skip: number,
+  limit: number,
+  sort: Record<string, 1 | -1>
+) {
+  return Account.aggregate([
+    { $match: match },
+    { $addFields: { balanceNum: { $toDouble: '$balance' } } },
+    { $sort: sort },
+    { $skip: skip },
+    { $limit: limit },
+  ]);
+}
+
+/** Which of these addresses are contracts. */
+async function contractsAmong(addresses: string[]): Promise<Set<string>> {
+  const found = (await Contract.find({ address: { $in: addresses } })
+    .select('address')
+    .lean()) as Array<{ address: string }>;
+  return new Set(found.map((contract) => contract.address));
+}
+
 export async function GET(request: NextRequest) {
   const limited = enforceRateLimit(request, 'api');
   if (limited) return limited;
@@ -29,68 +59,15 @@ export async function GET(request: NextRequest) {
     if (tooDeep) return tooDeep;
     const { page, limit, skip: offset } = pagination;
 
-    // Get totalSupply from lib/supply.ts (returns native currency unit, e.g., VBC)
-    // Multiply by 1e18 to convert to wei for percentage calculation
-    const totalSupplyNative = await calculateTotalSupply();
-    const totalSupplyWei = totalSupplyNative * 1e18;
-
-    // Get total count of unique accounts with balance > 0 (removing duplicates)
-    const totalAccountsResult = await Account.aggregate([
-      { $match: { balance: { $gt: '0' } } },
-      { $group: { _id: '$address' } },
-      { $count: 'total' },
+    const [totalSupplyNative, totalAccounts, contractAccounts, accounts] = await Promise.all([
+      calculateTotalSupply(),
+      Account.countDocuments(WITH_BALANCE),
+      countAll(Contract),
+      accountPage(WITH_BALANCE, offset, limit, { balanceNum: -1 }),
     ]);
-    const totalAccounts = totalAccountsResult[0]?.total || 0;
-
-    // Get contract addresses from Contract table
-    const contractAddresses = await Contract.find({}, 'address').lean();
-    const contractAddressList = contractAddresses.map((c) => c.address);
-
-    // Total contract addresses (from Contract table)
-    const contractAccounts = contractAddresses.length;
-
-    const walletAccounts = totalAccounts - contractAccounts;
-
-    // Get richlist data using aggregation with duplicate removal
-    let accounts;
-    if (totalAccounts === 0) {
-      // If no accounts with balance > 0, get all accounts for debugging
-      accounts = await Account.aggregate([
-        // Group by address to remove duplicates and keep the latest record
-        {
-          $group: {
-            _id: '$address',
-            address: { $first: '$address' },
-            balance: { $first: '$balance' },
-            blockNumber: { $max: '$blockNumber' }, // Keep the latest blockNumber
-            type: { $first: '$type' },
-          },
-        },
-        { $addFields: { balanceNum: { $toDouble: '$balance' } } },
-        { $sort: { balanceNum: -1 } },
-        { $skip: offset },
-        { $limit: limit },
-      ]);
-    } else {
-      // Get accounts with balance > 0, sorted by balance descending, with duplicates removed
-      accounts = await Account.aggregate([
-        { $match: { balance: { $gt: '0' } } },
-        // Group by address to remove duplicates and keep the latest record
-        {
-          $group: {
-            _id: '$address',
-            address: { $first: '$address' },
-            balance: { $first: '$balance' },
-            blockNumber: { $max: '$blockNumber' }, // Keep the latest blockNumber
-            type: { $first: '$type' },
-          },
-        },
-        { $addFields: { balanceNum: { $toDouble: '$balance' } } },
-        { $sort: { balanceNum: -1 } },
-        { $skip: offset },
-        { $limit: limit },
-      ]);
-    }
+    const totalSupplyWei = totalSupplyNative * 1e18;
+    const contracts = await contractsAmong(accounts.map((account) => account.address));
+    const walletAccounts = Math.max(0, totalAccounts - contractAccounts);
 
     // Format data for frontend with correct ranking
     const config = loadConfig();
@@ -113,7 +90,7 @@ export async function GET(request: NextRequest) {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         })} ${currencySymbol}`,
-        type: contractAddressList.includes(account.address) ? 'Contract' : 'Wallet',
+        type: contracts.has(account.address) ? 'Contract' : 'Wallet',
         percentage: percentage.toFixed(4),
         lastUpdated: account.blockNumber,
       };
@@ -192,22 +169,14 @@ export async function POST(request: NextRequest) {
       count = await countAll(Account);
     }
 
-    // Check sort order
-    let sortOrder: Record<string, number> = { balance: -1 };
-    if (body.order && body.order[0] && body.order[0].column) {
-      // Balance column
-      if (body.order[0].column == 3) {
-        if (body.order[0].dir == 'asc') {
-          sortOrder = { balance: 1 };
-        }
-      }
-      if (body.order[0].column == 2) {
-        // Sort by account type and balance
-        if (body.order[0].dir == 'asc') {
-          sortOrder = { type: -1, balance: -1 };
-        }
-      }
-    }
+    // DataTables columns: 2 = type (then balance), 3 = balance; largest balance first by default
+    const order = body.order?.[0];
+    const sort: Record<string, 1 | -1> =
+      order?.column == 3 && order.dir == 'asc'
+        ? { balanceNum: 1 }
+        : order?.column == 2 && order.dir == 'asc'
+          ? { type: -1, balanceNum: -1 }
+          : { balanceNum: -1 };
 
     // Set datatable params (DataTables sends length/start; same caps as the GET API)
     const limit = validatePagination(undefined, body.length, 100, { defaultLimit: 50 }).limit;
@@ -231,27 +200,7 @@ export async function POST(request: NextRequest) {
       data.totalSupplyWei = totalSupplyWei;
     }
 
-    // Use aggregation to remove duplicates and apply sorting
-    const accounts = await Account.aggregate([
-      // Group by address to remove duplicates and keep the latest record
-      {
-        $group: {
-          _id: '$address',
-          address: { $first: '$address' },
-          balance: { $first: '$balance' },
-          blockNumber: { $max: '$blockNumber' },
-          type: { $first: '$type' },
-        },
-      },
-      { $addFields: { balanceNum: { $toDouble: '$balance' } } },
-      {
-        $sort: sortOrder.balance
-          ? { balanceNum: sortOrder.balance as 1 | -1 }
-          : (sortOrder as Record<string, 1 | -1>),
-      },
-      { $skip: start },
-      { $limit: limit },
-    ]);
+    const accounts = await accountPage({}, start, limit, sort);
 
     data.data = accounts.map((account, i) => [
       i + 1 + start,
