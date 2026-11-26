@@ -31,8 +31,6 @@ import {
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { rejectDeepPagination } from '@/lib/security/pagination';
 
-// Get shared Web3 instance
-
 // Load configuration
 const config = loadConfig();
 

@@ -79,7 +79,14 @@ export function dexAddresses(source: unknown = loadConfig()) {
 // Known stablecoin symbols
 export const STABLECOIN_SYMBOLS = new Set(['USDT', 'USDC', 'DAI', 'BUSD']);
 
-export const ADDRESSES = dexAddresses();
+/**
+ * dexAddresses() of the settings in force, worked out on each use: part of them come from the
+ * chain once the server has started (lib/dex/cache-service.ts) and are read again every ten
+ * minutes, so a copy taken when this module loads could stay empty.
+ */
+export const ADDRESSES = new Proxy({} as ReturnType<typeof dexAddresses>, {
+  get: (_target, key) => dexAddresses()[key as keyof ReturnType<typeof dexAddresses>],
+});
 
 // Cache key for DEX prices
 const DEX_PRICES_CACHE_KEY = 'dex:prices';

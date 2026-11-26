@@ -12,9 +12,7 @@ import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { validatePagination } from '@/lib/security/validation';
 import { rejectDeepPagination } from '@/lib/security/pagination';
 
-// Get shared Web3 instance
-
-// Load configuration for blacklist
+// The blacklist (written in config.json, read once)
 const config = loadConfig();
 
 // Address constants

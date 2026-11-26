@@ -9,8 +9,6 @@ import {
 } from '../../../../../lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 
-// Get shared Web3 instance
-
 // Launchpad V2 Token ABI for logoUrl
 const LAUNCHPAD_V2_ABI = [
   {

@@ -2,8 +2,8 @@
  * Node → database document normalization shared by tools/sync.ts and
  * tools/repair-chain.ts (lib/sync/reorg.ts).
  *
- * Every hash and address is stored lowercase; numbers come back from web3 v4
- * as bigint and are converted here.
+ * Every hash and address is stored lowercase. Quantities come from viem as bigint and from raw
+ * JSON-RPC answers as hex strings; both are converted here.
  */
 
 export interface RawBlockHeader {
@@ -12,7 +12,7 @@ export interface RawBlockHeader {
   parentHash: string;
 }
 
-/** Block as returned by the node (web3 v4 shapes; values may be bigint). */
+/** Block as returned by the node (viem's shapes: quantities as bigint). */
 export interface RawBlock {
   number?: unknown;
   hash?: unknown;

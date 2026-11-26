@@ -6,7 +6,6 @@ Description: This file will start syncing the blockchain from the configured nod
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
-import { bytesToHex } from 'viem';
 import { connectDB, ensureIndexesOnStartup, Block, Transaction, Contract } from '../models/index';
 import { readConfig as loadConfig, getWeb3ProviderURL } from '../lib/config';
 import { registerContract } from '../lib/sync/contracts';
@@ -20,6 +19,8 @@ import {
   processNewBlock,
   resolveSyncSettings,
   saveSyncState,
+  toNumber,
+  toText,
   upsertBlocks,
   upsertTransactions,
   verifyConfirmationWindow,
@@ -77,20 +78,6 @@ const checkMemory = () => {
     return false;
   }
   return true;
-};
-
-// Utility functions for web3 v4 type conversions
-const toNumber = (value: any): number => {
-  if (typeof value === 'bigint') return Number(value);
-  if (typeof value === 'string') return parseInt(value, 10);
-  return Number(value) || 0;
-};
-
-const toString = (value: any): string => {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'bigint') return value.toString();
-  if (value instanceof Uint8Array) return bytesToHex(value);
-  return String(value);
 };
 
 /**
@@ -361,16 +348,16 @@ const writeTransactionsToDB: WriteTransactionsToDB = async function (
 
       try {
         const receipt = await getClient()
-          .getTransactionReceipt({ hash: toString(txData.hash) as `0x${string}` })
+          .getTransactionReceipt({ hash: toText(txData.hash) as `0x${string}` })
           .catch(() => null);
         const tx = normalizeTransaction(txData, receipt, blockData);
         self.bulkOps.push(tx);
 
         // Detect contract creation and auto-register
         if (receipt && receipt.contractAddress) {
-          const contractAddr = toString(receipt.contractAddress);
-          const creatorAddr = toString(txData.from);
-          const txHash = toString(txData.hash);
+          const contractAddr = toText(receipt.contractAddress);
+          const creatorAddr = toText(txData.from);
+          const txHash = toText(txData.hash);
           const blockNum = toNumber(blockData.number);
 
           // Register contract asynchronously (don't wait)
@@ -379,7 +366,7 @@ const writeTransactionsToDB: WriteTransactionsToDB = async function (
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         console.log(
-          `⚠️ Warning: Failed to get receipt for tx ${toString(txData.hash)}: ${errorMessage}`
+          `⚠️ Warning: Failed to get receipt for tx ${toText(txData.hash)}: ${errorMessage}`
         );
       }
     }
@@ -648,12 +635,12 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
               .map(async (tx: any) => {
                 try {
                   const receipt = await getClient()
-                    .getTransactionReceipt({ hash: toString(tx.hash) as `0x${string}` })
+                    .getTransactionReceipt({ hash: toText(tx.hash) as `0x${string}` })
                     .catch(() => null);
                   return { tx, receipt };
                 } catch (error) {
                   console.log(
-                    `⚠️ Warning: Failed to get receipt for tx ${toString(tx.hash)}: ${error}`
+                    `⚠️ Warning: Failed to get receipt for tx ${toText(tx.hash)}: ${error}`
                   );
                   return { tx, receipt: null };
                 }
@@ -666,9 +653,9 @@ const syncChain = async function (startBlock?: number, endBlock?: number): Promi
 
               // Detect contract creation and auto-register
               if (receipt && receipt.contractAddress) {
-                const contractAddr = toString(receipt.contractAddress);
-                const creatorAddr = toString(tx.from);
-                const txHash = toString(tx.hash);
+                const contractAddr = toText(receipt.contractAddress);
+                const creatorAddr = toText(tx.from);
+                const txHash = toText(tx.hash);
                 const blockNum = toNumber(blockData.number);
 
                 // Register contract asynchronously (don't block sync)

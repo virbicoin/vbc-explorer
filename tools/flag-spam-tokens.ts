@@ -268,7 +268,7 @@ export async function auditLaunchpadTokens(
 }
 
 export interface CodeAuditDeps {
-  /** `eth_getCode` at the latest block (default: the shared Web3 singleton). */
+  /** `eth_getCode` at the latest block (default: the shared node client, lib/web3/provider.ts). */
   getCode?: (address: string) => Promise<string>;
   /** Addresses queried in parallel per batch (default 10, gentle on the node). */
   batchSize?: number;

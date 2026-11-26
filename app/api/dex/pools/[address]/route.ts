@@ -66,7 +66,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ addr
       callContract(ERC20_ABI, token1Address, 'decimals'),
     ]);
 
-    // Convert decimals to number (ethers v6 returns bigint)
     const decimals0 = Number(decimals0Raw);
     const decimals1 = Number(decimals1Raw);
 

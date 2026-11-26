@@ -18,8 +18,6 @@ import { weiToFixed8 } from '@/lib/bigint-utils';
 // Load config for known contract names
 const config = loadConfig();
 
-// Get shared Web3 instance
-
 // Determine MetaMask-compliant transaction type
 const METHOD_IDS: Record<string, { type: string; action: string }> = {
   // ERC20
