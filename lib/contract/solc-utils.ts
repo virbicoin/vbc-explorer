@@ -177,20 +177,32 @@ export function parseStandardJsonInput(sourceCode: unknown): StandardJsonInput |
   return null;
 }
 
+const SPDX = /SPDX-License-Identifier:\s*([^\s*]+)/i;
+
 /**
- * First SPDX license identifier of a stored source. A standard JSON input is searched in its
- * decoded source files: matching the raw JSON text read escaped newlines into the identifier
- * ("MIT\\n//").
+ * SPDX license identifier of a verified source. A standard JSON input is searched in its decoded
+ * source files (matching the raw JSON text read escaped newlines into the identifier, e.g.
+ * "MIT\\n//"), preferring the file that defines `contractName` over dependencies such as
+ * OpenZeppelin, which come first in the input.
  */
-export function spdxLicense(sourceCode: unknown): string | null {
+export function spdxLicense(sourceCode: unknown, contractName?: string): string | null {
   const input = parseStandardJsonInput(sourceCode);
-  const texts = input
+  const files = input
     ? Object.values(input.sources).map((file) =>
         typeof file?.content === 'string' ? file.content : ''
       )
     : [typeof sourceCode === 'string' ? sourceCode : ''];
-  for (const text of texts) {
-    const match = text.match(/SPDX-License-Identifier:\s*([^\s*]+)/i);
+  const name = contractName?.includes(':') ? contractName.split(':').pop() : contractName;
+  if (name && files.length > 1) {
+    const defines = new RegExp(
+      `\\b(?:abstract\\s+)?(?:contract|library|interface)\\s+${name.replace(/[^A-Za-z0-9_$]/g, '')}\\b`
+    );
+    const own = files.find((text) => defines.test(text));
+    const match = own?.match(SPDX);
+    if (match?.[1]) return match[1].trim();
+  }
+  for (const text of files) {
+    const match = text.match(SPDX);
     if (match?.[1]) return match[1].trim();
   }
   return null;

@@ -13,6 +13,7 @@ import {
 import {
   compileSettingsRecord,
   normalizeCompilerVersion,
+  spdxLicense,
 } from '../../../../lib/contract/solc-utils';
 import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
 import { matchRuntimeBytecode } from '@/lib/contract/bytecode-match';
@@ -703,12 +704,9 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
     console.log('Verification result:', { address, match: match ?? 'none' });
 
     if (isVerified) {
-      // Extract license from source code
-      let license = 'None';
-      const spdxMatch = cleanedSourceCode.match(/SPDX-License-Identifier:\s*([^\s\n\r*]+)/i);
-      if (spdxMatch && spdxMatch[1]) {
-        license = spdxMatch[1].trim();
-      }
+      // The SPDX identifier of the contract's own file (the first file of a standard JSON input
+      // is usually a dependency)
+      const license = spdxLicense(sourceCodeForStorage, actualContractName) || 'None';
 
       // Save to database
       const contractData = {

@@ -6,7 +6,11 @@ import path from 'path';
 import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
 import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
-import { compileSettingsRecord, LATEST_KNOWN_SOLC_VERSION } from '@/lib/contract/solc-utils';
+import {
+  compileSettingsRecord,
+  LATEST_KNOWN_SOLC_VERSION,
+  spdxLicense,
+} from '@/lib/contract/solc-utils';
 import { matchRuntimeBytecode, type CompiledRuntimeCode } from '@/lib/contract/bytecode-match';
 import { isAlreadyVerified } from '@/lib/contract/verified';
 
@@ -252,7 +256,8 @@ export const POST = withRateLimit(
 
       if (isVerified) {
         // Extract license
-        const license = license_type || 'none';
+        const license =
+          license_type || spdxLicense(JSON.stringify(standardInput), actualContractName) || 'none';
 
         // Normalize compiler version
         let normalizedVersion =

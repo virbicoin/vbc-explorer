@@ -29,6 +29,23 @@ describe('parseStandardJsonInput / spdxLicense', () => {
     expect(spdxLicense('/* SPDX-License-Identifier: GPL-3.0 */ contract A {}')).toBe('GPL-3.0');
     expect(spdxLicense('contract A {}')).toBeNull();
   });
+
+  it('prefers the file that defines the verified contract over its dependencies', () => {
+    const input = JSON.stringify({
+      language: 'Solidity',
+      sources: {
+        '@openzeppelin/contracts/token/ERC20/ERC20.sol': {
+          content: '// SPDX-License-Identifier: MIT\nabstract contract ERC20 {}',
+        },
+        'contracts/Pair.sol': {
+          content: '// SPDX-License-Identifier: GPL-3.0\npragma solidity ^0.8.0;\ncontract Pair {}',
+        },
+      },
+    });
+    expect(spdxLicense(input, 'Pair')).toBe('GPL-3.0');
+    expect(spdxLicense(input, 'contracts/Pair.sol:Pair')).toBe('GPL-3.0');
+    expect(spdxLicense(input)).toBe('MIT');
+  });
 });
 
 describe('verificationSettingsFix', () => {
@@ -51,6 +68,19 @@ describe('verificationSettingsFix', () => {
         license: 'MIT',
       })
     ).toBeNull();
+  });
+
+  it('repairs a license read from the raw JSON text', () => {
+    expect(
+      verificationSettingsFix({
+        contractName: 'A',
+        sourceCode: jsonSource({ optimizer: { enabled: true, runs: 200 }, evmVersion: 'paris' }),
+        optimization: true,
+        optimizationRuns: 200,
+        evmVersion: 'paris',
+        license: 'MIT\\n//',
+      })
+    ).toEqual({ license: 'MIT' });
   });
 
   it('does not guess for single-file sources', () => {

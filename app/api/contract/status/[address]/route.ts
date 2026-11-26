@@ -96,7 +96,7 @@ export async function GET(
     // standard JSON input, so escaped newlines no longer end up in the identifier)
     let license = ((contractDoc as Record<string, unknown>).license as string) || '';
     if ((!license || license === 'None') && contractDoc.sourceCode) {
-      license = spdxLicense(contractDoc.sourceCode) ?? license;
+      license = spdxLicense(contractDoc.sourceCode, contractDoc.contractName) ?? license;
     }
 
     return NextResponse.json({

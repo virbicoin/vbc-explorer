@@ -17,6 +17,7 @@ import {
   compileSettingsRecord,
   normalizeCompilerVersion,
   modernizeSyntax,
+  spdxLicense,
 } from '@/lib/contract/solc-utils';
 import { matchRuntimeBytecode, type CompiledRuntimeCode } from '@/lib/contract/bytecode-match';
 import { isAlreadyVerified } from '@/lib/contract/verified';
@@ -297,13 +298,8 @@ async function processVerification(guid: string) {
 
     if (isVerified) {
       // Extract license from source code
-      let license = licenseType || 'None';
-      if (!licenseType) {
-        const spdxMatch = sourceCode.match(/SPDX-License-Identifier:\s*([^\s\n\r*]+)/i);
-        if (spdxMatch && spdxMatch[1]) {
-          license = spdxMatch[1].trim();
-        }
-      }
+      // The SPDX identifier of the contract's own file (decoded from a standard JSON input)
+      const license = licenseType || spdxLicense(sourceCode, actualContractName) || 'None';
 
       // Save verified contract
       const contractData = {

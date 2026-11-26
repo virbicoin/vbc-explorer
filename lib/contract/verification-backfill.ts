@@ -19,6 +19,7 @@ export interface VerificationSettingsFix {
 }
 
 interface StoredContract {
+  contractName?: string;
   sourceCode?: unknown;
   optimization?: unknown;
   optimizationRuns?: unknown;
@@ -35,9 +36,15 @@ export function verificationSettingsFix(doc: StoredContract): VerificationSettin
   if (doc.optimization !== settings.optimization) fix.optimization = settings.optimization;
   if (typeof doc.optimizationRuns !== 'number') fix.optimizationRuns = settings.optimizationRuns;
   if (typeof doc.evmVersion !== 'string' || !doc.evmVersion) fix.evmVersion = settings.evmVersion;
-  if (typeof doc.license !== 'string' || !doc.license || doc.license === 'None') {
-    const license = spdxLicense(doc.sourceCode);
-    if (license) fix.license = license;
+  // Missing, or read from the raw JSON text by the old verification code ("MIT\\n//")
+  const brokenLicense =
+    typeof doc.license !== 'string' ||
+    !doc.license ||
+    doc.license === 'None' ||
+    /[\\\s]/.test(doc.license);
+  if (brokenLicense) {
+    const license = spdxLicense(doc.sourceCode, doc.contractName);
+    if (license && license !== doc.license) fix.license = license;
   }
   return Object.keys(fix).length > 0 ? fix : null;
 }
