@@ -15,6 +15,8 @@ import {
   getRewardSchedule,
   getWrappedNativeSymbol,
   mergeDexSettings,
+  readConfig,
+  setChainSettings,
 } from '@/lib/config';
 import { formatCoins } from '@/lib/reward-schedule';
 
@@ -137,5 +139,20 @@ describe('mergeDexSettings', () => {
     });
     expect(merged.farmPools).toEqual([]);
     expect(merged.lpTokens).toBe(chain.lpTokens);
+  });
+
+  it('cannot be overwritten by one job for the others of the worker', () => {
+    useConfig({ dex: { enabled: true, router: '0xr' } });
+    setChainSettings({ dex: chain });
+    try {
+      expect(readConfig().dex?.factory).toBe('0xfac');
+      // the sync job used to copy the raw config.json over the shared object
+      expect(() => Object.assign(readConfig(), { dex: { enabled: true, router: '0xr' } })).toThrow(
+        TypeError
+      );
+      expect(readConfig().dex?.factory).toBe('0xfac');
+    } finally {
+      setChainSettings({});
+    }
   });
 });

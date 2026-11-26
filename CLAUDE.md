@@ -543,6 +543,7 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 ### 設計ルール（必ず守る）
 - **pm2 のアプリは `explorer` だけ。** `npm start`（`next start`）が起動すると `instrumentation.ts` が `tools/worker.ts` を子プロセスで起動する（本番のみ。`EXPLORER_WORKER=off` で止め、別のホストで `npm run worker` を動かせる。`npm run dev` では `EXPLORER_WORKER=on` のときだけ）。子プロセスにするのは、同期の重い処理で画面を遅くしないためと、ジョブの失敗でサイトを止めないため。子が終わったら 60 秒後に起動し直し、サーバーが止まると一緒に止まる（IPC が切れたら自分で止まる）
 - **どのジョブを動かすかは `lib/features.ts` の `planJobs()` だけが決める**（`config.json` の機能の切り替え、`traces.url` / `TRACE_RPC_URL`、`currency.priceApi`）。`npm run worker -- --plan` で一覧と理由が出る。pm2 の構成にジョブを並べない
+- **ジョブは共有の設定を書き換えない。** 全ジョブが 1 つのプロセスで `lib/config.ts` の同じオブジェクトを読むので、`readConfig()` の値は凍結してある（書き換えると TypeError）。ツール固有の設定（sync のコマンドライン引数など）はコピーに置く。2026-11-27 まで同期ジョブが起動時に生の config.json をこのオブジェクトに上書きしており、チェーンから読んだ DEX の設定（factory・ペア・トークン）が同じワーカーのトークン・価格ジョブから消えていた（本番は config.json に全部書いてあるので表に出ていなかった）
 - ジョブのログは AsyncLocalStorage で `[job名]` を付ける。ジョブの起動が失敗したらそのジョブだけ 1 分（最大 10 分まで倍）後にやり直す
 - **ツールのジョブの経路で `process.exit` しない**（エラーは throw。exit とシグナル処理は各ツールの `require.main === module` のブロックだけ）。ワーカーはツールを `require` で読み、有効なジョブのツールしか読み込まない。ツール同士を import しない（sync.ts が stats / richlist / tokens を読み込んでいた）
 - 統計ジョブ（`tools/stats.ts` と `BlockStat`）は削除した（2026-11-27）。BlockStat を読む API・画面・ツールが無く、5 分ごとに DB にあるブロックをノードから取り直して誰も使わないデータを作っていた。本番の `BlockStat` コレクションは消していない。統計が要るときは保存済みの `Block` から集計する（`/api/v2/stats/charts/transactions` と同じ）
@@ -688,7 +689,7 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 - `lib/sync/`: `normalize.ts`（ノード→DB ドキュメント）、`reorg.ts`（upsert / `replaceBlock` / `findCommonAncestor` / `handleReorg` / `processNewBlock` / `verifyConfirmationWindow` / リスナー位置の永続化）、`chain-check.ts`（`checkChain` / `sampleAgainstNode` / `repairChain`）、`chain-node.ts`（viem のアダプタ）。リスナーは新ブロック N の parentHash と DB の N-1 を比較し、不一致なら共通祖先（最大 `maxReorgDepth`=64）まで遡って置換。毎ポーリングで head−`confirmations`（既定 12）..head も照合。設定は `config.json` の `sync` か `SYNC_CONFIRMATIONS` / `SYNC_MAX_REORG_DEPTH`
 - `tools/repair-chain.ts`: `--check`（number 昇順ストリームで欠落と parentHash 不一致を数える。不一致で exit 1）、`--sample k`、`--fix [--from] [--to] [--dry-run]`（共通祖先から連結が復元するまで置換、1 箇所 256 まで、`scan_progress` の `repair` で再開可、完了後に `--check` を自動実行）。本番ではローカルノードに対してのみ実行する
 - `tools/flag-spam-tokens.ts`: Contract / Token 全件に `classifyDisplayName` を適用（`--dry-run`、`--address --hide|--unhide`、`--unhide-all`。`manual` フラグは自動判定で上書きしない）
-- （2026-11-27 に統計ジョブごと削除。BlockStat はどこからも読まれていなかった）`tools/stats.ts` は import 時に接続しない（sync.ts が全モードで stats の初期化を走らせ、ログのラベルが `tool: 'stats'` に固定されていた）。`tools/sync.ts` は環境変数 `MONGODB_URI` を config.json より優先し、`${VAR}` プレースホルダを解決する
+- （2026-11-27 に統計ジョブごと削除。BlockStat はどこからも読まれていなかった）`tools/stats.ts` は import 時に接続しない（sync.ts が全モードで stats の初期化を走らせ、ログのラベルが `tool: 'stats'` に固定されていた）。`tools/sync.ts` も他のツールと同じく `connectDB()`（`lib/db/uri.ts` の `resolveMongoUri()`。環境変数 `MONGODB_URI` を config.json より優先し、`${VAR}` プレースホルダを解決する）で接続する
 - テスト: `tests/security/{url,safe-fetch,rate-limits,display-name}.test.ts`、`tests/services/nft-metadata.test.ts`、`tests/sync/{reorg,chain-check}.test.ts`（モックノード＋mongodb-memory-server）、`tests/api/hidden-tokens.test.ts`
 
 ### 本番反映時の注意

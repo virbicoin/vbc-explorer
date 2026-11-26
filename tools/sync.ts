@@ -7,8 +7,6 @@ Description: This file will start syncing the blockchain from the configured nod
 import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
 import { bytesToHex } from 'viem';
-import fs from 'fs';
-import path from 'path';
 import { connectDB, ensureIndexesOnStartup, Block, Transaction, Contract } from '../models/index';
 import { readConfig as loadConfig, getWeb3ProviderURL } from '../lib/config';
 import { registerContract } from '../lib/sync/contracts';
@@ -30,31 +28,6 @@ import {
   type TransactionDoc,
 } from '../lib/sync';
 import { getClient, getCode, getProviderUrl } from '../lib/web3/provider';
-
-// Use unified config loader
-
-/**
- * Apply `database.uri` from a config file to MONGODB_URI unless the variable is
- * already set (environment wins, as in models/index.ts). `${VAR}` placeholders
- * are resolved; an unresolved placeholder is ignored and connectDB() then
- * stops with MissingMongoUriError (there is no default URI).
- */
-const applyConfigMongoUri = (uri: unknown, source: string): void => {
-  if (typeof uri !== 'string' || !uri) return;
-  if (process.env.MONGODB_URI) {
-    console.log(`📄 MONGODB_URI already set; ignoring database.uri from ${source}`);
-    return;
-  }
-  const resolved = uri.replace(/\$\{([^}]+)\}/g, (_, name: string) => process.env[name] || '');
-  if (!resolved || resolved.includes('${')) {
-    console.log(
-      `📄 database.uri in ${source} has unresolved placeholders; MONGODB_URI stays unset (connectDB stops)`
-    );
-    return;
-  }
-  process.env.MONGODB_URI = resolved;
-  console.log(`📄 MongoDB URI set from ${source}`);
-};
 
 // Initialize database connection
 const initDB = async () => {
@@ -262,8 +235,9 @@ interface Config {
   endBlock: number | null;
 }
 
-// Generic Configuration
-const config = loadConfig();
+// The shared configuration with this tool's command line settings (a copy: lib/config.ts's
+// object is shared by every job of the worker)
+const config = { ...loadConfig() };
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -800,31 +774,7 @@ const hybridSync = async (): Promise<void> => {
  */
 const main = async (): Promise<void> => {
   try {
-    // Load config.json, fallback to config.example.json & set MONGODB_URI
-    try {
-      const configPath = path.join(__dirname, '..', 'config.json');
-      if (fs.existsSync(configPath)) {
-        const configData = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-        Object.assign(config, configData);
-        console.log('📄 config.json found.');
-        applyConfigMongoUri(configData.database?.uri, 'config.json');
-      } else {
-        // Fallback to config.example.json
-        const exampleConfigPath = path.join(__dirname, '..', 'config.example.json');
-        if (fs.existsSync(exampleConfigPath)) {
-          const configData = JSON.parse(fs.readFileSync(exampleConfigPath, 'utf8'));
-          Object.assign(config, configData);
-          console.log('📄 config.example.json found (fallback).');
-          applyConfigMongoUri(configData.database?.uri, 'config.example.json');
-        } else {
-          console.log('📄 No config files found. Using default configuration...');
-        }
-      }
-    } catch (error) {
-      console.log('📄 Error reading config files. Using default configuration...');
-    }
-
-    // Initialize database connection ONCE
+    // Initialize database connection ONCE (connectDB() resolves MONGODB_URI, lib/db/uri.ts)
     await initDB();
 
     // Register known contracts from config.json

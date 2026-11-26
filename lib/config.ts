@@ -368,12 +368,18 @@ export function mergeDexSettings(written: DexConfig, fromChain: Partial<DexConfi
   };
 }
 
-/** config.json with the chain's values under it. */
+/**
+ * config.json with the chain's values under it. Frozen: the jobs share one process
+ * (tools/worker.ts), so a job that changed the object would change it for all of them (the sync
+ * job used to copy the raw config.json over it, which removed the DEX settings read from the
+ * chain). A tool with settings of its own keeps them in a copy.
+ */
 function withChainSettings(file: AppConfig): AppConfig {
+  Object.freeze(file);
   const chain = chainStore.__explorerChainSettings;
   if (!chain?.dex || !file.dex) return file;
   if (merged && merged.file === file && merged.chain === chain) return merged.value;
-  const value = { ...file, dex: mergeDexSettings(file.dex, chain.dex) };
+  const value = Object.freeze({ ...file, dex: mergeDexSettings(file.dex, chain.dex) });
   merged = { file, chain, value };
   return value;
 }
