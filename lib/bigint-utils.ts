@@ -217,3 +217,11 @@ export function formatGwei(value: string): string {
 export function baseToGwei(base: string | bigint): string {
   return baseToGasUnit(base);
 }
+
+/** Wei as a decimal coin amount with exactly 8 fractional digits, truncated (the mining reward APIs). */
+export function weiToFixed8(wei: bigint): string {
+  const scaled = wei / 10n ** 10n;
+  const whole = scaled / 10n ** 8n;
+  const fraction = (scaled % 10n ** 8n).toString().padStart(8, '0');
+  return `${whole}.${fraction}`;
+}

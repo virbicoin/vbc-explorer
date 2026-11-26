@@ -12,6 +12,8 @@ import {
   getSecurityHeaders,
 } from '../../../../lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { getBlockRewardForHeight, minerRewardWei, transactionFeesWei } from '@/lib/reward-schedule';
+import { weiToFixed8 } from '@/lib/bigint-utils';
 
 // Load config for known contract names
 const config = loadConfig();
@@ -334,101 +336,42 @@ export async function GET(
     return targetTime.toLocaleString(undefined, { timeZoneName: 'short' });
   };
 
-  // Calculate mining rewards (block reward + gas fees)
-  const minedBlocks = await Block.find({
-    miner: address.toLowerCase(),
-  })
+  // The 10 latest mining rewards, valued like /api/address/[address]/mining (which the page links
+  // to): block reward at the height + the block's fees + the uncle inclusion reward
+  const minedBlocks = (await Block.find({ miner: address.toLowerCase() })
     .sort({ number: -1 })
-    .limit(10);
+    .limit(10)
+    .select('number hash timestamp uncles')
+    .lean()) as Array<{ number: number; hash: string; timestamp: number; uncles?: string[] }>;
+  const minedBlockTxs = (await Transaction.find({
+    blockNumber: { $in: minedBlocks.map((block) => block.number) },
+  })
+    .select('blockNumber gasUsed gasPrice')
+    .lean()) as Array<{ blockNumber: number; gasUsed?: number; gasPrice?: string }>;
 
-  // Generate mining reward transactions
-  const miningRewards = await Promise.all(
-    minedBlocks.map(async (block) => {
-      try {
-        // Get block info from Web3
-        const blockInfo = await web3.eth.getBlock(block.number, true);
-
-        // Calculate the actual reward
-        let actualReward = 0;
-
-        // 1. Block reward (fixed at 8 VBC)
-        const blockReward = 8;
-
-        // 2. Calculate gas fees (from all transactions in the block)
-        let totalGasFees = 0;
-        if (blockInfo.transactions && blockInfo.transactions.length > 0) {
-          for (const tx of blockInfo.transactions) {
-            // Type guard: check that tx is an object with gasPrice and gasUsed properties
-            if (typeof tx === 'object' && tx !== null && 'gasPrice' in tx && 'gasUsed' in tx) {
-              const txObj = tx as { gasPrice?: bigint; gasUsed?: bigint };
-              if (typeof txObj.gasPrice === 'bigint' && typeof txObj.gasUsed === 'bigint') {
-                const gasFee = (Number(txObj.gasUsed) * Number(txObj.gasPrice)) / 1e18;
-                totalGasFees += gasFee;
-              }
-            }
-          }
-        }
-
-        // 3. Get the actual balance change
-        try {
-          if (block.number > 0) {
-            const balanceBefore = await web3.eth.getBalance(address, block.number - 1);
-            const balanceAfter = await web3.eth.getBalance(address, block.number);
-            const balanceChange = (Number(balanceAfter) - Number(balanceBefore)) / 1e18;
-
-            // If the balance change is positive, use it as the actual reward
-            if (balanceChange > 0) {
-              actualReward = balanceChange;
-            } else {
-              // If the balance change is <= 0, use the sum of block reward and gas fees
-              actualReward = blockReward + totalGasFees;
-            }
-          } else {
-            // Genesis block case
-            actualReward = blockReward + totalGasFees;
-          }
-        } catch {
-          // If fetching the balance fails, use the calculated value
-          actualReward = blockReward + totalGasFees;
-        }
-
-        return {
-          hash: block.hash,
-          from: '0x0000000000000000000000000000000000000000',
-          to: address,
-          value: actualReward.toFixed(8),
-          timestamp: block.timestamp,
-          timeAgo: getTimeAgo(block.timestamp),
-          blockNumber: block.number,
-          type: 'mining_reward',
-          status: 'success',
-          details: {
-            blockReward: blockReward,
-            gasFees: totalGasFees.toFixed(8),
-            totalReward: actualReward.toFixed(8),
-          },
-        };
-      } catch {
-        // Fallback: use a fixed reward
-        return {
-          hash: block.hash,
-          from: '0x0000000000000000000000000000000000000000',
-          to: address,
-          value: '8.00000000', // fixed reward
-          timestamp: block.timestamp,
-          timeAgo: getTimeAgo(block.timestamp),
-          blockNumber: block.number,
-          type: 'mining_reward',
-          status: 'success',
-          details: {
-            blockReward: 8,
-            gasFees: '0.00000000',
-            totalReward: '8.00000000',
-          },
-        };
-      }
-    })
-  );
+  const miningRewards = minedBlocks.map((block) => {
+    const reward = minerRewardWei(
+      block.number,
+      block.uncles?.length ?? 0,
+      transactionFeesWei(minedBlockTxs.filter((tx) => tx.blockNumber === block.number))
+    );
+    return {
+      hash: block.hash,
+      from: '0x0000000000000000000000000000000000000000',
+      to: address,
+      value: weiToFixed8(reward.total),
+      timestamp: block.timestamp,
+      timeAgo: getTimeAgo(block.timestamp),
+      blockNumber: block.number,
+      type: 'mining_reward',
+      status: 'success',
+      details: {
+        blockReward: getBlockRewardForHeight(block.number),
+        gasFees: weiToFixed8(reward.fees),
+        totalReward: weiToFixed8(reward.total),
+      },
+    };
+  });
 
   // Get the first and last transactions (regular transactions)
   const firstTx = await Transaction.findOne({

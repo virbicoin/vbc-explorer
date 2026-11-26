@@ -6,6 +6,7 @@ import {
   formatGasUnit,
   weiToVBC,
   weiToGwei,
+  weiToFixed8,
 } from '@/lib/bigint-utils';
 
 // Note: without calling initializeCurrency(), the module uses its defaults:
@@ -80,5 +81,14 @@ describe('backward-compatible aliases', () => {
 
   it('weiToGwei matches baseToGasUnit', () => {
     expect(weiToGwei('1000000000')).toBe(baseToGasUnit('1000000000'));
+  });
+});
+
+describe('weiToFixed8', () => {
+  it('prints 8 fractional digits and truncates the rest', () => {
+    expect(weiToFixed8(8n * 10n ** 18n)).toBe('8.00000000');
+    expect(weiToFixed8(8n * 10n ** 18n + 21000n * 10n ** 9n)).toBe('8.00002100');
+    expect(weiToFixed8(123456789n)).toBe('0.00000000');
+    expect(weiToFixed8(0n)).toBe('0.00000000');
   });
 });
