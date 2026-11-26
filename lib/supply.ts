@@ -146,7 +146,7 @@ export async function getBlockNumber(): Promise<bigint> {
       return cache.blockNumber.data;
     }
 
-    throw new Error('Failed to fetch block number');
+    throw new Error('Failed to fetch block number', { cause: error });
   }
 }
 

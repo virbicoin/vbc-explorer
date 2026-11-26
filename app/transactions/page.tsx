@@ -80,8 +80,7 @@ export default function TransactionsPage() {
         // First initialize the currency cache from API
         await initializeCurrencyConfig();
 
-        const currencyConfig = getCurrencyConfig();
-        setGasUnit((currencyConfig as { gasUnit?: string }).gasUnit || 'Gwei');
+        setGasUnit(getCurrencyConfig().gasUnit || 'Gwei');
 
         // Load currency symbol
         const symbol = getCurrencySymbol();

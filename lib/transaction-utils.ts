@@ -76,10 +76,8 @@ export function getTransactionType(
   const isToAddress = tx.to?.toLowerCase() === address.toLowerCase();
 
   // Direction
-  let direction: 'in' | 'out' | 'self' = 'out';
-  if (isFromAddress && isToAddress) direction = 'self';
-  else if (isToAddress) direction = 'in';
-  else direction = 'out';
+  const direction: 'in' | 'out' | 'self' =
+    isFromAddress && isToAddress ? 'self' : isToAddress ? 'in' : 'out';
 
   // Contract creation (no to address)
   if (!tx.to || tx.to === '0x0000000000000000000000000000000000000000') {

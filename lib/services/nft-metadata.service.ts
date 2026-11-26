@@ -135,12 +135,7 @@ export async function fetchNftMetadata(
     return { metadata: null, tokenURI: null, rejected: 'not-nft' };
   }
 
-  let tokenURI: string | null = null;
-  try {
-    tokenURI = await deps.readTokenUri(address, tokenId);
-  } catch {
-    tokenURI = null;
-  }
+  const tokenURI: string | null = await deps.readTokenUri(address, tokenId).catch(() => null);
   if (!tokenURI || typeof tokenURI !== 'string' || tokenURI.trim() === '') {
     return { metadata: null, tokenURI: null, rejected: 'no-token-uri' };
   }

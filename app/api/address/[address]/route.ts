@@ -86,10 +86,8 @@ function getTransactionType(
   const isToAddress = tx.to?.toLowerCase() === address.toLowerCase();
 
   // Direction
-  let direction: 'in' | 'out' | 'self' = 'out';
-  if (isFromAddress && isToAddress) direction = 'self';
-  else if (isToAddress) direction = 'in';
-  else direction = 'out';
+  const direction: 'in' | 'out' | 'self' =
+    isFromAddress && isToAddress ? 'self' : isToAddress ? 'in' : 'out';
 
   // Contract creation (no to address)
   if (!tx.to || tx.to === '0x0000000000000000000000000000000000000000') {
@@ -251,12 +249,7 @@ export async function GET(
   }
 
   // Use the DB values for percentage/rank as-is (return 0 when null)
-  let rank = null;
-  if (Array.isArray(account)) {
-    rank = account[0]?.rank ?? null;
-  } else {
-    rank = account?.rank ?? null;
-  }
+  const rank = (Array.isArray(account) ? account[0]?.rank : account?.rank) ?? null;
 
   // Get transaction info (fetch more transactions to classify them)
   const allTransactions = await Transaction.find({

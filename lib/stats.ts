@@ -46,7 +46,7 @@ export async function getChainStats() {
     await connectDB();
   } catch (error) {
     console.error('Error connecting to database:', error);
-    throw new Error('Database connection failed');
+    throw new Error('Database connection failed', { cause: error });
   }
 
   const db = requireDb();
@@ -220,7 +220,7 @@ export async function getChainStats() {
   }
 
   // Get actual wallet count by counting unique addresses
-  let activeAddresses = 0;
+  let activeAddresses: number;
   try {
     // First try to get from accounts collection
     activeAddresses = db ? await countAll(db.collection('Account')) : 0;

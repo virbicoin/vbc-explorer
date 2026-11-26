@@ -80,7 +80,7 @@ export async function GET() {
               const reserve0 = Number(BigInt(reserve0Raw)) / Math.pow(10, baseDecimals);
               const reserve1 = Number(BigInt(reserve1Raw)) / Math.pow(10, quoteDecimals);
 
-              let tvlUsd = 0;
+              let tvlUsd: number;
 
               // Check token types
               const baseIsStablecoin = STABLECOIN_SYMBOLS.has(

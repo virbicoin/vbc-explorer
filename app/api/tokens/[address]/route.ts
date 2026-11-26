@@ -1193,7 +1193,9 @@ export async function GET(
               blockHash: (txDoc as any).blockHash,
             };
           }
-        } catch {}
+        } catch {
+          // The receipt only adds status and gas; the transfer is listed without it
+        }
         nftTransfers = [
           {
             hash: contractCreateTx.transactionHash,
