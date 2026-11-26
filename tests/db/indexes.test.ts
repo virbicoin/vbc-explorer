@@ -85,7 +85,10 @@ describe('isIndexSyncSkipped', () => {
   });
 });
 
-describe('ensureIndexes', () => {
+// Building every index of an empty database takes a few seconds on its own and longer while the
+// other test files start their own MongoDB servers; a test cut off at the default 5 s kept
+// building in the background and changed what the next test found
+describe('ensureIndexes', { timeout: 60_000 }, () => {
   it('creates the unique Block.number / Block.hash and Transaction.hash indexes on an empty DB', async () => {
     expect(await listIndexNames(Block)).toEqual([]);
 
