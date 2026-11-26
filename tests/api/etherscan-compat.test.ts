@@ -16,9 +16,10 @@ import {
   TokenHolder,
   TokenTransfer,
   Transaction,
+  VerificationJob,
 } from '@/models/index';
 import { publicClient } from '@/lib/api/blockscout/shared';
-import { GET } from '@/app/api/route';
+import { GET, POST } from '@/app/api/route';
 
 let mongod: MongoMemoryServer;
 let ipCounter = 0;
@@ -441,6 +442,39 @@ describe('contract module', () => {
       EVMVersion: 'constantinople',
       LicenseType: 'MIT',
     });
+  });
+
+  it('verifysourcecode refuses a contract that is already verified', async () => {
+    await Contract.collection.insertOne({
+      address: VERIFIED,
+      contractName: 'Token',
+      sourceCode: 'contract Token {}',
+      verified: true,
+    });
+    ipCounter += 1;
+    const request = new NextRequest('https://explorer.example/api', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-client-ip': `198.51.200.${ipCounter % 250}`,
+      },
+      body: new URLSearchParams({
+        module: 'contract',
+        action: 'verifysourcecode',
+        contractaddress: VERIFIED,
+        sourceCode: 'contract Fake {}',
+        contractname: 'Fake',
+        compilerversion: 'v0.8.28+commit.7893614a',
+      }).toString(),
+    });
+    const body = await (await POST(request, undefined)).json();
+    expect(body).toEqual({
+      status: '0',
+      message: 'NOTOK',
+      result: 'Contract source code already verified',
+    });
+    expect(await VerificationJob.countDocuments({ address: VERIFIED })).toBe(0);
+    expect((await Contract.findOne({ address: VERIFIED }).lean())?.contractName).toBe('Token');
   });
 
   it('getsourcecode does not guess settings a record lacks', async () => {

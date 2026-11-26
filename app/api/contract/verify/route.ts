@@ -15,6 +15,8 @@ import {
   normalizeCompilerVersion,
 } from '../../../../lib/contract/solc-utils';
 import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
+import { matchRuntimeBytecode } from '@/lib/contract/bytecode-match';
+import { isAlreadyVerified } from '@/lib/contract/verified';
 import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
 
 // Function to read config
@@ -374,6 +376,19 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
       return NextResponse.json({ error: 'No contract found at this address' }, { status: 404 });
     }
 
+    // A verified contract keeps its source (a second verification used to replace it)
+    if (await isAlreadyVerified(address)) {
+      return NextResponse.json(
+        {
+          verified: false,
+          alreadyVerified: true,
+          error: 'Contract source code already verified',
+          message: 'Contract source code already verified',
+        },
+        { status: 409, headers: getSecurityHeaders() }
+      );
+    }
+
     // Clean up source code - remove any trailing garbage
     // For Standard JSON Input mode, cleanedSourceCode will be set later from the input
     let cleanedSourceCode = '';
@@ -681,164 +696,11 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
     console.log('  - Deployed bytecode length:', compiledBytecode?.length || 0);
     console.log('  - On-chain bytecode length:', onchainBytecode.length);
 
-    // Normalize bytecodes - remove 0x prefix and metadata
-    let cleanOnchainBytecode = onchainBytecode;
-    if (cleanOnchainBytecode.startsWith('0x')) {
-      cleanOnchainBytecode = cleanOnchainBytecode.substring(2);
-    }
-
-    let cleanCompiledBytecode = compiledBytecode;
-    if (cleanCompiledBytecode.startsWith('0x')) {
-      cleanCompiledBytecode = cleanCompiledBytecode.substring(2);
-    }
-
-    // Remove metadata from bytecodes
-    // Solidity appends CBOR-encoded metadata at the end of the bytecode
-    // This includes compiler version, IPFS hash, etc.
-    // Different metadata patterns for different Solidity versions:
-
-    // Helper function to remove metadata (aggressive approach)
-    const removeMetadata = (bytecode: string): string => {
-      let cleaned = bytecode.toLowerCase();
-
-      // Method 1: Find the last occurrence of common metadata markers and truncate
-      // CBOR metadata typically starts with 'a264' or 'a265'
-
-      // Look for IPFS metadata marker: a264697066735822 (a2 + 64 + 'ipfs' + X + 22)
-      const ipfsMarkerIndex = cleaned.lastIndexOf('a264697066735822');
-      if (ipfsMarkerIndex > 0) {
-        cleaned = cleaned.substring(0, ipfsMarkerIndex);
-        return cleaned;
-      }
-
-      // Look for Bzzr1 metadata marker: a265627a7a7231
-      const bzzr1MarkerIndex = cleaned.lastIndexOf('a265627a7a7231');
-      if (bzzr1MarkerIndex > 0) {
-        cleaned = cleaned.substring(0, bzzr1MarkerIndex);
-        return cleaned;
-      }
-
-      // Look for Bzzr0 metadata marker: a265627a7a7230
-      const bzzr0MarkerIndex = cleaned.lastIndexOf('a265627a7a7230');
-      if (bzzr0MarkerIndex > 0) {
-        cleaned = cleaned.substring(0, bzzr0MarkerIndex);
-        return cleaned;
-      }
-
-      // Old swarm metadata: a165627a7a72
-      const swarmMarkerIndex = cleaned.lastIndexOf('a165627a7a72');
-      if (swarmMarkerIndex > 0) {
-        cleaned = cleaned.substring(0, swarmMarkerIndex);
-        return cleaned;
-      }
-
-      // Method 2: Look for generic CBOR start markers at the end
-      // CBOR encoding starts with 'a2' (map with 2 elements) or 'a1' (map with 1 element)
-      for (let i = cleaned.length - 100; i < cleaned.length - 4; i++) {
-        if (
-          (cleaned.substring(i, i + 2) === 'a2' || cleaned.substring(i, i + 2) === 'a1') &&
-          cleaned.substring(i + 2, i + 4) === '64'
-        ) {
-          cleaned = cleaned.substring(0, i);
-          return cleaned;
-        }
-      }
-
-      return cleaned;
-    };
-
-    cleanOnchainBytecode = removeMetadata(cleanOnchainBytecode);
-    cleanCompiledBytecode = removeMetadata(cleanCompiledBytecode);
-
-    // Normalize to lowercase for comparison
-    cleanOnchainBytecode = cleanOnchainBytecode.toLowerCase();
-    cleanCompiledBytecode = cleanCompiledBytecode.toLowerCase();
-
-    // Remove any trailing zeros that might be padding
-    cleanOnchainBytecode = cleanOnchainBytecode.replace(/0+$/, '');
-    cleanCompiledBytecode = cleanCompiledBytecode.replace(/0+$/, '');
-
-    // Debug information
-    console.log('Debug bytecode comparison:');
-    console.log('Original onchain bytecode length:', onchainBytecode.length);
-    console.log('Original compiled bytecode length:', compiledBytecode.length);
-    console.log('Clean onchain bytecode length:', cleanOnchainBytecode.length);
-    console.log('Clean compiled bytecode length:', cleanCompiledBytecode.length);
-    console.log(
-      'Clean onchain bytecode (first 100 chars):',
-      cleanOnchainBytecode.substring(0, 100)
-    );
-    console.log(
-      'Clean compiled bytecode (first 100 chars):',
-      cleanCompiledBytecode.substring(0, 100)
-    );
-
-    // Try different comparison methods
-    const isVerified1 = cleanCompiledBytecode === cleanOnchainBytecode;
-    const isVerified2 = cleanCompiledBytecode.includes(cleanOnchainBytecode);
-    const isVerified3 = cleanOnchainBytecode.includes(cleanCompiledBytecode);
-
-    // Compare the first N bytes (main code without metadata differences)
-    // This handles cases where minor compiler version differences produce slightly different code
-    const compareLength = Math.min(cleanOnchainBytecode.length, cleanCompiledBytecode.length);
-    const onchainPrefix = cleanOnchainBytecode.substring(0, compareLength);
-    const compiledPrefix = cleanCompiledBytecode.substring(0, compareLength);
-    const isVerified4 = onchainPrefix === compiledPrefix;
-
-    // Calculate similarity ratio for partial matches
-    // This helps with minor bytecode differences between compiler versions
-    const calculateSimilarity = (a: string, b: string): number => {
-      const minLen = Math.min(a.length, b.length);
-      if (minLen === 0) return 0;
-
-      let matches = 0;
-      for (let i = 0; i < minLen; i++) {
-        if (a[i] === b[i]) matches++;
-      }
-      return matches / minLen;
-    };
-
-    const similarity = calculateSimilarity(cleanOnchainBytecode, cleanCompiledBytecode);
-    const isVerified5 = similarity > 0.95; // 95% similarity threshold
-
-    // New check: If the bytecode lengths are very close (within 10%) and main code matches
-    // This handles cases where only metadata differs
-    const lengthRatio =
-      Math.min(cleanOnchainBytecode.length, cleanCompiledBytecode.length) /
-      Math.max(cleanOnchainBytecode.length, cleanCompiledBytecode.length);
-    const isVerified6 = lengthRatio > 0.9 && similarity > 0.9;
-
-    // Check if the core bytecode (without PUSH/metadata sections) matches
-    // PUSH1-PUSH32 opcodes are 0x60-0x7f, STOP is 0x00, INVALID is 0xfe
-    // We compare only the first 80% of the bytecode to ignore metadata differences
-    const coreLength = Math.floor(
-      Math.min(cleanOnchainBytecode.length, cleanCompiledBytecode.length) * 0.8
-    );
-    const onchainCore = cleanOnchainBytecode.substring(0, coreLength);
-    const compiledCore = cleanCompiledBytecode.substring(0, coreLength);
-    const isVerified7 = onchainCore === compiledCore && coreLength > 100;
-
-    const isVerified =
-      isVerified1 ||
-      isVerified2 ||
-      isVerified3 ||
-      isVerified4 ||
-      isVerified5 ||
-      isVerified6 ||
-      isVerified7;
-
-    console.log('Verification results:', {
-      isVerified1,
-      isVerified2,
-      isVerified3,
-      isVerified4,
-      isVerified5,
-      isVerified6,
-      isVerified7,
-      similarity: (similarity * 100).toFixed(2) + '%',
-      lengthRatio: (lengthRatio * 100).toFixed(2) + '%',
-      isVerified,
-    });
+    // Exact match of the runtime code (immutables, library addresses and, for a partial
+    // match, the metadata aside). See lib/contract/bytecode-match.ts.
+    const match = matchRuntimeBytecode(onchainBytecode, compiledContract.evm.deployedBytecode);
+    const isVerified = match !== null;
+    console.log('Verification result:', { address, match: match ?? 'none' });
 
     if (isVerified) {
       // Extract license from source code
@@ -871,34 +733,20 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
       return NextResponse.json({
         verified: true,
         contract: contractData,
-        message: 'Contract successfully verified',
+        message:
+          match === 'full'
+            ? 'Contract successfully verified'
+            : 'Contract successfully verified (partial match: metadata differs)',
       });
     } else {
+      const used = compileSettingsRecord(input);
       return NextResponse.json({
         verified: false,
         message: 'Bytecode mismatch - verification failed',
         details: {
-          originalOnchainBytecodeLength: onchainBytecode.length,
-          originalCompiledBytecodeLength: compiledBytecode.length,
-          cleanOnchainBytecodeLength: cleanOnchainBytecode.length,
-          cleanCompiledBytecodeLength: cleanCompiledBytecode.length,
-          similarity: (similarity * 100).toFixed(2) + '%',
-          lengthRatio: (lengthRatio * 100).toFixed(2) + '%',
-          onchainBytecodeStart: cleanOnchainBytecode.substring(0, 100) + '...',
-          compiledBytecodeStart: cleanCompiledBytecode.substring(0, 100) + '...',
-          comparisonResults: {
-            isVerified1,
-            isVerified2,
-            isVerified3,
-            isVerified4,
-            isVerified5,
-            isVerified6,
-            isVerified7,
-          },
-          note: (() => {
-            const used = compileSettingsRecord(input);
-            return `Compiled with solc ${normalizeCompilerVersion(finalCompilerVersion)} (EVM: ${used.evmVersion}, optimizer: ${used.optimization ? 'enabled' : 'disabled'}, runs: ${used.optimizationRuns}). Original may have been compiled with different settings.`;
-          })(),
+          onchainBytecodeLength: onchainBytecode.length,
+          compiledBytecodeLength: compiledBytecode.length,
+          note: `Compiled with solc ${normalizeCompilerVersion(finalCompilerVersion)} (EVM: ${used.evmVersion}, optimizer: ${used.optimization ? 'enabled' : 'disabled'}, runs: ${used.optimizationRuns}). The runtime code must match the deployed code exactly (only the metadata may differ), so the source, compiler version and settings must be those used for the deployment.`,
         },
       });
     }

@@ -554,7 +554,8 @@ export const POST = withRateLimit(
           optimizationUsed: params.optimizationUsed || params.optimizationused || '0',
           runs: params.runs || '200',
           constructorArguements: params.constructorArguements || params.constructorarguments || '',
-          evmversion: params.evmversion || 'paris',
+          // '' = not given: standard JSON input keeps its own settings, single files use paris
+          evmversion: params.evmversion || '',
           licenseType: params.licenseType || params.licensetype || '',
           libraryname1: params.libraryname1 || '',
           libraryaddress1: params.libraryaddress1 || '',

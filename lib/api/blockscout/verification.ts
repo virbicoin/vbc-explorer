@@ -17,8 +17,9 @@ import {
   compileSettingsRecord,
   normalizeCompilerVersion,
   modernizeSyntax,
-  removeMetadata,
 } from '@/lib/contract/solc-utils';
+import { matchRuntimeBytecode, type CompiledRuntimeCode } from '@/lib/contract/bytecode-match';
+import { isAlreadyVerified } from '@/lib/contract/verified';
 import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
 import { publicClient, successResponse, errorResponse } from './shared';
 
@@ -55,6 +56,12 @@ export async function verifySourceCode(params: {
     // Validate address
     if (!isValidAddress(contractaddress)) {
       return errorResponse('Invalid contract address');
+    }
+
+    // A verified contract keeps its source. A second verification used to replace the name and
+    // source of a verified contract (2026-11-09); Etherscan refuses it the same way.
+    if (await isAlreadyVerified(contractaddress)) {
+      return errorResponse('NOTOK', 'Contract source code already verified');
     }
 
     // Generate GUID for tracking
@@ -279,69 +286,14 @@ async function processVerification(guid: string) {
       return;
     }
 
-    // Mask immutable variable positions before comparing. The compiler emits
-    // zeros at these positions in deployedBytecode; the constructor writes the
-    // actual values on deployment, so the on-chain code differs exactly there.
-    // solc reports the positions in evm.deployedBytecode.immutableReferences.
-    let onchainForCompare = onchainBytecode.replace(/^0x/, '');
-    let compiledForCompare = compiledBytecode.replace(/^0x/, '');
-    const immutableReferences = compiledContract.evm?.deployedBytecode?.immutableReferences as
-      Record<string, { start: number; length: number }[]> | undefined;
-    if (immutableReferences) {
-      const maskRange = (hex: string, start: number, length: number) => {
-        const from = start * 2;
-        const to = (start + length) * 2;
-        if (to > hex.length) return hex;
-        return hex.slice(0, from) + '0'.repeat(to - from) + hex.slice(to);
-      };
-      for (const refs of Object.values(immutableReferences)) {
-        for (const { start, length } of refs) {
-          onchainForCompare = maskRange(onchainForCompare, start, length);
-          compiledForCompare = maskRange(compiledForCompare, start, length);
-        }
-      }
-    }
-
-    // Normalize and compare bytecodes
-    const cleanOnchainBytecode = removeMetadata(onchainForCompare).replace(/0+$/, '');
-    const cleanCompiledBytecode = removeMetadata(compiledForCompare).replace(/0+$/, '');
-
-    // Calculate similarity
-    const minLen = Math.min(cleanOnchainBytecode.length, cleanCompiledBytecode.length);
-    let matches = 0;
-    for (let i = 0; i < minLen; i++) {
-      if (cleanOnchainBytecode[i] === cleanCompiledBytecode[i]) matches++;
-    }
-    const similarity = minLen > 0 ? matches / minLen : 0;
-
-    // Length ratio check (handles metadata-only differences)
-    const lengthRatio =
-      Math.min(cleanOnchainBytecode.length, cleanCompiledBytecode.length) /
-      Math.max(cleanOnchainBytecode.length, cleanCompiledBytecode.length);
-
-    // Core bytecode comparison (first 80%) - handles immutable variable differences
-    // Immutable variables are embedded in deployed bytecode at specific positions,
-    // so the compiled bytecode has zeros where the on-chain code has actual values.
-    // Comparing only the first 80% of bytecode ignores these tail differences.
-    const coreLength = Math.floor(
-      Math.min(cleanOnchainBytecode.length, cleanCompiledBytecode.length) * 0.8
+    // Exact match of the runtime code (immutables, library addresses and, for a partial
+    // match, the metadata aside). See lib/contract/bytecode-match.ts.
+    const match = matchRuntimeBytecode(
+      onchainBytecode,
+      compiledContract.evm?.deployedBytecode as CompiledRuntimeCode | undefined
     );
-    const onchainCore = cleanOnchainBytecode.substring(0, coreLength);
-    const compiledCore = cleanCompiledBytecode.substring(0, coreLength);
-    const coreMatch = onchainCore === compiledCore && coreLength > 100;
-
-    // Check various verification methods
-    const isVerified =
-      cleanCompiledBytecode === cleanOnchainBytecode ||
-      cleanCompiledBytecode.includes(cleanOnchainBytecode) ||
-      cleanOnchainBytecode.includes(cleanCompiledBytecode) ||
-      similarity > 0.95 ||
-      (lengthRatio > 0.9 && similarity > 0.9) || // Close length + 90% similar (metadata diffs)
-      coreMatch; // Core code matches (immutable variable diffs)
-
-    console.log(
-      `[processVerification] ${address}: similarity=${(similarity * 100).toFixed(2)}%, lengthRatio=${(lengthRatio * 100).toFixed(2)}%, coreMatch=${coreMatch}, isVerified=${isVerified}`
-    );
+    const isVerified = match !== null;
+    console.log(`[processVerification] ${address}: match=${match ?? 'none'}`);
 
     if (isVerified) {
       // Extract license from source code
@@ -375,14 +327,21 @@ async function processVerification(guid: string) {
 
       await VerificationJob.updateOne(
         { guid },
-        { status: 'pass', message: 'Contract successfully verified' }
+        {
+          status: 'pass',
+          message:
+            match === 'full'
+              ? 'Contract successfully verified'
+              : 'Contract successfully verified (partial match: metadata differs)',
+        }
       );
     } else {
       await VerificationJob.updateOne(
         { guid },
         {
           status: 'fail',
-          message: `Bytecode mismatch (similarity: ${(similarity * 100).toFixed(2)}%)`,
+          message:
+            'Fail - Unable to verify: the compiled bytecode does not match the deployed code',
         }
       );
     }

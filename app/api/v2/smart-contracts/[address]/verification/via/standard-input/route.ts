@@ -7,6 +7,8 @@ import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders } from
 import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
 import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
 import { compileSettingsRecord, LATEST_KNOWN_SOLC_VERSION } from '@/lib/contract/solc-utils';
+import { matchRuntimeBytecode, type CompiledRuntimeCode } from '@/lib/contract/bytecode-match';
+import { isAlreadyVerified } from '@/lib/contract/verified';
 
 // Function to read config
 const readConfig = () => {
@@ -33,36 +35,6 @@ const config = readConfig();
 const WEB3_PROVIDER_URL =
   process.env.WEB3_PROVIDER_URL || `http://${config.nodeAddr}:${config.port}`;
 const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
-
-// Helper function to remove metadata from bytecode
-function removeMetadata(bytecode: string): string {
-  let cleaned = bytecode.toLowerCase();
-  if (cleaned.startsWith('0x')) {
-    cleaned = cleaned.substring(2);
-  }
-
-  const ipfsMarkerIndex = cleaned.lastIndexOf('a264697066735822');
-  if (ipfsMarkerIndex > 0) {
-    return cleaned.substring(0, ipfsMarkerIndex);
-  }
-
-  const bzzr1MarkerIndex = cleaned.lastIndexOf('a265627a7a7231');
-  if (bzzr1MarkerIndex > 0) {
-    return cleaned.substring(0, bzzr1MarkerIndex);
-  }
-
-  const bzzr0MarkerIndex = cleaned.lastIndexOf('a265627a7a7230');
-  if (bzzr0MarkerIndex > 0) {
-    return cleaned.substring(0, bzzr0MarkerIndex);
-  }
-
-  const swarmMarkerIndex = cleaned.lastIndexOf('a165627a7a72');
-  if (swarmMarkerIndex > 0) {
-    return cleaned.substring(0, swarmMarkerIndex);
-  }
-
-  return cleaned;
-}
 
 // Blockscout API v2 - Verify via Standard JSON Input (Hardhat format)
 export const POST = withRateLimit(
@@ -160,6 +132,14 @@ export const POST = withRateLimit(
         return NextResponse.json(
           { message: 'No contract found at this address' },
           { status: 404, headers: getSecurityHeaders() }
+        );
+      }
+
+      // A verified contract keeps its source (a second verification used to replace it)
+      if (await isAlreadyVerified(sanitizedAddress)) {
+        return NextResponse.json(
+          { message: 'Smart-contract already verified.' },
+          { status: 400, headers: getSecurityHeaders() }
         );
       }
 
@@ -262,22 +242,13 @@ export const POST = withRateLimit(
         );
       }
 
-      const cleanOnchainBytecode = removeMetadata(onchainBytecode).replace(/0+$/, '');
-      const cleanCompiledBytecode = removeMetadata(compiledBytecode).replace(/0+$/, '');
-
-      // Calculate similarity
-      const minLen = Math.min(cleanOnchainBytecode.length, cleanCompiledBytecode.length);
-      let matches = 0;
-      for (let i = 0; i < minLen; i++) {
-        if (cleanOnchainBytecode[i] === cleanCompiledBytecode[i]) matches++;
-      }
-      const similarity = minLen > 0 ? matches / minLen : 0;
-
-      const isVerified =
-        cleanCompiledBytecode === cleanOnchainBytecode ||
-        cleanCompiledBytecode.includes(cleanOnchainBytecode) ||
-        cleanOnchainBytecode.includes(cleanCompiledBytecode) ||
-        similarity > 0.95;
+      // Exact match of the runtime code (immutables, library addresses and, for a partial
+      // match, the metadata aside). See lib/contract/bytecode-match.ts.
+      const match = matchRuntimeBytecode(
+        onchainBytecode,
+        compiledContract.evm?.deployedBytecode as CompiledRuntimeCode | undefined
+      );
+      const isVerified = match !== null;
 
       if (isVerified) {
         // Extract license
@@ -321,7 +292,9 @@ export const POST = withRateLimit(
         return NextResponse.json(
           {
             message: 'Bytecode mismatch - verification failed',
-            errors: [`Similarity: ${(similarity * 100).toFixed(2)}%`],
+            errors: [
+              'The compiled runtime code does not match the deployed code (only the metadata may differ)',
+            ],
           },
           { status: 400, headers: getSecurityHeaders() }
         );

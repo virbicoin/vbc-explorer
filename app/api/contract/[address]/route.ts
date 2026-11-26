@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Contract } from '@/lib/models';
 import { connectToDatabase } from '@/lib/db';
-import { isValidAddress, checkRateLimit, getClientIp } from '@/lib/security/validation';
-import { enforceRateLimit } from '@/lib/security/rate-limits';
 
 export async function GET(
   request: NextRequest,
@@ -35,36 +33,7 @@ export async function GET(
   }
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const limited = enforceRateLimit(request, 'contractWrite');
-    if (limited) return limited;
-
-    await connectToDatabase();
-
-    const contract = await request.json();
-
-    // Validate required fields
-    if (!contract || typeof contract !== 'object') {
-      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-    }
-
-    if (!contract.address || !isValidAddress(contract.address)) {
-      return NextResponse.json({ error: 'Invalid contract address' }, { status: 400 });
-    }
-
-    // Normalize address
-    const normalizedAddress = contract.address.toLowerCase();
-
-    await Contract.updateOne(
-      { address: normalizedAddress },
-      { $setOnInsert: { ...contract, address: normalizedAddress } },
-      { upsert: true }
-    );
-
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    console.error(`ContractAdd error: ${err}`);
-    return NextResponse.json({ error: true }, { status: 500 });
-  }
-}
+// There is no POST handler. It stored the request body as a Contract record
+// ($setOnInsert: { ...body }) without any check, so anyone could create a "verified" contract with
+// any name and source for an address that had no record yet. Contract records are written by the
+// sync tools and by the verification routes, which compile the source and match it on chain.

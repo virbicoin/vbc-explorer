@@ -320,7 +320,7 @@ const priceData = await getNativePrice();
 
 ### レート制限（`lib/security/rate-limits.ts`）
 - クライアント IP は `getClientIp()` が **信頼ヘッダ 1 本**（`TRUSTED_IP_HEADER`、既定 `X-Client-IP`。nginx が Cloudflare の `CF-Connecting-IP` から付け直す）だけから取る。`X-Forwarded-For` / `X-Real-IP` は読まない（クライアントが詐称できるため）。不正・欠落なら `unknown` バケット（上限 1/10）
-- バケットは `RATE_LIMITS` に集約（キーは `バケット名:ip`）: `api` 100/分、`verify` 5/分（コンパイル自体はワーカーキューが直列化するので mutex は持たない）、`interact` 30/分、`tokenMetadata`（`/api/tokens/[address]?tokenId=`）10/分、`write` 10/分（`POST /api/launchpad/register` と `POST /api/launchpad/sync`）、`launchpad` 30/分、`relay` 60/分、`contractWrite` 10/分。CSV export は従来の独自上限
+- バケットは `RATE_LIMITS` に集約（キーは `バケット名:ip`）: `api` 100/分、`verify` 5/分（コンパイル自体はワーカーキューが直列化するので mutex は持たない）、`interact` 30/分、`tokenMetadata`（`/api/tokens/[address]?tokenId=`）10/分、`write` 10/分（`POST /api/launchpad/register` と `POST /api/launchpad/sync`）、`launchpad` 30/分、`relay` 60/分。CSV export は従来の独自上限
 - 各 route.ts の先頭で `enforceRateLimit(request, 'api')` か `withRateLimit('verify', handler)` を呼ぶ。超過は 429 + `Retry-After`、`logger.warn` で記録。同一 IP が 1 分に 20 回 429 になると警告 1 行（crowdsec の種）。`proxy.ts`（Edge）には Map ベースの制限を置かない
 - nginx 側の設定例は `docs/nginx-explorer.conf.example`
 
@@ -823,6 +823,11 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 - `GET /api?module=contract&action=checkverifystatus&guid=...` - 検証ステータスを確認
 - `GET /api?module=contract&action=getabi&address=...` - コントラクト ABI を取得
 - `GET /api?module=contract&action=getsourcecode&address=...` - 検証済みソースコードを取得
+
+**照合と上書きの禁止（2026-11、必ず守る）:**
+- 検証が通るのは、コンパイルした runtime コードがチェーン上のコードと一致するときだけ（`matchRuntimeBytecode()`、`lib/contract/bytecode-match.ts`）。違ってよいのは immutable の位置（`immutableReferences` で 0 にそろえる）、リンクしたライブラリのアドレス（`linkReferences`）、partial match のときの末尾の CBOR メタデータだけ。4 つの検証経路（`/api/contract/verify`、Etherscan 形式、v2 の flattened-code / standard-input）はすべてこれを使う。部分文字列・先頭一致・類似度・先頭 80% 一致で通す判定を戻さない（以前はそれで偽のソースを検証済みにできた）
+- 検証済みのコントラクトは検証し直さない（`isAlreadyVerified()`、`lib/contract/verified.ts`。Etherscan 形式は `Contract source code already verified`、画面は 409、v2 は 400）。2026-11-09 に検証済みの OsatoNFT（0xdd0b…）の名前とソースが別のソースで上書きされた
+- `POST /api/contract/[address]` は置かない。リクエストの本文をそのまま Contract に upsert していたため、記録のないアドレスに「検証済み」の偽の名前・ソースを誰でも作れた（2026-10〜11 に 5 件。「Official VirBiCoin Bridge (Verified)」を名乗るものを含む）。Contract は同期ツールと検証経路だけが書く
 
 **検証の設定の保存（2026-11）:**
 - Contract に保存する optimizer の有無・runs・`evmVersion` は、照合に使った standard JSON から `compileSettingsRecord()`（`lib/contract/solc-utils.ts`）で求める。要求パラメータや固定値（以前は runs 200・paris）を保存しない。`evmVersion` を指定しない入力は `'default'`（getsourcecode では `Default`）

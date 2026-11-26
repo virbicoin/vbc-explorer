@@ -864,7 +864,7 @@ Limits are keyed on the **client IP taken from one trusted header only** (`TRUST
 | `write` | 10/min | `POST /api/launchpad/register`, `POST /api/launchpad/sync` (chain-authenticated writes) |
 | `interact` | 30/min | `/api/contract/interact` |
 | `tokenMetadata` | 10/min | `/api/tokens/[address]?tokenId=` (reads tokenURI, fetches metadata) |
-| `launchpad` / `relay` / `contractWrite` | 30 / 60 / 10 per min | Launchpad reads, `/api/web3relay`, `POST /api/contract/[address]` |
+| `launchpad` / `relay` | 30 / 60 per min | Launchpad reads, `/api/web3relay` |
 
 Exceeding a limit returns `429` with `Retry-After`; every denial is logged and 20 denials from one IP within a minute produce one warning line (a seed for a crowdsec scenario). See [docs/nginx-explorer.conf.example](docs/nginx-explorer.conf.example) for the nginx side (header rewrite, optional `real_ip`, `limit_req` as a second line of defence).
 
@@ -1999,7 +1999,7 @@ Complete NFT functionality:
 ### Contract Verification
 Smart contract verification system:
 - Source code compilation with multiple Solidity versions (release builds from a sha256-verified local cache, compiled in a worker thread — see [Solidity Compiler Isolation](#solidity-compiler-isolation-v087))
-- Bytecode comparison
+- Bytecode comparison: the compiled runtime code must equal the deployed code, apart from immutable values, linked library addresses and (for a partial match) the CBOR metadata; a verified contract cannot be verified again
 - ABI generation
 - Contract interaction interface
 - Verification status tracking
