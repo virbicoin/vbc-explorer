@@ -920,8 +920,8 @@ For detailed security information, see [SECURITY.md](SECURITY.md).
 ### Prerequisites
 
 - **Node.js 22.18+ or 24.11+** (Node 24 LTS recommended, see `.nvmrc`) and npm 10+
-- **MongoDB 6.0+** (8.0 recommended) running on localhost:27017 with authentication enabled (see [Database Setup](#database-setup))
-- **EVM Node** running with RPC enabled (e.g., localhost:8545)
+- **MongoDB 6.0+** (8.0 recommended) running on localhost:27017 with authentication enabled (see [Database Setup](#database-setup)). On Debian 13 (trixie) MongoDB's own trixie repository carries only the tools (mongosh, database tools) as of 2026-11; the server installs from the bookworm repository (`deb [signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg] http://repo.mongodb.org/apt/debian bookworm/mongodb-org/8.0 main`) and runs on trixie.
+- **EVM Node** running with RPC enabled (e.g., localhost:8545). For internal transactions the node needs call traces: Ovbc / OpenEthereum / Erigon / Nethermind (`trace_transaction`) or Gvbc / Geth (`debug_traceTransaction`, so add `debug` to `--http.api` and run `--gcmode archive`, synced with `--syncmode full` if old blocks are to be traced). Keep that endpoint on localhost.
 - **PM2** installed globally: `npm install -g pm2`
 
 ### Installation
@@ -944,9 +944,15 @@ cp config.example.json config.json
 vi config.json
 ```
 
-3. **Start all services with PM2**
+3. **Build the web app** (`next start` refuses to run without a production build)
 ```bash
-# Start all services (Web + Data sync) from the project root: the processes read .env themselves
+npm run build
+```
+
+4. **Start all services with PM2**
+```bash
+# Start all services (Web + Data sync) from the project root: the processes read .env themselves.
+# Do not run this from a shell that has sourced .env (pm2 would keep MONGODB_URI in its saved env).
 pm2 start ecosystem.config.json
 
 # Check status
@@ -963,7 +969,7 @@ npm run optimize-indexes            # create missing indexes
 npm run optimize-indexes -- --check # exit 0 when every index exists
 ```
 
-4. **Access the explorer**
+5. **Access the explorer**
 ```
 http://localhost:3000
 ```
