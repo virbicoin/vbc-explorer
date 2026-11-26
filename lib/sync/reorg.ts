@@ -9,8 +9,8 @@
  * - replaceBlock() swaps a height atomically enough for an explorer: delete
  *   the old block's transactions, their token transfers and internal
  *   transactions, upsert the block (with its uncle issuance,
- *   lib/sync/uncle-rewards.ts) and its canonical transactions, drop the
- *   BlockStat so stats recompute, rewind the range indexers that covered the
+ *   lib/sync/uncle-rewards.ts) and its canonical transactions, rewind the
+ *   range indexers that covered the
  *   height (lib/sync/range-scan.ts), and log the event. Same hash → nothing is
  *   written.
  * - findCommonAncestor() walks back (at most maxDepth) to the last height
@@ -20,7 +20,6 @@
 
 import {
   Block,
-  BlockStat,
   InternalTransaction,
   ScanProgress,
   TokenTransfer,
@@ -207,9 +206,8 @@ async function oldTransactionHashes(oldBlock: { transactions?: string[] } | null
 
 /**
  * Make height `height` match `nodeBlock`. Removes the orphaned block's
- * transactions / token transfers, upserts the canonical block + transactions,
- * drops the BlockStat for the height and rewinds the token scan so transfers
- * are re-indexed. No-op when the DB already holds the same hash.
+ * transactions / token transfers, upserts the canonical block + transactions
+ * and rewinds the token scan so transfers are re-indexed. No-op when the DB already holds the same hash.
  */
 export async function replaceBlock(
   node: ChainNode,
@@ -270,7 +268,6 @@ export async function replaceBlock(
   if (uncleReward !== undefined) block.uncleReward = uncleReward;
   await upsertBlocks([block]);
   await upsertTransactions(transactions);
-  await BlockStat.deleteOne({ number: height });
   // A height the range indexers already covered (a reorg, or a gap filled by repair-chain)
   // must be indexed again; the live head is above their ranges and leaves them alone
   const rewoundScans = await rewindRangeScans(height);

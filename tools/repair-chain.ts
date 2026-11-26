@@ -16,11 +16,9 @@
  * mismatch is left. --dry-run prints the heights and old/new hashes that would
  * be replaced and writes nothing.
  *
- * After a repair: recompute statistics from the lowest replaced height
- * (`RESCAN_FROM=<minReplaced> npm run stats`, or the equivalent legacy form
- * `RESCAN=100:<ceil((head - minReplaced) / 100) + 10>`); the token scan is
- * rewound automatically and will re-index transfers; richlist balances come
- * from the node, no action needed.
+ * After a repair nothing else is needed: the token scan and the range indexers
+ * are rewound automatically and re-index the replaced heights, and richlist
+ * balances come from the node.
  *
  * Direct: npx tsx --tsconfig tsconfig.tools.json tools/repair-chain.ts --check
  */
@@ -31,7 +29,7 @@ import Web3 from 'web3';
 import { connectDB, ensureIndexesOnStartup } from '../models/index';
 import { getWeb3ProviderURL } from '../lib/config';
 import { createWeb3Node } from '../lib/sync/web3-node';
-import { checkChain, repairChain, rescanHint, sampleAgainstNode } from '../lib/sync/chain-check';
+import { checkChain, repairChain, sampleAgainstNode } from '../lib/sync/chain-check';
 
 type Mode = 'check' | 'sample' | 'fix' | 'help';
 
@@ -165,13 +163,8 @@ export async function run(argv: string[]): Promise<number> {
   }
   if (result.minReplaced !== null) {
     const head = await node.getBlockNumber();
-    const hint = rescanHint(result.minReplaced, head);
     console.log(
       `\n   replaced range: ${result.minReplaced}..${result.maxReplaced} (chain head ${head})`
-    );
-    console.log(`   next: ${hint.preferred}   (BlockStat of the replaced heights was removed)`);
-    console.log(
-      `         equivalent legacy form: ${hint.legacy}   (RESCAN=<interval>:<range> scans range × interval blocks back from the head)`
     );
     console.log(
       '   token transfers of the replaced heights are re-indexed by the next tokens run (scan progress rewound)'

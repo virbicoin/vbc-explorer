@@ -18,7 +18,7 @@ import { MongoUriConfigError, resolveMongoUri } from '../lib/db/uri';
  *   (`mongoose.models.X || mongoose.model('X', schema)`) anywhere else;
  *   import them from here instead.
  * - Every collection name is set explicitly via `{ collection }` and matches
- *   the production database (Block, Transaction, Account, Contract, BlockStat,
+ *   the production database (Block, Transaction, Account, Contract,
  *   Market, DexSwap, VerificationJob, tokens, tokentransfers, tokenholders,
  *   scan_progress, InternalTransaction).
  * - Indexes are declared on the schemas below and nowhere else. They are
@@ -77,19 +77,6 @@ export interface IAccount extends Document {
   balance: string; // Changed from number to string
   blockNumber: number;
   type: number; // address: 0x0, contract: 0x1
-}
-
-export interface IBlockStat extends Document {
-  number: number;
-  timestamp: number;
-  difficulty: string;
-  hashrate: string;
-  txCount: number;
-  gasUsed: number;
-  gasLimit: number;
-  miner: string;
-  blockTime: number;
-  uncleCount: number;
 }
 
 export interface IContract extends Document {
@@ -480,22 +467,6 @@ const ScanProgressSchema = new Schema(
   { collection: 'scan_progress' }
 );
 
-const BlockStatSchema = new Schema(
-  {
-    number: { type: Number, index: { unique: true } },
-    timestamp: Number,
-    difficulty: String,
-    hashrate: String,
-    txCount: Number,
-    gasUsed: Number,
-    gasLimit: Number,
-    miner: String,
-    blockTime: Number,
-    uncleCount: Number,
-  },
-  { collection: 'BlockStat' }
-);
-
 const MarketSchema = new Schema(
   {
     symbol: String,
@@ -556,7 +527,7 @@ const VerificationJobSchema = new Schema(
  * Every index below is backed by a real query (the README "Database indexes"
  * section lists the evidence). Unique single-field indexes are declared on
  * the paths above: Block.number, Block.hash, Transaction.hash,
- * Account.address, Contract.address, BlockStat.number, VerificationJob.guid,
+ * Account.address, Contract.address, VerificationJob.guid,
  * tokens.address, scan_progress.scanType.
  */
 
@@ -724,8 +695,6 @@ export const Transaction =
 export const TokenTransfer =
   mongoose.models.TokenTransfer ||
   mongoose.model<ITokenTransfer>('TokenTransfer', TokenTransferSchema);
-export const BlockStat =
-  mongoose.models.BlockStat || mongoose.model<IBlockStat>('BlockStat', BlockStatSchema);
 export const Market = mongoose.models.Market || mongoose.model<IMarket>('Market', MarketSchema);
 export const DexSwap =
   mongoose.models.DexSwap || mongoose.model<IDexSwap>('DexSwap', DexSwapSchema);
@@ -747,7 +716,6 @@ export const ALL_MODELS: readonly AnyModel[] = [
   Transaction,
   Account,
   Contract,
-  BlockStat,
   Market,
   DexSwap,
   VerificationJob,
@@ -837,7 +805,6 @@ const models = {
   Contract,
   Transaction,
   TokenTransfer,
-  BlockStat,
   Market,
   DexSwap,
   VerificationJob,

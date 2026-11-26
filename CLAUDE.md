@@ -136,7 +136,6 @@ models/                 # Mongoose モデル（index.ts が唯一の定義場所
 tools/                  # ブロックチェーン同期用 CLI ツール
   sync.ts               # ブロックチェーン同期
   tokens.ts             # トークンデータ同期（NFT/ERC20）
-  stats.ts              # 統計計算（RESCAN=<interval>:<range> / RESCAN_FROM=<height> で再計算）
   richlist.ts           # リッチリスト生成
   price.ts              # 価格 + DEX スワップ同期
   register-contracts.ts # コントラクト登録
@@ -239,7 +238,6 @@ npm run worker            # 有効なジョブを前面で実行（--only sync,t
 # 各ジョブを単独で / 一回だけのメンテナンス
 npm run sync            # ブロックチェーンデータを同期
 npm run tokens          # トークン（NFT/ERC20）データを同期
-npm run stats           # 統計を計算
 npm run richlist        # 残高を差分で 1 回更新（-- --from 0 で全部やり直し）
 npm run price           # 価格 + DEX スワップデータを更新（価格 API / DEX プール）
 npm run internal-txs    # 内部取引をコールトレースから索引（--once / --from <block> / --status）
@@ -258,7 +256,6 @@ npm run flag-spam-tokens -- --audit-code --dry-run # コードのないアドレ
 
 # バックアップ（URI は YAML 経由で渡し、コマンド行や ps に出さない。アプリ用ユーザーで可）
 umask 077; printf 'uri: %s\n' "$(sed -n 's/^MONGODB_URI=//p' .env)" > /tmp/md.yaml && mongodump --config /tmp/md.yaml --gzip --out "$HOME/backup/explorerDB-$(date +%F)"; rm -f /tmp/md.yaml
-RESCAN_FROM=<height> npm run stats    # 指定高さから先端まで BlockStat を再計算（repair-chain が案内する形）
 
 # PM2（アプリは explorer の 1 つだけ。画面とジョブの両方）
 pm2 restart explorer    # 画面とジョブを再起動
@@ -524,6 +521,7 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 - **どのジョブを動かすかは `lib/features.ts` の `planJobs()` だけが決める**（`config.json` の機能の切り替え、`traces.url` / `TRACE_RPC_URL`、`currency.priceApi`）。`npm run worker -- --plan` で一覧と理由が出る。pm2 の構成にジョブを並べない
 - ジョブのログは AsyncLocalStorage で `[job名]` を付ける。ジョブの起動が失敗したらそのジョブだけ 1 分（最大 10 分まで倍）後にやり直す
 - **ツールのジョブの経路で `process.exit` しない**（エラーは throw。exit とシグナル処理は各ツールの `require.main === module` のブロックだけ）。ワーカーはツールを `require` で読み、有効なジョブのツールしか読み込まない。ツール同士を import しない（sync.ts が stats / richlist / tokens を読み込んでいた）
+- 統計ジョブ（`tools/stats.ts` と `BlockStat`）は削除した（2026-11-27）。BlockStat を読む API・画面・ツールが無く、5 分ごとに DB にあるブロックをノードから取り直して誰も使わないデータを作っていた。本番の `BlockStat` コレクションは消していない。統計が要るときは保存済みの `Block` から集計する（`/api/v2/stats/charts/transactions` と同じ）
 - richlist（`tools/richlist.ts`）は差分方式: `scan_progress` の `richlist` の位置から保存済みの先端までに出てきたアドレス（取引の from / to / creates、ブロックの miner、内部取引）の残高を `latest` で読む。ワーカーでは 5 分ごと。`Account.percentage` は誰も読まないので書かない
 - 本番の切り替えは `pm2 delete sync stats richlist tokens price internal-txs`（ecosystem から消えたアプリ）→ ビルド → `pm2 restart explorer` → `pm2 save`
 
@@ -637,7 +635,7 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 - `tokens` に `factory`（小文字）と `factoryVerified`（true / false / 未設定）を追加。`/api/tokens/[address]` は `source` / `factory` / `factoryVerified` を返し、`TokenDetailClient` は `source === 'launchpad' && factoryVerified === false` で「ファクトリー外」バッジ。`npm run flag-spam-tokens -- --audit-launchpad [--dry-run]` が Launchpad 由来トークンをファクトリーに照会して記録する（非表示にするかは別判断）
 - `CreateTokenForm.tsx` は `tokenAddress` だけを送り、404 なら「トークンのデプロイがまだ確定していません」と表示して 12 秒間隔で最大 3 回再試行
 - `config.compiler`（`cacheDir` 既定 `~/.cache/vbc-solc`、`SOLC_CACHE_DIR` で上書き / `concurrency` / `maxQueue` / `timeoutMs` / `maxOldGenerationSizeMb` / `allowedVersions`）を `lib/config.ts` の `getCompilerConfig()` が既定値付きで返す。`next.config.ts` は `outputFileTracingIncludes` でワーカーと `solc` を standalone に含める。`/api/compile` はコンパイルしない（検証データの参照）
-- `tools/stats.ts`: `RESCAN_FROM=<height>`（`RESCAN_INTERVAL` で間隔）を追加。RESCAN 系は完了時に exit、BlockStat は `bulkWrite` の upsert で再計算（insertMany ＋ E11000 無視は撤去）。`tools/repair-chain.ts` は `RESCAN_FROM=<minReplaced> npm run stats` と等価な `RESCAN=100:<ceil((head − minReplaced) / 100) + 10>` を案内（`lib/sync/chain-check.ts` の `rescanHint()`）
+- （2026-11-27 に統計ジョブごと削除。BlockStat はどこからも読まれていなかった）`tools/stats.ts`: `RESCAN_FROM=<height>`（`RESCAN_INTERVAL` で間隔）を追加。RESCAN 系は完了時に exit、BlockStat は `bulkWrite` の upsert で再計算（insertMany ＋ E11000 無視は撤去）。`tools/repair-chain.ts` は `RESCAN_FROM=<minReplaced> npm run stats` と等価な `RESCAN=100:<ceil((head − minReplaced) / 100) + 10>` を案内（`lib/sync/chain-check.ts` の `rescanHint()`）
 - 運用タスク E-1 の収録物: `docs/njs/rpc-filter.js`（禁止プレフィックス `trace_` / `parity_` / `debug_` / `personal_` / `admin_` / `miner_` を先頭の定数に集約。バッチ対応、本文未バッファ 413、JSON 不正 400 / -32700、method 非文字列 400 / -32600、禁止 403 / -32601、許可は `r.subrequest('/_rpc')` で透過）と `docs/nginx-rpc.conf.example`。純粋関数 `classify()` は `tests/ops/rpc-filter.test.ts` で Node から検証
 - テスト: `tests/launchpad/{fake-factory,factory.test}.ts`（偽ファクトリー世界＋モック JSON-RPC ノード）、`tests/api/launchpad-register.test.ts`、`tests/contract/{compiler-cache,compile-worker}.test.ts`（フィクスチャサーバーと同梱 `node_modules/solc/soljson.js`）、`tests/security/validation.test.ts`（limit 丸め・page 正規化・maxOffset）、`tests/sync/chain-check.test.ts`（`rescanHint`）、`tests/db/db-connect.test.ts`
 
@@ -655,7 +653,7 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 - tokenURI は **ERC-721/1155 と判定できたコントラクトだけ**読む（DB の `Contract.ERC` / `type`、不明なら ERC-165 `supportsInterface`）。取得した metadata は name/description/image/attributes のみ、長さ上限付きで返す（`lib/services/nft-metadata.service.ts`）。`{tokenId}.json` フォールバックは廃止
 - **`X-Forwarded-For` を再び読まない**。レート制限は「レート制限」節のとおり
 - **`insertMany` と E11000 無視を復活させない**。Block は number、Transaction は hash をキーに upsert（`lib/sync/reorg.ts`）。`Transaction.hash` の unique は維持
-- 高さの差し替えは `replaceBlock()` 経由（孤児 tx と tokentransfers の削除、正規ブロック/tx の upsert、BlockStat 削除、tokens スキャンの巻き戻し、`logger.warn` のリオーグイベント）
+- 高さの差し替えは `replaceBlock()` 経由（孤児 tx と tokentransfers の削除、正規ブロック/tx の upsert、tokens スキャンの巻き戻し、`logger.warn` のリオーグイベント）
 - `tokens` / `Contract` に名前を書くときは `hiddenFields()`（`lib/security/display-name.ts`）を通す。一覧 API は `hidden: { $ne: true }`、詳細 API はフラグ付きで返し、画面は `components/DisplayName.tsx` で描画（制御文字除去・長さ上限・リンク化しない・hidden はバッジ＋短縮アドレス）。公開 API に `includeHidden` は作らない
 - 攻撃元 IP や作成者アドレスをコードで遮断しない（Cloudflare / ufw の運用で行う）
 
@@ -666,7 +664,7 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 - `lib/sync/`: `normalize.ts`（ノード→DB ドキュメント）、`reorg.ts`（upsert / `replaceBlock` / `findCommonAncestor` / `handleReorg` / `processNewBlock` / `verifyConfirmationWindow` / リスナー位置の永続化）、`chain-check.ts`（`checkChain` / `sampleAgainstNode` / `repairChain`）、`web3-node.ts`（web3 v4 アダプタ）。リスナーは新ブロック N の parentHash と DB の N-1 を比較し、不一致なら共通祖先（最大 `maxReorgDepth`=64）まで遡って置換。毎ポーリングで head−`confirmations`（既定 12）..head も照合。設定は `config.json` の `sync` か `SYNC_CONFIRMATIONS` / `SYNC_MAX_REORG_DEPTH`
 - `tools/repair-chain.ts`: `--check`（number 昇順ストリームで欠落と parentHash 不一致を数える。不一致で exit 1）、`--sample k`、`--fix [--from] [--to] [--dry-run]`（共通祖先から連結が復元するまで置換、1 箇所 256 まで、`scan_progress` の `repair` で再開可、完了後に `--check` を自動実行）。本番ではローカルノードに対してのみ実行する
 - `tools/flag-spam-tokens.ts`: Contract / Token 全件に `classifyDisplayName` を適用（`--dry-run`、`--address --hide|--unhide`、`--unhide-all`。`manual` フラグは自動判定で上書きしない）
-- `tools/stats.ts` は import 時に接続しない（sync.ts が全モードで stats の初期化を走らせ、ログのラベルが `tool: 'stats'` に固定されていた）。`tools/sync.ts` は環境変数 `MONGODB_URI` を config.json より優先し、`${VAR}` プレースホルダを解決する
+- （2026-11-27 に統計ジョブごと削除。BlockStat はどこからも読まれていなかった）`tools/stats.ts` は import 時に接続しない（sync.ts が全モードで stats の初期化を走らせ、ログのラベルが `tool: 'stats'` に固定されていた）。`tools/sync.ts` は環境変数 `MONGODB_URI` を config.json より優先し、`${VAR}` プレースホルダを解決する
 - テスト: `tests/security/{url,safe-fetch,rate-limits,display-name}.test.ts`、`tests/services/nft-metadata.test.ts`、`tests/sync/{reorg,chain-check}.test.ts`（モックノード＋mongodb-memory-server）、`tests/api/hidden-tokens.test.ts`
 
 ### 本番反映時の注意
@@ -681,7 +679,7 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 
 ### 設計ルール（必ず守る）
 - **モデルは `models/index.ts` のみ**。API ルートやツールに inline の `mongoose.models.X || mongoose.model('X', schema)` を書かない（`grep -rn "mongoose.model("` が models/index.ts 以外で 0 件であること）。`lib/models.ts` は re-export のみ
-- **コレクション名は `{ collection }` で明示**し、本番実在名（Block, Transaction, Account, Contract, BlockStat, Market, DexSwap, VerificationJob, tokens, tokentransfers, tokenholders, scan_progress）に合わせる。`tests/db/model-collections.test.ts` の allowlist を更新しない限り新しい名前は使えない
+- **コレクション名は `{ collection }` で明示**し、本番実在名（Block, Transaction, Account, Contract, Market, DexSwap, VerificationJob, tokens, tokentransfers, tokenholders, scan_progress）に合わせる。`tests/db/model-collections.test.ts` の allowlist を更新しない限り新しい名前は使えない
 - **インデックスはスキーマで定義**し、実クエリ（`find` / `findOne` / `aggregate` / `sort` のキー）に根拠があるものだけ持つ。根拠は `models/index.ts` のコメントと README「Database Indexes」に記載
 - **`autoIndex` は false のまま**。作成は `ensureIndexes()`（models/index.ts）が行い、呼び出すのは DB に書くツールだけ（tools/sync.ts の全モード、stats、richlist、tokens、price、rescan-contracts、register-contracts、add-token）。Next.js（app/）からは呼ばない
 - **`Model.syncIndexes()` は使わない**（スキーマにないインデックスを削除する）。`background: true` も渡さない（MongoDB 4.2 以降無視）

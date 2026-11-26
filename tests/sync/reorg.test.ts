@@ -7,7 +7,6 @@ import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import {
   Block,
-  BlockStat,
   InternalTransaction,
   ScanProgress,
   TokenTransfer,
@@ -89,7 +88,6 @@ describe('processNewBlock', () => {
       tokenAddress: '0xt',
       blockNumber: 10,
     });
-    await BlockStat.collection.insertOne({ number: 10, timestamp: 1 });
     await ScanProgress.collection.insertOne({ scanType: 'tokens', lastScannedBlock: 500 });
 
     const node = new FakeNode(canonical);
@@ -102,7 +100,6 @@ describe('processNewBlock', () => {
     expect(await Transaction.countDocuments({ hash: '0xorphantx' })).toBe(0);
     expect(await Transaction.countDocuments({ hash: '0xcan10tx' })).toBe(1);
     expect(await TokenTransfer.countDocuments({})).toBe(0);
-    expect(await BlockStat.countDocuments({ number: 10 })).toBe(0);
     const scan = (await ScanProgress.findOne({ scanType: 'tokens' }).lean()) as {
       lastScannedBlock: number;
     };

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * The explorer's background work in one process: block sync, statistics, tokens, internal
- * transactions, the richlist and prices. Which jobs run follows config.json (lib/features.ts), so a
+ * The explorer's background work in one process: block sync, tokens, internal transactions, the
+ * richlist and prices. Which jobs run follows config.json (lib/features.ts), so a
  * part switched off there (the richlist, the DEX, a missing trace source) costs nothing.
  *
  *   npm run worker                    run the enabled jobs (pm2 app `worker`)
@@ -10,7 +10,7 @@
  *
  * Every line a job prints is prefixed with its name. A job whose start fails is started again
  * after a pause (1 minute, doubling up to 10), without stopping the others. One-off maintenance
- * (`npm run sync -- --start`, `tokens -- --rescan`, `internal-txs -- --from`, RESCAN for stats,
+ * (`npm run sync -- --start`, `tokens -- --rescan`, `internal-txs -- --from`,
  * `richlist -- --from`) still runs through the separate commands.
  */
 import '../lib/env'; // .env / .env.local before any other module reads process.env
@@ -22,7 +22,6 @@ import { planJobs, selectJobs, type JobName } from '../lib/features';
 // Loaded only when started (a job that is off is never loaded). The tools are CommonJS modules.
 const load = {
   sync: () => require('./sync') as typeof import('./sync'),
-  stats: () => require('./stats') as typeof import('./stats'),
   tokens: () => require('./tokens') as typeof import('./tokens'),
   internalTxs: () => require('./internal-txs') as typeof import('./internal-txs'),
   richlist: () => require('./richlist') as typeof import('./richlist'),
@@ -31,7 +30,6 @@ const load = {
 
 const STARTERS: Record<JobName, () => Promise<unknown>> = {
   sync: async () => load.sync().main(),
-  stats: async () => load.stats().main(),
   tokens: async () => load.tokens().main([]),
   'internal-transactions': async () => load.internalTxs().main([]),
   richlist: async () => load.richlist().runRichlist(),
@@ -107,14 +105,6 @@ async function main(args: string[]): Promise<void> {
       console.log(`${state.padEnd(4)} ${entry.name.padEnd(22)} ${entry.reason}`);
     }
     return;
-  }
-
-  // RESCAN / RESCAN_FROM make the stats tool rescan and exit: a one-off for `npm run stats`
-  for (const name of ['RESCAN', 'RESCAN_FROM'] as const) {
-    if (process.env[name]) {
-      console.warn(`[worker] ignoring ${name}: run rescans with npm run stats`);
-      delete process.env[name];
-    }
   }
 
   tagConsole();

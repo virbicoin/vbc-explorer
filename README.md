@@ -637,7 +637,7 @@ sequenceDiagram
 
 ## Database Models
 
-All models are defined once in `models/index.ts` (`lib/models.ts` only re-exports it). Collection names are explicit and match the production database: `Block`, `Transaction`, `Account`, `Contract`, `BlockStat`, `Market`, `DexSwap`, `VerificationJob`, `tokens`, `tokentransfers`, `tokenholders`, `scan_progress`.
+All models are defined once in `models/index.ts` (`lib/models.ts` only re-exports it). Collection names are explicit and match the production database: `Block`, `Transaction`, `Account`, `Contract`, `Market`, `DexSwap`, `VerificationJob`, `tokens`, `tokentransfers`, `tokenholders`, `scan_progress`.
 
 ### Block
 Stores block information (real-time sync via tools/sync.ts):
@@ -667,19 +667,6 @@ Stores transaction information (real-time sync via tools/sync.ts):
 - `status`: Transaction status (1 = success, 0 = failed)
 - `contractAddress`: Created contract address (for contract creation txs)
 - `input`: Transaction input data (hex string)
-
-### BlockStat
-Stores aggregated block statistics (updated via tools/stats.ts):
-- `number`: Block number (reference to Block)
-- `blockTime`: Time between this block and previous block (seconds)
-- `difficulty`: Block difficulty (BigInt as string)
-- `hashrate`: Estimated network hashrate at block time
-- `txCount`: Number of transactions in the block
-- `gasUsed`: Total gas used by the block
-- `gasLimit`: Gas limit of the block
-- `timestamp`: Block timestamp
-- `miner`: Miner address
-- `avgGasPrice`: Average gas price of transactions in block
 
 ### Account
 Stores account balance information (updated via tools/richlist.ts):
@@ -757,7 +744,6 @@ Every index is backed by a real query:
 | Transaction | `{ timestamp: -1 }` | daily / 24h transaction counts (`/api/stats/daily`, v2 stats) |
 | Account | `{ address: 1 }` unique, `{ balance: -1 }` | address pages, richlist |
 | Contract | `{ address: 1 }` unique | contract pages, verification |
-| BlockStat | `{ number: 1 }` unique | statistics upsert |
 | Market | `{ timestamp: -1 }` | latest price |
 | DexSwap | `{ hash: 1, pair: 1 }` unique, `{ pair: 1, timestamp: -1 }`, `{ pair: 1, blockNumber: -1 }`, `{ timestamp: -1 }` | swap sync, OHLCV / trades / 24h DEX stats |
 | VerificationJob | `{ guid: 1 }` unique | verification status polling |
@@ -797,7 +783,7 @@ On VirBiCoin the full history (about 46,000 transactions) is indexed in about a 
 The block listener (`tools/sync.ts`) is reorg-aware (`lib/sync/`):
 
 - Blocks are **upserted by `number`** and transactions **by `hash`** (`bulkWrite`); a transaction re-included in another block is moved, never dropped. `insertMany` with ignored duplicate-key errors is gone.
-- Before a new block N is stored its `parentHash` is compared with the stored block N-1. On a mismatch the listener walks back to the last height where DB and node agree (at most `maxReorgDepth`, default 64) and replaces every height above it: the orphan's transactions, token transfers and internal transactions are deleted, the canonical block and transactions are upserted, the `BlockStat` of the height is dropped (stats recompute it), and the token scan and the range indexers (internal transactions, ERC-1155) are rewound. A reorg deeper than `maxReorgDepth` is logged and recorded in `scan_progress` (`reorg-pending`) for the repair tool.
+- Before a new block N is stored its `parentHash` is compared with the stored block N-1. On a mismatch the listener walks back to the last height where DB and node agree (at most `maxReorgDepth`, default 64) and replaces every height above it: the orphan's transactions, token transfers and internal transactions are deleted, the canonical block and transactions are upserted, and the token scan and the range indexers (internal transactions, ERC-1155) are rewound. A reorg deeper than `maxReorgDepth` is logged and recorded in `scan_progress` (`reorg-pending`) for the repair tool.
 - Every poll also re-verifies the last `confirmations` heights (default 12) against the node, so a reorg that happened between polls is caught too.
 - The listener position is persisted in `scan_progress` (`sync`) and restored on restart.
 - Configure in `config.json` (`"sync": { "confirmations": 12, "maxReorgDepth": 64 }`) or with `SYNC_CONFIRMATIONS` / `SYNC_MAX_REORG_DEPTH`.
@@ -821,7 +807,7 @@ npm run backfill-uncle-rewards -- --from 0    # rescan everything, e.g. to retry
 
 Run `repair-chain -- --check` first: the backfill checks every block against the node and reports stored blocks that are not canonical instead of filling them. Expect about two RPC calls per block with uncles.
 
-After `--fix`: recompute statistics from the lowest replaced height with `RESCAN_FROM=<minReplaced> npm run stats` (the tool prints the command). The legacy form `RESCAN=<interval>:<range>` scans `range × interval` blocks back from the head, so the equivalent is `RESCAN=100:<ceil((head − minReplaced) / 100) + 10>`; the tool prints that too. The token scan re-indexes transfers automatically, and richlist balances come from the node (no action). Run it against the local node only; it issues about two RPC calls per replaced block. Back up `Block`, `Transaction` and `BlockStat` first.
+After `--fix` nothing else is needed: the token scan re-indexes transfers automatically, and richlist balances come from the node (no action). Run it against the local node only; it issues about two RPC calls per replaced block. Back up `Block` and `Transaction` first.
 
 ## 🔒 Security
 
@@ -998,7 +984,6 @@ pm2 logs explorer
 | Job | Runs | Work |
 |-----|------|------|
 | `sync` | always | blocks and transactions (catch-up, then each new block; reorgs) |
-| `stats` | always | block statistics |
 | `tokens` | always | token discovery and updates, NFTs, ERC-1155; DEX LP pairs and Launchpad factories when those are on |
 | `internal-transactions` | with a trace source (`traces.url` or `TRACE_RPC_URL`) | internal transactions from call traces |
 | `richlist` | unless `richlist.enabled` is false | account balances, read again every five minutes for the addresses touched since the last pass |
@@ -1009,7 +994,7 @@ npm run worker -- --plan        # which jobs run with this config.json, and why
 npm run worker -- --only sync   # run jobs in the foreground (e.g. to debug one; stop the explorer's first)
 ```
 
-Each log line of a job starts with its name (`[sync] ...`). The child is started again a minute after it ends and stops with the website. Its heap is limited to 512 MB (V8 collects only near its limit, so the limit is what it takes); set `EXPLORER_WORKER_MEMORY_MB` for a large chain. To run the jobs elsewhere (several web servers on one database, or a separate machine), set `EXPLORER_WORKER=off` for the website and run `npm run worker` on one host. In development (`npm run dev`) the jobs start only with `EXPLORER_WORKER=on`. One-off maintenance still uses the separate commands (`npm run sync -- --start`, `npm run tokens -- --rescan`, `npm run internal-txs -- --from`, `RESCAN_FROM=<height> npm run stats`, `npm run richlist -- --from 0`).
+Each log line of a job starts with its name (`[sync] ...`). The child is started again a minute after it ends and stops with the website. Its heap is limited to 512 MB (V8 collects only near its limit, so the limit is what it takes); set `EXPLORER_WORKER_MEMORY_MB` for a large chain. To run the jobs elsewhere (several web servers on one database, or a separate machine), set `EXPLORER_WORKER=off` for the website and run `npm run worker` on one host. In development (`npm run dev`) the jobs start only with `EXPLORER_WORKER=on`. One-off maintenance still uses the separate commands (`npm run sync -- --start`, `npm run tokens -- --rescan`, `npm run internal-txs -- --from`, `npm run richlist -- --from 0`).
 
 Indexes are created automatically the first time the sync tools start (`Block.number` and `Block.hash` take a few minutes on a large chain). To create or verify them by hand:
 
@@ -1123,7 +1108,6 @@ npm run worker
 
 # Or one job alone
 npm run sync    # Blockchain synchronization
-npm run stats   # Network statistics
 npm run richlist # Account balances (one pass)
 npm run tokens  # Token tracking
 npm run price   # Price tracking
@@ -1157,7 +1141,6 @@ npm run worker -- --plan          # which background jobs this config.json runs,
 
 # One-off maintenance (the commands, not pm2)
 npm run sync -- --sync-all              # sync everything again from startBlock
-RESCAN=100:10000 npm run stats          # recompute statistics
 ```
 
 ### NPM Script Usage
@@ -1166,7 +1149,6 @@ RESCAN=100:10000 npm run stats          # recompute statistics
 # Background jobs (the explorer starts them itself in production)
 npm run worker       # all jobs config.json enables (--plan: list them, --only: some of them)
 npm run sync         # Blockchain synchronization
-npm run stats        # Network statistics
 npm run richlist     # Rich list calculation
 npm run tokens       # Token and NFT tracking
 npm run price        # Price monitoring
@@ -1210,9 +1192,6 @@ npx tsx --tsconfig tsconfig.tools.json tools/worker.ts
 # Blockchain synchronization
 npx tsx --tsconfig tsconfig.tools.json tools/sync.ts
 
-# Statistics calculation
-npx tsx --tsconfig tsconfig.tools.json tools/stats.ts
-
 # Richlist calculation
 npx tsx --tsconfig tsconfig.tools.json tools/richlist.ts
 
@@ -1229,8 +1208,6 @@ npx tsx --tsconfig tsconfig.tools.json tools/optimize-indexes.ts --check
 npx tsx --tsconfig tsconfig.tools.json tools/repair-chain.ts --check
 npx tsx --tsconfig tsconfig.tools.json tools/flag-spam-tokens.ts --dry-run
 
-# Environment variable configuration
-RESCAN=100:10000 npx tsx --tsconfig tsconfig.tools.json tools/stats.ts  # Statistics rescan
 SYNCALL=true npx tsx --tsconfig tsconfig.tools.json tools/sync.ts            # Full block sync
 ```
 
@@ -1392,7 +1369,6 @@ npm run dev
 # Background jobs (npm run dev does not start them; EXPLORER_WORKER=on npm run dev does)
 npm run worker       # all jobs config.json enables
 npm run sync         # Blockchain synchronization
-npm run stats        # Network statistics calculation  
 npm run richlist     # Rich list calculation
 npm run tokens       # Token and NFT tracking
 npm run price        # Price monitoring
@@ -2154,10 +2130,6 @@ htop
 # Force resync from specific block
 SYNCALL=true npm run sync
 
-# Rescan statistics
-RESCAN=100:10000 npm run stats
-# ... or from a block height up to the head (what repair-chain prints; RESCAN_INTERVAL=10 for a finer grid)
-RESCAN_FROM=2298155 npm run stats
 
 # Check sync status
 pm2 logs explorer --lines 200 | grep '\[sync\]'
@@ -2168,12 +2140,10 @@ pm2 logs explorer --lines 200 | grep '\[sync\]'
 # Count broken links in the stored chain (exit 1 when any exist)
 npm run repair-chain -- --check
 
-# Preview, then replace the orphans with the node's canonical blocks (back up Block/Transaction/BlockStat first)
+# Preview, then replace the orphans with the node's canonical blocks (back up Block and Transaction first)
 npm run repair-chain -- --fix --dry-run
 npm run repair-chain -- --fix
 
-# Recompute statistics from the lowest replaced height to the head (the tool prints the exact command)
-RESCAN_FROM=<minReplaced> npm run stats
 
 # Reorgs the live sync could not resolve are recorded here
 set -a; . ./.env; set +a

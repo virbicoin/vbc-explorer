@@ -70,12 +70,11 @@ export const FEATURE_NAMES: Record<Feature, string> = {
 // Background jobs (tools/worker.ts runs the enabled ones; `npm run worker -- --plan` prints them)
 // ============================================
 
-export type JobName = 'sync' | 'stats' | 'tokens' | 'internal-transactions' | 'richlist' | 'price';
+export type JobName = 'sync' | 'tokens' | 'internal-transactions' | 'richlist' | 'price';
 
 /** In start order. */
 export const JOB_NAMES: readonly JobName[] = [
   'sync',
-  'stats',
   'tokens',
   'internal-transactions',
   'richlist',
@@ -123,7 +122,6 @@ export function planJobs({ config, traceUrl, env = {} }: JobInputs): JobPlan[] {
   const sources = priceSources(config, env);
   return [
     { name: 'sync', enabled: true, reason: 'blocks and transactions (always)' },
-    { name: 'stats', enabled: true, reason: 'block statistics (always)' },
     {
       name: 'tokens',
       enabled: true,

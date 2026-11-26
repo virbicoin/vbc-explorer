@@ -167,19 +167,6 @@ export interface NftOwnershipResult {
 // Statistics Types
 // ============================================================================
 
-export interface BlockStat {
-  number: number;
-  timestamp: number;
-  difficulty: string;
-  hashrate: string;
-  txCount: number;
-  gasUsed: number;
-  gasLimit: number;
-  miner: string;
-  blockTime: number;
-  uncleCount: number;
-}
-
 export interface ChainStats {
   blockHeight: number;
   difficulty: string;

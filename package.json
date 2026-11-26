@@ -49,7 +49,6 @@
     "check": "npm run lint && npm run typecheck && npm run typecheck:tools && npm run format:check",
     "clean": "rm -rf .next node_modules",
     "sync": "cross-env MEMORY_LIMIT_MB=1024 NODE_OPTIONS='--max-old-space-size=1200' tsx --tsconfig tsconfig.tools.json tools/sync.ts",
-    "stats": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/stats.ts",
     "richlist": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/richlist.ts",
     "tokens": "cross-env MEMORY_LIMIT_MB=512 NODE_OPTIONS='--max-old-space-size=768' tsx --tsconfig tsconfig.tools.json tools/tokens.ts",
     "price": "cross-env MEMORY_LIMIT_MB=256 NODE_OPTIONS='--max-old-space-size=384' tsx --tsconfig tsconfig.tools.json tools/price.ts",
