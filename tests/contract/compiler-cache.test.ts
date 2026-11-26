@@ -192,6 +192,28 @@ describe('listReleaseVersions', () => {
     expect(await listReleaseVersions(options())).toEqual(['0.8.99', '0.8.98']);
   });
 
+  it('leaves out releases older than 0.4.11 (no standard JSON input)', async () => {
+    const withOld = {
+      ...LIST,
+      releases: { ...LIST.releases, '0.4.11': GOOD_FILE, '0.4.10': GOOD_FILE, '0.3.6': GOOD_FILE },
+    };
+    // A list server of its own, so the shared fixture keeps serving LIST
+    const other = http.createServer((_req, res) => {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify(withOld));
+    });
+    await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', () => resolve()));
+    const address = other.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    try {
+      expect(
+        await listReleaseVersions({ ...options(), baseUrl: `http://127.0.0.1:${port}/bin` })
+      ).toEqual(['0.8.99', '0.8.98', '0.4.11']);
+    } finally {
+      await new Promise<void>((resolve) => other.close(() => resolve()));
+    }
+  });
+
   it('honours compiler.allowedVersions', async () => {
     expect(await listReleaseVersions({ ...options(), allowedVersions: ['0.8.98'] })).toEqual([
       '0.8.98',

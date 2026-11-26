@@ -265,16 +265,20 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
+/** Oldest solc that accepts standard JSON input, which every verification path compiles with. */
+export const OLDEST_STANDARD_JSON_SOLC = '0.4.11';
+
 /**
- * Release versions published on binaries.soliditylang.org (list.json `releases`), newest first,
- * limited to `compiler.allowedVersions` when that is set. Every one of them can be fetched by
- * getCompiler(); the verify page offers this list instead of a hardcoded one.
+ * Release versions published on binaries.soliditylang.org (list.json `releases`) that accept
+ * standard JSON input (0.4.11 and later), newest first, limited to `compiler.allowedVersions` when
+ * that is set. The verify page offers this list instead of a hardcoded one.
  */
 export async function listReleaseVersions(options: CompilerCacheOptions = {}): Promise<string[]> {
   const resolved = resolveOptions(options);
   const list = await loadList(resolved);
   return Object.keys(list.releases)
     .filter((version) => /^\d+\.\d+\.\d+$/.test(version))
+    .filter((version) => compareVersions(version, OLDEST_STANDARD_JSON_SOLC) >= 0)
     .filter((version) => !resolved.allowedVersions || resolved.allowedVersions.includes(version))
     .sort((a, b) => compareVersions(b, a));
 }
