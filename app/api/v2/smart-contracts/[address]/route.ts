@@ -1,37 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Contract } from '@/models/index';
-import Web3 from 'web3';
-import fs from 'fs';
-import path from 'path';
 import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { blockscoutCompilerVersion, blockscoutLicenseType } from '@/lib/api/v2/common';
+import { getWeb3 } from '@/lib/web3/provider';
 
-// Function to read config
-const readConfig = () => {
-  try {
-    const configPath = path.join(process.cwd(), 'config.json');
-    const exampleConfigPath = path.join(process.cwd(), 'config.example.json');
-
-    if (fs.existsSync(configPath)) {
-      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    } else if (fs.existsSync(exampleConfigPath)) {
-      return JSON.parse(fs.readFileSync(exampleConfigPath, 'utf8'));
-    }
-  } catch (error) {
-    console.error('Error reading config:', error);
-  }
-
-  return {
-    nodeAddr: 'localhost',
-    port: 8545,
-  };
-};
-
-const config = readConfig();
-const WEB3_PROVIDER_URL =
-  process.env.WEB3_PROVIDER_URL || `http://${config.nodeAddr}:${config.port}`;
-const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
+// The shared node connection (lib/web3/provider.ts)
+const web3 = getWeb3();
 
 // Blockscout API v2 - Get smart contract info
 export async function GET(

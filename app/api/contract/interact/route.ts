@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadConfig } from '../../../../lib/config';
-import Web3 from 'web3';
 import {
   sanitizeAddress,
   isValidAddress,
@@ -10,6 +9,7 @@ import {
   isValidContentType,
 } from '../../../../lib/security';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { getWeb3 } from '@/lib/web3/provider';
 
 // Allowed methods for security (read-only methods only)
 const ALLOWED_METHODS = new Set([
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     const config = loadConfig();
-    const web3 = new Web3(config.web3Provider.url);
+    const web3 = getWeb3();
 
     const { contractAddress, abi, method, params, from } = await request.json();
 
@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
     if (limited) return limited;
 
     const config = loadConfig();
-    const web3 = new Web3(config.web3Provider.url);
+    const web3 = getWeb3();
 
     const { searchParams } = new URL(request.url);
     const contractAddress = searchParams.get('address');

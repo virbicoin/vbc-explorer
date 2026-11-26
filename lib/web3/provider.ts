@@ -18,8 +18,9 @@ let providerUrl: string | null = null;
 export function getWeb3(): Web3 {
   if (!web3Instance) {
     const config = loadConfig();
+    // the environment overrides config.json, as for the other settings
     providerUrl =
-      config.web3Provider?.url || process.env.WEB3_PROVIDER_URL || 'http://localhost:8545';
+      process.env.WEB3_PROVIDER_URL || config.web3Provider?.url || 'http://localhost:8545';
     web3Instance = new Web3(providerUrl);
   }
   return web3Instance;
@@ -31,8 +32,9 @@ export function getWeb3(): Web3 {
 export function getProviderUrl(): string {
   if (!providerUrl) {
     const config = loadConfig();
+    // the environment overrides config.json, as for the other settings
     providerUrl =
-      config.web3Provider?.url || process.env.WEB3_PROVIDER_URL || 'http://localhost:8545';
+      process.env.WEB3_PROVIDER_URL || config.web3Provider?.url || 'http://localhost:8545';
   }
   return providerUrl;
 }

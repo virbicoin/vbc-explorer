@@ -1,34 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { connectDB, Contract, Transaction } from '../../../../../models/index';
-import Web3 from 'web3';
-import fs from 'fs';
-import path from 'path';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { spdxLicense } from '@/lib/contract/solc-utils';
+import { getWeb3 } from '@/lib/web3/provider';
 
 // Function to read config
-const readConfig = () => {
-  try {
-    const configPath = path.join(process.cwd(), 'config.json');
-    const exampleConfigPath = path.join(process.cwd(), 'config.example.json');
 
-    if (fs.existsSync(configPath)) {
-      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    } else if (fs.existsSync(exampleConfigPath)) {
-      return JSON.parse(fs.readFileSync(exampleConfigPath, 'utf8'));
-    }
-  } catch (error) {
-    console.error('Error reading config:', error);
-  }
-
-  return {
-    nodeAddr: 'localhost',
-    port: 8545,
-  };
-};
-
-const config = readConfig();
-const web3 = new Web3(new Web3.providers.HttpProvider(`http://${config.nodeAddr}:${config.port}`));
+// The shared node connection (lib/web3/provider.ts)
+const web3 = getWeb3();
 
 export async function GET(
   request: NextRequest,
