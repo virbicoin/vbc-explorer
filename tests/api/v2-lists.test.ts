@@ -553,7 +553,7 @@ describe('search and contracts', () => {
     expect(body.items).toHaveLength(1);
     expect(body.items[0]).toMatchObject({
       address: { hash: DEPLOYED, is_verified: true, name: 'Vault' },
-      compiler_version: 'v0.8.28',
+      compiler_version: 'v0.8.28+commit.7893614a',
       optimization_enabled: true,
       language: 'solidity',
       // Blockscout's value for the stored SPDX identifier (was always 'none')
@@ -569,7 +569,10 @@ describe('search and contracts', () => {
     expect(blockscoutLicenseType('MIT OR Apache-2.0')).toBe('none');
     expect(blockscoutLicenseType('None')).toBe('none');
     expect(blockscoutLicenseType(undefined)).toBe('none');
-    expect(blockscoutCompilerVersion('0.8.28')).toBe('v0.8.28');
+    // short releases stored before 2026-11-27 get their commit; a full name is kept as it is
+    expect(blockscoutCompilerVersion('0.8.28')).toBe('v0.8.28+commit.7893614a');
+    expect(blockscoutCompilerVersion('0.8.30+commit.73712a01')).toBe('v0.8.30+commit.73712a01');
+    expect(blockscoutCompilerVersion('v0.8.30+commit.73712a01')).toBe('v0.8.30+commit.73712a01');
     expect(blockscoutCompilerVersion('v0.8.30+commit.73712a01')).toBe('v0.8.30+commit.73712a01');
     expect(blockscoutCompilerVersion(undefined)).toBeNull();
   });

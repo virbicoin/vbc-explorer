@@ -22,6 +22,7 @@ import { minerRewardWei, transactionFeesWei } from '@/lib/reward-schedule';
 import { rejectDeepPagination } from '@/lib/security/pagination';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
 import { ercTokenType } from '@/lib/api/token-standard';
+import { fullCompilerVersion } from '@/lib/contract/solc-utils';
 
 /** Rows per page, as on Blockscout. */
 export const PAGE_SIZE = 50;
@@ -514,11 +515,8 @@ export function blockscoutLicenseType(spdx: unknown): string {
   return BLOCKSCOUT_LICENSES[id] ?? 'none';
 }
 
-/** Blockscout writes compiler versions with a leading "v" ("v0.8.28+commit.7893614a"). */
-export function blockscoutCompilerVersion(version: unknown): string | null {
-  if (typeof version !== 'string' || !version) return null;
-  return version.startsWith('v') ? version : `v${version}`;
-}
+/** Blockscout writes compiler versions in full ("v0.8.28+commit.7893614a"). */
+export const blockscoutCompilerVersion = fullCompilerVersion;
 
 // ============================================
 // Blocks

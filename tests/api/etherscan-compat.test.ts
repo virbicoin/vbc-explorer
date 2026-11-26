@@ -446,7 +446,7 @@ describe('contract module', () => {
     const { body } = await api(`module=contract&action=getsourcecode&address=${VERIFIED}`);
     expect(body.result[0]).toMatchObject({
       ContractName: 'Token',
-      CompilerVersion: 'v0.8.28',
+      CompilerVersion: 'v0.8.28+commit.7893614a',
       OptimizationUsed: '1',
       Runs: '1000',
       EVMVersion: 'constantinople',
@@ -910,7 +910,7 @@ describe('further account, token, stats and contract actions', () => {
       {
         ABI: '[]',
         Address: DEPLOYED,
-        CompilerVersion: 'v0.8.30',
+        CompilerVersion: 'v0.8.30+commit.73712a01',
         ContractName: 'Token',
         FileName: '',
         OptimizationUsed: 'true',

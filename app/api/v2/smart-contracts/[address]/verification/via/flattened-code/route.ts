@@ -1,280 +1,59 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, Contract } from '@/models/index';
-import { sanitizeAddress, checkRateLimit, getClientIp, getSecurityHeaders } from '@/lib/security';
-import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
-import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
-import {
-  compileSettingsRecord,
-  LATEST_KNOWN_SOLC_VERSION,
-  spdxLicense,
-} from '@/lib/contract/solc-utils';
-import { matchRuntimeBytecode, type CompiledRuntimeCode } from '@/lib/contract/bytecode-match';
-import { isAlreadyVerified } from '@/lib/contract/verified';
+import { NextRequest } from 'next/server';
+import { connectDB } from '@/models/index';
+import { sanitizeAddress } from '@/lib/security';
+import { withRateLimit } from '@/lib/security/rate-limits';
+import { LATEST_KNOWN_SOLC_VERSION } from '@/lib/contract/solc-utils';
+import { verifySubmission } from '@/lib/contract/verify';
 import { getCompilerConfig } from '@/lib/config';
 import { getWeb3 } from '@/lib/web3/provider';
+import {
+  isTrue,
+  readVerificationBody,
+  v2Reply,
+  v2VerificationResponse,
+} from '@/lib/api/v2/verification';
 
-// The shared node connection (lib/web3/provider.ts)
-const web3 = getWeb3();
-
-// Blockscout API v2 - Verify via flattened source code
+// Blockscout API v2 - verify a contract from one (flattened) source file, compiled as submitted
 export const POST = withRateLimit(
   'verify',
   async (request: NextRequest, { params }: { params: Promise<{ address: string }> }) => {
     try {
-      const { address } = await params;
-
-      // Validate address
-      const sanitizedAddress = sanitizeAddress(address);
-      if (!sanitizedAddress) {
-        return NextResponse.json(
-          { message: 'Invalid contract address' },
-          { status: 400, headers: getSecurityHeaders() }
-        );
-      }
-
+      const address = sanitizeAddress((await params).address);
+      if (!address) return v2Reply({ message: 'Invalid contract address' }, 400);
       await connectDB();
 
-      // Parse request body (form-data or JSON)
-      const contentType = request.headers.get('content-type') || '';
-      let body: Record<string, string> = {};
+      const body = await readVerificationBody(request);
+      if (!body.source_code) return v2Reply({ message: 'Source code is required' }, 400);
+      const evmVersion =
+        body.evm_version && body.evm_version !== 'default'
+          ? body.evm_version
+          : getCompilerConfig().defaultEvmVersion || undefined;
 
-      if (contentType.includes('multipart/form-data')) {
-        const formData = await request.formData();
-        formData.forEach((value, key) => {
-          body[key] = value.toString();
-        });
-      } else {
-        body = await request.json();
-      }
-
-      const {
-        compiler_version,
-        source_code,
-        is_optimization_enabled,
-        optimization_runs,
-        contract_name,
-        evm_version,
-        autodetect_constructor_args,
-        constructor_args,
-        license_type,
-      } = body;
-
-      // Validate required fields
-      if (!source_code) {
-        return NextResponse.json(
-          { message: 'Source code is required' },
-          { status: 400, headers: getSecurityHeaders() }
-        );
-      }
-
-      // Get on-chain bytecode
-      let onchainBytecode;
-      try {
-        onchainBytecode = await web3.eth.getCode(sanitizedAddress);
-      } catch (web3Error) {
-        return NextResponse.json(
-          { message: 'Failed to connect to blockchain node' },
-          { status: 500, headers: getSecurityHeaders() }
-        );
-      }
-
-      if (onchainBytecode === '0x' || onchainBytecode === '0x0') {
-        return NextResponse.json(
-          { message: 'No contract found at this address' },
-          { status: 404, headers: getSecurityHeaders() }
-        );
-      }
-
-      // A verified contract keeps its source (a second verification used to replace it)
-      if (await isAlreadyVerified(sanitizedAddress)) {
-        return NextResponse.json(
-          { message: 'Smart-contract already verified.' },
-          { status: 400, headers: getSecurityHeaders() }
-        );
-      }
-
-      // Auto-detect contract name if not provided
-      let detectedContractName = contract_name;
-      if (!detectedContractName) {
-        const contractMatches = source_code.match(/contract\s+([A-Za-z0-9_]+)/g);
-        if (contractMatches && contractMatches.length > 0) {
-          const lastContractMatch = contractMatches[contractMatches.length - 1];
-          detectedContractName = lastContractMatch.replace(/contract\s+/, '');
-        } else {
-          return NextResponse.json(
-            { message: 'No contract found in source code' },
-            { status: 400, headers: getSecurityHeaders() }
-          );
-        }
-      }
-
-      // Compile exactly what was submitted: rewriting it (NatSpec, pragma, throw / var) changed the
-      // metadata hash and string literals, and the stored source was not the developer's
-
-      // Compile
-      const input = {
-        language: 'Solidity',
-        sources: {
-          [detectedContractName]: {
-            content: source_code,
-          },
-        },
-        settings: {
-          outputSelection: {
-            '*': {
-              '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode'],
-            },
-          },
-          optimizer: {
-            enabled: is_optimization_enabled === 'true' || is_optimization_enabled === '1',
-            runs: parseInt(optimization_runs) || 200,
-          },
-          evmVersion: evm_version || getCompilerConfig().defaultEvmVersion || undefined,
-        },
-      };
-
-      // Requested release build (verified cache), executed in a worker thread
-      let compiledOutput;
-      let compiledLongVersion = '';
-      try {
-        const compiled = await compileStandardJson({
-          version: compiler_version || LATEST_KNOWN_SOLC_VERSION,
-          input: input,
-        });
-        compiledOutput = JSON.parse(compiled.output);
-        compiledLongVersion = compiled.longVersion;
-      } catch (compileError) {
-        const described = describeCompileError(compileError);
-        return NextResponse.json(
-          {
-            message: described.status >= 500 ? 'Compiler unavailable' : 'Compilation failed',
-            errors: [described.message],
-          },
-          {
-            status: described.status,
-            headers: described.retryAfter
-              ? { ...getSecurityHeaders(), 'Retry-After': String(described.retryAfter) }
-              : getSecurityHeaders(),
-          }
-        );
-      }
-
-      // Check for compilation errors
-      if (compiledOutput.errors) {
-        const errors = compiledOutput.errors.filter(
-          (e: { severity: string }) => e.severity === 'error'
-        );
-        if (errors.length > 0) {
-          return NextResponse.json(
-            {
-              message: 'Compilation errors',
-              errors: errors.map((e: { message: string }) => e.message),
-            },
-            { status: 400, headers: getSecurityHeaders() }
-          );
-        }
-      }
-
-      // Find compiled contract
-      let compiledContract = null;
-      let actualContractName = detectedContractName;
-
-      if (compiledOutput.contracts) {
-        for (const sourceName in compiledOutput.contracts) {
-          const contracts = compiledOutput.contracts[sourceName];
-          for (const name in contracts) {
-            if (name === detectedContractName || !compiledContract) {
-              compiledContract = contracts[name];
-              actualContractName = name;
-            }
-          }
-        }
-      }
-
-      if (!compiledContract) {
-        return NextResponse.json(
-          { message: `Contract '${detectedContractName}' not found in compilation output` },
-          { status: 400, headers: getSecurityHeaders() }
-        );
-      }
-
-      // Compare bytecodes
-      const compiledBytecode =
-        compiledContract.evm?.deployedBytecode?.object || compiledContract.evm?.bytecode?.object;
-
-      if (!compiledBytecode) {
-        return NextResponse.json(
-          { message: 'No bytecode generated from compilation' },
-          { status: 400, headers: getSecurityHeaders() }
-        );
-      }
-
-      // Exact match of the runtime code (immutables, library addresses and, for a partial
-      // match, the metadata aside). See lib/contract/bytecode-match.ts.
-      const match = matchRuntimeBytecode(
-        onchainBytecode,
-        compiledContract.evm?.deployedBytecode as CompiledRuntimeCode | undefined
-      );
-      const isVerified = match !== null;
-
-      if (isVerified) {
-        // Extract license
-        const license = license_type || spdxLicense(source_code, actualContractName) || 'none';
-
-        // Normalize compiler version
-        let normalizedVersion =
-          compiledLongVersion || compiler_version || LATEST_KNOWN_SOLC_VERSION;
-        if (normalizedVersion.startsWith('v')) {
-          normalizedVersion = normalizedVersion.substring(1);
-        }
-        normalizedVersion = normalizedVersion.split('+')[0];
-
-        // Save to database
-        const contractData = {
-          address: sanitizedAddress.toLowerCase(),
-          contractName: actualContractName,
-          compilerVersion: normalizedVersion,
-          ...compileSettingsRecord(input),
-          license,
-          sourceCode: source_code,
-          abi: JSON.stringify(compiledContract.abi),
-          byteCode: onchainBytecode,
-          verified: true,
-          verifiedAt: new Date(),
-        };
-
-        await Contract.findOneAndUpdate({ address: sanitizedAddress.toLowerCase() }, contractData, {
-          upsert: true,
-          returnDocument: 'after',
-        });
-
-        // Blockscout API v2 response format
-        return NextResponse.json(
-          {
-            message: 'Smart-contract verification started',
-          },
-          { status: 200, headers: getSecurityHeaders() }
-        );
-      } else {
-        return NextResponse.json(
-          {
-            message: 'Bytecode mismatch - verification failed',
-            errors: [
-              'The compiled runtime code does not match the deployed code (only the metadata may differ)',
-            ],
-          },
-          { status: 400, headers: getSecurityHeaders() }
-        );
-      }
-    } catch (error) {
-      console.error('Contract verification error:', error);
-      return NextResponse.json(
+      const outcome = await verifySubmission(
         {
-          message: 'Internal server error',
-          errors: [error instanceof Error ? error.message : 'Unknown error'],
+          address,
+          compilerVersion: body.compiler_version || LATEST_KNOWN_SOLC_VERSION,
+          input: {
+            language: 'Solidity',
+            sources: { [`${body.contract_name || 'Contract'}.sol`]: { content: body.source_code } },
+            settings: {
+              optimizer: {
+                enabled: isTrue(body.is_optimization_enabled),
+                runs: parseInt(body.optimization_runs, 10) || 200,
+              },
+              evmVersion,
+            },
+          },
+          contractName: body.contract_name || undefined,
+          source: body.source_code,
+          license: body.license_type,
         },
-        { status: 500, headers: getSecurityHeaders() }
+        { getCode: (target) => getWeb3().eth.getCode(target) }
       );
+      return v2VerificationResponse(outcome);
+    } catch (error) {
+      console.error('[api/v2] verification error:', error instanceof Error ? error.message : error);
+      return v2Reply({ message: 'Internal server error' }, 500);
     }
   },
   { format: 'v2' }

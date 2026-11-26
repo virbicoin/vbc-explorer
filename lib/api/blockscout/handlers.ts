@@ -28,7 +28,7 @@ import { getRewardSchedule } from '@/lib/config';
 import { calculateTotalSupplyWei } from '@/lib/supply';
 import { detectProxy, type ProxyInfo, type ProxyNode } from '@/lib/contract/proxy-detect';
 import { apiCache, CACHE_TTL } from '@/lib/cache';
-import { etherscanEvmVersion } from '@/lib/contract/solc-utils';
+import { etherscanEvmVersion, fullCompilerVersion } from '@/lib/contract/solc-utils';
 
 // ============================================
 // Block Module
@@ -863,7 +863,7 @@ export async function getSourceCode(address: string) {
         SourceCode: contract.sourceCode || '',
         ABI: typeof contract.abi === 'string' ? contract.abi : JSON.stringify(contract.abi || []),
         ContractName: contract.contractName || '',
-        CompilerVersion: `v${contract.compilerVersion || ''}`,
+        CompilerVersion: fullCompilerVersion(contract.compilerVersion) ?? '',
         OptimizationUsed: contract.optimization ? '1' : '0',
         // Records verified before 2026-11 lack the settings (they were dropped on save): empty
         // rather than a guessed 200, and 'Default' as Etherscan reports an unspecified version
@@ -915,7 +915,7 @@ export async function listContracts(filter: string | undefined, page: number, of
                   ? contract.abi
                   : JSON.stringify(contract.abi || []),
               Address: String(contract.address),
-              CompilerVersion: `v${contract.compilerVersion || ''}`,
+              CompilerVersion: fullCompilerVersion(contract.compilerVersion) ?? '',
               ContractName: String(contract.contractName ?? ''),
               FileName: '',
               OptimizationUsed: contract.optimization ? 'true' : 'false',

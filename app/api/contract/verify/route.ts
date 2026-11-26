@@ -1,36 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, Contract } from '../../../../models/index';
-import {
-  sanitizeAddress,
-  checkRateLimit,
-  getClientIp,
-  getSecurityHeaders,
-  isValidContentType,
-} from '../../../../lib/security';
-import {
-  compileSettingsRecord,
-  normalizeCompilerVersion,
-  spdxLicense,
-} from '../../../../lib/contract/solc-utils';
-import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
-import { matchRuntimeBytecode } from '@/lib/contract/bytecode-match';
-import { isAlreadyVerified } from '@/lib/contract/verified';
-import { enforceRateLimit, withRateLimit } from '@/lib/security/rate-limits';
+import { connectDB } from '@/models/index';
+import { sanitizeAddress, getSecurityHeaders, isValidContentType } from '@/lib/security';
+import { normalizeCompilerVersion } from '@/lib/contract/solc-utils';
+import { verifiedMessage, verifySubmission, type VerificationOutcome } from '@/lib/contract/verify';
+import { withRateLimit } from '@/lib/security/rate-limits';
 import { getCompilerConfig } from '@/lib/config';
 import { getWeb3 } from '@/lib/web3/provider';
-
-// The shared node connection (lib/web3/provider.ts)
-const web3 = getWeb3();
-
-/**
- * The requested compiler version, normalized ("v0.8.30+commit.73712a01" -> "0.8.30"). Any release
- * on binaries.soliditylang.org can be used (the compiler cache refuses anything else with
- * CompilerVersionError). Versions outside 0.6 / 0.8 used to be replaced by 0.8.30, so 0.4, 0.5
- * and 0.7 contracts could not be verified from this page.
- */
-function findBestCompilerVersion(requestedVersion: string): string {
-  return normalizeCompilerVersion(requestedVersion);
-}
 
 export const POST = withRateLimit('verify', async (request: NextRequest) => {
   try {
@@ -130,407 +105,137 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
     }
 
     // Check if using Standard JSON Input mode
-    const isStandardJsonInput = !!standardJsonInput;
-
-    console.log('📝 Received verification request:', {
-      address: sanitizedAddress,
-      contractName,
-      compilerVersion,
-      optimization,
-      isStandardJsonInput,
-      sourceCodeLength: isStandardJsonInput ? standardJsonInput.length : sourceCode?.length || 0,
-    });
-
-    // Auto-detect contract name if not provided
-    let detectedContractName = contractName;
-    let targetFileName = '';
-    let targetContractName = '';
-
-    // Parse contract name (format: "FileName.sol:ContractName" or just "ContractName")
-    if (contractName && contractName.includes(':')) {
-      [targetFileName, targetContractName] = contractName.split(':');
-      detectedContractName = targetContractName;
-    } else if (contractName) {
-      targetContractName = contractName;
-      detectedContractName = contractName;
-    }
-
-    // For Standard JSON Input, we need the contract name from the input
-    if (isStandardJsonInput && !detectedContractName) {
+    const isStandardJsonInput = Boolean(standardJsonInput);
+    const submittedSource: string = isStandardJsonInput ? standardJsonInput : sourceCode;
+    let input: Record<string, unknown>;
+    if (isStandardJsonInput) {
       try {
-        const jsonInput = JSON.parse(standardJsonInput);
-        if (jsonInput.sources) {
-          const sourceFiles = Object.keys(jsonInput.sources);
-          if (sourceFiles.length > 0) {
-            // Use the first source file name as a hint
-            const firstFile = sourceFiles[0];
-            // Try to extract contract name from file content
-            const content = jsonInput.sources[firstFile].content || '';
-            const contractMatches = content.match(/contract\s+([A-Za-z0-9_]+)/g);
-            if (contractMatches && contractMatches.length > 0) {
-              const lastContractMatch = contractMatches[contractMatches.length - 1];
-              detectedContractName = lastContractMatch.replace(/contract\s+/, '');
-              targetFileName = firstFile;
-            }
-          }
-        }
-      } catch (e) {
-        // Ignore parse errors, will be handled later
+        input = JSON.parse(standardJsonInput);
+      } catch {
+        return NextResponse.json(
+          { error: 'Invalid Standard JSON Input format' },
+          { status: 400, headers: getSecurityHeaders() }
+        );
       }
-    }
-
-    // For single file mode, auto-detect from source code
-    if (!isStandardJsonInput && !detectedContractName) {
-      const contractMatches = sourceCode.match(/contract\s+([A-Za-z0-9_]+)/g);
-      if (contractMatches && contractMatches.length > 0) {
-        // Extract the last contract name (usually the main contract in flattened code)
-        const lastContractMatch = contractMatches[contractMatches.length - 1];
-        detectedContractName = lastContractMatch.replace(/contract\s+/, '');
-      } else {
+    } else {
+      // A single file, compiled exactly as submitted. Its source unit is named after the contract
+      // (the given name or the last contract in the file), as this page always did.
+      const declared = [...submittedSource.matchAll(/contract\s+([A-Za-z0-9_]+)/g)].pop()?.[1];
+      const unitName = (contractName && String(contractName).split(':').pop()) || declared;
+      if (!unitName) {
         return NextResponse.json(
           { error: 'No contract found in source code. Please provide a contract name.' },
-          { status: 400 }
+          { status: 400, headers: getSecurityHeaders() }
         );
       }
-    }
-
-    if (!detectedContractName) {
-      return NextResponse.json(
-        { error: 'Contract name is required for Standard JSON Input verification.' },
-        { status: 400 }
-      );
-    }
-
-    // Determine the best compiler version to use
-    const finalCompilerVersion = findBestCompilerVersion(compilerVersion);
-
-    // Check for old syntax that may require older compiler versions (only for single file mode)
-    if (!isStandardJsonInput && sourceCode) {
-      const hasOldSyntax =
-        sourceCode.includes(':=') ||
-        sourceCode.includes('var ') ||
-        sourceCode.includes('suicide(') ||
-        sourceCode.includes('throw') ||
-        sourceCode.includes('constant ') ||
-        sourceCode.includes('public constant');
-      if (hasOldSyntax) {
-        console.warn(
-          'Old Solidity syntax detected. Compilation may fail with modern compiler versions.'
-        );
-        // finalCompilerVersion = '0.8.19'; // do not force
-      }
-    }
-
-    console.log(`🔧 Using compiler version: ${finalCompilerVersion}`);
-
-    // Get bytecode from blockchain
-    let onchainBytecode;
-    try {
-      onchainBytecode = await web3.eth.getCode(address);
-    } catch (web3Error) {
-      console.error('Web3 connection error:', web3Error);
-      return NextResponse.json(
-        {
-          error: 'Failed to connect to blockchain node',
-          details: 'Please check the WEB3_PROVIDER_URL configuration',
-          web3Error: web3Error instanceof Error ? web3Error.message : 'Unknown error',
+      input = {
+        language: 'Solidity',
+        sources: { [unitName]: { content: submittedSource } },
+        settings: {
+          optimizer: { enabled: Boolean(optimization), runs: body.optimizationRuns || 200 },
+          evmVersion: body.evmVersion || getCompilerConfig().defaultEvmVersion || undefined,
+          // Hardhat's defaults
+          metadata: { bytecodeHash: 'ipfs', useLiteralContent: false },
+          viaIR: false,
         },
-        { status: 500 }
-      );
+      };
     }
 
-    if (onchainBytecode === '0x' || onchainBytecode === '0x0') {
-      return NextResponse.json({ error: 'No contract found at this address' }, { status: 404 });
-    }
+    const outcome = await verifySubmission(
+      {
+        address: sanitizedAddress,
+        // any release on binaries.soliditylang.org (the compiler cache refuses anything else)
+        compilerVersion: normalizeCompilerVersion(compilerVersion),
+        input,
+        // without a name, the contract whose code matches is found among all of them
+        contractName: contractName || undefined,
+        source: submittedSource,
+      },
+      { getCode: (target) => getWeb3().eth.getCode(target) }
+    );
+    return verificationResponse(outcome);
+  } catch (error) {
+    console.error('Contract verification error:', error instanceof Error ? error.message : error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500, headers: getSecurityHeaders() }
+    );
+  }
+});
 
-    // A verified contract keeps its source (a second verification used to replace it)
-    if (await isAlreadyVerified(address)) {
-      return NextResponse.json(
+/** This page's answer for an outcome of the verification flow (lib/contract/verify.ts). */
+function verificationResponse(outcome: VerificationOutcome): NextResponse {
+  const reply = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
+    NextResponse.json(body, { status, headers: { ...getSecurityHeaders(), ...headers } });
+  switch (outcome.status) {
+    case 'verified':
+      return reply({
+        verified: true,
+        contract: outcome.record,
+        message: verifiedMessage(outcome.match),
+      });
+    case 'already-verified':
+      return reply(
         {
           verified: false,
           alreadyVerified: true,
           error: 'Contract source code already verified',
           message: 'Contract source code already verified',
         },
-        { status: 409, headers: getSecurityHeaders() }
+        409
       );
-    }
-
-    // The source that is compiled and stored: exactly what was submitted. Trimming, dropping
-    // comments, other contracts or non-ASCII characters and rewriting old syntax changed the
-    // metadata hash (no full match), broke unicode string literals and stored a source the
-    // developer never wrote. A standard JSON input is stored whole, as the other paths do.
-    const submittedSource = isStandardJsonInput ? standardJsonInput : sourceCode || '';
-
-    // Prepare compilation input
-    let input: Record<string, unknown>;
-
-    if (isStandardJsonInput) {
-      // Standard JSON Input mode - parse and use the provided JSON directly
-      console.log('📦 Using Standard JSON Input mode');
-      try {
-        input = JSON.parse(standardJsonInput);
-
-        // Ensure outputSelection is set correctly
-        if (!input.settings) {
-          input.settings = {};
-        }
-        const settings = input.settings as Record<string, unknown>;
-        settings.outputSelection = {
-          '*': {
-            '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode', 'evm.methodIdentifiers'],
-          },
-        };
-      } catch (parseError) {
-        console.error('Failed to parse Standard JSON Input:', parseError);
-        return NextResponse.json(
-          {
-            error: 'Invalid Standard JSON Input format',
-            details: parseError instanceof Error ? parseError.message : 'Parse error',
-          },
-          { status: 400 }
-        );
-      }
-    } else {
-      // Single file mode - build the input JSON
-      // EVM version: the request's, else config.json compiler.defaultEvmVersion, else the compiler's
-      // Match Hardhat's default settings exactly for bytecode compatibility
-      input = {
-        language: 'Solidity',
-        sources: {
-          [detectedContractName]: {
-            content: submittedSource,
-          },
-        },
-        settings: {
-          outputSelection: {
-            '*': {
-              '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode', 'evm.methodIdentifiers'],
-            },
-          },
-          optimizer: {
-            enabled: optimization || false,
-            runs: body.optimizationRuns || 200,
-          },
-          evmVersion: body.evmVersion || getCompilerConfig().defaultEvmVersion || undefined,
-          // Match Hardhat's default metadata settings
-          metadata: {
-            bytecodeHash: 'ipfs', // Hardhat default
-            useLiteralContent: false,
-          },
-          // Disable viaIR by default (Hardhat default)
-          viaIR: false,
-        },
-      };
-    }
-
-    let compiledOutput;
-    try {
-      const normalizedVersion = normalizeCompilerVersion(finalCompilerVersion);
-      console.log(`🔧 Compiling with solc ${normalizedVersion} in a worker thread...`);
-
-      // Verified release build from the local cache, executed off the event loop
-      const compiled = await compileStandardJson({ version: finalCompilerVersion, input });
-      compiledOutput = JSON.parse(compiled.output);
-      console.log(`✅ Compiled with solc ${compiled.longVersion} in ${compiled.durationMs} ms`);
-    } catch (compileError) {
-      const described = describeCompileError(compileError);
-      console.error('❌ Compilation error:', described.code, described.message);
-
-      return NextResponse.json(
+    case 'no-code':
+      return reply({ error: 'No contract found at this address' }, 404);
+    case 'node-unavailable':
+      return reply(
         {
-          error: described.status >= 500 ? 'Compiler unavailable' : 'Compilation failed',
-          code: described.code,
-          details: { message: described.message },
+          error: 'Failed to connect to blockchain node',
+          details: 'Please check the WEB3_PROVIDER_URL configuration',
+        },
+        502
+      );
+    case 'compiler-error':
+      return reply(
+        {
+          error: outcome.httpStatus >= 500 ? 'Compiler unavailable' : 'Compilation failed',
+          code: outcome.code,
+          details: { message: outcome.message },
           message:
-            described.status >= 500
+            outcome.httpStatus >= 500
               ? 'The compiler could not run right now. Please try again later.'
               : 'The source code could not be compiled. Please check the compiler version and the syntax and try again.',
         },
+        outcome.httpStatus,
+        outcome.retryAfter ? { 'Retry-After': String(outcome.retryAfter) } : {}
+      );
+    case 'compile-errors':
+      return reply(
         {
-          status: described.status,
-          headers: described.retryAfter
-            ? { ...getSecurityHeaders(), 'Retry-After': String(described.retryAfter) }
-            : getSecurityHeaders(),
-        }
-      );
-    }
-
-    // Check for compilation errors
-    if (compiledOutput.errors) {
-      const errors = compiledOutput.errors.filter(
-        (error: { severity: string }) => error.severity === 'error'
-      );
-      const warnings = compiledOutput.errors.filter(
-        (error: { severity: string }) => error.severity === 'warning'
-      );
-
-      console.log('⚠️ Compilation warnings:', warnings.length);
-      console.log('❌ Compilation errors:', errors.length);
-
-      if (errors.length > 0) {
-        // Format errors for better display
-        const formattedErrors = errors.map(
-          (error: {
-            type?: string;
-            message?: string;
-            sourceLocation?: unknown;
-            formattedMessage?: string;
-            severity?: string;
-          }) => ({
-            type: error.type || 'CompilationError',
-            message: error.message || 'Unknown compilation error',
-            sourceLocation: error.sourceLocation,
-            formattedMessage: error.formattedMessage,
-            severity: error.severity,
-          })
-        );
-
-        return NextResponse.json(
-          {
-            error: 'Compilation errors',
-            details: formattedErrors,
-            message: `Found ${errors.length} compilation error(s). Please fix the issues and try again.`,
-          },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Find the compiled contract
-    console.log('Available contracts:', Object.keys(compiledOutput.contracts || {}));
-
-    let compiledContract = null;
-    const actualContractName = detectedContractName; // Prefer the detected contract name
-
-    // Check if compiledOutput.contracts exists and has content
-    if (!compiledOutput.contracts || Object.keys(compiledOutput.contracts).length === 0) {
-      return NextResponse.json(
-        {
-          error: 'No contracts found in compilation output',
-          message:
-            'The source code could not be compiled successfully. Please check the syntax and try again.',
-          debug: {
-            detectedContractName,
-            compilationOutput: compiledOutput,
-          },
+          error: 'Compilation errors',
+          details: outcome.errors,
+          message: `Found ${outcome.errors.length} compilation error(s). Please fix the issues and try again.`,
         },
-        { status: 400 }
+        400
       );
-    }
-
-    // Try exact match first
-    if (
-      compiledOutput.contracts[detectedContractName] &&
-      compiledOutput.contracts[detectedContractName][detectedContractName]
-    ) {
-      compiledContract = compiledOutput.contracts[detectedContractName][detectedContractName];
-    } else {
-      // Try to find any contract in the output
-      for (const sourceName in compiledOutput.contracts) {
-        const contracts = compiledOutput.contracts[sourceName];
-        for (const contractNameInOutput in contracts) {
-          console.log('Found contract:', contractNameInOutput, 'in source:', sourceName);
-          if (!compiledContract) {
-            compiledContract = contracts[contractNameInOutput];
-          }
-        }
-      }
-    }
-
-    if (!compiledContract) {
-      return NextResponse.json(
+    case 'contract-not-found':
+      return reply(
         {
           error: 'Contract not found in compilation output',
-          message: `The contract '${detectedContractName}' was not found in the compilation output. Please check the contract name and try again.`,
-          debug: {
-            requestedContractName: detectedContractName,
-            availableContracts: Object.keys(compiledOutput.contracts || {}),
-            compilationOutput: compiledOutput,
-          },
+          message: outcome.contractName
+            ? `The contract '${outcome.contractName}' was not found in the compilation output. Please check the contract name and try again.`
+            : 'The compilation output has no contract with runtime code.',
         },
-        { status: 400 }
+        400
       );
-    }
-
-    // Compare bytecodes
-    // IMPORTANT: Use deployedBytecode for comparison with on-chain code
-    // The on-chain bytecode is the runtime bytecode (after deployment)
-    // The compiled bytecode is the creation bytecode (includes constructor)
-    const compiledBytecode =
-      compiledContract.evm.deployedBytecode?.object || compiledContract.evm.bytecode.object;
-    const creationBytecode = compiledContract.evm.bytecode.object;
-
-    console.log('📊 Bytecode info:');
-    console.log('  - Creation bytecode length:', creationBytecode?.length || 0);
-    console.log('  - Deployed bytecode length:', compiledBytecode?.length || 0);
-    console.log('  - On-chain bytecode length:', onchainBytecode.length);
-
-    // Exact match of the runtime code (immutables, library addresses and, for a partial
-    // match, the metadata aside). See lib/contract/bytecode-match.ts.
-    const match = matchRuntimeBytecode(onchainBytecode, compiledContract.evm.deployedBytecode);
-    const isVerified = match !== null;
-    console.log('Verification result:', { address, match: match ?? 'none' });
-
-    if (isVerified) {
-      // The SPDX identifier of the contract's own file (the first file of a standard JSON input
-      // is usually a dependency)
-      const license = spdxLicense(submittedSource, actualContractName) || 'None';
-
-      // Save to database
-      const contractData = {
-        address: address.toLowerCase(),
-        contractName: actualContractName,
-        compilerVersion: finalCompilerVersion,
-        // The settings that were compiled (from the standard JSON input or the form)
-        ...compileSettingsRecord(input),
-        license: license,
-        sourceCode: submittedSource,
-        abi: JSON.stringify(compiledContract.abi),
-        byteCode: onchainBytecode,
-        verified: true,
-        verifiedAt: new Date(),
-      };
-
-      await Contract.findOneAndUpdate({ address: address.toLowerCase() }, contractData, {
-        upsert: true,
-        returnDocument: 'after',
-      });
-
-      return NextResponse.json({
-        verified: true,
-        contract: contractData,
-        message:
-          match === 'full'
-            ? 'Contract successfully verified'
-            : 'Contract successfully verified (partial match: metadata differs)',
-      });
-    } else {
-      const used = compileSettingsRecord(input);
-      return NextResponse.json({
+    case 'mismatch': {
+      const { evmVersion, optimization, optimizationRuns } = outcome.settings;
+      return reply({
         verified: false,
         message: 'Bytecode mismatch - verification failed',
         details: {
-          onchainBytecodeLength: onchainBytecode.length,
-          compiledBytecodeLength: compiledBytecode.length,
-          note: `Compiled with solc ${normalizeCompilerVersion(finalCompilerVersion)} (EVM: ${used.evmVersion}, optimizer: ${used.optimization ? 'enabled' : 'disabled'}, runs: ${used.optimizationRuns}). The runtime code must match the deployed code exactly (only the metadata may differ), so the source, compiler version and settings must be those used for the deployment.`,
+          note: `Compiled with solc ${outcome.compilerVersion} (EVM: ${evmVersion}, optimizer: ${optimization ? `enabled, ${optimizationRuns} runs` : 'disabled'}). Only the metadata may differ from the deployed code.`,
         },
       });
     }
-  } catch (error) {
-    console.error('Contract verification error:', error);
-    return NextResponse.json(
-      {
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : String(error),
-        stack:
-          process.env.NODE_ENV === 'development'
-            ? error instanceof Error
-              ? error.stack
-              : undefined
-            : undefined,
-      },
-      { status: 500 }
-    );
   }
-});
+}

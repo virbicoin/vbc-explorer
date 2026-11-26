@@ -9,17 +9,11 @@
  */
 
 import { type Address } from 'viem';
-import { connectDB, Contract, VerificationJob } from '@/models/index';
+import { connectDB, VerificationJob } from '@/models/index';
 import { isValidAddress } from '@/lib/security';
 import { randomUUID } from 'crypto';
-import {
-  compileSettingsRecord,
-  normalizeCompilerVersion,
-  spdxLicense,
-} from '@/lib/contract/solc-utils';
-import { matchRuntimeBytecode, type CompiledRuntimeCode } from '@/lib/contract/bytecode-match';
 import { isAlreadyVerified } from '@/lib/contract/verified';
-import { compileStandardJson, describeCompileError } from '@/lib/contract/compile-worker';
+import { verifiedMessage, verifySubmission } from '@/lib/contract/verify';
 import { publicClient, successResponse, errorResponse } from './shared';
 import { getCompilerConfig } from '@/lib/config';
 import { proxyInfo } from './handlers';
@@ -125,57 +119,30 @@ async function processVerification(guid: string) {
       licenseType,
     } = job;
 
-    // Get on-chain bytecode
-    const onchainBytecode = await publicClient.getCode({ address: address as Address });
-
-    if (!onchainBytecode || onchainBytecode === '0x') {
-      await VerificationJob.updateOne(
-        { guid },
-        { status: 'fail', message: 'No contract found at this address' }
-      );
-      return;
-    }
-
-    let inputJson: Record<string, unknown>;
-
-    // Handle different code formats
+    let input: Record<string, unknown>;
     if (codeFormat === 'solidity-standard-json-input') {
-      // Standard JSON Input format (used by Hardhat)
+      // Standard JSON input (Hardhat, Foundry): compiled with its own settings. The separate
+      // request parameters only fill in what the input leaves out; they used to replace them,
+      // so every standard JSON input was compiled for paris.
       try {
-        inputJson = JSON.parse(sourceCode);
-        // Ensure settings are present
-        if (!inputJson.settings) {
-          inputJson.settings = {};
-        }
-        const settings = inputJson.settings as Record<string, unknown>;
-        settings.outputSelection = {
-          '*': {
-            '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode'],
-          },
-        };
-        // The input carries its own settings (Hardhat sends exactly what it compiled with).
-        // The separate request parameters only fill in what the input leaves out; they used
-        // to replace them, so every standard JSON input was compiled for paris.
-        if (optimizationUsed && !settings.optimizer) {
-          settings.optimizer = {
-            enabled: optimizationUsed,
-            runs: runs || 200,
-          };
-        }
-        if (evmVersion && !settings.evmVersion) {
-          settings.evmVersion = evmVersion;
-        }
-      } catch (parseError) {
+        input = JSON.parse(sourceCode);
+      } catch {
         await VerificationJob.updateOne(
           { guid },
           { status: 'fail', message: 'Invalid Standard JSON Input format' }
         );
         return;
       }
+      const settings = { ...((input.settings as Record<string, unknown> | undefined) ?? {}) };
+      if (optimizationUsed && !settings.optimizer) {
+        settings.optimizer = { enabled: optimizationUsed, runs: runs || 200 };
+      }
+      if (evmVersion && !settings.evmVersion) settings.evmVersion = evmVersion;
+      input.settings = settings;
     } else {
-      // Single file format: compile exactly what was submitted (rewriting it changed the metadata
-      // hash, string literals and comments, and the stored source was not the developer's)
-      inputJson = {
+      // A single file, compiled exactly as submitted (rewriting it changed the metadata hash,
+      // string literals and comments, and the stored source was not the developer's)
+      input = {
         language: 'Solidity',
         sources: {
           [contractName.includes(':') ? contractName.split(':')[0] : `${contractName}.sol`]: {
@@ -183,161 +150,51 @@ async function processVerification(guid: string) {
           },
         },
         settings: {
-          outputSelection: {
-            '*': {
-              '*': ['abi', 'evm.bytecode', 'evm.deployedBytecode', 'evm.methodIdentifiers'],
-            },
-          },
-          optimizer: {
-            enabled: optimizationUsed,
-            runs: runs || 200,
-          },
+          optimizer: { enabled: optimizationUsed, runs: runs || 200 },
           evmVersion: evmVersion || getCompilerConfig().defaultEvmVersion || undefined,
-          // Match Hardhat's default metadata settings
-          metadata: {
-            bytecodeHash: 'ipfs', // Hardhat default
-            useLiteralContent: false,
-          },
-          // Disable viaIR by default (Hardhat default)
+          // Hardhat's defaults
+          metadata: { bytecodeHash: 'ipfs', useLiteralContent: false },
           viaIR: false,
         },
       };
     }
 
-    // Load the requested compiler version
-    const normalizedVersion = normalizeCompilerVersion(compilerVersion);
-    console.log(
-      `🔧 Requested compiler version: ${compilerVersion} (normalized: ${normalizedVersion})`
+    const outcome = await verifySubmission(
+      { address, compilerVersion, input, contractName, source: sourceCode, license: licenseType },
+      { getCode: (target) => publicClient.getCode({ address: target as Address }) }
     );
-
-    // Verified release build from the local cache, executed in a worker thread
-    let compiledOutput;
-    try {
-      const compiled = await compileStandardJson({ version: compilerVersion, input: inputJson });
-      compiledOutput = JSON.parse(compiled.output);
-      console.log(`✅ Compiled with solc ${compiled.longVersion} in ${compiled.durationMs} ms`);
-    } catch (compileError) {
-      const described = describeCompileError(compileError);
-      await VerificationJob.updateOne(
-        { guid },
-        { status: 'fail', message: `Compilation failed (${described.code}): ${described.message}` }
-      );
-      return;
-    }
-
-    // Check for compilation errors
-    if (compiledOutput.errors) {
-      const errors = compiledOutput.errors.filter(
-        (e: { severity: string }) => e.severity === 'error'
-      );
-      if (errors.length > 0) {
+    const fail = (message: string) =>
+      VerificationJob.updateOne({ guid }, { status: 'fail', message });
+    switch (outcome.status) {
+      case 'verified':
         await VerificationJob.updateOne(
           { guid },
-          {
-            status: 'fail',
-            message: `Compilation errors: ${errors.map((e: { message: string }) => e.message).join('; ')}`,
-          }
+          { status: 'pass', message: verifiedMessage(outcome.match) }
         );
         return;
-      }
-    }
-
-    // Find the compiled contract
-    let compiledContract = null;
-    let actualContractName = contractName;
-
-    // Parse contract name (format: "FileName.sol:ContractName" or just "ContractName")
-    let fileName = '';
-    let targetContractName = contractName;
-    if (contractName.includes(':')) {
-      [fileName, targetContractName] = contractName.split(':');
-    }
-
-    if (compiledOutput.contracts) {
-      for (const sourceName in compiledOutput.contracts) {
-        const contracts = compiledOutput.contracts[sourceName];
-        for (const name in contracts) {
-          if (name === targetContractName || (!targetContractName && !compiledContract)) {
-            compiledContract = contracts[name];
-            actualContractName = name;
-          }
-        }
-      }
-    }
-
-    if (!compiledContract) {
-      await VerificationJob.updateOne(
-        { guid },
-        { status: 'fail', message: `Contract '${contractName}' not found in compilation output` }
-      );
-      return;
-    }
-
-    // Compare bytecodes
-    const compiledBytecode =
-      compiledContract.evm?.deployedBytecode?.object || compiledContract.evm?.bytecode?.object;
-
-    if (!compiledBytecode) {
-      await VerificationJob.updateOne(
-        { guid },
-        { status: 'fail', message: 'No bytecode generated from compilation' }
-      );
-      return;
-    }
-
-    // Exact match of the runtime code (immutables, library addresses and, for a partial
-    // match, the metadata aside). See lib/contract/bytecode-match.ts.
-    const match = matchRuntimeBytecode(
-      onchainBytecode,
-      compiledContract.evm?.deployedBytecode as CompiledRuntimeCode | undefined
-    );
-    const isVerified = match !== null;
-    console.log(`[processVerification] ${address}: match=${match ?? 'none'}`);
-
-    if (isVerified) {
-      // Extract license from source code
-      // The SPDX identifier of the contract's own file (decoded from a standard JSON input)
-      const license = licenseType || spdxLicense(sourceCode, actualContractName) || 'None';
-
-      // Save verified contract
-      const contractData = {
-        address: address.toLowerCase(),
-        contractName: actualContractName,
-        compilerVersion: normalizeCompilerVersion(compilerVersion),
-        // The settings that were compiled, not the request parameters
-        ...compileSettingsRecord(inputJson),
-        license,
-        sourceCode,
-        abi: JSON.stringify(compiledContract.abi),
-        byteCode: onchainBytecode,
-        verified: true,
-        verifiedAt: new Date(),
-      };
-
-      await Contract.findOneAndUpdate({ address: address.toLowerCase() }, contractData, {
-        upsert: true,
-        returnDocument: 'after',
-      });
-
-      await VerificationJob.updateOne(
-        { guid },
-        {
-          status: 'pass',
-          message:
-            match === 'full'
-              ? 'Contract successfully verified'
-              : 'Contract successfully verified (partial match: metadata differs)',
-        }
-      );
-    } else {
-      await VerificationJob.updateOne(
-        { guid },
-        {
-          status: 'fail',
-          message:
-            'Fail - Unable to verify: the compiled bytecode does not match the deployed code',
-        }
-      );
+      case 'already-verified':
+        await fail('Contract source code already verified');
+        return;
+      case 'no-code':
+        await fail('No contract found at this address');
+        return;
+      case 'node-unavailable':
+        await fail('Verification error: the node did not answer');
+        return;
+      case 'compiler-error':
+        await fail(`Compilation failed (${outcome.code}): ${outcome.message}`);
+        return;
+      case 'compile-errors':
+        await fail(`Compilation errors: ${outcome.errors.map((e) => e.message).join('; ')}`);
+        return;
+      case 'contract-not-found':
+        await fail(`Contract '${contractName}' not found in compilation output`);
+        return;
+      case 'mismatch':
+        await fail(
+          'Fail - Unable to verify: the compiled bytecode does not match the deployed code'
+        );
+        return;
     }
   } catch (error) {
     console.error(`[processVerification] Error for ${guid}:`, error);

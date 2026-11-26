@@ -21,6 +21,18 @@ export function normalizeCompilerVersion(version: string): string {
 }
 
 /**
+ * A stored compiler version as Etherscan and Blockscout write it ("v0.8.30+commit.73712a01").
+ * Verification stores the release that compiled the contract; records from before 2026-11-27 hold
+ * only the short release ("0.8.30"), whose commit comes from SOLC_RELEASES.
+ */
+export function fullCompilerVersion(version: unknown): string | null {
+  if (typeof version !== 'string' || !version.trim()) return null;
+  const bare = version.trim().replace(/^v/, '');
+  if (bare.includes('+')) return `v${bare}`;
+  return SOLC_RELEASES[bare] ?? `v${bare}`;
+}
+
+/**
  * Solc version to full release name mapping.
  * These are the exact release names from
  * https://binaries.soliditylang.org/bin/list.json
