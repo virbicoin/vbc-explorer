@@ -64,10 +64,12 @@ const minimalErc721Abi = [
 import {
   connectDB,
   ensureIndexesOnStartup,
+  Block,
   Contract,
   InternalTransaction,
   Token,
   ScanProgress,
+  Transaction,
 } from '../models/index';
 import { syncLaunchpadTokens } from '../lib/launchpad/sync';
 import { loadConfig, getWeb3ProviderURL } from '../lib/config';
@@ -129,10 +131,10 @@ async function disconnect() {
 const config = loadConfig();
 const WEB3_PROVIDER_URL = getWeb3ProviderURL(); // Use centralized config
 const START_BLOCK = 0; // Default start block if no sync state is found
-const BLOCKS_PER_BATCH = 500; // Further reduced for CPU optimization
+/** Stored blocks per query when looking for contract creations. */
+const CREATION_SCAN_RANGE = 100_000;
 const SCAN_INTERVAL_MS = 900000; // 15 minutes (extended for CPU relief)
 const BATCH_DELAY_MS = 1000; // Longer delay to reduce CPU load
-const MAX_PARALLEL_BLOCKS = 20; // Limit parallel block fetching
 const MEMORY_LIMIT_MB = parseInt(process.env.MEMORY_LIMIT_MB || '512'); // Optimized for 2GB instances
 
 const web3 = new Web3(new Web3.providers.HttpProvider(WEB3_PROVIDER_URL));
@@ -1023,124 +1025,56 @@ async function scanForTokens() {
       await scanProgress.save();
     }
 
-    const latestBlockNumberBigInt = await web3.eth.getBlockNumber();
-    const latestBlockNumber = Number(latestBlockNumberBigInt);
-    console.log(`🔍 Latest block number: ${latestBlockNumber}`);
-
-    // Only scan new blocks since last scan
+    // Contract creations come from the stored transactions (`creates`, written by tools/sync.ts),
+    // so the scan follows the stored chain and never reads past it (a reorg that replaces blocks
+    // rewinds this marker). It used to fetch every block with its transactions from the node,
+    // pausing between chunks: about 18 blocks a second, ahead of the stored chain.
+    const head = (await Block.findOne().sort({ number: -1 }).select('number').lean()) as {
+      number: number;
+    } | null;
+    const latestBlockNumber = head?.number ?? 0;
     let fromBlock = scanProgress.lastScannedBlock + 1;
-
     if (fromBlock > latestBlockNumber) {
       console.log(
-        `✅ No new blocks to scan. Last scanned: ${scanProgress.lastScannedBlock}, Latest: ${latestBlockNumber}`
+        `✅ No new blocks to scan. Last scanned: ${scanProgress.lastScannedBlock}, stored head: ${latestBlockNumber}`
       );
       return;
     }
-
     console.log(
-      `🚀 Scanning new blocks from ${fromBlock} to ${latestBlockNumber} (${latestBlockNumber - fromBlock + 1} blocks)`
+      `🚀 Scanning stored blocks ${fromBlock}-${latestBlockNumber} for contract creations`
     );
 
+    const existingTokens = await Token.find({}).select('address').lean();
+    const existingTokenAddresses = new Set(existingTokens.map((t) => t.address.toLowerCase()));
+    let newTokensFound = 0;
+    let existingTokensSkipped = 0;
     while (fromBlock <= latestBlockNumber) {
-      const toBlock = Math.min(fromBlock + BLOCKS_PER_BATCH - 1, latestBlockNumber);
-
-      // Log every 5000 blocks
-      if (fromBlock % 5000 === 0) {
-        console.log(`🔍 Scanning blocks from ${fromBlock} to ${toBlock}...`);
-      }
-
-      // Check which blocks in this range have already been scanned for tokens
-      const existingTokens = await Token.find({}).select('address').lean();
-      const existingTokenAddresses = new Set(existingTokens.map((t) => t.address.toLowerCase()));
-
-      let newTokensFound = 0;
-      let existingTokensSkipped = 0;
-
-      // Process blocks in smaller chunks to reduce memory usage and CPU load
-      const blockChunkSize = Math.min(MAX_PARALLEL_BLOCKS, 50); // Limit parallel processing
-      for (let chunkStart = fromBlock; chunkStart <= toBlock; chunkStart += blockChunkSize) {
-        const chunkEnd = Math.min(chunkStart + blockChunkSize - 1, toBlock);
-
-        // Limit concurrent block fetches to reduce CPU load
-        const blockPromises = [];
-        for (let i = chunkStart; i <= chunkEnd; i++) {
-          blockPromises.push(web3.eth.getBlock(i, true));
-        }
-
-        const blocks = await Promise.all(blockPromises);
-
-        // Add delay between chunks to prevent CPU overload
-        await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS / 2));
-
-        for (const block of blocks) {
-          if (block && block.transactions) {
-            for (const tx of block.transactions) {
-              // Check for contract creation transactions
-              const txFull = typeof tx === 'string' ? await web3.eth.getTransaction(tx) : tx;
-              if (txFull && !txFull.to) {
-                const receipt = await web3.eth.getTransactionReceipt(txFull.hash);
-                if (receipt && receipt.contractAddress) {
-                  const contractAddress = receipt.contractAddress as string;
-
-                  const status = await registerTokenContract(
-                    contractAddress,
-                    block.number,
-                    existingTokenAddresses
-                  );
-                  if (status === 'exists') existingTokensSkipped++;
-                  else if (status === 'created') newTokensFound++;
-                }
-              }
-            }
-          }
-        }
-
-        // Memory check and delay between chunks (enhanced for CPU optimization)
-        if (!checkMemory()) {
-          console.log('🧹 Memory limit reached, forcing cleanup...');
-          if (global.gc) {
-            global.gc();
-          }
-          // Longer delay when memory is high
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-        } else {
-          // Regular CPU relief delay
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
-      }
-
-      // Log every 5000 blocks
-      if (fromBlock % 5000 === 0) {
-        console.log(
-          `📊 Block range ${fromBlock}-${toBlock}: Found ${newTokensFound} new tokens, skipped ${existingTokensSkipped} existing tokens`
+      const toBlock = Math.min(fromBlock + CREATION_SCAN_RANGE - 1, latestBlockNumber);
+      const creations = (await Transaction.find({
+        creates: { $ne: null },
+        blockNumber: { $gte: fromBlock, $lte: toBlock },
+      })
+        .select('creates blockNumber')
+        .sort({ blockNumber: 1 })
+        .lean()) as Array<{ creates: string; blockNumber: number }>;
+      for (const creation of creations) {
+        const status = await registerTokenContract(
+          creation.creates,
+          creation.blockNumber,
+          existingTokenAddresses
         );
-        console.log(`📈 Processed ${fromBlock} blocks for token scanning`);
+        if (status === 'exists') existingTokensSkipped++;
+        else if (status === 'created') newTokensFound++;
       }
-
-      fromBlock = toBlock + 1;
-
-      // Update scan progress periodically
       await ScanProgress.updateOne(
         { scanType: 'tokens' },
-        {
-          lastScannedBlock: toBlock,
-          lastUpdateTime: new Date(),
-        },
+        { lastScannedBlock: toBlock, lastUpdateTime: new Date() },
         { upsert: true }
       );
-
-      // Add delay between batches to reduce CPU usage
-      await new Promise((resolve) => setTimeout(resolve, BATCH_DELAY_MS));
+      fromBlock = toBlock + 1;
     }
-
-    // Final update of scan progress
-    await ScanProgress.updateOne(
-      { scanType: 'tokens' },
-      {
-        lastScannedBlock: latestBlockNumber,
-        lastUpdateTime: new Date(),
-      },
-      { upsert: true }
+    console.log(
+      `📊 Token scan up to ${latestBlockNumber}: ${newTokensFound} new tokens, ${existingTokensSkipped} already known`
     );
   } catch (error) {
     console.error('❌ An error occurred during token scanning:', error);
