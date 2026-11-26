@@ -553,6 +553,22 @@ describe('Geth call traces', () => {
         const call = JSON.parse(raw) as { id: number; method: string };
         seen.push(call.method);
         res.setHeader('content-type', 'application/json');
+        const params = (JSON.parse(raw) as { params?: unknown[] }).params ?? [];
+        if (call.method === 'eth_getTransactionByHash') {
+          res.end(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: call.id,
+              result: {
+                hash: params[0],
+                blockHash: '0x' + '9'.repeat(64),
+                blockNumber: '0xa',
+                transactionIndex: '0x0',
+              },
+            })
+          );
+          return;
+        }
         res.end(
           JSON.stringify(
             call.method === 'trace_transaction'
@@ -577,11 +593,21 @@ describe('Geth call traces', () => {
         ['f', 'e', 'd'].map((digit) => source.traceTransaction('0x' + digit.repeat(64)))
       );
       expect(wave.map((frames) => frames?.length)).toEqual([7, 7, 7]);
+      // every frame names its transaction and block, which the indexer checks
+      expect(wave[0]?.[0]).toMatchObject({
+        transactionHash: '0x' + 'f'.repeat(64),
+        blockHash: '0x' + '9'.repeat(64),
+        blockNumber: 10,
+        transactionPosition: 0,
+      });
       seen.length = 0;
       const second = await source.traceTransaction('0x' + 'c'.repeat(64));
       expect(second).toHaveLength(7);
       // after the first wave only debug_traceTransaction is asked (ethers also sends eth_chainId)
-      expect(seen.filter((method) => method !== 'eth_chainId')).toEqual(['debug_traceTransaction']);
+      expect(seen.filter((method) => method !== 'eth_chainId').sort()).toEqual([
+        'debug_traceTransaction',
+        'eth_getTransactionByHash',
+      ]);
     } finally {
       source.close();
       await new Promise((resolve) => node.close(resolve));

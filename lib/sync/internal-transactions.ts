@@ -344,11 +344,32 @@ export function createTraceSource(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): 
             flavor = 'geth';
           }
         }
-        const tree = (await send('debug_traceTransaction', [
-          hash,
-          { tracer: 'callTracer', timeout: `${Math.ceil(timeoutMs / 1000)}s` },
-        ])) as GethCallFrame | null;
-        return tree && typeof tree === 'object' ? parityTracesFromGethCallTrace(tree) : null;
+        // callTracer names neither the transaction nor its block; the indexer checks both
+        // (a trace of another transaction, or of a block that was reorganised away, is not
+        // stored), so they come from the node's view of the transaction
+        const [tree, tx] = (await Promise.all([
+          send('debug_traceTransaction', [
+            hash,
+            { tracer: 'callTracer', timeout: `${Math.ceil(timeoutMs / 1000)}s` },
+          ]),
+          send('eth_getTransactionByHash', [hash]),
+        ])) as [
+          GethCallFrame | null,
+          {
+            hash?: string;
+            blockHash?: string;
+            blockNumber?: string;
+            transactionIndex?: string;
+          } | null,
+        ];
+        if (!tree || typeof tree !== 'object' || !tx?.blockHash) return null;
+        const located = {
+          transactionHash: (tx.hash ?? hash).toLowerCase(),
+          blockHash: tx.blockHash.toLowerCase(),
+          blockNumber: tx.blockNumber ? Number(tx.blockNumber) : undefined,
+          transactionPosition: tx.transactionIndex ? Number(tx.transactionIndex) : undefined,
+        };
+        return parityTracesFromGethCallTrace(tree).map((frame) => ({ ...frame, ...located }));
       } catch (error) {
         close(); // the next call opens a new connection
         throw error;
