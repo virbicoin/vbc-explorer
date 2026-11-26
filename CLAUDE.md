@@ -285,7 +285,7 @@ pm2 monit               # リソースを監視
 ```
 - **更新間隔**: 価格は 5 分ごと、DEX スワップは 15 秒ごと
 - **VBC は DEX が唯一の出どころ**: 外部 API には VBC の価格が無い（CoinGecko は未掲載、Coinpaprika は登録されているが 2026-05-29 から非アクティブ）ので、上の例のように API を止めて DEX だけにする
-- **WikaEx は削除済み（2026-11、ユーザーの判断）**: 価格の取得先・設定・文書から WikaEx を消した。取得先に戻さない。`Market` に残っていた出どころ不明の旧データ（2026-05〜10）はその取引所の値だった
+- **WikaEx は削除済み（2026-11、ユーザーの判断）**: 価格の取得先・設定・文書から WikaEx を消した。取得先に戻さない。`Market` の出どころ不明の旧データ（2026-05-28〜10-01、32,182 行）はほぼその取引所の値。ユーザーの判断で残している（今の画面と API は最新の行と 24 時間前の行しか読まない）
 - **DEX 価格の前提**: `dex.wrappedNative` と `dex.tokens.usdt`（または `priceApi.dex.stablecoinAddress`）が設定されていること。プールは `priceApi.dex.pairAddress`、無ければ `dex.lpTokens` / `dex.farmPools` から探す。プールが空のときは価格を保存しない（0 や無限大を書かない）。BTC 建ては取れないので `quoteBTC` は 0
 - **`getReserves()` は 2 値で宣言する**: この DEX のペアは `(reserve0, reserve1)` の 2 値を返す。Uniswap V2 の 3 値（`uint112, uint112, uint32`）で宣言すると復号に失敗し、価格が一切取れなくなる（2026-10 から価格が 0 になっていた原因）。宣言は `PAIR_VIEW_ABI` を使う
 - **出どころの記録**: `Market` の各行に `source`（`dex` / `coingecko` など）を保存し、`/api/dex/external-price` の `source.price` は `priceSourceLabel()` で返す
