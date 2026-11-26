@@ -7,7 +7,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { createPublicClient, http } from 'viem';
+import { getClient } from '@/lib/web3/provider';
 import { loadConfig } from '@/lib/config';
 import { getSecurityHeaders } from '@/lib/security';
 import { Block, Token } from '@/models/index';
@@ -30,13 +30,9 @@ export const configJson = loadConfig() as ConfigWithSupply;
 // Token model (collection `tokens`) shared by the blockscout handlers.
 export { Token };
 
-// RPC Client
-const RPC_URL =
-  configJson.network?.rpcUrl || configJson.web3Provider?.url || 'http://localhost:8545';
-
-export const publicClient = createPublicClient({
-  transport: http(RPC_URL, { timeout: 30000 }),
-});
+// The explorer's own node (lib/web3/provider.ts), not the public RPC meant for wallets; the tests
+// spy on its request()
+export const publicClient = getClient();
 
 /** Etherscan-style success envelope: `{ status: '1', message, result }`. */
 export function successResponse(result: unknown, message = 'OK') {

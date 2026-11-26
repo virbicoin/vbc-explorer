@@ -16,7 +16,8 @@
  * getSupplyDetails() reports.
  */
 
-import { createPublicClient, http, formatEther, parseEther, type Address } from 'viem';
+import { formatEther, parseEther, type Address } from 'viem';
+import { getClient } from './web3/provider';
 import { loadConfig, getRewardSchedule } from './config';
 import {
   calculateTotalMiningRewardWei,
@@ -67,20 +68,8 @@ const supplyConfig: SupplyConfig = {
   cacheDuration: config.supply?.cacheDuration ?? 60,
 };
 
-// RPC URL from config
-const RPC_URL = config.network?.rpcUrl || config.web3Provider?.url || 'http://localhost:8545';
-
-// ============================================
-// Viem Client Setup
-// ============================================
-
-const publicClient = createPublicClient({
-  transport: http(RPC_URL, {
-    timeout: 30000,
-    retryCount: 3,
-    retryDelay: 1000,
-  }),
-});
+// The explorer's own node (lib/web3/provider.ts), not the public RPC meant for wallets
+const publicClient = getClient();
 
 // ============================================
 // Cache Management
@@ -394,7 +383,6 @@ export function clearSupplyCache(): void {
 
 // Export configuration for reference
 export const SUPPLY_CONFIG = {
-  rpcUrl: RPC_URL,
   premineAmount: supplyConfig.premineAmount,
   excludedAddresses: supplyConfig.excludedAddresses,
   cacheDuration: supplyConfig.cacheDuration,
