@@ -247,6 +247,7 @@ npm run optimize-indexes -- --check   # 不足があれば一覧を出して exi
 npm run repair-chain -- --check       # 保存済みチェーンの parentHash 連結検査（不一致で exit 1）
 npm run repair-chain -- --fix         # 孤児ブロックをノードの正規ブロックで置換（--dry-run あり）
 npm run backfill-uncle-rewards -- --dry-run # アンクル発行量が未記録のブロックを数える（引数なしで書き込み）
+npm run backfill-verification-settings -- --dry-run # 検証済みで設定が未記録の記録に、保存済みの standard JSON の設定を入れる（引数なしで書き込み）
 npm run flag-spam-tokens -- --dry-run # URL 名トークンの hidden 判定を表示（引数なしで書き込み）
 npm run flag-spam-tokens -- --audit-launchpad # ファクトリーが知らない Launchpad トークンを列挙し factoryVerified を記録
 npm run flag-spam-tokens -- --audit-code --dry-run # コードのないアドレス（eth_getCode が 0x）の token / Contract を列挙（--dry-run なしで hidden: no-code）
@@ -832,7 +833,8 @@ const total = data.meta?.pagination?.total ?? data.total ?? 0;
 **検証の設定の保存（2026-11）:**
 - Contract に保存する optimizer の有無・runs・`evmVersion` は、照合に使った standard JSON から `compileSettingsRecord()`（`lib/contract/solc-utils.ts`）で求める。要求パラメータや固定値（以前は runs 200・paris）を保存しない。`evmVersion` を指定しない入力は `'default'`（getsourcecode では `Default`）
 - standard JSON の `settings` を要求パラメータ（`evmversion` / `optimizationUsed` / `runs`）で上書きしない。パラメータは入力に無い項目を補うだけ（以前は必ず paris で上書きしていた）
-- `optimizationRuns` / `evmVersion` / `license` は 2026-11 までスキーマに無く、保存時に Mongoose が捨てていた。本番の検証済み 25 件には無いので、getsourcecode の `Runs` は空、v2 の `optimization_runs` / `evm_version` は null で返す（推測で埋めない）
+- `optimizationRuns` / `evmVersion` / `license` は 2026-11 までスキーマに無く、保存時に Mongoose が捨てていた。画面の経路は standard JSON でもフォームの optimization を保存していた（本番の standard JSON の 12 件はすべて「無効」と記録、実際は有効）。保存済みのソースが standard JSON の記録は `npm run backfill-verification-settings` でその入力の設定とライセンスを入れられる。単一ファイルの記録は設定が分からないので、getsourcecode の `Runs` は空、v2 の `optimization_runs` / `evm_version` は null のまま（推測で埋めない）
+- ライセンスの読み取りは `spdxLicense()`（standard JSON は各ファイルの本文から読む。JSON の文字列のまま正規表現を当てると `MIT\n//` のように読んでいた）
 - コンストラクター引数は照合していないので保存しない（クライアントの申告値を事実として出さない）
 - VirBiCoin の EVM は Constantinople。検証画面の EVM バージョンには petersburg / constantinople / byzantium も選べる（sugarnft の OsatoNFT は constantinople でコンパイルされている）
 

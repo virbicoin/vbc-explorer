@@ -1180,6 +1180,7 @@ npm run optimize-indexes -- --check   # Exit 1 if any index is missing
 npm run repair-chain -- --check       # Verify parentHash links (exit 1 on mismatches)
 npm run repair-chain -- --fix         # Replace orphaned blocks with the node's canonical blocks
 npm run backfill-uncle-rewards        # Record the uncle issuance of blocks stored before it was tracked
+npm run backfill-verification-settings -- --dry-run # Settings of contracts verified before they were stored (from their standard JSON input)
 npm run flag-spam-tokens -- --dry-run # Classify token/contract names (URL-like names are hidden)
 npm run flag-spam-tokens -- --audit-launchpad # Launchpad tokens no factory knows → factoryVerified: false
 npm run flag-spam-tokens -- --audit-code      # Hide token/contract records whose address has no code

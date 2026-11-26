@@ -151,3 +151,47 @@ export function compileSettingsRecord(input: { settings?: unknown }): CompileSet
 export function etherscanEvmVersion(stored: unknown): string {
   return typeof stored === 'string' && stored && stored !== 'default' ? stored : 'Default';
 }
+
+/** A stored source that is a solc standard JSON input (as saved by the standard-input paths). */
+export interface StandardJsonInput {
+  language: string;
+  sources: Record<string, { content?: unknown }>;
+  settings?: unknown;
+}
+
+/** The stored source parsed as a standard JSON input, or null for a single-file source. */
+export function parseStandardJsonInput(sourceCode: unknown): StandardJsonInput | null {
+  if (typeof sourceCode !== 'string' || !sourceCode.trimStart().startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(sourceCode) as Partial<StandardJsonInput>;
+    if (
+      typeof parsed?.language === 'string' &&
+      parsed.sources &&
+      typeof parsed.sources === 'object'
+    ) {
+      return parsed as StandardJsonInput;
+    }
+  } catch {
+    // not JSON: a single-file source
+  }
+  return null;
+}
+
+/**
+ * First SPDX license identifier of a stored source. A standard JSON input is searched in its
+ * decoded source files: matching the raw JSON text read escaped newlines into the identifier
+ * ("MIT\\n//").
+ */
+export function spdxLicense(sourceCode: unknown): string | null {
+  const input = parseStandardJsonInput(sourceCode);
+  const texts = input
+    ? Object.values(input.sources).map((file) =>
+        typeof file?.content === 'string' ? file.content : ''
+      )
+    : [typeof sourceCode === 'string' ? sourceCode : ''];
+  for (const text of texts) {
+    const match = text.match(/SPDX-License-Identifier:\s*([^\s*]+)/i);
+    if (match?.[1]) return match[1].trim();
+  }
+  return null;
+}

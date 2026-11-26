@@ -4,6 +4,7 @@ import Web3 from 'web3';
 import fs from 'fs';
 import path from 'path';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { spdxLicense } from '@/lib/contract/solc-utils';
 
 // Function to read config
 const readConfig = () => {
@@ -91,15 +92,11 @@ export async function GET(
       });
     }
 
-    // Extract license from source code if not stored in DB
+    // Extract license from source code if not stored in DB (spdxLicense() reads the files of a
+    // standard JSON input, so escaped newlines no longer end up in the identifier)
     let license = ((contractDoc as Record<string, unknown>).license as string) || '';
     if ((!license || license === 'None') && contractDoc.sourceCode) {
-      const sourceCode = contractDoc.sourceCode as string;
-      // Try to extract SPDX license identifier
-      const spdxMatch = sourceCode.match(/SPDX-License-Identifier:\s*([^\s\n\r*]+)/i);
-      if (spdxMatch && spdxMatch[1]) {
-        license = spdxMatch[1].trim();
-      }
+      license = spdxLicense(contractDoc.sourceCode) ?? license;
     }
 
     return NextResponse.json({

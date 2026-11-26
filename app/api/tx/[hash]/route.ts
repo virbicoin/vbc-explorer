@@ -13,6 +13,7 @@ import {
 import { loadConfig } from '../../../../lib/config';
 import { getWeb3 } from '../../../../lib/web3';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { createWeb3FactoryClient, resolveFactoryToken } from '@/lib/launchpad/factory';
 
 // Load configuration
 const config = loadConfig();
@@ -76,30 +77,6 @@ async function decodeInputData(
   const known = METHOD_IDS[input.slice(0, 10).toLowerCase()];
   return known ? { methodName: known.action, signature: null, params: null } : null;
 }
-
-// TokenFactoryV2 ABI for fetching Launchpad token info
-const TOKEN_FACTORY_V2_ABI = [
-  {
-    inputs: [{ name: 'token', type: 'address' }],
-    name: 'tokenInfo',
-    outputs: [
-      { name: 'creator', type: 'address' },
-      { name: 'name', type: 'string' },
-      { name: 'symbol', type: 'string' },
-      { name: 'decimals', type: 'uint8' },
-      { name: 'totalSupply', type: 'uint256' },
-      { name: 'createdAt', type: 'uint256' },
-      { name: 'logoUrl', type: 'string' },
-      { name: 'description', type: 'string' },
-      { name: 'website', type: 'string' },
-    ],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const;
-
-// TokenFactory V2 address
-const TOKEN_FACTORY_V2_ADDRESS = '0xE2008c44Bc077eFc1c6B5A3274ACC805c7F03b73';
 
 // Transaction interface for type safety
 interface TransactionDocument {
@@ -297,12 +274,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             }
           }
 
-          // For tokens not in DB or without logoUrl, try TokenFactoryV2
-          const factoryContract = new web3.eth.Contract(
-            TOKEN_FACTORY_V2_ABI,
-            TOKEN_FACTORY_V2_ADDRESS
-          );
-
+          // For tokens without a logo, ask the configured Launchpad factories (current and
+          // legacy, from config.json) for the on-chain metadata. This used a hardcoded address
+          // of the previous TokenFactoryV2, so tokens of the current factory got no logo.
+          const factoryClient = createWeb3FactoryClient();
           for (const addr of tokenAddresses) {
             const lowerAddr = addr.toLowerCase();
             const info = tokenInfoMap.get(lowerAddr);
@@ -315,22 +290,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
                 tokenInfoMap.set(lowerAddr, info);
               }
             }
-            // Otherwise try TokenFactoryV2 for Launchpad tokens
+            // Otherwise try the Launchpad factories
             else if (!info?.logoUrl) {
               try {
-                const tokenInfo = await factoryContract.methods.tokenInfo(addr).call();
-                if (tokenInfo && tokenInfo.logoUrl) {
+                const factoryToken = await resolveFactoryToken(lowerAddr, {
+                  client: factoryClient,
+                });
+                if (factoryToken?.logoUrl) {
                   const existingInfo = tokenInfoMap.get(lowerAddr) || {
-                    name: tokenInfo.name || 'Unknown Token',
-                    symbol: tokenInfo.symbol || '???',
-                    decimals: Number(tokenInfo.decimals) || 18,
+                    name: factoryToken.name || 'Unknown Token',
+                    symbol: factoryToken.symbol || '???',
+                    decimals: factoryToken.decimals ?? 18,
                     type: 'VRC-20',
                   };
-                  existingInfo.logoUrl = tokenInfo.logoUrl;
+                  existingInfo.logoUrl = factoryToken.logoUrl;
                   tokenInfoMap.set(lowerAddr, existingInfo);
                 }
               } catch {
-                // Not a Launchpad token, ignore
+                // Not a Launchpad token, or the node did not answer
               }
             }
           }
