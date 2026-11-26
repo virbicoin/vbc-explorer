@@ -303,6 +303,21 @@ describe('main page', () => {
     body = await (await indexingStatusGet(request('/api/v2/main-page/indexing-status'))).json();
     expect(body.finished_indexing).toBe(true);
   });
+
+  it('allows the estimated count to trail the stored height by 0.1 %', async () => {
+    // 1..1999 stored, genesis missing: 1 of 2,000 (2 allowed)
+    await Block.collection.insertMany(Array.from({ length: 1999 }, (_, i) => block(i + 1)));
+    const body = await (
+      await indexingStatusGet(request('/api/v2/main-page/indexing-status'))
+    ).json();
+    expect(body).toMatchObject({ finished_indexing_blocks: true, indexed_blocks_ratio: '1.00' });
+    // 1,995 of 2,000 is short of it
+    await Block.collection.deleteMany({ number: { $lte: 4 } });
+    const later = await (
+      await indexingStatusGet(request('/api/v2/main-page/indexing-status'))
+    ).json();
+    expect(later).toMatchObject({ finished_indexing_blocks: false, indexed_blocks_ratio: '0.99' });
+  });
 });
 
 describe('address routes', () => {

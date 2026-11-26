@@ -12,6 +12,13 @@ function ratio(done: number, total: number): string {
   return (Math.floor(value * 100) / 100).toFixed(2);
 }
 
+/**
+ * Blocks the collection's estimated count may trail a running sync by (it is not updated with
+ * every write: on TK04 it was 32 blocks behind an exact count with no block missing). Within it,
+ * blocks count as indexed; it is 0.1 % of the chain, at most 1,000 blocks.
+ */
+const estimateLag = (total: number) => Math.min(1000, Math.floor(total / 1000));
+
 /** The node's height, or null when it does not answer within 3 s. */
 async function nodeHead(): Promise<number | null> {
   const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000).unref());
@@ -35,7 +42,8 @@ export async function GET(request: NextRequest) {
       internalIndexHead(),
       nodeHead(),
     ]);
-    const blocks = ratio(stored, Math.max(chainHead ?? 0, storedHead) + 1);
+    const total = Math.max(chainHead ?? 0, storedHead) + 1;
+    const blocks = total - stored <= estimateLag(total) ? '1.00' : ratio(stored, total);
     let internal = '1.00';
     if (getTraceSourceUrl()) {
       const { confirmations } = resolveSyncSettings(readConfig().sync);

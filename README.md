@@ -1749,7 +1749,7 @@ Block objects carry what the explorer can derive, as Blockscout does on PoW chai
 - `gas_used_percentage` and `gas_target_percentage` are numbers. `nonce` is 16 hex digits.
 - `internal_transactions_count` is only on the block page, and null until the internal transaction indexer has reached the block. `withdrawals_count` is null (withdrawals are not indexed).
 
-`main-page/indexing-status` compares the stored blocks with the node's height. Internal transactions are compared with the stored height, which the indexer follows `sync.confirmations` + 1 blocks behind. The internal transaction ratio is `"1.00"` when no trace source is configured, as Blockscout reports with that fetcher disabled.
+`main-page/indexing-status` compares the stored blocks with the node's height; the collection's estimated count may trail a running sync, so up to 0.1 % of the chain (at most 1,000 blocks) short counts as indexed. Internal transactions are compared with the stored height, which the indexer follows `sync.confirmations` + 1 blocks behind. The internal transaction ratio is `"1.00"` when no trace source is configured, as Blockscout reports with that fetcher disabled.
 
 ### Supply APIs (CoinGecko / CoinMarketCap Compatible)
 
