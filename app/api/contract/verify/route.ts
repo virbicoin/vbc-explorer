@@ -726,7 +726,7 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
 
       await Contract.findOneAndUpdate({ address: address.toLowerCase() }, contractData, {
         upsert: true,
-        new: true,
+        returnDocument: 'after',
       });
 
       return NextResponse.json({

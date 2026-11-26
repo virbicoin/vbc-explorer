@@ -1,8 +1,8 @@
 /**
  * POST /api/compile — despite its name this route does not compile anything.
- * `action: 'find'` returns the stored verification data of a contract and
- * normalizes `Contract.compilerVersion` for display (writing a default when it
- * is missing); `action: 'compile'` is a stub kept for API compatibility.
+ * `action: 'find'` returns the stored verification data of a contract (read only: the compiler
+ * version is null when none was recorded); `action: 'compile'` is a stub kept for API
+ * compatibility.
  * Solidity is compiled only by lib/contract/compile-worker.ts through the
  * verification routes (/api/contract/verify, /api/v2/..., Etherscan API).
  */
@@ -30,34 +30,15 @@ export const POST = withRateLimit('verify', async (request: NextRequest) => {
         });
       }
 
-      // Format compiler version for display
-      let displayCompilerVersion = Array.isArray(contract)
+      // Stored compiler version without the 'v' prefix; null when none was recorded. Nothing is
+      // written here: a missing version used to be filled in with '0.8.28' (and 'latest' shown as
+      // 0.8.30), which recorded a compiler nobody had verified with.
+      const storedCompilerVersion: string | undefined = Array.isArray(contract)
         ? contract[0]?.compilerVersion
         : contract.compilerVersion;
-      if (displayCompilerVersion) {
-        // Remove 'v' prefix if present
-        if (displayCompilerVersion.startsWith('v')) {
-          displayCompilerVersion = displayCompilerVersion.substring(1);
-        }
-        // If it's 'latest', show a more descriptive version
-        if (displayCompilerVersion === 'latest') {
-          displayCompilerVersion = 'Latest (0.8.30)';
-        }
-      } else {
-        // Default to 0.8.28 if no compiler version is set
-        displayCompilerVersion = '0.8.28';
-
-        // Update the contract in database with default compiler version
-        try {
-          await Contract.findOneAndUpdate(
-            { address: addr.toLowerCase() },
-            { compilerVersion: '0.8.28' },
-            { new: true }
-          );
-        } catch (updateError) {
-          console.error('Failed to update contract compiler version:', updateError);
-        }
-      }
+      const displayCompilerVersion = storedCompilerVersion
+        ? storedCompilerVersion.replace(/^v/, '')
+        : null;
 
       const contractData = Array.isArray(contract) ? contract[0] : contract;
       return NextResponse.json({

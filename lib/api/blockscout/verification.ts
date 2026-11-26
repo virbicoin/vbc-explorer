@@ -319,7 +319,7 @@ async function processVerification(guid: string) {
 
       await Contract.findOneAndUpdate({ address: address.toLowerCase() }, contractData, {
         upsert: true,
-        new: true,
+        returnDocument: 'after',
       });
 
       await VerificationJob.updateOne(

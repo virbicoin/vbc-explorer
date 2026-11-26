@@ -133,7 +133,10 @@ export abstract class BaseRepository<T extends Document> {
    * Update a document by ID
    */
   async updateById(id: string | mongoose.Types.ObjectId, update: UpdateType): Promise<T | null> {
-    const result = await this.model.findByIdAndUpdate(id, update, { new: true }).lean().exec();
+    const result = await this.model
+      .findByIdAndUpdate(id, update, { returnDocument: 'after' })
+      .lean()
+      .exec();
     return result as T | null;
   }
 
@@ -141,7 +144,10 @@ export abstract class BaseRepository<T extends Document> {
    * Update a single document by filter
    */
   async updateOne(filter: FilterType, update: UpdateType): Promise<T | null> {
-    const result = await this.model.findOneAndUpdate(filter, update, { new: true }).lean().exec();
+    const result = await this.model
+      .findOneAndUpdate(filter, update, { returnDocument: 'after' })
+      .lean()
+      .exec();
     return result as T | null;
   }
 

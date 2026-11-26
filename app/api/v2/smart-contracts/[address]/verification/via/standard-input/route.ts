@@ -283,7 +283,7 @@ export const POST = withRateLimit(
 
         await Contract.findOneAndUpdate({ address: sanitizedAddress.toLowerCase() }, contractData, {
           upsert: true,
-          new: true,
+          returnDocument: 'after',
         });
 
         // Blockscout API v2 response format
