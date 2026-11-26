@@ -56,7 +56,8 @@ const config = loadConfig() as ConfigWithSupply;
 
 // Load configuration from config.json with defaults
 const supplyConfig: SupplyConfig = {
-  premineAmount: config.supply?.premineAmount ?? 330000000,
+  // No premine unless config.json states one (VirBiCoin: 1 VBC in the genesis block)
+  premineAmount: config.supply?.premineAmount ?? 0,
   excludedAddresses: config.supply?.excludedAddresses ?? [],
   cacheDuration: config.supply?.cacheDuration ?? 60,
 };

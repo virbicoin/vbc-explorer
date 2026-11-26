@@ -5,7 +5,7 @@
  * Required format for CoinGecko and CoinMarketCap integration.
  *
  * GET /api/circulating_supply
- * Response: Plain text number (e.g., "320000000")
+ * Response: Plain text number (e.g., "28767305.25")
  */
 
 import { NextResponse, type NextRequest } from 'next/server';

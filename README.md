@@ -1715,7 +1715,7 @@ GET /api/total_supply
 ```
 Returns the total supply of VBC as a plain text number.
 
-**Response:** `354921680` (plain text, no JSON)
+**Response:** `28645090.25` (plain text, no JSON)
 
 **Calculation:** `Pre-mine Amount + block rewards of blocks 1..head + uncle issuance`
 
@@ -1733,7 +1733,7 @@ Returns the total supply of VBC as a plain text number.
   "uncleRewards": "1462481.25",
   "uncleRewardsBackfill": { "lastScannedBlock": 3397826, "lastUpdateTime": "2026-11-24T12:00:00.000Z" },
   "totalSupply": 28645090.25,
-  "circulatingSupply": 28645090.25,
+  "circulatingSupply": 28645089.75,
   "excludedAddresses": [
     {
       "address": "0x0000000000000000000000000000000000000000",
@@ -1750,7 +1750,7 @@ GET /api/circulating_supply
 ```
 Returns the circulating supply of VBC as a plain text number.
 
-**Response:** `354921679` (plain text, no JSON)
+**Response:** `28645089.75` (plain text, no JSON)
 
 **Calculation:** `Total Supply - (Sum of Excluded Wallet Balances)`
 
