@@ -87,12 +87,19 @@ export async function callContract(
 ): Promise<any> {
   const typedAbi = toAbi(abi);
   const data = encodeFunctionData({ abi: typedAbi, functionName, args: args as unknown[] });
-  const result = await getClient().call({
-    to: address as `0x${string}`,
-    data,
-    ...(options.blockNumber !== undefined ? { blockNumber: options.blockNumber } : {}),
-    ...(options.from ? { account: options.from as `0x${string}` } : {}),
-  });
+  let result: { data?: `0x${string}` };
+  try {
+    result = await getClient().call({
+      to: address as `0x${string}`,
+      data,
+      ...(options.blockNumber !== undefined ? { blockNumber: options.blockNumber } : {}),
+      ...(options.from ? { account: options.from as `0x${string}` } : {}),
+    });
+  } catch (error) {
+    // viem's own message spans many lines (request body, arguments, library version)
+    const short = (error as { shortMessage?: string }).shortMessage;
+    throw short ? new Error(`${functionName}(): ${short}`, { cause: error }) : error;
+  }
   if (!result.data || result.data === '0x') throw new Error(`${functionName}() returned nothing`);
   const decoded = decodeFunctionResult({ abi: typedAbi, functionName, data: result.data });
   const fragment = typedAbi.find(
