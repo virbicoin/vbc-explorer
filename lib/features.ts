@@ -70,13 +70,14 @@ export const FEATURE_NAMES: Record<Feature, string> = {
 // Background jobs (tools/worker.ts runs the enabled ones; `npm run worker -- --plan` prints them)
 // ============================================
 
-export type JobName = 'sync' | 'tokens' | 'internal-transactions' | 'richlist' | 'price';
+export type JobName = 'sync' | 'tokens' | 'internal-transactions' | 'logs' | 'richlist' | 'price';
 
 /** In start order. */
 export const JOB_NAMES: readonly JobName[] = [
   'sync',
   'tokens',
   'internal-transactions',
+  'logs',
   'richlist',
   'price',
 ];
@@ -140,6 +141,7 @@ export function planJobs({ config, traceUrl, env = {} }: JobInputs): JobPlan[] {
           enabled: false,
           reason: 'no trace source: set traces.url in config.json or TRACE_RPC_URL',
         },
+    { name: 'logs', enabled: true, reason: "event logs from the node's receipts (always)" },
     features.richlist
       ? { name: 'richlist', enabled: true, reason: 'account balances for the richlist' }
       : { name: 'richlist', enabled: false, reason: 'richlist.enabled is false' },

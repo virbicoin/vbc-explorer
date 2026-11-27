@@ -14,6 +14,16 @@
 
 import { safeFetchJson, type SafeFetchOptions, type SafeFetchResult } from '../security/safe-fetch';
 import { DEFAULT_IPFS_GATEWAY, parseSafeHttpsUrl, resolveIpfsUrl } from '../security/url';
+import { Contract, Token } from '../../models/index';
+import { callContract } from '../web3/provider';
+import {
+  ERC721_INTERFACE_ID,
+  ERC1155_INTERFACE_ID,
+  isFungibleErcCode,
+  isFungibleTokenType,
+  isNftErcCode,
+  isNftTokenType,
+} from '../contract/erc';
 
 export const NFT_NAME_MAX = 128;
 export const NFT_DESCRIPTION_MAX = 2000;
@@ -149,4 +159,97 @@ export async function fetchNftMetadata(
   }
   const metadata = sanitizeNftMetadata(result.data, { ipfsGateway });
   return { metadata, tokenURI, ...(metadata ? {} : { rejected: 'invalid-metadata' }) };
+}
+
+// The checks the API routes pass to fetchNftMetadata() (moved from app/api/tokens/[address])
+
+const ERC721_ABI = [
+  {
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    name: 'tokenURI',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
+
+const ERC165_ABI = [
+  {
+    inputs: [{ name: 'interfaceId', type: 'bytes4' }],
+    name: 'supportsInterface',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+/**
+ * Is the contract an NFT (ERC-721 / ERC-1155)? The DB classification written
+ * by tools/sync.ts wins; only an unclassified contract is asked on-chain via
+ * ERC-165. Fungible tokens never reach tokenURI.
+ */
+export async function isNftContract(address: string): Promise<boolean> {
+  const contract = (await Contract.findOne({ address }).select('ERC type').lean()) as {
+    ERC?: unknown;
+    type?: unknown;
+  } | null;
+  if (contract) {
+    if (isNftErcCode(contract.ERC) || isNftTokenType(contract.type)) return true;
+    if (isFungibleErcCode(contract.ERC) || isFungibleTokenType(contract.type)) return false;
+  }
+  const token = (await Token.findOne({ address }).select('type').lean()) as {
+    type?: unknown;
+  } | null;
+  if (token) {
+    if (isNftTokenType(token.type)) return true;
+    if (isFungibleTokenType(token.type)) return false;
+  }
+
+  try {
+    for (const interfaceId of [ERC721_INTERFACE_ID, ERC1155_INTERFACE_ID]) {
+      try {
+        const supported = await withTimeout(
+          callContract(ERC165_ABI, address, 'supportsInterface', [interfaceId]),
+          5000
+        );
+        if (supported === true) return true;
+      } catch {
+        // not ERC-165 compliant or the call failed: keep checking
+      }
+    }
+  } catch {
+    // contract instantiation failed
+  }
+  return false;
+}
+
+/** `tokenURI(tokenId)` via eth_call; null when the contract has no tokenURI. */
+export async function readTokenUri(address: string, tokenId: number): Promise<string | null> {
+  try {
+    const contract = { abi: ERC721_ABI as readonly unknown[], address: address as string };
+    const uri = await withTimeout(
+      callContract(contract.abi, contract.address, 'tokenURI', [tokenId]),
+      5000
+    );
+    return typeof uri === 'string' && uri !== '' ? uri : null;
+  } catch (uriError) {
+    console.error('Error calling tokenURI:', uriError);
+    return null;
+  }
 }

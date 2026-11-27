@@ -597,6 +597,7 @@ sequenceDiagram
 |    |-- sync.ts              # Blockchain synchronization
 |    |-- tokens.ts            # Token data sync (NFT/ERC20/VRC-1155, DEX LP pairs, Launchpad)
 |    |-- internal-txs.ts      # Internal transactions from call traces (--once, --from, --status)
+|    |-- logs.ts              # Event logs from receipts (--once, --from, --status)
 |    |-- richlist.ts          # Rich list (incremental balances; --from 0 starts over)
 |    |-- price.ts             # Price & DEX swap sync
 |    |-- optimize-indexes.ts  # Create/check schema indexes (--dry-run, --check)
@@ -714,7 +715,7 @@ Stores native currency price data (updated via tools/price.ts):
 
 ### Database Indexes
 
-Indexes are declared on the Mongoose schemas in `models/index.ts` and created **explicitly**: `autoIndex` stays disabled, the Next.js app never touches indexes, and every data-writing tool (`sync`, `tokens`, `internal-txs`, `richlist`, `price`, `repair-chain`, `backfill-uncle-rewards`, `flag-spam-tokens`, `rescan-contracts`, `add-token`) calls `ensureIndexes()` right after connecting. Existing indexes are never dropped, a unique index is skipped (and reported with the key and counts) when the collection holds duplicate keys, and a failure never stops the tool. Set `SKIP_INDEX_SYNC=1` to disable the startup check.
+Indexes are declared on the Mongoose schemas in `models/index.ts` and created **explicitly**: `autoIndex` stays disabled, the Next.js app never touches indexes, and every data-writing tool (`sync`, `tokens`, `internal-txs`, `logs`, `richlist`, `price`, `repair-chain`, `backfill-uncle-rewards`, `flag-spam-tokens`, `rescan-contracts`, `add-token`) calls `ensureIndexes()` right after connecting. Existing indexes are never dropped, a unique index is skipped (and reported with the key and counts) when the collection holds duplicate keys, and a failure never stops the tool. Set `SKIP_INDEX_SYNC=1` to disable the startup check.
 
 ```bash
 npm run optimize-indexes              # create every missing schema index (manual run)
@@ -980,6 +981,7 @@ pm2 logs explorer
 | `sync` | always | blocks and transactions (catch-up, then each new block; reorgs) |
 | `tokens` | always | token discovery and updates, NFTs, ERC-1155; DEX LP pairs and Launchpad factories when those are on |
 | `internal-transactions` | with a trace source (`traces.url` or `TRACE_RPC_URL`) | internal transactions from call traces |
+| `logs` | always | event logs of the stored transactions, from the node's receipts |
 | `richlist` | unless `richlist.enabled` is false | account balances, read again every five minutes for the addresses touched since the last pass |
 | `price` | with a price source (`currency.priceApi`, or the DEX) | coin price and DEX swaps |
 
@@ -1147,6 +1149,7 @@ npm run richlist     # Rich list calculation
 npm run tokens       # Token and NFT tracking
 npm run price        # Price monitoring
 npm run internal-txs # Internal transactions from call traces (--once / --from <block> / --status)
+npm run logs         # Event logs from the node's receipts (--once / --from <block> / --status)
 
 # Database indexes (defined in models/index.ts, created automatically by the tools above)
 npm run optimize-indexes              # Create missing indexes
@@ -1624,9 +1627,9 @@ curl "https://explorer.example.com/api?module=proxy&action=eth_estimateGas&to=0x
 | Home page | `main-page/blocks` (4 newest, an array), `main-page/transactions` (6 newest, an array), `main-page/indexing-status` |
 | Stats | `stats`, `stats/charts/transactions` (per UTC day, the 31 days before today), `stats/charts/market` (last stored USD quote of each day, 30 days, and `available_supply`) |
 | Blocks | `blocks` (`type=uncle` and `type=reorg` are empty: only consensus blocks are stored), `blocks/{numberOrHash}`, `…/transactions`, `…/internal-transactions` |
-| Transactions | `transactions`, `transactions/{hash}`, `…/token-transfers`, `…/logs`, `…/internal-transactions`, `internal-transactions` |
-| Addresses | `addresses/{hash}`, `…/transactions`, `…/token-transfers`, `…/internal-transactions`, `…/tokens`, `…/token-balances`, `…/counters`, `…/tabs-counters` (each capped at 51, as on Blockscout), `…/blocks-validated` |
-| Tokens | `tokens`, `tokens/{hash}`, `…/holders`, `…/transfers`, `…/counters` |
+| Transactions | `transactions`, `transactions/{hash}`, `…/token-transfers`, `…/logs`, `…/internal-transactions`, `internal-transactions`, `token-transfers` (the chain's, newest first; `type=ERC-20,ERC-721,ERC-1155`) |
+| Addresses | `addresses/{hash}`, `…/transactions`, `…/token-transfers`, `…/internal-transactions`, `…/logs` (`topic=`), `…/tokens`, `…/token-balances`, `…/counters`, `…/tabs-counters` (each capped at 51, as on Blockscout), `…/blocks-validated`, `…/coin-balance-history`, `…/coin-balance-history-by-day` (`days=`, at most 90) |
+| Tokens | `tokens`, `tokens/{hash}`, `…/holders`, `…/transfers`, `…/counters`, `…/instances`, `…/instances/{id}` |
 | Contracts | `smart-contracts`, `smart-contracts/counters`, `smart-contracts/{hash}`, verification via `flattened-code` and `standard-input` |
 | Search | `search`, `search/check-redirect` |
 
@@ -1636,6 +1639,12 @@ Block objects carry what the explorer can derive, as Blockscout does on PoW chai
 - `rewards`: the miner's reward is what consensus credits it: the block reward from the `rewards` schedule, plus the fees not burnt, plus 1/32 of the reward per included uncle (Etherscan's `getblockreward` uses the same figure). The uncle reward is the stored uncle issuance without that nephew part; it is absent until `backfill-uncle-rewards` has filled the block. The block page names the types `Miner Reward` / `Uncle Reward`; lists use the raw types `validator` / `uncle`, as Blockscout does.
 - `gas_used_percentage` and `gas_target_percentage` are numbers. `nonce` is 16 hex digits.
 - `internal_transactions_count` is only on the block page, and null until the internal transaction indexer has reached the block. `withdrawals_count` is null (withdrawals are not indexed).
+
+Event logs come from the `logs` job (`tools/logs.ts`): it reads the receipt of every stored transaction and keeps the `Log` collection in step with the chain the same way as the internal transactions (confirmed part of the chain only, whole block ranges rewritten, a reorganisation rewinds it). The logs of a transaction (`transactions/{hash}/logs`) are read from the node's receipt directly; `addresses/{hash}/logs` and the `logs_count` tab come from `Log`.
+
+NFT instances list the token ids of a collection, highest first. A VRC-721 id belongs to the receiver of its last transfer (burned ids are left out); VRC-1155 ids have many holders, so `owner` is null, as on Blockscout. `metadata` is null in the list; `instances/{id}` reads it from `tokenURI` through the same safe fetch and rate limit (10 a minute) as `/api/tokens/{address}?tokenId=`.
+
+The coin balance history lists the balance at each block where the address may have changed it (its transactions, its value-moving internal transactions, the blocks it mined), newest first, with the change from the older entry; `…-by-day` gives the balance at the end of each UTC day. Both read the balances from the node at those heights, so old heights need an archive node.
 
 `main-page/indexing-status` compares the stored blocks with the node's height; the collection's estimated count may trail a running sync, so up to 0.1 % of the chain (at most 1,000 blocks) short counts as indexed. Internal transactions are compared with the stored height, which the indexer follows `sync.confirmations` + 1 blocks behind (it polls, so the same allowance applies). The internal transaction ratio is `"1.00"` when no trace source is configured, as Blockscout reports with that fetcher disabled.
 

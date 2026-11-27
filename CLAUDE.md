@@ -137,6 +137,7 @@ tools/                  # ブロックチェーン同期用 CLI ツール
   sync.ts               # ブロックチェーン同期
   tokens.ts             # トークンデータ同期（NFT / ERC20 / VRC-1155、DEX の LP、Launchpad）
   internal-txs.ts       # コールトレースから内部取引を索引（--once / --from / --status）
+  logs.ts               # レシートからイベントログを索引（--once / --from / --status）
   richlist.ts           # リッチリスト（残高の差分更新。--from 0 でやり直し）
   price.ts              # 価格 + DEX スワップ同期
   optimize-indexes.ts   # スキーマ定義インデックスの作成/確認（--dry-run / --check）
@@ -565,6 +566,27 @@ DEX・Token Launchpad・ブリッジ・richlist は任意の機能で、すべ�
 - richlist を切ると `Account`（残高）が作られない。`/api/v2/stats` の `total_addresses` は null、`listaccounts` は空、ホームの集計（`lib/stats.ts`）は最近の取引から数える。`loadAddressFacts()` のコントラクト判定は Contract と tokens で足りる
 - テスト: `tests/lib/features.test.ts`（判定、proxy の 404 と通過、サイトマップ）、`tests/api/v2-blocks-stats.test.ts`（richlist なしの `total_addresses`）
 
+## 新機能（2026-11）: イベントログの索引と Blockscout v2 の追加 API
+
+2026-11-28 にユーザーの選択（「エクスプローラーの機能: イベントログの索引と、足りない API を作る」）で追加した。それまで v2 の `tabs-counters` の `logs_count` は null、アドレスのログ・NFT のインスタンス・チェーン全体のトークン移動・残高の履歴の API は無かった。
+
+### 設計ルール（必ず守る）
+- **イベントログはノードのレシートからだけ作る**（`Log` コレクション、`lib/sync/logs.ts`）。内部取引と同じ範囲索引器（scan_progress `logs`、`lib/sync/range-scan.ts`）: ワーカーのジョブ `logs`（`tools/logs.ts`、常に有効）が確定部分（DB の先端 − `sync.confirmations` − 1）までをブロック範囲ごとに丸ごと置き換える。DB の取引のブロックハッシュとレシートのブロックハッシュが違うブロックからは書かない。レシートの取れない取引は 3 回やり直してから `skipped` に記録して進む
+- `replaceBlock()` は孤児ブロックのログも消し、`rewindRangeScans()` が `logs` も巻き戻す（`RANGE_SCAN_TYPES` に入っている）。範囲索引器が読む取引の取り出し（`loadRangeTransactions()` / `blockTimes()`）は range-scan.ts にまとめた
+- 取引のログ（`/api/v2/transactions/{hash}/logs`）は今までどおりノードのレシートを直接読む（索引の進み具合に関係なく全部出る）。アドレスのログ（`/api/v2/addresses/{hash}/logs`、`topic=` で絞れる）と `logs_count` は `Log` から。ログの項目は `logItem()`（common.ts）だけが作る
+- **チェーン全体のトークン移動**（`/api/v2/token-transfers`、新しい順、`type=ERC-20,ERC-721,ERC-1155`）は `tokentransfers` の `{ timestamp: -1 }` 索引で並べる。hidden のトークンは外す
+- **NFT のインスタンス**（`/api/v2/tokens/{hash}/instances`）は `tokentransfers` から: VRC-721 は最後の移動の受け取り手が持ち主（焼却した id は出さない）、VRC-1155 は持ち主が複数なので `owner` は null（Blockscout と同じ）。一覧の `metadata` は null。`instances/{id}` は `fetchNftMetadata()` で tokenURI から読み、`tokenMetadata` の上限（10/分）も数える。VRC-1155 の id は 10 進文字列なのでドライバーで読む（Mongoose は Number にキャストする）
+- NFT かどうかの判定と tokenURI の読み取り（`isNftContract()` / `readTokenUri()`）は `lib/services/nft-metadata.service.ts` に移した（以前は `app/api/tokens/[address]/route.ts` の中だけにあった）
+- **残高の履歴**（`/api/v2/addresses/{hash}/coin-balance-history` と `-by-day`）はノードに `eth_getBalance` をその高さで聞く（`balanceAt()`、common.ts。古い高さには archive ノードが要る。TK04 の Ovbc は archive）。変化しうる高さは、その取引・値の動いた内部取引・採掘したブロック。`delta` は一つ古い項目との差（最古の項目はその前のブロックとの差）。日ごとは各 UTC 日の最後の保存済みブロック（`days` は最大 90、1 分キャッシュ）
+- **ノードへの呼び出しは `request()` を通す**（viem の `getBalance` などの高水準関数はテストのモックを通らない。v2 の残高もそうした）
+- route.ts からは HTTP のハンドラー以外を export しない（Next.js のビルドが通らない）。共通の関数は lib に置く
+- テスト: `tests/api/logs-instances-balances.test.ts`
+
+### 本番反映時の注意
+- 新しいコレクション `Log` と `tokentransfers` の `{ timestamp: -1 }` 索引ができる（ジョブの起動時の `ensureIndexes()`）。反映前に mongodump。ジョブはワーカーが起動するので pm2 の構成は変えない
+- 最初の起動で全履歴（約 46,000 取引）のレシートを読む（内部取引と同じくらいの時間）。`npm run logs -- --status` の `lastScannedBlock` が先端 − 13 付近、`skipped` が空であること
+- ロールバック: 前の commit に戻してビルドし再起動。`Log` コレクションと索引は旧コードが読まないので残してよい
+
 ## 新機能（2026-11）: 内部取引と VRC-1155 の同期
 
 それまで `txlistinternal` / `token1155tx` / v2 の内部取引は常に空だった。本番（TK04）の全 46,470 取引をトレースした結果、内部取引は 11,059 件（値の移動 1,079 件、計約 4,628,000 VBC）、コントラクトが作ったコントラクトが 44 件（うち 23 件は Contract にも tokens にも無く、VRC-20 が 6 件・旧ファクトリーの LP が 2 件含まれていた）。VRC-1155 のイベントはチェーン上にまだ無い（2026-11-26 時点）。
@@ -709,7 +731,7 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 - **モデルは `models/index.ts` のみ**。API ルートやツールに inline の `mongoose.models.X || mongoose.model('X', schema)` を書かない（`grep -rn "mongoose.model("` が models/index.ts 以外で 0 件であること）。`lib/models.ts` は re-export のみ
 - **コレクション名は `{ collection }` で明示**し、本番実在名（Block, Transaction, Account, Contract, Market, DexSwap, VerificationJob, tokens, tokentransfers, tokenholders, scan_progress）に合わせる。`tests/db/model-collections.test.ts` の allowlist を更新しない限り新しい名前は使えない
 - **インデックスはスキーマで定義**し、実クエリ（`find` / `findOne` / `aggregate` / `sort` のキー）に根拠があるものだけ持つ。根拠は `models/index.ts` のコメントと README「Database Indexes」に記載
-- **`autoIndex` は false のまま**。作成は `ensureIndexes()`（models/index.ts）が行い、呼び出すのは DB に書くツールだけ（sync、tokens、internal-txs、richlist、price、repair-chain、backfill-uncle-rewards、flag-spam-tokens、rescan-contracts、add-token）。Next.js（app/）からは呼ばない
+- **`autoIndex` は false のまま**。作成は `ensureIndexes()`（models/index.ts）が行い、呼び出すのは DB に書くツールだけ（sync、tokens、internal-txs、logs、richlist、price、repair-chain、backfill-uncle-rewards、flag-spam-tokens、rescan-contracts、add-token）。Next.js（app/）からは呼ばない
 - **`Model.syncIndexes()` は使わない**（スキーマにないインデックスを削除する）。`background: true` も渡さない（MongoDB 4.2 以降無視）
 - **アドレス/ハッシュの検索は小文字の等価比較**。`$regex: new RegExp(`^${addr}$`, 'i')` はインデックスが効かないので書かない（書き込み側はすべて小文字で保存し、スキーマも `lowercase: true`）
 

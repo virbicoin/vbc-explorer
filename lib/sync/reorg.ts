@@ -21,6 +21,7 @@
 import {
   Block,
   InternalTransaction,
+  Log,
   ScanProgress,
   Token,
   TokenTransfer,
@@ -73,8 +74,9 @@ export interface ReplaceBlockResult {
   deletedTransactions: number;
   deletedTokenTransfers: number;
   deletedInternalTransactions: number;
+  deletedLogs: number;
   addedTransactions: number;
-  /** Range indexers (internal transactions, VRC-1155) sent back below this height. */
+  /** Range indexers (internal transactions, VRC-1155, logs) sent back below this height. */
   rewoundScans: number;
 }
 
@@ -232,6 +234,7 @@ export async function replaceBlock(
       deletedTransactions: 0,
       deletedTokenTransfers: 0,
       deletedInternalTransactions: 0,
+      deletedLogs: 0,
       addedTransactions: 0,
       rewoundScans: 0,
     };
@@ -243,6 +246,7 @@ export async function replaceBlock(
   let deletedTransactions = 0;
   let deletedTokenTransfers = 0;
   let deletedInternalTransactions = 0;
+  let deletedLogs = 0;
   if (oldHash) {
     const hashes = await oldTransactionHashes(existing, oldHash);
     if (hashes.length > 0) {
@@ -256,6 +260,13 @@ export async function replaceBlock(
       ],
     });
     deletedInternalTransactions = internal.deletedCount ?? 0;
+    const logs = await Log.deleteMany({
+      $or: [
+        { blockHash: oldHash },
+        ...(hashes.length > 0 ? [{ transactionHash: { $in: hashes } }] : []),
+      ],
+    });
+    deletedLogs = logs.deletedCount ?? 0;
     const txs = await Transaction.deleteMany({ blockHash: oldHash });
     deletedTransactions = txs.deletedCount ?? 0;
     // Token scan must revisit this height for the transfers of the canonical block
@@ -286,6 +297,7 @@ export async function replaceBlock(
     deletedTransactions,
     deletedTokenTransfers,
     deletedInternalTransactions,
+    deletedLogs,
     addedTransactions: transactions.length,
     rewoundScans,
   };

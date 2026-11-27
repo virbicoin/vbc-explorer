@@ -21,6 +21,7 @@ import { getRewardSchedule } from '@/lib/config';
 import { minerRewardWei, transactionFeesWei } from '@/lib/reward-schedule';
 import { rejectDeepPagination } from '@/lib/security/pagination';
 import { enforceRateLimit } from '@/lib/security/rate-limits';
+import { getClient } from '@/lib/web3/provider';
 import { ercTokenType } from '@/lib/api/token-standard';
 import { fullCompilerVersion } from '@/lib/contract/solc-utils';
 
@@ -394,6 +395,40 @@ export function transactionItem(
     has_error_in_internal_txs: internalError,
     tx_burnt_fee: null,
     tx_tag: null,
+  };
+}
+
+/**
+ * The balance of an address at a height, from the node through request() (as every node read
+ * in the APIs, so that tests can answer it). Old heights need an archive node.
+ */
+export async function balanceAt(address: string, height: number): Promise<bigint> {
+  const hex = await getClient().request({
+    method: 'eth_getBalance',
+    params: [address as `0x${string}`, `0x${height.toString(16)}`],
+  });
+  return BigInt(hex as string);
+}
+
+/**
+ * Blockscout event log object, from a `Log` document or a receipt's log (hex quantities are
+ * read too). `topics` always has four entries, null where the event has fewer.
+ */
+export function logItem(log: Doc, facts?: Map<string, AddressFacts>) {
+  const number = (value: unknown) =>
+    typeof value === 'string' && value.startsWith('0x') ? Number(BigInt(value)) : Number(value);
+  const topics = Array.isArray(log.topics) ? (log.topics as unknown[]) : [];
+  return {
+    address: addressParam(log.address, facts, { isContract: true }),
+    block_hash: log.blockHash ?? null,
+    block_number:
+      log.blockNumber === undefined || log.blockNumber === null ? null : number(log.blockNumber),
+    data: log.data ?? '0x',
+    decoded: null,
+    index: log.logIndex === undefined || log.logIndex === null ? 0 : number(log.logIndex),
+    smart_contract: null,
+    topics: [0, 1, 2, 3].map((position) => (topics[position] as string | undefined) ?? null),
+    transaction_hash: log.transactionHash ?? null,
   };
 }
 

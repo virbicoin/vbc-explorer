@@ -49,6 +49,7 @@
     "richlist": "tsx tools/richlist.ts",
     "price": "tsx tools/price.ts",
     "internal-txs": "tsx tools/internal-txs.ts",
+    "logs": "tsx tools/logs.ts",
     "optimize-indexes": "tsx tools/optimize-indexes.ts",
     "repair-chain": "tsx tools/repair-chain.ts",
     "flag-spam-tokens": "tsx tools/flag-spam-tokens.ts",

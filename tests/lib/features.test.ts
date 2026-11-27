@@ -122,7 +122,7 @@ const enabled = (plan: JobPlan[]) => plan.filter((job) => job.enabled).map((job)
 describe('planJobs', () => {
   it('runs only the core jobs for a plain block explorer', () => {
     const plan = planJobs({ config: { richlist: { enabled: false } }, traceUrl: null });
-    expect(enabled(plan)).toEqual(['sync', 'tokens']);
+    expect(enabled(plan)).toEqual(['sync', 'tokens', 'logs']);
     expect(plan.find((job) => job.name === 'richlist')?.reason).toBe('richlist.enabled is false');
     expect(plan.find((job) => job.name === 'price')?.reason).toContain('no price source');
     expect(plan.find((job) => job.name === 'internal-transactions')?.reason).toContain(
@@ -132,7 +132,7 @@ describe('planJobs', () => {
 
   it('adds internal transactions with a trace source, the richlist unless it is off', () => {
     const plan = planJobs({ config: {}, traceUrl: '/node/jsonrpc.ipc' });
-    expect(enabled(plan)).toEqual(['sync', 'tokens', 'internal-transactions', 'richlist']);
+    expect(enabled(plan)).toEqual(['sync', 'tokens', 'internal-transactions', 'logs', 'richlist']);
   });
 
   it('names the DEX and Launchpad work of the token job when they are on', () => {
@@ -171,7 +171,7 @@ describe('selectJobs', () => {
   const plan = planJobs({ config: { richlist: { enabled: false } }, traceUrl: null });
 
   it('takes the enabled jobs, or exactly the ones named', () => {
-    expect(selectJobs(plan)).toEqual(['sync', 'tokens']);
+    expect(selectJobs(plan)).toEqual(['sync', 'tokens', 'logs']);
     // in start order, also a job the config switches off
     expect(selectJobs(plan, ['richlist', 'sync'])).toEqual(['sync', 'richlist']);
   });

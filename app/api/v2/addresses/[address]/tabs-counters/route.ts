@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import {
   Block,
   InternalTransaction,
+  Log,
   TokenHolder,
   TokenTransfer,
   Transaction,
@@ -14,8 +15,8 @@ import { invalidParameter, json, v2Route } from '@/lib/api/v2/common';
 const TAB_LIMIT = 51;
 
 // Blockscout API v2 - the counts shown on the tabs of an address page, each capped at 51 as on
-// Blockscout. Logs and withdrawals are not indexed (null), nor internal transactions when no
-// trace source is configured.
+// Blockscout. Logs come from `Log` (tools/logs.ts); withdrawals are not indexed (null), nor
+// internal transactions when no trace source is configured.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ address: string }> }
@@ -24,7 +25,7 @@ export async function GET(
     const address = sanitizeAddress((await params).address);
     if (!address) return invalidParameter('Invalid address');
     const either = { $or: [{ from: address }, { to: address }] };
-    const [transactions, tokenTransfers, internalTransactions, tokenBalances, validations] =
+    const [transactions, tokenTransfers, internalTransactions, tokenBalances, validations, logs] =
       await Promise.all([
         Transaction.countDocuments(either).limit(TAB_LIMIT),
         TokenTransfer.countDocuments(either).limit(TAB_LIMIT),
@@ -38,6 +39,7 @@ export async function GET(
           balance: { $nin: ['0', ''], $exists: true },
         }).limit(TAB_LIMIT),
         Block.countDocuments({ miner: address }).limit(TAB_LIMIT),
+        Log.countDocuments({ address }).limit(TAB_LIMIT),
       ]);
     return json({
       transactions_count: transactions,
@@ -45,7 +47,7 @@ export async function GET(
       internal_transactions_count: internalTransactions,
       token_balances_count: tokenBalances,
       validations_count: validations,
-      logs_count: null,
+      logs_count: logs,
       withdrawals_count: null,
     });
   });

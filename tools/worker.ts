@@ -23,6 +23,7 @@ const load = {
   sync: () => require('./sync') as typeof import('./sync'),
   tokens: () => require('./tokens') as typeof import('./tokens'),
   internalTxs: () => require('./internal-txs') as typeof import('./internal-txs'),
+  logs: () => require('./logs') as typeof import('./logs'),
   richlist: () => require('./richlist') as typeof import('./richlist'),
   price: () => require('./price') as typeof import('./price'),
 };
@@ -31,6 +32,7 @@ const STARTERS: Record<JobName, () => Promise<unknown>> = {
   sync: async () => load.sync().main(),
   tokens: async () => load.tokens().main([]),
   'internal-transactions': async () => load.internalTxs().main([]),
+  logs: async () => load.logs().main([]),
   richlist: async () => load.richlist().runRichlist(),
   price: async () => load.price().main([]),
 };

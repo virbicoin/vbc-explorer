@@ -23,6 +23,8 @@ const PRODUCTION_COLLECTIONS = [
   'scan_progress',
   // created by tools/internal-txs.ts (2026-11)
   'InternalTransaction',
+  // created by tools/logs.ts (2026-11)
+  'Log',
 ];
 
 describe('model collection names', () => {
@@ -40,6 +42,7 @@ describe('model collection names', () => {
       TokenTransfer: 'tokentransfers',
       ScanProgress: 'scan_progress',
       InternalTransaction: 'InternalTransaction',
+      Log: 'Log',
     });
   });
 

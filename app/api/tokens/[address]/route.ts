@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getChainStats } from '../../../../lib/stats';
 import { connectDB, Contract, Token, TokenTransfer } from '../../../../models/index';
-import { fetchNftMetadata, type NftMetadata } from '../../../../lib/services/nft-metadata.service';
 import {
-  ERC721_INTERFACE_ID,
-  ERC1155_INTERFACE_ID,
-  isFungibleErcCode,
-  isFungibleTokenType,
-  isNftErcCode,
-  isNftTokenType,
-} from '../../../../lib/contract/erc';
+  fetchNftMetadata,
+  isNftContract,
+  readTokenUri,
+  type NftMetadata,
+} from '../../../../lib/services/nft-metadata.service';
 import { requireDb } from '../../../../lib/db/get-db';
 import {
   getNftOwnershipFromDb,
@@ -35,15 +32,6 @@ import { rejectDeepPagination } from '@/lib/security/pagination';
 const config = loadConfig();
 
 // Standard ERC721 ABI for tokenURI function
-const ERC721_ABI = [
-  {
-    inputs: [{ name: 'tokenId', type: 'uint256' }],
-    name: 'tokenURI',
-    outputs: [{ name: '', type: 'string' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const;
 
 // Standard ERC20 ABI for basic token info
 const ERC20_ABI = [
@@ -133,86 +121,6 @@ async function fetchERC20Info(tokenAddress: string): Promise<{
 }
 
 // ERC-165 `supportsInterface` (on-chain NFT detection when the DB has no classification)
-const ERC165_ABI = [
-  {
-    inputs: [{ name: 'interfaceId', type: 'bytes4' }],
-    name: 'supportsInterface',
-    outputs: [{ name: '', type: 'bool' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const;
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('timeout')), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error) => {
-        clearTimeout(timer);
-        reject(error);
-      }
-    );
-  });
-}
-
-/**
- * Is the contract an NFT (ERC-721 / ERC-1155)? The DB classification written
- * by tools/sync.ts wins; only an unclassified contract is asked on-chain via
- * ERC-165. Fungible tokens never reach tokenURI.
- */
-async function isNftContract(address: string): Promise<boolean> {
-  const contract = (await Contract.findOne({ address }).select('ERC type').lean()) as {
-    ERC?: unknown;
-    type?: unknown;
-  } | null;
-  if (contract) {
-    if (isNftErcCode(contract.ERC) || isNftTokenType(contract.type)) return true;
-    if (isFungibleErcCode(contract.ERC) || isFungibleTokenType(contract.type)) return false;
-  }
-  const token = (await Token.findOne({ address }).select('type').lean()) as {
-    type?: unknown;
-  } | null;
-  if (token) {
-    if (isNftTokenType(token.type)) return true;
-    if (isFungibleTokenType(token.type)) return false;
-  }
-
-  try {
-    for (const interfaceId of [ERC721_INTERFACE_ID, ERC1155_INTERFACE_ID]) {
-      try {
-        const supported = await withTimeout(
-          callContract(ERC165_ABI, address, 'supportsInterface', [interfaceId]),
-          5000
-        );
-        if (supported === true) return true;
-      } catch {
-        // not ERC-165 compliant or the call failed: keep checking
-      }
-    }
-  } catch {
-    // contract instantiation failed
-  }
-  return false;
-}
-
-/** `tokenURI(tokenId)` via eth_call; null when the contract has no tokenURI. */
-async function readTokenUri(address: string, tokenId: number): Promise<string | null> {
-  try {
-    const contract = { abi: ERC721_ABI as readonly unknown[], address: address as string };
-    const uri = await withTimeout(
-      callContract(contract.abi, contract.address, 'tokenURI', [tokenId]),
-      5000
-    );
-    return typeof uri === 'string' && uri !== '' ? uri : null;
-  } catch (uriError) {
-    console.error('Error calling tokenURI:', uriError);
-    return null;
-  }
-}
 
 /**
  * NFT metadata for a tokenId. tokenURI is read only for NFT contracts and the

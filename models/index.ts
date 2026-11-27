@@ -177,6 +177,26 @@ export interface ITokenTransfer extends Document {
 }
 
 /**
+ * An event log of a stored transaction (collection `Log`, written by tools/logs.ts from the
+ * node's receipts). One document per log, as in the receipt.
+ */
+export interface ILog extends Document {
+  /** The contract that emitted it. */
+  address: string;
+  blockNumber: number;
+  blockHash: string;
+  transactionHash: string;
+  transactionIndex: number;
+  /** Position in the block (the receipt's logIndex). */
+  logIndex: number;
+  /** Up to four 32-byte topics; the first is the event signature for non-anonymous events. */
+  topics: string[];
+  data: string;
+  /** Block time, unix seconds (as Transaction.timestamp). */
+  timestamp: number;
+}
+
+/**
  * A call, contract creation or selfdestruct made inside a transaction (collection
  * `InternalTransaction`, written by tools/internal-txs.ts from the node's call traces).
  * Every frame of a trace except the top-level call is stored, as on Blockscout.
@@ -428,6 +448,22 @@ const TokenTransferSchema = new Schema(
   { collection: 'tokentransfers' }
 );
 
+// Event log schema (collection `Log`; tools/logs.ts)
+const LogSchema = new Schema(
+  {
+    address: { type: String, lowercase: true },
+    blockNumber: Number,
+    blockHash: { type: String, lowercase: true },
+    transactionHash: { type: String, lowercase: true },
+    transactionIndex: Number,
+    logIndex: Number,
+    topics: [{ type: String, lowercase: true }],
+    data: String,
+    timestamp: Number,
+  },
+  { collection: 'Log' }
+);
+
 // Internal transaction schema (collection `InternalTransaction`; tools/internal-txs.ts)
 const InternalTransactionSchema = new Schema(
   {
@@ -575,6 +611,8 @@ TokenTransferSchema.index({ tokenAddress: 1, timestamp: -1 });
 TokenTransferSchema.index({ from: 1, timestamp: -1 });
 TokenTransferSchema.index({ to: 1, timestamp: -1 });
 TokenTransferSchema.index({ transactionHash: 1 });
+// the chain's transfers newest first (v2 /token-transfers)
+TokenTransferSchema.index({ timestamp: -1 });
 TokenTransferSchema.index({ tokenAddress: 1, tokenId: 1, blockNumber: 1, to: 1 });
 // tokentransfers: VRC-1155 sync rewrites a block range at a time (lib/sync/erc1155.ts).
 // Sparse: only VRC-1155 documents carry tokenType.
@@ -588,6 +626,12 @@ InternalTransactionSchema.index({ blockNumber: -1, transactionIndex: -1, index: 
 InternalTransactionSchema.index({ from: 1, blockNumber: -1, transactionIndex: -1, index: -1 });
 InternalTransactionSchema.index({ to: 1, blockNumber: -1, transactionIndex: -1, index: -1 });
 InternalTransactionSchema.index({ createdContract: 1, blockNumber: -1 }, { sparse: true });
+
+// Log: the logs of a transaction in order (tx logs, writer key), newest-first logs of an
+// address (v2 address logs, tab counter), and block ranges (the indexer's range rewrite).
+LogSchema.index({ transactionHash: 1, logIndex: 1 }, { unique: true });
+LogSchema.index({ address: 1, blockNumber: -1, logIndex: -1 });
+LogSchema.index({ blockNumber: -1, logIndex: -1 });
 
 // tokenholders: holder upsert key (tools/tokens.ts, Launchpad), holder ranking of a token
 // (token API sorts by `rank`), tokens held by an address (address API `tokens`).
@@ -712,6 +756,8 @@ export const InternalTransaction =
   mongoose.models.InternalTransaction ||
   mongoose.model<IInternalTransaction>('InternalTransaction', InternalTransactionSchema);
 
+export const Log = mongoose.models.Log || mongoose.model<ILog>('Log', LogSchema);
+
 /** Every model defined in this file (the set `ensureIndexes()` operates on). */
 export const ALL_MODELS: readonly AnyModel[] = [
   Block,
@@ -726,6 +772,7 @@ export const ALL_MODELS: readonly AnyModel[] = [
   TokenTransfer,
   ScanProgress,
   InternalTransaction,
+  Log,
 ];
 
 /** Model name → real collection name (e.g. `TokenTransfer` → `tokentransfers`). */
@@ -814,6 +861,7 @@ const models = {
   TokenHolder,
   ScanProgress,
   InternalTransaction,
+  Log,
 };
 
 export default models;

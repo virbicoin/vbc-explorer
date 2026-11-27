@@ -1,6 +1,7 @@
 /**
  * Progress markers of the indexers that rewrite whole block ranges
- * (scan_progress 'internal-transactions' and 'erc1155').
+ * (scan_progress 'internal-transactions', 'erc1155' and 'logs'), and the
+ * stored transactions of a range that they read.
  *
  * An indexer reads its marker, announces the range it works on (`inFlightTo`),
  * rewrites the range and then moves the marker on, all conditional on the
@@ -12,10 +13,10 @@
  * range (the live head) leave the marker alone.
  */
 
-import { ScanProgress } from '../../models/index';
+import { Block, ScanProgress, Transaction } from '../../models/index';
 import { logger } from '../logger';
 
-export const RANGE_SCAN_TYPES = ['internal-transactions', 'erc1155'] as const;
+export const RANGE_SCAN_TYPES = ['internal-transactions', 'erc1155', 'logs'] as const;
 export type RangeScanType = (typeof RANGE_SCAN_TYPES)[number];
 
 export interface RangeScanState {
@@ -158,4 +159,43 @@ export async function recordSkipped(
     { $push: { skipped: { $each: [{ ...entry, at: new Date() }], $slice: -100 } } }
   );
   logger.error('Range scan: transaction skipped', { scanType, ...entry });
+}
+
+/** A stored transaction as the range indexers read it. */
+export interface StoredTransaction {
+  hash: string;
+  blockNumber: number;
+  blockHash?: string;
+  transactionIndex?: number;
+  timestamp?: number;
+}
+
+/** Transactions of [from, to] in block order, cut after whole blocks at `maxTransactions`. */
+export async function loadRangeTransactions(from: number, to: number, maxTransactions: number) {
+  const rows = (await Transaction.find({ blockNumber: { $gte: from, $lte: to } })
+    .select('hash blockNumber blockHash transactionIndex timestamp')
+    .sort({ blockNumber: 1, transactionIndex: 1 })
+    .limit(maxTransactions + 1)
+    .lean()) as StoredTransaction[];
+  if (rows.length <= maxTransactions) return { rows, to };
+  // Over the cap: stop before the block of the first transaction past it, unless that
+  // block is the first one (a single block is never split)
+  const cutBlock = rows[maxTransactions].blockNumber;
+  if (cutBlock > from) {
+    return { rows: rows.filter((row) => row.blockNumber < cutBlock), to: cutBlock - 1 };
+  }
+  const whole = (await Transaction.find({ blockNumber: from })
+    .select('hash blockNumber blockHash transactionIndex timestamp')
+    .sort({ transactionIndex: 1 })
+    .lean()) as StoredTransaction[];
+  return { rows: whole, to: from };
+}
+
+/** Block timestamps by height, for transactions stored without one. */
+export async function blockTimes(heights: number[]): Promise<Map<number, number>> {
+  if (heights.length === 0) return new Map();
+  const blocks = (await Block.find({ number: { $in: heights } })
+    .select('number timestamp')
+    .lean()) as Array<{ number: number; timestamp?: number }>;
+  return new Map(blocks.map((block) => [block.number, Number(block.timestamp) || 0]));
 }

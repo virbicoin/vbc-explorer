@@ -389,7 +389,7 @@ describe('address routes', () => {
       internal_transactions_count: null,
       token_balances_count: 0,
       validations_count: 2,
-      logs_count: null,
+      logs_count: 0,
       withdrawals_count: null,
     });
 

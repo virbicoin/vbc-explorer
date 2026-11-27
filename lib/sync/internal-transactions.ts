@@ -25,7 +25,8 @@
 
 import { createClient, http, webSocket, type Transport } from 'viem';
 import { ipc } from 'viem/node';
-import { Block, InternalTransaction, Transaction } from '../../models/index';
+import { InternalTransaction } from '../../models/index';
+import { blockTimes, loadRangeTransactions, type StoredTransaction } from './range-scan';
 
 /** One frame of a `trace_transaction` answer. */
 export interface ParityTrace {
@@ -409,43 +410,6 @@ export interface IndexRangeResult {
   }>;
   /** The first transaction that could not be traced; blocks from its block on are not written. */
   failure: IndexRangeFailure | null;
-}
-
-interface StoredTransaction {
-  hash: string;
-  blockNumber: number;
-  blockHash?: string;
-  transactionIndex?: number;
-  timestamp?: number;
-}
-
-/** Transactions of [from, to] in block order, cut after whole blocks at `maxTransactions`. */
-async function loadRangeTransactions(from: number, to: number, maxTransactions: number) {
-  const rows = (await Transaction.find({ blockNumber: { $gte: from, $lte: to } })
-    .select('hash blockNumber blockHash transactionIndex timestamp')
-    .sort({ blockNumber: 1, transactionIndex: 1 })
-    .limit(maxTransactions + 1)
-    .lean()) as StoredTransaction[];
-  if (rows.length <= maxTransactions) return { rows, to };
-  // Over the cap: stop before the block of the first transaction past it, unless that
-  // block is the first one (a single block is never split)
-  const cutBlock = rows[maxTransactions].blockNumber;
-  if (cutBlock > from) {
-    return { rows: rows.filter((row) => row.blockNumber < cutBlock), to: cutBlock - 1 };
-  }
-  const whole = (await Transaction.find({ blockNumber: from })
-    .select('hash blockNumber blockHash transactionIndex timestamp')
-    .sort({ transactionIndex: 1 })
-    .lean()) as StoredTransaction[];
-  return { rows: whole, to: from };
-}
-
-async function blockTimes(heights: number[]): Promise<Map<number, number>> {
-  if (heights.length === 0) return new Map();
-  const blocks = (await Block.find({ number: { $in: heights } })
-    .select('number timestamp')
-    .lean()) as Array<{ number: number; timestamp?: number }>;
-  return new Map(blocks.map((block) => [block.number, Number(block.timestamp) || 0]));
 }
 
 /**
