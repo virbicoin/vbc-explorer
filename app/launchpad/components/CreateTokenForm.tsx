@@ -422,7 +422,7 @@ export function CreateTokenForm() {
 
   // Handle create token with alternative payment
   const handleCreateTokenWithAltPayment = async () => {
-    console.log('[CreateToken] Using ALTERNATIVE payment method (VBCG)');
+    console.log('[CreateToken] Using the alternative payment token');
     if (!activeFactoryAddress || !isValidForm || !isMetadataValid) return;
 
     // Get contract function names from config

@@ -207,13 +207,6 @@ export const ROUTER_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
-  {
-    inputs: [],
-    name: 'WVBC',
-    outputs: [{ type: 'address' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
   // ---- Liquidity (some routers have a no-deadline variant) ----
   {
     inputs: [

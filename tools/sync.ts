@@ -6,7 +6,7 @@ Description: This file will start syncing the blockchain from the configured nod
 
 import '../lib/env'; // .env / .env.local before any other module reads process.env
 import mongoose from 'mongoose';
-import { connectDB, ensureIndexesOnStartup, Block, Transaction, Contract } from '../models/index';
+import { connectDB, ensureIndexesOnStartup, Block, Transaction } from '../models/index';
 import { readConfig as loadConfig, getWeb3ProviderURL } from '../lib/config';
 import { registerContract } from '../lib/sync/contracts';
 import {
@@ -28,7 +28,7 @@ import {
   type ContractCreation,
   type TransactionDoc,
 } from '../lib/sync';
-import { getClient, getCode, getProviderUrl } from '../lib/web3/provider';
+import { getClient, getProviderUrl } from '../lib/web3/provider';
 
 // Initialize database connection
 const initDB = async () => {
@@ -78,137 +78,6 @@ const checkMemory = () => {
     return false;
   }
   return true;
-};
-
-/**
- * Register known contracts from config.json
- */
-const registerKnownContracts = async (): Promise<void> => {
-  const cfg = config as any;
-  const contracts: Array<{
-    address: string;
-    contractName: string;
-    symbol?: string;
-    tokenName?: string;
-    decimals?: number;
-    type: 'contract' | 'token';
-  }> = [];
-
-  // DEX Contracts
-  if (cfg.dex) {
-    if (cfg.dex.factory) {
-      contracts.push({
-        address: cfg.dex.factory.toLowerCase(),
-        contractName: 'SimpleFactoryV2',
-        type: 'contract',
-      });
-    }
-    if (cfg.dex.router) {
-      contracts.push({
-        address: cfg.dex.router.toLowerCase(),
-        contractName: 'SimpleRouterV2',
-        type: 'contract',
-      });
-    }
-    if (cfg.dex.masterChef) {
-      contracts.push({
-        address: cfg.dex.masterChef.toLowerCase(),
-        contractName: 'MasterChef',
-        type: 'contract',
-      });
-    }
-    if (cfg.dex.wrappedNative?.address) {
-      contracts.push({
-        address: cfg.dex.wrappedNative.address.toLowerCase(),
-        contractName:
-          cfg.dex.wrappedNative.name || cfg.dex.wrappedNative.symbol || 'Wrapped native token',
-        symbol: cfg.dex.wrappedNative.symbol,
-        tokenName: cfg.dex.wrappedNative.name,
-        decimals: cfg.dex.wrappedNative.decimals || 18,
-        type: 'token',
-      });
-    }
-    if (cfg.dex.rewardToken?.address) {
-      contracts.push({
-        address: cfg.dex.rewardToken.address.toLowerCase(),
-        contractName: cfg.dex.rewardToken.name || 'Reward Token',
-        symbol: cfg.dex.rewardToken.symbol,
-        tokenName: cfg.dex.rewardToken.name,
-        decimals: cfg.dex.rewardToken.decimals || 18,
-        type: 'token',
-      });
-    }
-    // DEX Tokens
-    if (cfg.dex.tokens) {
-      for (const [, token] of Object.entries(cfg.dex.tokens)) {
-        const t = token as any;
-        if (t.address) {
-          contracts.push({
-            address: t.address.toLowerCase(),
-            contractName: t.name || 'Token',
-            symbol: t.symbol,
-            tokenName: t.name,
-            decimals: t.decimals || 18,
-            type: 'token',
-          });
-        }
-      }
-    }
-    // LP Tokens
-    if (cfg.dex.lpTokens) {
-      for (const [, lp] of Object.entries(cfg.dex.lpTokens)) {
-        const l = lp as any;
-        if (l.address) {
-          contracts.push({
-            address: l.address.toLowerCase(),
-            contractName: l.name || 'LP Token',
-            symbol: l.symbol,
-            tokenName: l.name,
-            type: 'token',
-          });
-        }
-      }
-    }
-  }
-
-  // Launchpad TokenFactory
-  if (cfg.launchpad?.factoryAddress) {
-    contracts.push({
-      address: cfg.launchpad.factoryAddress.toLowerCase(),
-      contractName: 'TokenFactory',
-      type: 'contract',
-    });
-  }
-
-  if (contracts.length === 0) return;
-
-  console.log(`📋 Registering ${contracts.length} known contracts from config.json...`);
-
-  for (const contract of contracts) {
-    try {
-      const existing = await Contract.findOne({ address: contract.address });
-      if (!existing) {
-        // Verify it's actually a contract on-chain
-        const bytecode = await getCode(contract.address);
-        if (bytecode && bytecode !== '0x' && bytecode !== '0x0') {
-          await Contract.create({
-            address: contract.address,
-            contractName: contract.contractName,
-            symbol: contract.symbol,
-            tokenName: contract.tokenName,
-            decimals: contract.decimals,
-            ERC: contract.type === 'token' ? 2 : 0,
-            verified: false,
-          });
-          console.log(`  ✅ ${contract.contractName} (${contract.address.slice(0, 10)}...)`);
-        }
-      }
-    } catch (error: any) {
-      if (error.code !== 11000) {
-        console.error(`  ⚠️ Failed to register ${contract.contractName}:`, error.message);
-      }
-    }
-  }
 };
 
 // Interface definitions
@@ -763,9 +632,6 @@ const main = async (): Promise<void> => {
   try {
     // Initialize database connection ONCE (connectDB() resolves MONGODB_URI, lib/db/uri.ts)
     await initDB();
-
-    // Register known contracts from config.json
-    await registerKnownContracts();
 
     // Test connection by getting latest block number
     try {

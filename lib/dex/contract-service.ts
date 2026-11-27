@@ -354,24 +354,24 @@ export async function fetchDexConfig(forceRefresh = false): Promise<DexConfig> {
   // Fetch Factory address from Router
   const factoryAddress = (await read(client, config.routerV2, ROUTER_ABI, 'factory')) as string;
 
-  // Try to get wrapped native token address from router
-  // Standard Uniswap V2 uses WETH(), but some forks use custom names like WVBC(), WBNB()
+  // The wrapped native token: Uniswap V2 names its getter WETH(), forks name it after their coin
+  // (WBNB(), WVBC()), as lib/dex/cache-service.ts reads it on the server
   let wrappedNativeAddress: string;
   try {
     wrappedNativeAddress = (await read(client, config.routerV2, ROUTER_ABI, 'WETH')) as string;
   } catch {
-    // Fallback: try WVBC for VirBiCoin-based routers
     try {
-      const wvbcAbi = [
+      const getter = `W${(config.currency?.symbol || 'ETH').toUpperCase()}`;
+      const getterAbi = [
         {
           inputs: [],
-          name: 'WVBC',
+          name: getter,
           outputs: [{ type: 'address' }],
           stateMutability: 'view',
           type: 'function',
         },
       ];
-      wrappedNativeAddress = (await read(client, config.routerV2, wvbcAbi, 'WVBC')) as string;
+      wrappedNativeAddress = (await read(client, config.routerV2, getterAbi, getter)) as string;
     } catch {
       // If all methods fail, use config value or zero address
       wrappedNativeAddress =

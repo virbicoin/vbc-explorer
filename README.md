@@ -593,16 +593,18 @@ sequenceDiagram
 |-- models/
 |    |-- index.ts             # Mongoose models
 |-- tools/
+|    |-- worker.ts            # Runs the background jobs below (started by the explorer; --plan, --only)
 |    |-- sync.ts              # Blockchain synchronization
-|    |-- stats.ts             # Statistics calculation
+|    |-- tokens.ts            # Token data sync (NFT/ERC20/VRC-1155, DEX LP pairs, Launchpad)
+|    |-- internal-txs.ts      # Internal transactions from call traces (--once, --from, --status)
+|    |-- richlist.ts          # Rich list (incremental balances; --from 0 starts over)
 |    |-- price.ts             # Price & DEX swap sync
-|    |-- tokens.ts            # Token data sync (NFT/ERC20)
-|    |-- richlist.ts          # Rich list generation
-|    |-- register-contracts.ts  # Contract registration
 |    |-- optimize-indexes.ts  # Create/check schema indexes (--dry-run, --check)
 |    |-- repair-chain.ts      # Verify the stored chain / replace orphaned blocks (--check, --sample, --fix)
 |    |-- backfill-uncle-rewards.ts  # Record the uncle issuance of stored blocks (Block.uncleReward)
+|    |-- backfill-verification-settings.ts  # Optimizer / EVM version / license of old verified records
 |    |-- flag-spam-tokens.ts  # Hide tokens and contracts whose names look like URLs (backfill)
+|    |-- rescan-contracts.ts  # Detect the token standard of stored contracts again
 |    |-- add-token.ts         # Manual token addition
 |-- types/
 |    |-- global.d.ts          # Global type declarations
@@ -712,7 +714,7 @@ Stores native currency price data (updated via tools/price.ts):
 
 ### Database Indexes
 
-Indexes are declared on the Mongoose schemas in `models/index.ts` and created **explicitly**: `autoIndex` stays disabled, the Next.js app never touches indexes, and every data-writing tool (`sync` in all modes, `stats`, `richlist`, `tokens`, `price`, `internal-txs`, `rescan-contracts`, `register-contracts`, `add-token`) calls `ensureIndexes()` right after connecting. Existing indexes are never dropped, a unique index is skipped (and reported with the key and counts) when the collection holds duplicate keys, and a failure never stops the tool. Set `SKIP_INDEX_SYNC=1` to disable the startup check.
+Indexes are declared on the Mongoose schemas in `models/index.ts` and created **explicitly**: `autoIndex` stays disabled, the Next.js app never touches indexes, and every data-writing tool (`sync`, `tokens`, `internal-txs`, `richlist`, `price`, `repair-chain`, `backfill-uncle-rewards`, `flag-spam-tokens`, `rescan-contracts`, `add-token`) calls `ensureIndexes()` right after connecting. Existing indexes are never dropped, a unique index is skipped (and reported with the key and counts) when the collection holds duplicate keys, and a failure never stops the tool. Set `SKIP_INDEX_SYNC=1` to disable the startup check.
 
 ```bash
 npm run optimize-indexes              # create every missing schema index (manual run)

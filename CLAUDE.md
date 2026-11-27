@@ -133,15 +133,18 @@ lib/                    # ユーティリティライブラリ
   
 models/                 # Mongoose モデル（index.ts が唯一の定義場所。インデックス定義もここ）
 tools/                  # ブロックチェーン同期用 CLI ツール
+  worker.ts             # 以下のジョブを動かす（explorer が起動する。--plan / --only）
   sync.ts               # ブロックチェーン同期
-  tokens.ts             # トークンデータ同期（NFT/ERC20）
-  richlist.ts           # リッチリスト生成
+  tokens.ts             # トークンデータ同期（NFT / ERC20 / VRC-1155、DEX の LP、Launchpad）
+  internal-txs.ts       # コールトレースから内部取引を索引（--once / --from / --status）
+  richlist.ts           # リッチリスト（残高の差分更新。--from 0 でやり直し）
   price.ts              # 価格 + DEX スワップ同期
-  register-contracts.ts # コントラクト登録
   optimize-indexes.ts   # スキーマ定義インデックスの作成/確認（--dry-run / --check）
   repair-chain.ts       # 保存済みチェーンの検査と孤児ブロックの置換（--check / --sample / --fix）
   backfill-uncle-rewards.ts # 保存済みブロックのアンクル発行量（Block.uncleReward）の埋め戻し
+  backfill-verification-settings.ts # 古い検証済み記録の optimizer / EVM バージョン / ライセンスの埋め戻し
   flag-spam-tokens.ts   # URL 名トークン/コントラクトの hidden フラグ付与（バックフィル）、--audit-launchpad でファクトリー外トークンの列挙
+  rescan-contracts.ts   # 保存済みコントラクトのトークン規格の判定し直し
   add-token.ts          # 手動トークン追加
   
 types/                  # TypeScript 型定義
@@ -523,8 +526,8 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 - `/api/contract/interact` は結果の bigint を 10 進の文字列にして返す（以前は uint を返す関数がすべて「Do not know how to serialize a BigInt」の 500 だった）
 
 ### TK04 の古いデータ（2026-11-27 に、web3 版の TK04 と viem 版の TK01 で同じチェーンを同期して比べたときに分かったこと）
-- コントラクト作成の取引 204 件すべてで `Transaction.creates` が空（normalize.ts より前の同期は保存していなかった。今の同期はレシートの `contractAddress` を保存する）。Etherscan の `getcontractcreation`、`txlist` の `contractAddress`、v2 の `created_contract` と `type=contract_creation` が空になる
-- ガス価格 0 の取引に `gasPrice` が無い（今の同期は `'0'`）。2,298,155 より古いブロックに `receiptRoot` が無い
+- コントラクト作成の取引 204 件すべてで `Transaction.creates` が空だった（normalize.ts より前の同期は保存していなかった。今の同期はレシートの `contractAddress` を保存する）。Etherscan の `getcontractcreation`、`txlist` の `contractAddress`、v2 の `created_contract` と `type=contract_creation` が空になっていた。2026-11-27 の反映時に、ローカルのノードのレシートから補修した（値は TK01 の一からの同期と全件一致）
+- ガス価格 0 の取引 1 件の `gasPrice` が null だった（今の同期は `'0'`。同じときに補修）。2,298,155 より古いブロックに `receiptRoot` が無い（v2 の `receipts_root` が null。補修していない）
 
 ## 新機能（2026-11）: config.json にはチェーンや既定値で足りない値だけを書く
 
@@ -541,7 +544,7 @@ Launchpad トークン（例: STEN/VBCAT）のアイコンが消える場合、�
 2026-11-27 まで、同期・統計・トークン・richlist・価格・内部取引は pm2 の別アプリ 6 つで、どれを起動するかは `ecosystem.config.json` の固定の一覧が決めていた（`config.json` の切り替えとは別管理。本番は 7 プロセス・428 MB）。richlist は計算を 1 回しかせず（本番で残高が 2 日古かった）、`tools/sync.ts` は stats / richlist / tokens / all のモードも持ち、`npm run all` は price と内部取引を含まない半端な重複だった。ユーザーの指示（「単純化」「ファイルを増やさない」）で次の形にした。
 
 ### 設計ルール（必ず守る）
-- **pm2 のアプリは `explorer` だけ。** `npm start`（`next start`）が起動すると `instrumentation.ts` が `tools/worker.ts` を子プロセスで起動する（本番のみ。`EXPLORER_WORKER=off` で止め、別のホストで `npm run worker` を動かせる。`npm run dev` では `EXPLORER_WORKER=on` のときだけ）。子プロセスにするのは、同期の重い処理で画面を遅くしないためと、ジョブの失敗でサイトを止めないため。子が終わったら 60 秒後に起動し直し、サーバーが止まると一緒に止まる（IPC が切れたら自分で止まる）
+- **pm2 のアプリは `explorer` だけ。** `npm start`（`next start`）が起動すると `instrumentation.ts` が `tools/worker.ts` を子プロセスで起動する（本番のみ。`EXPLORER_WORKER=off` で止め、別のホストで `npm run worker` を動かせる。`npm run dev` では `EXPLORER_WORKER=on` のときだけ）。子プロセスにするのは、同期の重い処理で画面を遅くしないためと、ジョブの失敗でサイトを止めないため。子が終わったら 60 秒後に起動し直し、サーバーが止まると一緒に止まる（IPC が切れたら自分で止まる）。止めるときは同期のバッファのブロックを書いてからすぐ終わる（DB を先に閉じると、書き込み中のジョブが全部失敗をログに出していた。ジョブは保存済みの位置から再開し、書き込みは upsert）
 - **どのジョブを動かすかは `lib/features.ts` の `planJobs()` だけが決める**（`config.json` の機能の切り替え、`traces.url` / `TRACE_RPC_URL`、`currency.priceApi`）。`npm run worker -- --plan` で一覧と理由が出る。pm2 の構成にジョブを並べない
 - **ジョブは共有の設定を書き換えない。** 全ジョブが 1 つのプロセスで `lib/config.ts` の同じオブジェクトを読むので、`readConfig()` の値は凍結してある（書き換えると TypeError）。ツール固有の設定（sync のコマンドライン引数など）はコピーに置く。2026-11-27 まで同期ジョブが起動時に生の config.json をこのオブジェクトに上書きしており、チェーンから読んだ DEX の設定（factory・ペア・トークン）が同じワーカーのトークン・価格ジョブから消えていた（本番は config.json に全部書いてあるので表に出ていなかった）
 - ジョブのログは AsyncLocalStorage で `[job名]` を付ける。ジョブの起動が失敗したらそのジョブだけ 1 分（最大 10 分まで倍）後にやり直す
@@ -625,7 +628,7 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 
 ### 実装の要点
 - `lib/env.ts`: `loadEnvFiles({ cwd, files, log })`（import 時に実行）、`describeMongoUri()`（ホスト・DB・認証有無のみ）。`lib/db/uri.ts`: `resolveMongoUri()`、`MissingMongoUriError` / `InvalidMongoUriError`。`models/index.ts` の `connectDB()` は設定エラーを再 throw し、同期的に失敗した Promise をキャッシュしない（次の呼び出しで再試行できる）。`lib/config.ts` の `getMongoDBURI()` も空なら throw
-- `lib/db/count.ts`: `countAll(model | collection)`。置換箇所: `/api/v2/blocks`（`limit + 1` 方式）、`/api/v2/stats`（Transaction / Account）、`/api/richlist`（Account）、`lib/stats.ts`（Account）、`lib/api/blockscout/handlers.ts` の getChainSize（Block / Transaction）、`tools/register-contracts.ts`
+- `lib/db/count.ts`: `countAll(model | collection)`。置換箇所: `/api/v2/blocks`（`limit + 1` 方式）、`/api/v2/stats`（Transaction / Account）、`/api/richlist`（Account）、`lib/stats.ts`（Account）、`lib/api/blockscout/handlers.ts` の getChainSize（Block / Transaction）
 - `lib/security/display-name.ts`: `HiddenReason` に `'no-code'`、`hiddenNameLabel()` / `hiddenReasonDescription()`（理由別のバッジ文言）。`components/DisplayName.tsx` は `hiddenReason` を受け取り、token / address / contract ページが API の値を渡す
 - `lib/launchpad/factory.ts`: `FactoryClient.getCode()`、`isContractCode()` / `hasContractCode()`。`lib/launchpad/sync.ts`: `RegistrationStatus` に `'skipped'`、`LaunchpadSyncResult.skipped`
 - `tools/flag-spam-tokens.ts`: `--audit-code [--dry-run]`（`auditNoCode(dryRun, { getCode, batchSize })`。10 件ずつ、エラーは数えて続行、`needsReview` を別出し。本番の 6 件は旧 register API が creator の EOA 等を name Unknown / symbol UNKNOWN / totalSupply 0 で保存したもの）
@@ -706,7 +709,7 @@ Next.js を 16.4.6 に更新（16.4.4 以下に中程度の勧告 7 件）。`np
 - **モデルは `models/index.ts` のみ**。API ルートやツールに inline の `mongoose.models.X || mongoose.model('X', schema)` を書かない（`grep -rn "mongoose.model("` が models/index.ts 以外で 0 件であること）。`lib/models.ts` は re-export のみ
 - **コレクション名は `{ collection }` で明示**し、本番実在名（Block, Transaction, Account, Contract, Market, DexSwap, VerificationJob, tokens, tokentransfers, tokenholders, scan_progress）に合わせる。`tests/db/model-collections.test.ts` の allowlist を更新しない限り新しい名前は使えない
 - **インデックスはスキーマで定義**し、実クエリ（`find` / `findOne` / `aggregate` / `sort` のキー）に根拠があるものだけ持つ。根拠は `models/index.ts` のコメントと README「Database Indexes」に記載
-- **`autoIndex` は false のまま**。作成は `ensureIndexes()`（models/index.ts）が行い、呼び出すのは DB に書くツールだけ（tools/sync.ts の全モード、stats、richlist、tokens、price、rescan-contracts、register-contracts、add-token）。Next.js（app/）からは呼ばない
+- **`autoIndex` は false のまま**。作成は `ensureIndexes()`（models/index.ts）が行い、呼び出すのは DB に書くツールだけ（sync、tokens、internal-txs、richlist、price、repair-chain、backfill-uncle-rewards、flag-spam-tokens、rescan-contracts、add-token）。Next.js（app/）からは呼ばない
 - **`Model.syncIndexes()` は使わない**（スキーマにないインデックスを削除する）。`background: true` も渡さない（MongoDB 4.2 以降無視）
 - **アドレス/ハッシュの検索は小文字の等価比較**。`$regex: new RegExp(`^${addr}$`, 'i')` はインデックスが効かないので書かない（書き込み側はすべて小文字で保存し、スキーマも `lowercase: true`）
 

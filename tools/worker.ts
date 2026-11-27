@@ -15,7 +15,6 @@
  */
 import '../lib/env'; // .env / .env.local before any other module reads process.env
 import { AsyncLocalStorage } from 'node:async_hooks';
-import mongoose from 'mongoose';
 import { getFeatures, getTraceSourceUrl, readConfig } from '../lib/config';
 import { planJobs, selectJobs, type JobName } from '../lib/features';
 
@@ -108,16 +107,19 @@ async function main(args: string[]): Promise<void> {
   }
 
   tagConsole();
+  let stopping = false;
   const exit = process.exit.bind(process);
   process.exit = ((code?: number | string | null) => {
     const name = job.getStore();
-    if (name && code !== 0 && code !== undefined) {
+    if (name && !stopping && code !== 0 && code !== undefined) {
       console.error(`[worker] the ${name} job stopped the worker (exit ${code}); pm2 restarts it`);
     }
-    return exit(code ?? undefined);
+    return exit(stopping ? 0 : (code ?? undefined));
   }) as typeof process.exit;
 
-  let stopping = false;
+  // The buffered blocks are written, then the process ends with the jobs where they are: closing
+  // the database first made every job in the middle of a write fail and report it. The jobs resume
+  // from their stored positions, and their writes are upserts.
   const stop = async (signal: string) => {
     if (stopping) return;
     stopping = true;
@@ -129,7 +131,6 @@ async function main(args: string[]): Promise<void> {
         console.error('[worker] could not write the buffered blocks:', (error as Error).message);
       }
     }
-    await mongoose.disconnect().catch(() => undefined);
     exit(0);
   };
   process.on('SIGINT', () => void stop('SIGINT'));

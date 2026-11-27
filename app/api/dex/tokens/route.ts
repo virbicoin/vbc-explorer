@@ -63,13 +63,6 @@ const ROUTER_ABI = [
     stateMutability: 'view',
     type: 'function',
   },
-  {
-    inputs: [],
-    name: 'WVBC',
-    outputs: [{ name: '', type: 'address' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
 ];
 
 // Factory ABI for getting pairs
